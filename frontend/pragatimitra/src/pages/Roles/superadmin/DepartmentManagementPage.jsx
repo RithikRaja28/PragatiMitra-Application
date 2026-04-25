@@ -1,342 +1,47 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
+import { useApi } from "../../../hooks/useApi";
 
-const INITIAL_DEPTS = [
-  {
-    id: 1,
-    name: "Engineering",
-    code: "ENG",
-    admin: "Arun Kumar",
-    memberCount: 24,
-    status: "active",
-    created: "Jan 2024",
-  },
-  {
-    id: 2,
-    name: "Human Resources",
-    code: "HR",
-    admin: "Meena Rajan",
-    memberCount: 8,
-    status: "active",
-    created: "Jan 2024",
-  },
-  {
-    id: 3,
-    name: "Finance",
-    code: "FIN",
-    admin: "Karthik S",
-    memberCount: 12,
-    status: "active",
-    created: "Feb 2024",
-  },
-  {
-    id: 4,
-    name: "Operations",
-    code: "OPS",
-    admin: "Divya Priya",
-    memberCount: 18,
-    status: "active",
-    created: "Mar 2024",
-  },
-  {
-    id: 5,
-    name: "Marketing",
-    code: "MKT",
-    admin: "Ravi Shankar",
-    memberCount: 6,
-    status: "inactive",
-    created: "Apr 2024",
-  },
-];
+/* ── Helpers ─────────────────────────────────────────────────── */
+function formatDate(iso) {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleDateString("en-US", {
+    month: "short",
+    year: "numeric",
+  });
+}
 
-const USERS_LIST = [
-  "Arun Kumar",
-  "Meena Rajan",
-  "Karthik S",
-  "Divya Priya",
-  "Ravi Shankar",
-  "Lakshmi N",
-];
+function normalizeStatus(s) {
+  return (s || "").toUpperCase();
+}
+
+/* ── Toast ───────────────────────────────────────────────────── */
+function Toast({ message, type }) {
+  return (
+    <div
+      style={{
+        position: "fixed",
+        bottom: 28,
+        right: 28,
+        background: type === "error" ? "#dc2626" : "#1e293b",
+        color: "#fff",
+        padding: "12px 20px",
+        borderRadius: 10,
+        fontSize: 13,
+        fontWeight: 500,
+        zIndex: 9999,
+        boxShadow: "0 8px 24px rgba(0,0,0,0.22)",
+        maxWidth: 420,
+        lineHeight: 1.5,
+      }}
+    >
+      {type === "error" ? "✕ " : "✓ "}
+      {message}
+    </div>
+  );
+}
 
 /* ── Confirm Dialog ──────────────────────────────────────────── */
-function ConfirmDialog({ message, onConfirm, onCancel }) {
-  return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(15,23,42,0.45)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 999,
-      }}
-    >
-      <div
-        style={{
-          background: "#fff",
-          borderRadius: 16,
-          padding: 32,
-          width: 380,
-          boxShadow: "0 20px 60px rgba(0,0,0,0.18)",
-        }}
-      >
-        <div
-          style={{
-            width: 44,
-            height: 44,
-            borderRadius: 12,
-            background: "#fef2f2",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            marginBottom: 16,
-            fontSize: 22,
-          }}
-        >
-          ⚠️
-        </div>
-        <h3
-          style={{
-            fontSize: 16,
-            fontWeight: 700,
-            color: "#1e293b",
-            marginBottom: 8,
-          }}
-        >
-          Confirm Delete
-        </h3>
-        <p
-          style={{
-            fontSize: 13,
-            color: "#64748b",
-            marginBottom: 24,
-            lineHeight: 1.6,
-          }}
-        >
-          {message}
-        </p>
-        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
-          <button
-            onClick={onCancel}
-            style={{
-              padding: "9px 20px",
-              borderRadius: 9,
-              border: "1.5px solid #e2e8f0",
-              background: "#fff",
-              fontSize: 13,
-              fontWeight: 600,
-              color: "#64748b",
-              cursor: "pointer",
-            }}
-          >
-            Cancel
-          </button>
-          <button
-            onClick={onConfirm}
-            style={{
-              padding: "9px 20px",
-              borderRadius: 9,
-              border: "none",
-              background: "#dc2626",
-              fontSize: 13,
-              fontWeight: 600,
-              color: "#fff",
-              cursor: "pointer",
-            }}
-          >
-            Delete
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ── Dept Form Modal ─────────────────────────────────────────── */
-function DeptModal({ dept, onClose, onSave }) {
-  const [form, setForm] = useState(
-    dept || { name: "", code: "", admin: USERS_LIST[0], status: "active" },
-  );
-  const isEdit = !!dept;
-
-  return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(15,23,42,0.45)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 999,
-      }}
-    >
-      <div
-        style={{
-          background: "#fff",
-          borderRadius: 16,
-          padding: 32,
-          width: 440,
-          boxShadow: "0 20px 60px rgba(0,0,0,0.18)",
-        }}
-      >
-        <h3
-          style={{
-            fontSize: 17,
-            fontWeight: 700,
-            color: "#1e293b",
-            marginBottom: 24,
-          }}
-        >
-          {isEdit ? "Edit Department" : "Create Department"}
-        </h3>
-        {[
-          ["Department Name", "name", "e.g. Engineering"],
-          ["Department Code", "code", "e.g. ENG"],
-        ].map(([label, key, ph]) => (
-          <div key={key} style={{ marginBottom: 16 }}>
-            <label
-              style={{
-                fontSize: 12,
-                fontWeight: 700,
-                color: "#64748b",
-                display: "block",
-                marginBottom: 6,
-                textTransform: "uppercase",
-                letterSpacing: 0.6,
-              }}
-            >
-              {label}
-            </label>
-            <input
-              placeholder={ph}
-              value={form[key]}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, [key]: e.target.value }))
-              }
-              style={{
-                width: "100%",
-                padding: "9px 12px",
-                border: "1.5px solid #e2e8f0",
-                borderRadius: 9,
-                fontSize: 13,
-                outline: "none",
-                boxSizing: "border-box",
-              }}
-            />
-          </div>
-        ))}
-        <div style={{ marginBottom: 16 }}>
-          <label
-            style={{
-              fontSize: 12,
-              fontWeight: 700,
-              color: "#64748b",
-              display: "block",
-              marginBottom: 6,
-              textTransform: "uppercase",
-              letterSpacing: 0.6,
-            }}
-          >
-            Department Admin
-          </label>
-          <select
-            value={form.admin}
-            onChange={(e) => setForm((f) => ({ ...f, admin: e.target.value }))}
-            style={{
-              width: "100%",
-              padding: "9px 12px",
-              border: "1.5px solid #e2e8f0",
-              borderRadius: 9,
-              fontSize: 13,
-              outline: "none",
-              background: "#fff",
-            }}
-          >
-            {USERS_LIST.map((u) => (
-              <option key={u} value={u}>
-                {u}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div style={{ marginBottom: 24 }}>
-          <label
-            style={{
-              fontSize: 12,
-              fontWeight: 700,
-              color: "#64748b",
-              display: "block",
-              marginBottom: 6,
-              textTransform: "uppercase",
-              letterSpacing: 0.6,
-            }}
-          >
-            Status
-          </label>
-          <div style={{ display: "flex", gap: 10 }}>
-            {["active", "inactive"].map((s) => (
-              <button
-                key={s}
-                onClick={() => setForm((f) => ({ ...f, status: s }))}
-                style={{
-                  padding: "8px 18px",
-                  borderRadius: 8,
-                  border: "1.5px solid",
-                  fontSize: 13,
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  textTransform: "capitalize",
-                  borderColor: form.status === s ? "#2563eb" : "#e2e8f0",
-                  background: form.status === s ? "#eff6ff" : "#fff",
-                  color: form.status === s ? "#2563eb" : "#94a3b8",
-                }}
-              >
-                {s}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
-          <button
-            onClick={onClose}
-            style={{
-              padding: "9px 20px",
-              borderRadius: 9,
-              border: "1.5px solid #e2e8f0",
-              background: "#fff",
-              fontSize: 13,
-              fontWeight: 600,
-              color: "#64748b",
-              cursor: "pointer",
-            }}
-          >
-            Cancel
-          </button>
-          <button
-            onClick={() => onSave(form)}
-            style={{
-              padding: "9px 20px",
-              borderRadius: 9,
-              border: "none",
-              background: "#2563eb",
-              fontSize: 13,
-              fontWeight: 600,
-              color: "#fff",
-              cursor: "pointer",
-            }}
-          >
-            {isEdit ? "Save Changes" : "Create"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ── Admin Access Modal ──────────────────────────────────────── */
-function AdminAccessModal({ dept, onClose, onSave }) {
-  const [admin, setAdmin] = useState(dept.admin);
+function ConfirmDialog({ dept, onConfirm, onCancel, loading }) {
   return (
     <div
       style={{
@@ -363,7 +68,7 @@ function AdminAccessModal({ dept, onClose, onSave }) {
             width: 44,
             height: 44,
             borderRadius: 12,
-            background: "#ede9fe",
+            background: "#fef2f2",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -371,98 +76,44 @@ function AdminAccessModal({ dept, onClose, onSave }) {
             fontSize: 22,
           }}
         >
-          🔑
+          ⚠️
         </div>
         <h3
           style={{
-            fontSize: 17,
+            fontSize: 16,
             fontWeight: 700,
             color: "#1e293b",
-            marginBottom: 6,
+            marginBottom: 8,
           }}
         >
-          Admin Access
+          Deactivate Department
         </h3>
-        <p style={{ fontSize: 13, color: "#64748b", marginBottom: 20 }}>
-          Assign or change the admin for <strong>{dept.name}</strong>.
-        </p>
-        <div style={{ marginBottom: 12 }}>
-          <div
-            style={{
-              fontSize: 11,
-              fontWeight: 700,
-              color: "#94a3b8",
-              textTransform: "uppercase",
-              letterSpacing: 0.6,
-              marginBottom: 10,
-            }}
-          >
-            Select Admin
-          </div>
-          {USERS_LIST.map((u) => (
-            <div
-              key={u}
-              onClick={() => setAdmin(u)}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 12,
-                padding: "10px 14px",
-                borderRadius: 10,
-                cursor: "pointer",
-                marginBottom: 4,
-                background: admin === u ? "#eff6ff" : "#f8fafc",
-                border: `1.5px solid ${admin === u ? "#2563eb" : "transparent"}`,
-              }}
-            >
-              <div
-                style={{
-                  width: 32,
-                  height: 32,
-                  borderRadius: 8,
-                  background: `hsl(${u.length * 40}, 55%, 85%)`,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontSize: 12,
-                  fontWeight: 700,
-                  color: `hsl(${u.length * 40}, 55%, 35%)`,
-                }}
-              >
-                {u
-                  .split(" ")
-                  .map((n) => n[0])
-                  .join("")}
-              </div>
-              <span
-                style={{
-                  fontSize: 13,
-                  fontWeight: 500,
-                  color: admin === u ? "#2563eb" : "#1e293b",
-                }}
-              >
-                {u}
-              </span>
-              {admin === u && (
-                <span
-                  style={{ marginLeft: "auto", fontSize: 14, color: "#2563eb" }}
-                >
-                  ✓
-                </span>
-              )}
-            </div>
-          ))}
-        </div>
-        <div
+        <p
           style={{
-            display: "flex",
-            gap: 10,
-            justifyContent: "flex-end",
-            marginTop: 20,
+            fontSize: 13,
+            color: "#64748b",
+            marginBottom: 6,
+            lineHeight: 1.6,
           }}
         >
+          You are about to deactivate{" "}
+          <strong style={{ color: "#1e293b" }}>{dept.name}</strong>.
+        </p>
+        <p
+          style={{
+            fontSize: 13,
+            color: "#94a3b8",
+            marginBottom: 24,
+            lineHeight: 1.6,
+          }}
+        >
+          All members of this department must be inactive before proceeding.
+          This action sets the department status to inactive in the database.
+        </p>
+        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
           <button
-            onClick={onClose}
+            onClick={onCancel}
+            disabled={loading}
             style={{
               padding: "9px 20px",
               borderRadius: 9,
@@ -471,25 +122,28 @@ function AdminAccessModal({ dept, onClose, onSave }) {
               fontSize: 13,
               fontWeight: 600,
               color: "#64748b",
-              cursor: "pointer",
+              cursor: loading ? "not-allowed" : "pointer",
+              opacity: loading ? 0.6 : 1,
             }}
           >
             Cancel
           </button>
           <button
-            onClick={() => onSave(admin)}
+            onClick={onConfirm}
+            disabled={loading}
             style={{
               padding: "9px 20px",
               borderRadius: 9,
               border: "none",
-              background: "#7c3aed",
+              background: "#dc2626",
               fontSize: 13,
               fontWeight: 600,
               color: "#fff",
-              cursor: "pointer",
+              cursor: loading ? "not-allowed" : "pointer",
+              opacity: loading ? 0.7 : 1,
             }}
           >
-            Assign Admin
+            {loading ? "Deactivating…" : "Deactivate"}
           </button>
         </div>
       </div>
@@ -497,48 +151,326 @@ function AdminAccessModal({ dept, onClose, onSave }) {
   );
 }
 
+/* ── Department Card ─────────────────────────────────────────── */
+function DepartmentCard({ dept, onDeactivate }) {
+  const status = normalizeStatus(dept.status);
+  const isActive = status === "ACTIVE";
+
+  return (
+    <div
+      style={{
+        background: "#fff",
+        border: `1px solid ${isActive ? "rgba(0,0,0,0.07)" : "#f1f5f9"}`,
+        borderRadius: 14,
+        padding: "22px 24px",
+        boxShadow: "0 1px 4px rgba(0,0,0,0.05)",
+        opacity: isActive ? 1 : 0.72,
+      }}
+    >
+      {/* Card header: code badge + name + status pill */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "flex-start",
+          justifyContent: "space-between",
+          marginBottom: 14,
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div
+            style={{
+              width: 42,
+              height: 42,
+              borderRadius: 11,
+              background: isActive ? "#eff6ff" : "#f1f5f9",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: 11,
+              fontWeight: 800,
+              color: isActive ? "#2563eb" : "#94a3b8",
+              letterSpacing: 0.5,
+            }}
+          >
+            {dept.code || "—"}
+          </div>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: "#1e293b" }}>
+              {dept.name}
+            </div>
+            <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>
+              Since {formatDate(dept.created_at)}
+            </div>
+          </div>
+        </div>
+
+        <span
+          style={{
+            padding: "3px 10px",
+            borderRadius: 20,
+            fontSize: 11,
+            fontWeight: 600,
+            background: isActive ? "#d1fae5" : "#f1f5f9",
+            color: isActive ? "#065f46" : "#94a3b8",
+            whiteSpace: "nowrap",
+            flexShrink: 0,
+          }}
+        >
+          {isActive ? "Active" : "Inactive"}
+        </span>
+      </div>
+
+      {/* Stats row */}
+      <div
+        style={{
+          display: "flex",
+          gap: 16,
+          marginBottom: 16,
+          padding: "12px 14px",
+          background: "#f8fafc",
+          borderRadius: 10,
+        }}
+      >
+        <div>
+          <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 2 }}>
+            Members
+          </div>
+          <div style={{ fontSize: 20, fontWeight: 700, color: "#1e293b" }}>
+            {Number(dept.member_count)}
+          </div>
+        </div>
+        <div style={{ width: 1, background: "#e2e8f0" }} />
+        <div>
+          <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 2 }}>
+            Code
+          </div>
+          <div
+            style={{
+              fontSize: 13,
+              fontWeight: 600,
+              color: "#1e293b",
+              fontFamily: "monospace",
+            }}
+          >
+            {dept.code || "—"}
+          </div>
+        </div>
+      </div>
+
+      {/* Actions */}
+      <div style={{ display: "flex", gap: 6 }}>
+        <button
+          onClick={() => onDeactivate(dept)}
+          disabled={!isActive}
+          style={{
+            flex: 1,
+            padding: "7px 0",
+            borderRadius: 8,
+            border: "1.5px solid",
+            borderColor: isActive ? "#fee2e2" : "#e2e8f0",
+            background: "#fff",
+            fontSize: 12,
+            fontWeight: 600,
+            color: isActive ? "#dc2626" : "#cbd5e1",
+            cursor: isActive ? "pointer" : "not-allowed",
+          }}
+          title={isActive ? "Deactivate department" : "Already inactive"}
+        >
+          {isActive ? "Deactivate" : "Inactive"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ── Skeleton card (loading placeholder) ─────────────────────── */
+function SkeletonCard() {
+  return (
+    <div
+      style={{
+        background: "#fff",
+        border: "1px solid rgba(0,0,0,0.07)",
+        borderRadius: 14,
+        padding: "22px 24px",
+        boxShadow: "0 1px 4px rgba(0,0,0,0.05)",
+      }}
+    >
+      {[44, 20, 56, 32].map((w, i) => (
+        <div
+          key={i}
+          style={{
+            height: i === 0 ? 42 : 14,
+            width: `${w}%`,
+            background: "#f1f5f9",
+            borderRadius: 8,
+            marginBottom: 12,
+            animation: "pulse 1.4s ease-in-out infinite",
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
+/* ── Select ──────────────────────────────────────────────────── */
+function StyledSelect({ value, onChange, children, minWidth = 180 }) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      style={{
+        padding: "8px 12px",
+        border: "1.5px solid #e2e8f0",
+        borderRadius: 9,
+        fontSize: 13,
+        fontWeight: 500,
+        color: "#1e293b",
+        background: "#fff",
+        outline: "none",
+        cursor: "pointer",
+        minWidth,
+      }}
+    >
+      {children}
+    </select>
+  );
+}
+
 /* ── Main Export ─────────────────────────────────────────────── */
 export default function DepartmentManagementPage() {
-  const [depts, setDepts] = useState(INITIAL_DEPTS);
-  const [showCreate, setShowCreate] = useState(false);
-  const [editing, setEditing] = useState(null);
-  const [adminModal, setAdminModal] = useState(null);
-  const [confirmDelete, setConfirmDelete] = useState(null);
-  const [toast, setToast] = useState(null);
+  const { apiFetch } = useApi();
 
-  const showToast = (msg) => {
-    setToast(msg);
-    setTimeout(() => setToast(null), 2500);
-  };
+  const [institutions, setInstitutions] = useState([]);
+  const [selectedInstitutionId, setSelectedInstitutionId] = useState(null);
+  const [departments, setDepartments] = useState([]);
+  const [statusFilter, setStatusFilter] = useState("ALL");
 
-  const handleCreate = (form) => {
-    setDepts((d) => [
-      ...d,
-      { ...form, id: Date.now(), memberCount: 0, created: "Apr 2025" },
-    ]);
-    setShowCreate(false);
-    showToast("Department created.");
-  };
-  const handleEdit = (form) => {
-    setDepts((d) =>
-      d.map((dep) => (dep.id === editing.id ? { ...dep, ...form } : dep)),
+  const [loadingInstitutions, setLoadingInstitutions] = useState(true);
+  const [loadingDepts, setLoadingDepts] = useState(false);
+  const [institutionsError, setInstitutionsError] = useState(null);
+
+  const [confirmDeactivate, setConfirmDeactivate] = useState(null);
+  const [deactivating, setDeactivating] = useState(false);
+
+  const [toast, setToast] = useState(null); // { message, type }
+  const toastTimer = useRef(null);
+
+  const showToast = useCallback((message, type = "success") => {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    setToast({ message, type });
+    toastTimer.current = setTimeout(
+      () => setToast(null),
+      type === "error" ? 5000 : 3000
     );
-    setEditing(null);
-    showToast("Department updated.");
-  };
-  const handleDelete = () => {
-    setDepts((d) => d.filter((dep) => dep.id !== confirmDelete.id));
-    setConfirmDelete(null);
-    showToast("Department deleted.");
-  };
-  const handleAdminSave = (admin) => {
-    setDepts((d) =>
-      d.map((dep) => (dep.id === adminModal.id ? { ...dep, admin } : dep)),
-    );
-    setAdminModal(null);
-    showToast("Admin access updated.");
-  };
+  }, []);
 
+  /* ── Fetch institutions once on mount ── */
+  useEffect(() => {
+    let cancelled = false;
+
+    async function load() {
+      setLoadingInstitutions(true);
+      setInstitutionsError(null);
+      try {
+        const res = await apiFetch("/api/departments/institutions");
+        const data = await res.json();
+        if (cancelled) return;
+        if (data.success && data.data.length > 0) {
+          setInstitutions(data.data);
+          setSelectedInstitutionId(data.data[0].institution_id);
+        } else if (data.success) {
+          setInstitutions([]);
+          setInstitutionsError("No institutions found.");
+        } else {
+          setInstitutionsError(data.message || "Failed to load institutions.");
+        }
+      } catch (err) {
+        if (cancelled) return;
+        if (!isAuthError(err)) {
+          setInstitutionsError("Failed to load institutions. Please refresh.");
+        }
+      } finally {
+        if (!cancelled) setLoadingInstitutions(false);
+      }
+    }
+
+    load();
+    return () => { cancelled = true; };
+  }, [apiFetch]);
+
+  /* ── Fetch departments when institution changes ── */
+  const fetchDepartments = useCallback(
+    async (institutionId) => {
+      if (!institutionId) return;
+      setLoadingDepts(true);
+      setDepartments([]);
+      try {
+        const res = await apiFetch(
+          `/api/departments?institution_id=${institutionId}`
+        );
+        const data = await res.json();
+        if (data.success) {
+          setDepartments(data.data);
+        } else {
+          showToast(data.message || "Failed to load departments.", "error");
+        }
+      } catch (err) {
+        if (!isAuthError(err)) {
+          showToast("Failed to load departments.", "error");
+        }
+      } finally {
+        setLoadingDepts(false);
+      }
+    },
+    [apiFetch, showToast]
+  );
+
+  useEffect(() => {
+    fetchDepartments(selectedInstitutionId);
+  }, [selectedInstitutionId, fetchDepartments]);
+
+  /* ── Deactivate handler ── */
+  async function handleDeactivate() {
+    if (!confirmDeactivate) return;
+    setDeactivating(true);
+    try {
+      const res = await apiFetch(
+        `/api/departments/${confirmDeactivate.department_id}/deactivate`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ institution_id: selectedInstitutionId }),
+        }
+      );
+      const data = await res.json();
+      if (data.success) {
+        showToast(data.message, "success");
+        setConfirmDeactivate(null);
+        fetchDepartments(selectedInstitutionId);
+      } else {
+        showToast(data.message || "Failed to deactivate.", "error");
+        setConfirmDeactivate(null);
+      }
+    } catch (err) {
+      if (!isAuthError(err)) {
+        showToast("Failed to deactivate department.", "error");
+      }
+      setConfirmDeactivate(null);
+    } finally {
+      setDeactivating(false);
+    }
+  }
+
+  /* ── Client-side status filter ── */
+  const filteredDepts = departments.filter((d) => {
+    if (statusFilter === "ALL") return true;
+    return normalizeStatus(d.status) === statusFilter;
+  });
+
+  const selectedInstitutionName =
+    institutions.find((i) => i.institution_id === selectedInstitutionId)
+      ?.institution_name || "";
+
+  /* ── Render ── */
   return (
     <div
       style={{
@@ -546,59 +478,31 @@ export default function DepartmentManagementPage() {
         fontFamily: "'Plus Jakarta Sans', sans-serif",
       }}
     >
-      {showCreate && (
-        <DeptModal onClose={() => setShowCreate(false)} onSave={handleCreate} />
-      )}
-      {editing && (
-        <DeptModal
-          dept={editing}
-          onClose={() => setEditing(null)}
-          onSave={handleEdit}
-        />
-      )}
-      {adminModal && (
-        <AdminAccessModal
-          dept={adminModal}
-          onClose={() => setAdminModal(null)}
-          onSave={handleAdminSave}
-        />
-      )}
-      {confirmDelete && (
+      {/* pulse animation keyframes */}
+      <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}`}</style>
+
+      {/* Modals */}
+      {confirmDeactivate && (
         <ConfirmDialog
-          message={`Are you sure you want to delete "${confirmDelete.name}"? This action cannot be undone.`}
-          onConfirm={handleDelete}
-          onCancel={() => setConfirmDelete(null)}
+          dept={confirmDeactivate}
+          onConfirm={handleDeactivate}
+          onCancel={() => !deactivating && setConfirmDeactivate(null)}
+          loading={deactivating}
         />
       )}
 
       {/* Toast */}
-      {toast && (
-        <div
-          style={{
-            position: "fixed",
-            bottom: 28,
-            right: 28,
-            background: "#1e293b",
-            color: "#fff",
-            padding: "12px 20px",
-            borderRadius: 10,
-            fontSize: 13,
-            fontWeight: 500,
-            zIndex: 9999,
-            boxShadow: "0 8px 24px rgba(0,0,0,0.2)",
-          }}
-        >
-          ✓ {toast}
-        </div>
-      )}
+      {toast && <Toast message={toast.message} type={toast.type} />}
 
-      {/* Header */}
+      {/* ── Header ── */}
       <div
         style={{
           display: "flex",
           alignItems: "flex-start",
           justifyContent: "space-between",
           marginBottom: 28,
+          flexWrap: "wrap",
+          gap: 16,
         }}
       >
         <div>
@@ -607,7 +511,7 @@ export default function DepartmentManagementPage() {
               display: "inline-flex",
               alignItems: "center",
               gap: 8,
-              background: "#059669" + "14",
+              background: "#05966914",
               borderRadius: 8,
               padding: "4px 12px",
               marginBottom: 12,
@@ -645,30 +549,112 @@ export default function DepartmentManagementPage() {
             Departments
           </h1>
           <p style={{ color: "#94a3b8", fontSize: 14 }}>
-            Create, manage, and assign admin access to departments.
+            View and manage departments across institutions.
           </p>
         </div>
-        <button
-          onClick={() => setShowCreate(true)}
-          style={{
-            padding: "10px 22px",
-            borderRadius: 10,
-            border: "none",
-            background: "#2563eb",
-            fontSize: 13,
-            fontWeight: 700,
-            color: "#fff",
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-          }}
-        >
-          + New Department
-        </button>
+
+        {/* Institution selector */}
+        {!loadingInstitutions && !institutionsError && institutions.length > 0 && (
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "flex-end",
+              gap: 4,
+            }}
+          >
+            <span
+              style={{
+                fontSize: 11,
+                fontWeight: 600,
+                color: "#94a3b8",
+                textTransform: "uppercase",
+                letterSpacing: 0.6,
+              }}
+            >
+              Institution
+            </span>
+            <StyledSelect
+              value={selectedInstitutionId ?? ""}
+              onChange={(v) => setSelectedInstitutionId(Number(v))}
+              minWidth={220}
+            >
+              {institutions.map((inst) => (
+                <option
+                  key={inst.institution_id}
+                  value={inst.institution_id}
+                >
+                  {inst.institution_name}
+                </option>
+              ))}
+            </StyledSelect>
+          </div>
+        )}
       </div>
 
-      {/* Cards Grid */}
+      {/* ── Institution load error ── */}
+      {institutionsError && (
+        <div
+          style={{
+            background: "#fef2f2",
+            border: "1px solid #fecaca",
+            borderRadius: 12,
+            padding: "16px 20px",
+            color: "#b91c1c",
+            fontSize: 14,
+            marginBottom: 24,
+          }}
+        >
+          {institutionsError}
+        </div>
+      )}
+
+      {/* ── Filter bar ── */}
+      {!institutionsError && !loadingInstitutions && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            marginBottom: 20,
+            flexWrap: "wrap",
+            gap: 12,
+          }}
+        >
+          <div style={{ fontSize: 13, color: "#64748b" }}>
+            {loadingDepts ? (
+              "Loading…"
+            ) : (
+              <>
+                <strong style={{ color: "#1e293b" }}>{filteredDepts.length}</strong>{" "}
+                {statusFilter === "ALL"
+                  ? "department(s)"
+                  : `${statusFilter.toLowerCase()} department(s)`}{" "}
+                {selectedInstitutionName && (
+                  <>
+                    in{" "}
+                    <strong style={{ color: "#1e293b" }}>
+                      {selectedInstitutionName}
+                    </strong>
+                  </>
+                )}
+              </>
+            )}
+          </div>
+
+          <StyledSelect
+            value={statusFilter}
+            onChange={setStatusFilter}
+            minWidth={150}
+          >
+            <option value="ALL">All Statuses</option>
+            <option value="ACTIVE">Active</option>
+            <option value="INACTIVE">Inactive</option>
+          </StyledSelect>
+        </div>
+      )}
+
+      {/* ── Department grid ── */}
       <div
         style={{
           display: "grid",
@@ -676,157 +662,42 @@ export default function DepartmentManagementPage() {
           gap: 16,
         }}
       >
-        {depts.map((dept) => (
-          <div
-            key={dept.id}
-            style={{
-              background: "#fff",
-              border: "1px solid rgba(0,0,0,0.07)",
-              borderRadius: 14,
-              padding: "22px 24px",
-              boxShadow: "0 1px 4px rgba(0,0,0,0.05)",
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                alignItems: "flex-start",
-                justifyContent: "space-between",
-                marginBottom: 14,
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <div
-                  style={{
-                    width: 42,
-                    height: 42,
-                    borderRadius: 11,
-                    background: "#eff6ff",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: 12,
-                    fontWeight: 800,
-                    color: "#2563eb",
-                    letterSpacing: 0.5,
-                  }}
-                >
-                  {dept.code}
-                </div>
-                <div>
-                  <div
-                    style={{ fontSize: 14, fontWeight: 700, color: "#1e293b" }}
-                  >
-                    {dept.name}
-                  </div>
-                  <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>
-                    Since {dept.created}
-                  </div>
-                </div>
+        {loadingDepts
+          ? Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)
+          : filteredDepts.length > 0
+          ? filteredDepts.map((dept) => (
+              <DepartmentCard
+                key={dept.department_id}
+                dept={dept}
+                onDeactivate={setConfirmDeactivate}
+              />
+            ))
+          : !loadingInstitutions && (
+              <div
+                style={{
+                  gridColumn: "1 / -1",
+                  textAlign: "center",
+                  padding: "60px 0",
+                  color: "#94a3b8",
+                  fontSize: 14,
+                }}
+              >
+                {statusFilter !== "ALL"
+                  ? `No ${statusFilter.toLowerCase()} departments found.`
+                  : "No departments found for this institution."}
               </div>
-              <span
-                style={{
-                  padding: "3px 10px",
-                  borderRadius: 20,
-                  fontSize: 11,
-                  fontWeight: 600,
-                  background: dept.status === "active" ? "#d1fae5" : "#f1f5f9",
-                  color: dept.status === "active" ? "#065f46" : "#94a3b8",
-                }}
-              >
-                {dept.status}
-              </span>
-            </div>
-
-            <div
-              style={{
-                display: "flex",
-                gap: 16,
-                marginBottom: 16,
-                padding: "12px 14px",
-                background: "#f8fafc",
-                borderRadius: 10,
-              }}
-            >
-              <div>
-                <div
-                  style={{ fontSize: 11, color: "#94a3b8", marginBottom: 2 }}
-                >
-                  Members
-                </div>
-                <div
-                  style={{ fontSize: 18, fontWeight: 700, color: "#1e293b" }}
-                >
-                  {dept.memberCount}
-                </div>
-              </div>
-              <div style={{ width: 1, background: "#e2e8f0" }} />
-              <div>
-                <div
-                  style={{ fontSize: 11, color: "#94a3b8", marginBottom: 2 }}
-                >
-                  Admin
-                </div>
-                <div
-                  style={{ fontSize: 13, fontWeight: 600, color: "#1e293b" }}
-                >
-                  {dept.admin}
-                </div>
-              </div>
-            </div>
-
-            <div style={{ display: "flex", gap: 6 }}>
-              <button
-                onClick={() => setEditing(dept)}
-                style={{
-                  flex: 1,
-                  padding: "7px 0",
-                  borderRadius: 8,
-                  border: "1.5px solid #e2e8f0",
-                  background: "#fff",
-                  fontSize: 12,
-                  fontWeight: 600,
-                  color: "#2563eb",
-                  cursor: "pointer",
-                }}
-              >
-                Edit
-              </button>
-              <button
-                onClick={() => setAdminModal(dept)}
-                style={{
-                  flex: 1,
-                  padding: "7px 0",
-                  borderRadius: 8,
-                  border: "1.5px solid #e2e8f0",
-                  background: "#fff",
-                  fontSize: 12,
-                  fontWeight: 600,
-                  color: "#7c3aed",
-                  cursor: "pointer",
-                }}
-              >
-                Admin Access
-              </button>
-              <button
-                onClick={() => setConfirmDelete(dept)}
-                style={{
-                  padding: "7px 12px",
-                  borderRadius: 8,
-                  border: "1.5px solid #fee2e2",
-                  background: "#fff",
-                  fontSize: 12,
-                  fontWeight: 600,
-                  color: "#dc2626",
-                  cursor: "pointer",
-                }}
-              >
-                Delete
-              </button>
-            </div>
-          </div>
-        ))}
+            )}
       </div>
     </div>
+  );
+}
+
+/* ── Utility: detect auth errors thrown by useApi ── */
+function isAuthError(err) {
+  const msg = err?.message || "";
+  return (
+    msg.includes("Session expired") ||
+    msg.includes("signed in from another device") ||
+    msg.includes("sign in again")
   );
 }
