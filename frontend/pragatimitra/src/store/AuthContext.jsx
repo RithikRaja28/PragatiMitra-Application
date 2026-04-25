@@ -1,14 +1,11 @@
 import { createContext, useContext, useState, useEffect, useRef, useCallback } from "react";
 
-const API_BASE     = import.meta.env.VITE_API_URL || "http://localhost:5000";
-const IDLE_TIMEOUT = 60 * 60 * 1000;
-const TOKEN_KEY    = "pm_token";
-const USER_KEY     = "pm_user";
+const API_BASE         = import.meta.env.VITE_API_URL || "http://localhost:5000";
+const IDLE_TIMEOUT     = 60 * 60 * 1000;  // 1 hour
+const REFRESH_INTERVAL = 14 * 60 * 1000;  // keep access token alive before 15m expiry
 
 const AuthContext = createContext(null);
 
-// Keys must match the `name` column in the roles table (machine key).
-// Order here is priority — when a user has multiple roles, the first match wins.
 export const ROLE_ROUTES = {
   super_admin:              "/dashboard/super-admin",
   institute_admin:          "/dashboard/institute-admin",
@@ -32,50 +29,27 @@ export function redirectByRole(user, navigate) {
   navigate(ROLE_ROUTES[match] || "/dashboard", { replace: true });
 }
 
-function isTokenExpired(token) {
-  try {
-    const { exp } = JSON.parse(atob(token.split(".")[1]));
-    return Date.now() >= exp * 1000;
-  } catch {
-    return true;
-  }
-}
-
-function saveSession(token, user) {
-  localStorage.setItem(TOKEN_KEY, token);
-  localStorage.setItem(USER_KEY, JSON.stringify(user));
-}
-
-function clearSession() {
-  localStorage.removeItem(TOKEN_KEY);
-  localStorage.removeItem(USER_KEY);
-}
-
-function getStoredSession() {
-  try {
-    const token = localStorage.getItem(TOKEN_KEY);
-    const user  = JSON.parse(localStorage.getItem(USER_KEY));
-    return { token, user };
-  } catch {
-    return { token: null, user: null };
-  }
-}
-
 export function AuthProvider({ children }) {
-  const [user, setUser]       = useState(null);
-  const [token, setToken]     = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [sessionMsg, setMsg]  = useState("");
+  const [user, setUser]          = useState(null);
+  const [accessToken, setAccess] = useState(null); // memory only — cleared on page close
+  const [loading, setLoading]    = useState(true);
+  const [sessionMsg, setMsg]     = useState("");
 
-  const idleTimer = useRef(null);
+  const idleTimer    = useRef(null);
+  const refreshTimer = useRef(null);
 
   const logout = useCallback((message = "") => {
-    clearSession();
+    localStorage.removeItem("pm_user");
     setUser(null);
-    setToken(null);
+    setAccess(null);
     clearTimeout(idleTimer.current);
+    clearInterval(refreshTimer.current);
     if (message) setMsg(message);
-    fetch(`${API_BASE}/api/auth/logout`, { method: "POST" }).catch(() => {});
+    // Tell the server to delete the session and clear the HttpOnly cookie
+    fetch(`${API_BASE}/api/auth/logout`, {
+      method: "POST",
+      credentials: "include", // sends the HttpOnly cookie
+    }).catch(() => {});
   }, []);
 
   const resetIdle = useCallback(() => {
@@ -91,64 +65,75 @@ export function AuthProvider({ children }) {
     return () => events.forEach((e) => window.removeEventListener(e, resetIdle));
   }, [resetIdle]);
 
+  const refreshAccess = useCallback(async () => {
+    try {
+      const res  = await fetch(`${API_BASE}/api/auth/refresh`, {
+        method:      "POST",
+        credentials: "include", // browser sends HttpOnly cookie automatically
+      });
+      const data = await res.json();
+
+      if (!data.success) {
+        logout(data.expired ? "Your session expired. Please sign in again." : "");
+        return;
+      }
+      setAccess(data.accessToken);
+    } catch {}
+  }, [logout]);
+
   /* ── Restore session on page load ── */
   useEffect(() => {
-    const { token: storedToken, user: storedUser } = getStoredSession();
+    const cachedUser = (() => {
+      try { return JSON.parse(localStorage.getItem("pm_user")); }
+      catch { return null; }
+    })();
 
-    if (!storedToken || !storedUser) {
-      setLoading(false);
-      return;
-    }
-
-    if (isTokenExpired(storedToken)) {
-      clearSession();
-      setMsg("Your session expired. Please sign in again.");
-      setLoading(false);
-      return;
-    }
-
-    // Verify with server — catches invalidated tokens (signed in on another device)
     fetch(`${API_BASE}/api/auth/me`, {
-      headers: { Authorization: `Bearer ${storedToken}` },
+      credentials: "include", // browser sends the HttpOnly cookie
     })
       .then((r) => r.json())
       .then((data) => {
         if (!data.success) {
-          clearSession();
-          setMsg(
-            data.invalidated
-              ? "Your account was signed in from another device. Please sign in again."
-              : "Your session expired. Please sign in again."
-          );
+          localStorage.removeItem("pm_user");
+          if (data.expired) setMsg("Your session expired. Please sign in again.");
           setLoading(false);
           return;
         }
-        saveSession(storedToken, data.user);
+        localStorage.setItem("pm_user", JSON.stringify(data.user));
         setUser(data.user);
-        setToken(storedToken);
+        setAccess(data.accessToken);
         resetIdle();
+        refreshTimer.current = setInterval(refreshAccess, REFRESH_INTERVAL);
         setLoading(false);
       })
       .catch(() => {
-        // Network error — restore from cache so app still works offline
-        setUser(storedUser);
-        setToken(storedToken);
-        resetIdle();
+        // Network error — restore from localStorage so app still loads offline
+        if (cachedUser) {
+          setUser(cachedUser);
+          resetIdle();
+        }
         setLoading(false);
       });
+
+    return () => {
+      clearTimeout(idleTimer.current);
+      clearInterval(refreshTimer.current);
+    };
   }, []); // eslint-disable-line
 
-  const login = useCallback((userData, jwtToken) => {
-    saveSession(jwtToken, userData);
+  const login = useCallback((userData, newAccessToken) => {
+    localStorage.setItem("pm_user", JSON.stringify(userData));
     setUser(userData);
-    setToken(jwtToken);
+    setAccess(newAccessToken);
     setMsg("");
     resetIdle();
-  }, [resetIdle]);
+    clearInterval(refreshTimer.current);
+    refreshTimer.current = setInterval(refreshAccess, REFRESH_INTERVAL);
+  }, [resetIdle, refreshAccess]);
 
   return (
     <AuthContext.Provider value={{
-      user, token, loading, sessionMsg,
+      user, accessToken, loading, sessionMsg,
       login, logout, setMsg,
     }}>
       {children}

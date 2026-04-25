@@ -1,17 +1,17 @@
 require("dotenv").config();
 
-require("dotenv").config();
-
-const express = require("express");
-const helmet = require("helmet");
-const cors = require("cors");
-const rateLimit = require("express-rate-limit");
+const express    = require("express");
+const helmet     = require("helmet");
+const cors       = require("cors");
+const cookies    = require("cookie-parser");
+const rateLimit  = require("express-rate-limit");
 const { Pool } = require("pg");
 
 /* ---------------------------------------------------
    ROUTES
 --------------------------------------------------- */
-const authRoutes = require("./routes/login");
+const authRoutes        = require("./routes/login");
+const departmentRoutes  = require("./routes/departments");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -38,6 +38,7 @@ app.use(
 );
 
 app.use(express.json({ limit: "10kb" }));
+app.use(cookies());
 
 /* ---------------------------------------------------
    POSTGRESQL CONNECTION POOL
@@ -79,6 +80,8 @@ app.get("/", (req, res) => {
 app.use("/api/auth",   authRoutes);
 app.use("/api/users",  require("./routes/users"));
 app.use("/api/lookup", require("./routes/lookup"));
+app.use("/api/auth",        authRoutes);
+app.use("/api/departments", departmentRoutes);
 
 /* ---------------------------------------------------
    GLOBAL ERROR HANDLER
