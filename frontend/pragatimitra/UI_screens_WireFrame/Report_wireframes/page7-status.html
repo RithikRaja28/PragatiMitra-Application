@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Page 7 – Report Status | AIIA Report Portal</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+.status-page { max-width: 1400px; margin: 0 auto; padding: 20px; padding-bottom: 80px; }
+
+/* Metadata cards */
+.meta-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 20px; }
+.meta-card { background: #fff; border: 1px solid #e0e4ea; border-radius: 8px; padding: 16px; }
+.meta-card-label { font-size: 11px; color: #666; margin-bottom: 8px; }
+.meta-card-value { font-size: 24px; font-weight: 700; color: #1a1a2e; margin-bottom: 6px; }
+.meta-card-sub { font-size: 11px; color: #888; }
+
+/* Horizontal timeline */
+.timeline-container { display: flex; align-items: flex-start; gap: 0; overflow-x: auto; }
+.tl-step { display: flex; flex-direction: column; align-items: center; min-width: 130px; }
+.tl-circle {
+  width: 36px; height: 36px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px; font-weight: 700; color: #fff; z-index: 1;
+  flex-shrink: 0;
+}
+.tl-circle.done    { background: #43a047; }
+.tl-circle.current { background: #4f8ef7; }
+.tl-circle.pending { background: #ccc; }
+.tl-label { font-size: 11px; font-weight: 700; margin-top: 6px; text-align: center; }
+.tl-date  { font-size: 10px; color: #888; margin-top: 2px; text-align: center; }
+.tl-status{ font-size: 10px; color: #666; margin-top: 2px; text-align: center; }
+.tl-arrow { font-size: 20px; color: #ccc; align-self: center; margin-bottom: 36px; padding: 0 4px; }
+
+/* Section progress table */
+.section-table { width: 100%; border-collapse: collapse; }
+.section-table th { background: #f7f8fa; font-size: 11px; font-weight: 700; color: #666; padding: 10px 12px; text-align: left; border-bottom: 1px solid #e0e4ea; }
+.section-table td { padding: 12px; font-size: 11px; border-bottom: 1px solid #f0f2f5; vertical-align: middle; }
+.section-table tr:hover td { background: #f9f9f9; }
+.section-name-main { font-size: 12px; font-weight: 700; color: #1a1a2e; }
+.section-name-sub  { font-size: 11px; color: #444; padding-left: 12px; }
+.view-link { color: #4f8ef7; font-size: 11px; cursor: pointer; text-decoration: none; }
+.view-link:hover { text-decoration: underline; }
+.deadline-ok   { color: #43a047; }
+.deadline-warn { color: #f57f17; }
+.deadline-late { color: #e53935; }
+
+/* Activity feed */
+.activity-list { height: 300px; overflow-y: auto; }
+.activity-item { display: flex; gap: 12px; padding: 10px 0; border-bottom: 1px solid #f0f2f5; }
+.tl-marker { display: flex; flex-direction: column; align-items: center; flex-shrink: 0; }
+.tl-dot {
+  width: 12px; height: 12px; border-radius: 50%;
+  margin-top: 3px; flex-shrink: 0;
+}
+.tl-line { width: 2px; flex: 1; background: #e0e4ea; margin-top: 4px; }
+.activity-content { flex: 1; }
+.activity-title { font-size: 12px; font-weight: 700; color: #1a1a2e; }
+.activity-time  { font-size: 11px; color: #888; margin-top: 2px; }
+.activity-details { font-size: 11px; color: #666; margin-top: 2px; }
+.activity-user { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
+.avatar-xs { width: 18px; height: 18px; border-radius: 50%; background: #4f8ef7; color: #fff; font-size: 9px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+
+/* Filter buttons */
+.filter-btns { display: flex; gap: 6px; }
+.filter-btn {
+  padding: 4px 10px; border-radius: 4px; font-size: 11px; font-weight: 600;
+  border: 1px solid #e0e4ea; background: #fff; cursor: pointer; color: #666;
+}
+.filter-btn.active { background: #4f8ef7; color: #fff; border-color: #4f8ef7; }
+</style>
+</head>
+<body>
+<nav class="page-nav">
+  <span>📄 Wireframes:</span>
+  <a href="page1-create-report.html">1. Create Report</a>
+  <a href="page2-structure.html">2. Structure</a>
+  <a href="page3-content-editor.html">3. Content Editor</a>
+  <a href="page4-assign.html">4. Assign</a>
+  <a href="page5-review.html">5. Review</a>
+  <a href="page6-compile.html">6. Compile</a>
+  <a href="page7-status.html">7. Status</a>
+</nav>
+
+<!-- Topbar -->
+<div class="topbar">
+  <div>
+    <div style="font-size:11px;color:#666;margin-bottom:4px">Reports › Annual Report 2026</div>
+    <h1 class="section-title">Annual Report 2026 — Overview</h1>
+  </div>
+</div>
+
+<div class="status-page">
+
+  <!-- ── 1: Metadata Cards ── -->
+  <div class="meta-cards">
+    <!-- Status -->
+    <div class="meta-card">
+      <div class="meta-card-label">Status</div>
+      <div style="margin-bottom:8px"><span class="badge badge-blue" style="font-size:12px;padding:4px 12px">In Progress</span></div>
+      <div class="meta-card-sub">3 sections approved, 2 under review</div>
+    </div>
+    <!-- Progress -->
+    <div class="meta-card">
+      <div class="meta-card-label">Overall Progress</div>
+      <div class="meta-card-value">60%</div>
+      <div class="progress progress-md mb-8"><div class="progress-bar" style="width:60%"></div></div>
+      <div class="meta-card-sub">12 of 20 sections approved</div>
+    </div>
+    <!-- Deadline -->
+    <div class="meta-card">
+      <div class="meta-card-label">Submission Deadline</div>
+      <div style="font-size:18px;font-weight:700;margin-bottom:4px">30 Nov 2026</div>
+      <div style="font-size:11px;color:#43a047;margin-bottom:4px">On Track ✓</div>
+      <div class="meta-card-sub">15 days remaining</div>
+    </div>
+    <!-- Period -->
+    <div class="meta-card">
+      <div class="meta-card-label">Reporting Period</div>
+      <div style="font-size:13px;font-weight:700;margin-bottom:4px">01 Jan – 31 Dec 2026</div>
+      <div class="meta-card-sub">Annual cycle</div>
+    </div>
+  </div>
+
+  <!-- ── 2: Timeline ── -->
+  <div class="card mb-20">
+    <div style="font-size:13px;font-weight:700;margin-bottom:16px">Report Lifecycle</div>
+    <div class="timeline-container">
+      <div class="tl-step">
+        <div class="tl-circle done">✓</div>
+        <div class="tl-label">Created</div>
+        <div class="tl-date">01 Oct 2026</div>
+        <div class="tl-status" style="color:#43a047">Completed</div>
+      </div>
+      <div class="tl-arrow">→</div>
+
+      <div class="tl-step">
+        <div class="tl-circle done">✓</div>
+        <div class="tl-label">Sections Assigned</div>
+        <div class="tl-date">05 Oct 2026</div>
+        <div class="tl-status" style="color:#43a047">Completed</div>
+      </div>
+      <div class="tl-arrow">→</div>
+
+      <div class="tl-step">
+        <div class="tl-circle current">3</div>
+        <div class="tl-label">Content Capture</div>
+        <div class="tl-date">In Progress</div>
+        <div class="tl-status" style="color:#4f8ef7">12/20 sections filled</div>
+      </div>
+      <div class="tl-arrow">→</div>
+
+      <div class="tl-step">
+        <div class="tl-circle pending">4</div>
+        <div class="tl-label">Review</div>
+        <div class="tl-date">Pending</div>
+        <div class="tl-status">Waiting for submissions</div>
+      </div>
+      <div class="tl-arrow">→</div>
+
+      <div class="tl-step">
+        <div class="tl-circle pending">5</div>
+        <div class="tl-label">Compilation</div>
+        <div class="tl-date">Pending</div>
+        <div class="tl-status">Not started</div>
+      </div>
+      <div class="tl-arrow">→</div>
+
+      <div class="tl-step">
+        <div class="tl-circle pending">6</div>
+        <div class="tl-label">Archive</div>
+        <div class="tl-date">Pending</div>
+        <div class="tl-status">Not started</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 3: Section Progress Table ── -->
+  <div style="border:1px solid #e0e4ea;border-radius:8px;overflow:hidden;margin-bottom:20px">
+    <div class="section-header" style="display:flex;justify-content:space-between;align-items:center">
+      <span style="font-size:12px;font-weight:700">Section Completion Status</span>
+      <div class="filter-btns">
+        <button class="filter-btn active">All</button>
+        <button class="filter-btn">In Progress</button>
+        <button class="filter-btn">Approved</button>
+        <button class="filter-btn">Locked</button>
+      </div>
+    </div>
+    <table class="section-table">
+      <thead>
+        <tr>
+          <th style="width:25%">Section</th>
+          <th style="width:20%">Assigned To</th>
+          <th style="width:15%">Status</th>
+          <th style="width:12%">Deadline</th>
+          <th style="width:18%">Completion</th>
+          <th style="width:10%">Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        <!-- Section 1 -->
+        <tr>
+          <td><div class="section-name-main">1. Committees</div></td>
+          <td>Admin Dept</td>
+          <td><span class="badge badge-green">Approved</span></td>
+          <td class="deadline-ok">✓ Completed</td>
+          <td>
+            <div class="flex items-center gap-8">
+              <div class="progress progress-sm" style="width:60px"><div class="progress-bar" style="width:100%"></div></div>
+              <span>3/3</span>
+            </div>
+          </td>
+          <td><a class="view-link" href="page2-structure.html">View</a></td>
+        </tr>
+        <!-- Sub -->
+        <tr>
+          <td><div class="section-name-sub">1.1 Sub-committee A</div></td>
+          <td>Dr. Sharma</td>
+          <td><span class="badge badge-green">Approved</span></td>
+          <td class="deadline-ok">✓ 01 Nov</td>
+          <td>
+            <div class="flex items-center gap-8">
+              <div class="progress progress-sm" style="width:60px"><div class="progress-bar" style="width:100%;background:#43a047"></div></div>
+              <span>100%</span>
+            </div>
+          </td>
+          <td><a class="view-link">View</a></td>
+        </tr>
+        <!-- Section 2 -->
+        <tr>
+          <td><div class="section-name-main">2. General Administration</div></td>
+          <td>Administration Dept</td>
+          <td><span class="badge badge-blue">In Progress</span></td>
+          <td class="deadline-warn">30 Nov</td>
+          <td>
+            <div class="flex items-center gap-8">
+              <div class="progress progress-sm" style="width:60px"><div class="progress-bar" style="width:40%"></div></div>
+              <span>2/5</span>
+            </div>
+          </td>
+          <td><a class="view-link" href="page2-structure.html">View</a></td>
+        </tr>
+        <!-- Section 3 -->
+        <tr>
+          <td><div class="section-name-main">3. Hospital</div></td>
+          <td>Hospital Dept</td>
+          <td><span class="badge" style="background:#eee;color:#555">Locked</span></td>
+          <td class="deadline-ok">✓ Completed</td>
+          <td>
+            <div class="flex items-center gap-8">
+              <div class="progress progress-sm" style="width:60px"><div class="progress-bar" style="width:100%;background:#555"></div></div>
+              <span>8/8</span>
+            </div>
+          </td>
+          <td><a class="view-link">View</a></td>
+        </tr>
+        <!-- Section 4 -->
+        <tr>
+          <td><div class="section-name-main">4. Academic</div></td>
+          <td>Research Dept</td>
+          <td><span class="badge badge-blue">In Progress</span></td>
+          <td class="deadline-warn">30 Nov</td>
+          <td>
+            <div class="flex items-center gap-8">
+              <div class="progress progress-sm" style="width:60px"><div class="progress-bar" style="width:67%"></div></div>
+              <span>8/12</span>
+            </div>
+          </td>
+          <td><a class="view-link" href="page2-structure.html">View</a></td>
+        </tr>
+        <tr>
+          <td><div class="section-name-sub">4.1.1 Publications</div></td>
+          <td>Dr. Sharma</td>
+          <td><span class="badge badge-green">Approved</span></td>
+          <td class="deadline-ok">✓ 20 Nov</td>
+          <td>
+            <div class="flex items-center gap-8">
+              <div class="progress progress-sm" style="width:60px"><div class="progress-bar" style="width:100%;background:#43a047"></div></div>
+              <span>100%</span>
+            </div>
+          </td>
+          <td><a class="view-link" href="page3-content-editor.html">View</a></td>
+        </tr>
+        <tr>
+          <td><div class="section-name-sub">4.1.2 Patents</div></td>
+          <td>Dr. Mehta</td>
+          <td><span class="badge badge-purple">Under Review</span></td>
+          <td>30 Nov</td>
+          <td>
+            <div class="flex items-center gap-8">
+              <div class="progress progress-sm" style="width:60px"><div class="progress-bar" style="width:90%;background:#6a1b9a"></div></div>
+              <span>90%</span>
+            </div>
+          </td>
+          <td><a class="view-link" href="page5-review.html">View</a></td>
+        </tr>
+        <!-- Section 5 -->
+        <tr>
+          <td><div class="section-name-main">5. Research</div></td>
+          <td>Research Dept</td>
+          <td><span class="badge badge-gray">Not Started</span></td>
+          <td class="deadline-warn">30 Nov</td>
+          <td>
+            <div class="flex items-center gap-8">
+              <div class="progress progress-sm" style="width:60px"><div class="progress-bar" style="width:0%"></div></div>
+              <span>0/3</span>
+            </div>
+          </td>
+          <td><a class="view-link">View</a></td>
+        </tr>
+        <!-- Section 6 -->
+        <tr>
+          <td><div class="section-name-main">6. Miscellaneous</div></td>
+          <td>Admin Dept</td>
+          <td><span class="badge badge-yellow">Submitted</span></td>
+          <td>25 Nov</td>
+          <td>
+            <div class="flex items-center gap-8">
+              <div class="progress progress-sm" style="width:60px"><div class="progress-bar" style="width:80%;background:#f57f17"></div></div>
+              <span>4/5</span>
+            </div>
+          </td>
+          <td><a class="view-link">View</a></td>
+        </tr>
+        <!-- Section 7 -->
+        <tr>
+          <td><div class="section-name-main">7. Finance</div></td>
+          <td>Finance Dept</td>
+          <td><span class="badge" style="background:#eee;color:#555">Locked</span></td>
+          <td class="deadline-ok">✓ Completed</td>
+          <td>
+            <div class="flex items-center gap-8">
+              <div class="progress progress-sm" style="width:60px"><div class="progress-bar" style="width:100%;background:#555"></div></div>
+              <span>6/6</span>
+            </div>
+          </td>
+          <td><a class="view-link">View</a></td>
+        </tr>
+      </tbody>
+    </table>
+    <div style="padding:10px 12px;font-size:11px;color:#888">Showing 10 of 20 sections</div>
+  </div>
+
+  <!-- ── 4: Activity Feed ── -->
+  <div class="card">
+    <div style="font-size:13px;font-weight:700;margin-bottom:16px">Recent Activity</div>
+    <div class="activity-list">
+
+      <div class="activity-item">
+        <div class="tl-marker">
+          <div class="tl-dot" style="background:#4f8ef7"></div>
+          <div class="tl-line"></div>
+        </div>
+        <div class="activity-content">
+          <div class="activity-title">HoD approved Publications section</div>
+          <div class="activity-time">2 hours ago</div>
+          <div class="activity-details">Section moved to Publication Cell for further review</div>
+          <div class="activity-user">
+            <div class="avatar-xs">HK</div>
+            <span style="font-size:10px;color:#666">Prof. Kumar (HoD)</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="activity-item">
+        <div class="tl-marker">
+          <div class="tl-dot" style="background:#f57c00"></div>
+          <div class="tl-line"></div>
+        </div>
+        <div class="activity-content">
+          <div class="activity-title">2 sections sent back for revision</div>
+          <div class="activity-time">1 hour ago</div>
+          <div class="activity-details">Finance section and Miscellaneous flagged for data errors</div>
+          <div class="activity-user">
+            <div class="avatar-xs" style="background:#6a1b9a">PC</div>
+            <span style="font-size:10px;color:#666">Publication Cell</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="activity-item">
+        <div class="tl-marker">
+          <div class="tl-dot" style="background:#43a047"></div>
+          <div class="tl-line"></div>
+        </div>
+        <div class="activity-content">
+          <div class="activity-title">Dr. Mehta submitted Patents section</div>
+          <div class="activity-time">2 days ago</div>
+          <div class="activity-details">3 content blocks submitted for HoD review</div>
+          <div class="activity-user">
+            <div class="avatar-xs" style="background:#43a047">DM</div>
+            <span style="font-size:10px;color:#666">Dr. Mehta</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="activity-item">
+        <div class="tl-marker">
+          <div class="tl-dot" style="background:#4f8ef7"></div>
+          <div class="tl-line"></div>
+        </div>
+        <div class="activity-content">
+          <div class="activity-title">Dr. Sharma started editing Publications</div>
+          <div class="activity-time">3 days ago</div>
+          <div class="activity-details">Content editor opened — block 1 of 4</div>
+          <div class="activity-user">
+            <div class="avatar-xs">DS</div>
+            <span style="font-size:10px;color:#666">Dr. Sharma</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="activity-item">
+        <div class="tl-marker">
+          <div class="tl-dot" style="background:#6a1b9a"></div>
+          <div class="tl-line"></div>
+        </div>
+        <div class="activity-content">
+          <div class="activity-title">Sections assigned to Research Department</div>
+          <div class="activity-time">4 days ago</div>
+          <div class="activity-details">12 sections assigned, deadlines configured</div>
+          <div class="activity-user">
+            <div class="avatar-xs" style="background:#6a1b9a">IA</div>
+            <span style="font-size:10px;color:#666">Institute Admin</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="activity-item">
+        <div class="tl-marker">
+          <div class="tl-dot" style="background:#6a1b9a"></div>
+        </div>
+        <div class="activity-content">
+          <div class="activity-title">Report created by Institute Admin</div>
+          <div class="activity-time">4 days ago</div>
+          <div class="activity-details">Annual Report 2026 initialized with standard workflow</div>
+          <div class="activity-user">
+            <div class="avatar-xs" style="background:#6a1b9a">IA</div>
+            <span style="font-size:10px;color:#666">Institute Admin</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+    <div style="text-align:center;margin-top:12px">
+      <button class="btn btn-outline btn-sm">Load More Activities</button>
+    </div>
+  </div>
+
+</div>
+
+<!-- Bottom nav bar -->
+<div class="bottom-bar">
+  <div></div>
+  <div class="flex gap-8">
+    <button class="btn btn-outline btn-sm" onclick="location.href='page2-structure.html'">Edit Structure</button>
+    <button class="btn btn-outline btn-sm" onclick="location.href='page4-assign.html'">Assign Sections</button>
+    <button class="btn btn-primary btn-sm" onclick="location.href='page6-compile.html'">View Full Report →</button>
+  </div>
+</div>
+
+<script>
+document.querySelectorAll('.filter-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+  });
+});
+</script>
+</body>
+</html>

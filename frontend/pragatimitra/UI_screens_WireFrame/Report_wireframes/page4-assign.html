@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Page 4 – Assign Sections | AIIA Report Portal</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+.assign-layout { display: flex; gap: 16px; padding: 20px; padding-bottom: 80px; }
+
+/* Section tree */
+.section-tree-panel {
+  width: 320px; flex-shrink: 0;
+  border: 1px solid #e0e4ea; border-radius: 8px; background: #fff;
+  max-height: calc(100vh - 180px); display: flex; flex-direction: column;
+}
+.tree-header { padding: 12px 16px; border-bottom: 1px solid #e0e4ea; display: flex; align-items: center; justify-content: space-between; }
+.tree-items { flex: 1; overflow-y: auto; padding: 8px; }
+.tree-chk {
+  display: flex; align-items: center; gap: 8px; padding: 7px 10px;
+  border-radius: 5px; font-size: 12px; cursor: pointer;
+}
+.tree-chk:hover { background: #f0f5ff; }
+.tree-chk.checked { background: #e8f0fe; }
+.tree-chk.sub { margin-left: 20px; }
+.tree-chk.sub2 { margin-left: 40px; }
+.tree-count { padding: 10px 16px; border-top: 1px solid #e0e4ea; font-size: 11px; color: #4f8ef7; font-weight: 700; }
+
+/* Right panel */
+.assign-config { flex: 1; border: 1px solid #e0e4ea; border-radius: 8px; background: #fff; display: flex; flex-direction: column; }
+
+/* Assignment table */
+.assign-table { width: 100%; border-collapse: collapse; }
+.assign-table th { background: #f7f8fa; font-size: 11px; font-weight: 700; color: #666; padding: 10px 12px; text-align: left; border-bottom: 1px solid #e0e4ea; }
+.assign-table td { padding: 10px 12px; font-size: 11px; border-bottom: 1px solid #f0f2f5; }
+.assign-table tr:hover td { background: #f9f9f9; }
+
+/* User chips */
+.chip { display: inline-flex; align-items: center; gap: 4px; background: #e8f0fe; color: #1a5dc8; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 99px; margin: 2px; }
+.chip-x { cursor: pointer; color: #888; font-size: 12px; }
+
+/* User search */
+.user-search-box { position: relative; }
+.user-dropdown {
+  position: absolute; top: 42px; left: 0; right: 0; z-index: 10;
+  background: #fff; border: 1px solid #e0e4ea; border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0,0,0,.1);
+}
+.user-option { padding: 8px 12px; font-size: 12px; cursor: pointer; border-bottom: 1px solid #f0f2f5; display: flex; align-items: center; gap: 8px; }
+.user-option:hover { background: #f0f5ff; }
+.user-avatar-sm { width: 24px; height: 24px; border-radius: 50%; background: #4f8ef7; color: #fff; font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+
+/* Access matrix */
+.access-matrix { width: 100%; border-collapse: collapse; }
+.access-matrix th { background: #f7f8fa; font-size: 11px; font-weight: 700; color: #666; padding: 10px 12px; text-align: center; border-bottom: 1px solid #e0e4ea; }
+.access-matrix th:first-child, .access-matrix th:nth-child(2) { text-align: left; }
+.access-matrix td { padding: 10px 12px; font-size: 11px; border-bottom: 1px solid #f0f2f5; text-align: center; }
+.access-matrix td:first-child, .access-matrix td:nth-child(2) { text-align: left; }
+.access-matrix tr:hover td { background: #f9f9f9; }
+.access-matrix .selected-row td { background: #e8f0fe; }
+</style>
+</head>
+<body>
+<nav class="page-nav">
+  <span>📄 Wireframes:</span>
+  <a href="page1-create-report.html">1. Create Report</a>
+  <a href="page2-structure.html">2. Structure</a>
+  <a href="page3-content-editor.html">3. Content Editor</a>
+  <a href="page4-assign.html">4. Assign</a>
+  <a href="page5-review.html">5. Review</a>
+  <a href="page6-compile.html">6. Compile</a>
+  <a href="page7-status.html">7. Status</a>
+</nav>
+
+<!-- Topbar -->
+<div class="topbar" style="padding:16px 20px;">
+  <div>
+    <h1 class="section-title">Assign Sections to Contributors</h1>
+    <div class="subtitle mt-4">Select sections and assign to users/departments</div>
+  </div>
+</div>
+
+<div class="assign-layout">
+
+  <!-- ── Left: Section Tree ── -->
+  <div class="section-tree-panel">
+    <div class="tree-header">
+      <span class="label">Sections to Assign</span>
+      <label style="font-size:11px;display:flex;align-items:center;gap:6px">
+        <input type="checkbox" id="selectAll"> Select all
+      </label>
+    </div>
+    <div class="tree-items">
+      <div class="tree-chk">
+        <input type="checkbox">
+        <span style="font-weight:700">📁 Annual Report 2026</span>
+      </div>
+
+      <div class="tree-chk sub checked">
+        <input type="checkbox" checked>
+        <span style="font-weight:600">📂 Research Activities</span>
+      </div>
+      <div class="tree-chk sub2 checked">
+        <input type="checkbox" checked>
+        <span>📄 Publications</span>
+      </div>
+      <div class="tree-chk sub2 checked">
+        <input type="checkbox" checked>
+        <span>📄 Patents</span>
+      </div>
+      <div class="tree-chk sub2">
+        <input type="checkbox">
+        <span>📄 Conferences</span>
+      </div>
+
+      <div class="tree-chk sub">
+        <input type="checkbox">
+        <span style="font-weight:600">📂 General Administration</span>
+      </div>
+      <div class="tree-chk sub2">
+        <input type="checkbox">
+        <span>📄 HR Summary</span>
+      </div>
+      <div class="tree-chk sub2">
+        <input type="checkbox">
+        <span>📄 Infrastructure</span>
+      </div>
+
+      <div class="tree-chk sub">
+        <input type="checkbox">
+        <span style="font-weight:600">📂 Hospital</span>
+      </div>
+      <div class="tree-chk sub2">
+        <input type="checkbox">
+        <span>📄 OPD Statistics</span>
+      </div>
+      <div class="tree-chk sub2">
+        <input type="checkbox">
+        <span>📄 IPD Statistics</span>
+      </div>
+
+      <div class="tree-chk sub">
+        <input type="checkbox">
+        <span style="font-weight:600">📂 Finance</span>
+      </div>
+      <div class="tree-chk sub2">
+        <input type="checkbox">
+        <span>📄 Budget Overview</span>
+      </div>
+      <div class="tree-chk sub2">
+        <input type="checkbox">
+        <span>📄 Expenditure</span>
+      </div>
+    </div>
+    <div class="tree-count">3 sections selected</div>
+  </div>
+
+  <!-- ── Right: Config Panel ── -->
+  <div class="assign-config">
+
+    <!-- Tabs -->
+    <div class="tabs" style="padding:0 20px">
+      <div class="tab active" onclick="switchTab('assign')">Assign To</div>
+      <div class="tab" onclick="switchTab('deadlines')">Set Deadlines</div>
+      <div class="tab" onclick="switchTab('access')">Access Control</div>
+    </div>
+
+    <!-- TAB: Assign To -->
+    <div id="tab-assign" style="padding:20px;overflow-y:auto;">
+
+      <div class="label mb-8">Assign To</div>
+      <div class="small-text mb-16">Selected sections: 3</div>
+
+      <!-- Options -->
+      <div style="display:flex;gap:24px;margin-bottom:20px">
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
+          <input type="radio" name="assigntype" value="users" onchange="toggleAssign(this)"> Assign to specific users
+        </label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
+          <input type="radio" name="assigntype" value="dept" checked onchange="toggleAssign(this)"> Assign to department
+        </label>
+      </div>
+
+      <!-- User multiselect -->
+      <div id="assignUsers" style="display:none;margin-bottom:20px">
+        <div class="form-group">
+          <label class="form-label">Search Users</label>
+          <div class="user-search-box">
+            <input type="text" placeholder="Search users..." id="userSearchInput" onfocus="document.getElementById('userDrop').style.display='block'" onblur="setTimeout(()=>document.getElementById('userDrop').style.display='none',200)">
+            <div class="user-dropdown" id="userDrop" style="display:none">
+              <div class="user-option" onclick="addChip('Dr. Sharma')">
+                <div class="user-avatar-sm">DS</div> Dr. Sharma — Research Dept
+              </div>
+              <div class="user-option" onclick="addChip('Dr. Mehta')">
+                <div class="user-avatar-sm" style="background:#43a047">DM</div> Dr. Mehta — Research Dept
+              </div>
+              <div class="user-option" onclick="addChip('Prof. Verma')">
+                <div class="user-avatar-sm" style="background:#f57c00">PV</div> Prof. Verma — Academic
+              </div>
+            </div>
+          </div>
+        </div>
+        <div id="chips" style="margin-top:8px;display:flex;flex-wrap:wrap;gap:4px">
+          <span class="chip">Dr. Sharma <span class="chip-x">×</span></span>
+          <span class="chip">Dr. Mehta <span class="chip-x">×</span></span>
+        </div>
+      </div>
+
+      <!-- Dept dropdown -->
+      <div id="assignDept" style="margin-bottom:20px">
+        <div class="form-group">
+          <label class="form-label">Select Department</label>
+          <select>
+            <option>Department of Research</option>
+            <option>Finance Dept</option>
+            <option>Admin Dept</option>
+            <option>Hospital Dept</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Review table -->
+      <div class="label mb-8">Review Assignments</div>
+      <div style="border:1px solid #e0e4ea;border-radius:6px;overflow:hidden;margin-bottom:20px">
+        <table class="assign-table">
+          <thead>
+            <tr>
+              <th style="width:40%">Section</th>
+              <th style="width:35%">Assigned To</th>
+              <th style="width:15%">Status</th>
+              <th style="width:10%">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Research Activities</td>
+              <td>Department of Research</td>
+              <td><span class="badge badge-green">Assigned</span></td>
+              <td><button class="btn btn-sm" style="color:#e53935;border:none;background:none">🗑</button></td>
+            </tr>
+            <tr>
+              <td>Publications</td>
+              <td>Dr. Sharma</td>
+              <td><span class="badge badge-green">Assigned</span></td>
+              <td><button class="btn btn-sm" style="color:#e53935;border:none;background:none">🗑</button></td>
+            </tr>
+            <tr>
+              <td>Patents</td>
+              <td>—</td>
+              <td><span class="badge badge-gray">Not Assigned</span></td>
+              <td><button class="btn btn-sm" style="color:#e53935;border:none;background:none">🗑</button></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Bulk actions -->
+      <div class="flex gap-12">
+        <button class="btn btn-outline btn-sm" style="border-color:#e53935;color:#e53935">Clear All Assignments</button>
+        <button class="btn btn-primary btn-sm">Save Assignments</button>
+      </div>
+
+    </div>
+
+    <!-- TAB: Deadlines -->
+    <div id="tab-deadlines" style="padding:20px;display:none;overflow-y:auto">
+      <div class="small-text mb-16">Set individual deadlines for each assigned section</div>
+      <div style="border:1px solid #e0e4ea;border-radius:6px;overflow:hidden;margin-bottom:20px">
+        <table class="assign-table">
+          <thead>
+            <tr>
+              <th style="width:25%">Section</th>
+              <th style="width:25%">Assigned To</th>
+              <th style="width:22%">Submission Deadline</th>
+              <th style="width:22%">Review Deadline</th>
+              <th style="width:6%">Notes</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Research Activities</td>
+              <td>Research Dept</td>
+              <td><input type="datetime-local" style="height:32px;font-size:11px;width:100%"></td>
+              <td><input type="datetime-local" style="height:32px;font-size:11px;width:100%"></td>
+              <td><input type="text" style="height:32px;font-size:11px;width:100%" placeholder="Notes"></td>
+            </tr>
+            <tr>
+              <td>Publications</td>
+              <td>Dr. Sharma</td>
+              <td><input type="datetime-local" style="height:32px;font-size:11px;width:100%" value="2026-11-20T23:59"></td>
+              <td><input type="datetime-local" style="height:32px;font-size:11px;width:100%"></td>
+              <td><input type="text" style="height:32px;font-size:11px;width:100%" placeholder="Notes"></td>
+            </tr>
+            <tr>
+              <td>Patents</td>
+              <td>—</td>
+              <td><input type="datetime-local" style="height:32px;font-size:11px;width:100%"></td>
+              <td><input type="datetime-local" style="height:32px;font-size:11px;width:100%"></td>
+              <td><input type="text" style="height:32px;font-size:11px;width:100%" placeholder="Notes"></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="flex gap-12">
+        <button class="btn btn-outline btn-sm">Use Institute Defaults</button>
+        <button class="btn btn-primary btn-sm">Save Deadline Changes</button>
+      </div>
+    </div>
+
+    <!-- TAB: Access Control -->
+    <div id="tab-access" style="padding:20px;display:none;overflow-y:auto">
+      <div class="small-text mb-16">Configure who can view, edit, review, or approve each section</div>
+      <div style="border:1px solid #e0e4ea;border-radius:6px;overflow:hidden;margin-bottom:16px">
+        <table class="access-matrix">
+          <thead>
+            <tr>
+              <th style="width:20%">Section</th>
+              <th style="width:25%">Principal</th>
+              <th style="width:13.75%">View</th>
+              <th style="width:13.75%">Edit</th>
+              <th style="width:13.75%">Review</th>
+              <th style="width:13.75%">Approve</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="selected-row">
+              <td>Publications</td>
+              <td>Dr. Sharma</td>
+              <td><input type="radio" name="acc1" checked></td>
+              <td><input type="radio" name="acc1" checked></td>
+              <td><input type="radio" name="acc1"></td>
+              <td><input type="radio" name="acc1"></td>
+            </tr>
+            <tr>
+              <td>Publications</td>
+              <td>HoD Kumar</td>
+              <td><input type="radio" name="acc2" checked></td>
+              <td><input type="radio" name="acc2"></td>
+              <td><input type="radio" name="acc2" checked></td>
+              <td><input type="radio" name="acc2"></td>
+            </tr>
+            <tr>
+              <td>Patents</td>
+              <td>Dr. Mehta</td>
+              <td><input type="radio" name="acc3" checked></td>
+              <td><input type="radio" name="acc3" checked></td>
+              <td><input type="radio" name="acc3"></td>
+              <td><input type="radio" name="acc3"></td>
+            </tr>
+            <tr>
+              <td>Patents</td>
+              <td>Research Dept</td>
+              <td><input type="radio" name="acc4" checked></td>
+              <td><input type="radio" name="acc4"></td>
+              <td><input type="radio" name="acc4"></td>
+              <td><input type="radio" name="acc4" checked></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="mb-16">
+        <button class="btn btn-secondary btn-sm">+ Grant Access to Another User/Dept</button>
+      </div>
+      <button class="btn btn-primary btn-sm">Save Access Changes</button>
+    </div>
+
+  </div>
+</div>
+
+<!-- Bottom bar -->
+<div class="bottom-bar">
+  <div style="font-size:12px">3 sections selected for assignment</div>
+  <div class="flex gap-8">
+    <button class="btn btn-outline btn-sm">Cancel</button>
+    <button class="btn btn-primary btn-sm">Save All Changes</button>
+  </div>
+</div>
+
+<script>
+function switchTab(tab) {
+  ['assign','deadlines','access'].forEach(t => {
+    document.getElementById('tab-' + t).style.display = t === tab ? 'block' : 'none';
+  });
+  document.querySelectorAll('.tab').forEach((el, i) => {
+    el.classList.toggle('active', ['assign','deadlines','access'][i] === tab);
+  });
+}
+function toggleAssign(radio) {
+  document.getElementById('assignUsers').style.display = radio.value === 'users' ? 'block' : 'none';
+  document.getElementById('assignDept').style.display  = radio.value === 'dept'  ? 'block' : 'none';
+}
+function addChip(name) {
+  const chips = document.getElementById('chips');
+  const span = document.createElement('span');
+  span.className = 'chip';
+  span.innerHTML = name + ' <span class="chip-x" onclick="this.parentElement.remove()">×</span>';
+  chips.appendChild(span);
+  document.getElementById('userSearchInput').value = '';
+  document.getElementById('userDrop').style.display = 'none';
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Page 2 – Report Structure | AIIA Report Portal</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+/* Tree nodes */
+.tree-root {
+  background: #1a1a2e; border-radius: 6px; padding: 12px 16px;
+  display: flex; align-items: center; gap: 12px; margin-bottom: 8px; color: #fff;
+}
+.tree-root-icon { font-size: 18px; }
+.tree-root-name { font-size: 13px; font-weight: 700; flex: 1; }
+.tree-root-meta { font-size: 11px; color: #aaa; }
+
+.tree-section {
+  display: flex; align-items: center; gap: 10px;
+  border: 1px solid #e0e4ea; border-radius: 6px; padding: 10px 12px;
+  margin: 6px 0; background: #fff; cursor: pointer; min-height: 56px;
+  transition: background .1s, border-color .1s;
+  position: relative;
+}
+.tree-section:hover { background: #f9f9f9; border-color: #c5d8ff; }
+.tree-section.sub { margin-left: 40px; }
+.tree-section.sub2 { margin-left: 80px; }
+.tree-section-chevron { font-size: 12px; color: #999; width: 16px; }
+.tree-section-icon { font-size: 16px; }
+.tree-section-body { flex: 1; }
+.tree-section-name { font-size: 13px; font-weight: 700; color: #1a1a2e; }
+.tree-section-meta { font-size: 11px; color: #666; margin-top: 2px; }
+.tree-section-progress { text-align: right; min-width: 80px; }
+.tree-section-fraction { font-size: 11px; color: #666; margin-top: 2px; }
+.tree-section-due { font-size: 10px; color: #888; }
+.tree-section-actions {
+  display: none; align-items: center; gap: 6px;
+  position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+  background: #fff; padding: 4px 8px; border-radius: 4px;
+  border: 1px solid #e0e4ea; box-shadow: 0 2px 8px rgba(0,0,0,.08);
+}
+.tree-section:hover .tree-section-actions { display: flex; }
+.tree-section-actions span { cursor: pointer; font-size: 14px; }
+.tree-section:hover .tree-section-progress { display: none; }
+
+/* Filters bar */
+.filters-bar {
+  padding: 10px 20px; background: #f7f8fa; border-bottom: 1px solid #e0e4ea;
+  display: flex; align-items: center; gap: 16px;
+}
+.view-toggle { display: flex; border: 1px solid #dde1e7; border-radius: 6px; overflow: hidden; }
+.view-btn { padding: 6px 12px; font-size: 11px; cursor: pointer; background: #fff; border: none; border-right: 1px solid #dde1e7; }
+.view-btn:last-child { border-right: none; }
+.view-btn.active { background: #4f8ef7; color: #fff; }
+.search-box { position: relative; }
+.search-box input { padding-left: 28px; width: 250px; height: 32px; font-size: 12px; }
+.search-box::before { content: '🔍'; position: absolute; left: 8px; top: 50%; transform: translateY(-50%); font-size: 12px; }
+
+/* Progress dept grid */
+.dept-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 12px; }
+.dept-card { background: #fff; border: 1px solid #e0e4ea; border-radius: 6px; padding: 10px; }
+.dept-name { font-size: 12px; font-weight: 700; margin-bottom: 6px; }
+.dept-pct  { font-size: 12px; font-weight: 700; color: #4f8ef7; text-align: right; }
+.dept-sections { font-size: 11px; color: #666; }
+
+/* Legend */
+.legend-bar { padding: 12px 20px; background: #f7f8fa; border-top: 1px solid #e0e4ea; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.legend-item { display: flex; align-items: center; gap: 6px; font-size: 11px; }
+
+/* Collapsible dept box */
+.collapse-box { padding: 14px 20px; background: #e3f2fd; border-radius: 6px; margin: 16px 20px; cursor: pointer; }
+.collapse-header { font-size: 13px; font-weight: 700; color: #1565c0; display: flex; justify-content: space-between; }
+</style>
+</head>
+<body>
+<nav class="page-nav">
+  <span>📄 Wireframes:</span>
+  <a href="page1-create-report.html">1. Create Report</a>
+  <a href="page2-structure.html">2. Structure</a>
+  <a href="page3-content-editor.html">3. Content Editor</a>
+  <a href="page4-assign.html">4. Assign</a>
+  <a href="page5-review.html">5. Review</a>
+  <a href="page6-compile.html">6. Compile</a>
+  <a href="page7-status.html">7. Status</a>
+</nav>
+
+<div class="app-layout">
+
+  <!-- ── Sidebar ── -->
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <div class="sidebar-brand-name">AIIA</div>
+      <div class="sidebar-brand-sub">Report Portal</div>
+    </div>
+    <div class="sidebar-report-info">
+      <div style="font-size:12px;font-weight:700;">Annual Report 2026</div>
+      <div style="margin-top:4px;display:flex;align-items:center;gap:6px">
+        <span class="badge badge-blue">In Progress</span>
+        <span style="font-size:11px;color:#666">2026</span>
+      </div>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-item"><span class="nav-icon">🏠</span> Dashboard</div>
+      <div class="nav-item"><span class="nav-icon">📁</span> Reports</div>
+      <div style="padding:6px 16px;font-size:10px;font-weight:700;color:#aaa;letter-spacing:.05em">ACTIVE REPORT</div>
+      <div class="nav-item"><span class="nav-icon">👁</span> Overview</div>
+      <div class="nav-item active"><span class="nav-icon">🌳</span> Structure</div>
+      <div class="nav-item"><span class="nav-icon">✏️</span> Content</div>
+      <div class="nav-item"><span class="nav-icon">👥</span> Assign</div>
+      <div class="nav-item"><span class="nav-icon">⬇️</span> Compile</div>
+      <hr class="divider" style="margin:8px 16px">
+      <div class="nav-item"><span class="nav-icon">⚙️</span> Settings</div>
+    </nav>
+  </aside>
+
+  <!-- ── Main ── -->
+  <main class="main-content" style="padding-bottom:60px">
+
+    <!-- Topbar -->
+    <div class="topbar">
+      <div class="topbar-left">
+        <div class="breadcrumb">Reports › Annual Report 2026 › Structure</div>
+        <h1 class="section-title">Report Structure</h1>
+      </div>
+      <div class="topbar-actions">
+        <button class="btn btn-outline btn-sm">View Summary</button>
+        <button class="btn btn-outline btn-sm">Configure Sections</button>
+        <button class="btn btn-outline btn-sm">Export Structure</button>
+      </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="filters-bar">
+      <div>
+        <select style="height:32px;font-size:12px;width:160px">
+          <option>Language: English</option>
+          <option>Language: Hindi</option>
+        </select>
+      </div>
+      <div class="view-toggle">
+        <button class="view-btn active">🌳 Tree View</button>
+        <button class="view-btn">🗂 Card View</button>
+      </div>
+      <div class="search-box">
+        <input type="text" placeholder="Search sections...">
+      </div>
+    </div>
+
+    <!-- Dept completion (collapsible) -->
+    <div class="collapse-box" onclick="this.querySelector('.dept-grid').style.display = this.querySelector('.dept-grid').style.display==='none'?'grid':'none'">
+      <div class="collapse-header">
+        Completion Status by Department <span id="collapseArrow">▾</span>
+      </div>
+      <div class="dept-grid" style="display:none">
+        <div class="dept-card">
+          <div class="dept-name">Research</div>
+          <div class="flex items-center gap-8">
+            <div class="progress progress-sm flex-1"><div class="progress-bar" style="width:85%"></div></div>
+            <div class="dept-pct">85%</div>
+          </div>
+          <div class="dept-sections small-text">12/14 sections</div>
+        </div>
+        <div class="dept-card">
+          <div class="dept-name">Finance</div>
+          <div class="flex items-center gap-8">
+            <div class="progress progress-sm flex-1"><div class="progress-bar" style="width:60%"></div></div>
+            <div class="dept-pct">60%</div>
+          </div>
+          <div class="dept-sections small-text">6/10 sections</div>
+        </div>
+        <div class="dept-card">
+          <div class="dept-name">Administration</div>
+          <div class="flex items-center gap-8">
+            <div class="progress progress-sm flex-1"><div class="progress-bar" style="width:40%"></div></div>
+            <div class="dept-pct">40%</div>
+          </div>
+          <div class="dept-sections small-text">4/10 sections</div>
+        </div>
+        <div class="dept-card">
+          <div class="dept-name">Hospital</div>
+          <div class="flex items-center gap-8">
+            <div class="progress progress-sm flex-1"><div class="progress-bar" style="width:100%"></div></div>
+            <div class="dept-pct" style="color:#43a047">100%</div>
+          </div>
+          <div class="dept-sections small-text">8/8 sections</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tree Container -->
+    <div style="padding:0 20px 20px">
+      <div class="card" style="padding:20px">
+
+        <!-- Root -->
+        <div class="tree-root">
+          <span class="tree-root-icon">📁</span>
+          <span class="tree-root-name">Annual Report 2026</span>
+          <span class="badge badge-blue">In Progress</span>
+          <span class="tree-root-meta">7 sections · 60% complete</span>
+        </div>
+
+        <!-- Section 1 -->
+        <div class="tree-section" style="margin-left:0">
+          <span class="tree-section-chevron">▾</span>
+          <span class="tree-section-icon">📂</span>
+          <div class="tree-section-body">
+            <div class="tree-section-name">1. Committees</div>
+            <div class="tree-section-meta">Assigned to: Admin Dept</div>
+          </div>
+          <span class="badge badge-green">Approved</span>
+          <div class="tree-section-progress">
+            <div class="progress progress-sm" style="width:60px"><div class="progress-bar" style="width:100%"></div></div>
+            <div class="tree-section-fraction">3/3</div>
+          </div>
+          <div class="tree-section-actions">
+            <span title="Edit">✏️</span><span title="Assign">👤</span><span title="Comments">💬</span>
+            <span title="More" style="color:#aaa">•••</span>
+          </div>
+        </div>
+        <div class="tree-section sub">
+          <span class="tree-section-chevron">—</span>
+          <span class="tree-section-icon">📄</span>
+          <div class="tree-section-body">
+            <div class="tree-section-name">1.1 Sub-committee A</div>
+            <div class="tree-section-meta">Assigned to: Dr. Sharma, Research Dept</div>
+          </div>
+          <span class="badge badge-green">Approved</span>
+          <div class="tree-section-progress">
+            <div class="progress progress-sm" style="width:60px"><div class="progress-bar" style="width:100%"></div></div>
+            <div class="tree-section-fraction">2/2</div>
+          </div>
+          <div class="tree-section-actions"><span>✏️</span><span>👤</span><span>💬</span><span style="color:#aaa">•••</span></div>
+        </div>
+
+        <!-- Section 2 -->
+        <div class="tree-section">
+          <span class="tree-section-chevron">▾</span>
+          <span class="tree-section-icon">📂</span>
+          <div class="tree-section-body">
+            <div class="tree-section-name">2. General Administration</div>
+            <div class="tree-section-meta">Assigned to: Administration Dept</div>
+          </div>
+          <span class="badge badge-blue">In Progress</span>
+          <div class="tree-section-progress">
+            <div class="progress progress-sm" style="width:60px"><div class="progress-bar" style="width:40%"></div></div>
+            <div class="tree-section-fraction">2/5</div>
+            <div class="tree-section-due">Due: 30/11</div>
+          </div>
+          <div class="tree-section-actions"><span>✏️</span><span>👤</span><span>💬</span><span style="color:#aaa">•••</span></div>
+        </div>
+
+        <!-- Section 3 -->
+        <div class="tree-section">
+          <span class="tree-section-chevron">▸</span>
+          <span class="tree-section-icon">📂</span>
+          <div class="tree-section-body">
+            <div class="tree-section-name">3. Hospital</div>
+            <div class="tree-section-meta">Assigned to: Hospital Dept · 4 subsections</div>
+          </div>
+          <span class="badge badge-green">Approved</span>
+          <div class="tree-section-progress">
+            <div class="progress progress-sm" style="width:60px"><div class="progress-bar" style="width:100%"></div></div>
+            <div class="tree-section-fraction">8/8</div>
+          </div>
+          <div class="tree-section-actions"><span>✏️</span><span>👤</span><span>💬</span><span style="color:#aaa">•••</span></div>
+        </div>
+
+        <!-- Section 4 – Academic -->
+        <div class="tree-section">
+          <span class="tree-section-chevron">▾</span>
+          <span class="tree-section-icon">📂</span>
+          <div class="tree-section-body">
+            <div class="tree-section-name">4. Academic</div>
+            <div class="tree-section-meta">Assigned to: Research Dept</div>
+          </div>
+          <span class="badge badge-blue">In Progress</span>
+          <div class="tree-section-progress">
+            <div class="progress progress-sm" style="width:60px"><div class="progress-bar" style="width:67%"></div></div>
+            <div class="tree-section-fraction">8/12</div>
+          </div>
+          <div class="tree-section-actions"><span>✏️</span><span>👤</span><span>💬</span><span style="color:#aaa">•••</span></div>
+        </div>
+        <div class="tree-section sub">
+          <span class="tree-section-chevron">—</span>
+          <span class="tree-section-icon">📄</span>
+          <div class="tree-section-body">
+            <div class="tree-section-name">4.1 Research Activities</div>
+            <div class="tree-section-meta">Assigned to: Dr. Sharma, Research Dept</div>
+          </div>
+          <span class="badge badge-purple">Under Review</span>
+          <div class="tree-section-progress">
+            <div class="progress progress-sm" style="width:60px"><div class="progress-bar" style="width:90%"></div></div>
+            <div class="tree-section-fraction">9/10</div>
+            <div class="tree-section-due">Due: 20/11</div>
+          </div>
+          <div class="tree-section-actions"><span>✏️</span><span>👤</span><span>💬</span><span style="color:#aaa">•••</span></div>
+        </div>
+        <div class="tree-section sub2">
+          <span class="tree-section-chevron">—</span>
+          <span class="tree-section-icon">📄</span>
+          <div class="tree-section-body">
+            <div class="tree-section-name">4.1.1 Publications</div>
+            <div class="tree-section-meta">Assigned to: Dr. Sharma</div>
+          </div>
+          <span class="badge badge-green">Approved</span>
+          <div class="tree-section-progress">
+            <div class="progress progress-sm" style="width:60px"><div class="progress-bar" style="width:100%"></div></div>
+            <div class="tree-section-fraction">4/4</div>
+          </div>
+          <div class="tree-section-actions"><span>✏️</span><span>👤</span><span>💬</span><span style="color:#aaa">•••</span></div>
+        </div>
+        <div class="tree-section sub2">
+          <span class="tree-section-chevron">—</span>
+          <span class="tree-section-icon">📄</span>
+          <div class="tree-section-body">
+            <div class="tree-section-name">4.1.2 Patents</div>
+            <div class="tree-section-meta">Assigned to: Dr. Mehta</div>
+          </div>
+          <span class="badge badge-purple">Under Review</span>
+          <div class="tree-section-progress">
+            <div class="progress progress-sm" style="width:60px"><div class="progress-bar" style="width:75%"></div></div>
+            <div class="tree-section-fraction">3/4</div>
+          </div>
+          <div class="tree-section-actions"><span>✏️</span><span>👤</span><span>💬</span><span style="color:#aaa">•••</span></div>
+        </div>
+
+        <!-- Section 5 -->
+        <div class="tree-section">
+          <span class="tree-section-chevron">▸</span>
+          <span class="tree-section-icon">📂</span>
+          <div class="tree-section-body">
+            <div class="tree-section-name">5. Research</div>
+            <div class="tree-section-meta">Assigned to: Research Dept · 3 subsections</div>
+          </div>
+          <span class="badge badge-gray">Not Started</span>
+          <div class="tree-section-progress">
+            <div class="progress progress-sm" style="width:60px"><div class="progress-bar" style="width:0%"></div></div>
+            <div class="tree-section-fraction">0/3</div>
+          </div>
+          <div class="tree-section-actions"><span>✏️</span><span>👤</span><span>💬</span><span style="color:#aaa">•••</span></div>
+        </div>
+
+        <!-- Section 6 -->
+        <div class="tree-section">
+          <span class="tree-section-chevron">▸</span>
+          <span class="tree-section-icon">📂</span>
+          <div class="tree-section-body">
+            <div class="tree-section-name">6. Miscellaneous</div>
+            <div class="tree-section-meta">Assigned to: Admin Dept</div>
+          </div>
+          <span class="badge badge-yellow">Submitted</span>
+          <div class="tree-section-progress">
+            <div class="progress progress-sm" style="width:60px"><div class="progress-bar" style="background:#f57f17;width:80%"></div></div>
+            <div class="tree-section-fraction">4/5</div>
+          </div>
+          <div class="tree-section-actions"><span>✏️</span><span>👤</span><span>💬</span><span style="color:#aaa">•••</span></div>
+        </div>
+
+        <!-- Section 7 -->
+        <div class="tree-section">
+          <span class="tree-section-chevron">▸</span>
+          <span class="tree-section-icon">📂</span>
+          <div class="tree-section-body">
+            <div class="tree-section-name">7. Finance</div>
+            <div class="tree-section-meta">Assigned to: Finance Dept</div>
+          </div>
+          <span class="badge" style="background:#eee;color:#555">Locked</span>
+          <div class="tree-section-progress">
+            <div class="progress progress-sm" style="width:60px"><div class="progress-bar" style="background:#555;width:100%"></div></div>
+            <div class="tree-section-fraction">6/6</div>
+          </div>
+          <div class="tree-section-actions"><span>✏️</span><span>👤</span><span>💬</span><span style="color:#aaa">•••</span></div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Legend -->
+    <div class="legend-bar">
+      <span class="label">Status Legend:</span>
+      <span class="legend-item"><span class="badge badge-gray">Not Started</span></span>
+      <span class="legend-item"><span class="badge badge-blue">In Progress</span></span>
+      <span class="legend-item"><span class="badge badge-yellow">Submitted</span></span>
+      <span class="legend-item"><span class="badge badge-purple">Under Review</span></span>
+      <span class="legend-item"><span class="badge badge-green">Approved</span></span>
+      <span class="legend-item"><span class="badge" style="background:#eee;color:#555">Locked</span></span>
+    </div>
+
+  </main>
+</div>
+</body>
+</html>

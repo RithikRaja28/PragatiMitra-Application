@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AIIA Report Portal – Wireframes</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+body { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; padding: 40px 20px; }
+.index-header { text-align: center; margin-bottom: 40px; }
+.index-header h1 { font-size: 28px; font-weight: 700; color: #1a1a2e; }
+.index-header p  { color: #666; margin-top: 6px; font-size: 14px; }
+.pages-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; max-width: 1100px; width: 100%; }
+.page-card {
+  background: #fff; border: 1px solid #e0e4ea; border-radius: 12px;
+  padding: 24px; text-decoration: none; color: inherit;
+  transition: box-shadow .15s, border-color .15s;
+  display: block;
+}
+.page-card:hover { box-shadow: 0 4px 20px rgba(79,142,247,.15); border-color: #4f8ef7; }
+.page-num { font-size: 10px; font-weight: 700; color: #4f8ef7; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 4px; }
+.page-icon { font-size: 36px; margin-bottom: 12px; }
+.page-name { font-size: 16px; font-weight: 700; color: #1a1a2e; margin-bottom: 6px; }
+.page-route { font-size: 11px; color: #888; font-family: monospace; margin-bottom: 10px; }
+.page-desc { font-size: 12px; color: #555; line-height: 1.5; }
+.feature-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+.ftag { font-size: 10px; background: #f0f5ff; color: #1565c0; padding: 2px 8px; border-radius: 99px; font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="index-header">
+  <div style="font-size:14px;font-weight:700;color:#4f8ef7;margin-bottom:8px">AIIA Report Portal</div>
+  <h1>Wireframes — All 7 Pages</h1>
+  <p>Click any card to open the interactive wireframe. All pages are interlinked.</p>
+</div>
+
+<div class="pages-grid">
+  <a class="page-card" href="page1-create-report.html">
+    <div class="page-num">Page 1</div>
+    <div class="page-icon">🧙</div>
+    <div class="page-name">Create Report</div>
+    <div class="page-route">/reports/new</div>
+    <div class="page-desc">5-step wizard to create a new annual report — basics, structure, deadlines, workflow, and review.</div>
+    <div class="feature-tags">
+      <span class="ftag">Wizard Steps</span>
+      <span class="ftag">Section Tree</span>
+      <span class="ftag">Deadline Config</span>
+      <span class="ftag">Workflow Builder</span>
+      <span class="ftag">Review Summary</span>
+    </div>
+  </a>
+
+  <a class="page-card" href="page2-structure.html">
+    <div class="page-num">Page 2</div>
+    <div class="page-icon">🌳</div>
+    <div class="page-name">Report Structure</div>
+    <div class="page-route">/reports/{id}/structure</div>
+    <div class="page-desc">Hierarchical section tree with status badges, progress bars, dept completion grid, and action hover menus.</div>
+    <div class="feature-tags">
+      <span class="ftag">Sidebar Nav</span>
+      <span class="ftag">Tree View</span>
+      <span class="ftag">Status Badges</span>
+      <span class="ftag">Progress Bars</span>
+      <span class="ftag">Dept Cards</span>
+    </div>
+  </a>
+
+  <a class="page-card" href="page3-content-editor.html">
+    <div class="page-num">Page 3</div>
+    <div class="page-icon">✏️</div>
+    <div class="page-name">Content Editor</div>
+    <div class="page-route">/reports/{id}/sections/{sectionId}/edit</div>
+    <div class="page-desc">Block-based content editor — rich text, tables, images, file attachments, checklists with live comments sidebar.</div>
+    <div class="feature-tags">
+      <span class="ftag">Rich Text</span>
+      <span class="ftag">Table Editor</span>
+      <span class="ftag">Image Upload</span>
+      <span class="ftag">File Attach</span>
+      <span class="ftag">Checklist</span>
+      <span class="ftag">Comments</span>
+    </div>
+  </a>
+
+  <a class="page-card" href="page4-assign.html">
+    <div class="page-num">Page 4</div>
+    <div class="page-icon">👥</div>
+    <div class="page-name">Assign Sections</div>
+    <div class="page-route">/reports/{id}/assign</div>
+    <div class="page-desc">Section checkbox tree + 3-tab configuration panel for assignments, individual deadlines, and access control matrix.</div>
+    <div class="feature-tags">
+      <span class="ftag">Checkbox Tree</span>
+      <span class="ftag">User Search</span>
+      <span class="ftag">Dept Assign</span>
+      <span class="ftag">Deadline Table</span>
+      <span class="ftag">Access Matrix</span>
+    </div>
+  </a>
+
+  <a class="page-card" href="page5-review.html">
+    <div class="page-num">Page 5</div>
+    <div class="page-icon">🔍</div>
+    <div class="page-name">Review Screen</div>
+    <div class="page-route">/reports/{id}/sections/{sectionId}/review</div>
+    <div class="page-desc">3-column review layout — workflow pipeline tracker, read-only content rendering, and approve/send-back action panel.</div>
+    <div class="feature-tags">
+      <span class="ftag">Pipeline Steps</span>
+      <span class="ftag">Content Preview</span>
+      <span class="ftag">Comment Thread</span>
+      <span class="ftag">Approve Form</span>
+      <span class="ftag">Send Back Form</span>
+    </div>
+  </a>
+
+  <a class="page-card" href="page6-compile.html">
+    <div class="page-num">Page 6</div>
+    <div class="page-icon">📦</div>
+    <div class="page-name">Compile Report</div>
+    <div class="page-route">/reports/{id}/compile</div>
+    <div class="page-desc">Pre-compilation status check, output format selection (DOCX/PDF), report preview with TOC, and animated compile flow.</div>
+    <div class="feature-tags">
+      <span class="ftag">Status Check</span>
+      <span class="ftag">Format Select</span>
+      <span class="ftag">Doc Preview</span>
+      <span class="ftag">Progress Bar</span>
+      <span class="ftag">History</span>
+    </div>
+  </a>
+
+  <a class="page-card" href="page7-status.html">
+    <div class="page-num">Page 7</div>
+    <div class="page-icon">📊</div>
+    <div class="page-name">Report Status & History</div>
+    <div class="page-route">/reports/{id}</div>
+    <div class="page-desc">Dashboard overview — metadata cards, lifecycle timeline, full section progress table with filters, and activity feed.</div>
+    <div class="feature-tags">
+      <span class="ftag">Metadata Cards</span>
+      <span class="ftag">Timeline</span>
+      <span class="ftag">Section Table</span>
+      <span class="ftag">Activity Feed</span>
+      <span class="ftag">Filters</span>
+    </div>
+  </a>
+</div>
+
+<div style="margin-top:40px;text-align:center;font-size:11px;color:#aaa">
+  AIIA Report Portal Wireframes · Generated 2026-04-25 · 7 pages
+</div>
+</body>
+</html>
