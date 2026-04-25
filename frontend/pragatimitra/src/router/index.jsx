@@ -13,23 +13,24 @@ const NotFound = lazy(() => import('../pages/NotFound'))
 const App = lazy(() => import('../App'))
 const router = createBrowserRouter([
 
+  // Redirect root to login
+  { index: true, path: '/', element: <Navigate to="/login" replace /> },
+
+  // Auth routes (login, etc.)
   {
     path: '/',
-    element: <RootLayout />,
-    children: [
-      { index: true, element: <Navigate to="/login" replace /> },
-      { path: 'dashboard', element: <Dashboard /> },
-      { path: 'reports', element: <Reports /> },
-
-
-    ],
-  },
-  {
     element: <AuthLayout />,
     children: [
       { path: 'login', element: <Login /> },
+    ],
+  },
 
-
+  // Protected app routes
+  {
+    element: <RootLayout />,
+    children: [
+      { path: 'dashboard', element: <Dashboard /> },
+      { path: 'reports',   element: <Reports /> },
     ],
   },
 
