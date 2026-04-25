@@ -1,7 +1,8 @@
-const express = require("express");
-const jwt     = require("jsonwebtoken");
+const express   = require("express");
+const jwt       = require("jsonwebtoken");
+const bcrypt    = require("bcrypt");
 const rateLimit = require("express-rate-limit");
-const crypto  = require("crypto");
+const { verifyToken } = require("../middleware/auth");
 
 const router = express.Router();
 
@@ -13,16 +14,12 @@ const loginLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-function signAccessToken(payload) {
+function signToken(payload) {
   return jwt.sign(payload, process.env.JWT_SECRET, {
-    expiresIn: "15m",
-    issuer: "pragatimitra-api",
+    expiresIn: process.env.JWT_EXPIRES_IN || "8h",
+    issuer:   "pragatimitra-api",
     audience: "pragatimitra-app",
   });
-}
-
-function generateRefreshToken() {
-  return crypto.randomBytes(64).toString("hex");
 }
 
 /* ── POST /api/auth/login ── */
@@ -42,15 +39,37 @@ router.post("/login", loginLimiter, async (req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT
-         u.user_id, u.email, u.password, u.first_name, u.last_name,
-         u.user_name, u.must_change_password, u.status, u.role_id,
-         u.college_id, u.department_id, u.year, u.profile_picture_url,
-         r.role_name, c.college_name, d.name AS department_name
+         u.id,
+         u.full_name,
+         u.email,
+         u.password_hash,
+         u.must_change_password,
+         u.account_status,
+         u.profile_image_url,
+         u.institution_id,
+         u.department_id,
+         i.institution_name,
+         d.name AS department_name,
+         COALESCE(
+           (SELECT json_agg(json_build_object(
+               'id',           r.id,
+               'name',         r.name,
+               'display_name', r.display_name,
+               'permissions',  r.permissions
+             ))
+            FROM user_roles ur
+            JOIN roles r ON r.id = ur.role_id
+            WHERE ur.user_id = u.id
+              AND ur.revoked_at IS NULL
+              AND (ur.expires_at IS NULL OR ur.expires_at > now())
+           ), '[]'::json
+         ) AS roles
        FROM users u
-       LEFT JOIN roles      r ON r.role_id      = u.role_id
-       LEFT JOIN college    c ON c.college_id   = u.college_id
-       LEFT JOIN department d ON d.department_id = u.department_id
-       WHERE u.email = $1 LIMIT 1`,
+       LEFT JOIN institutions i ON i.institution_id = u.institution_id
+       LEFT JOIN departments  d ON d.department_id  = u.department_id
+       WHERE LOWER(u.email) = $1
+         AND u.account_status != 'DELETED'
+       LIMIT 1`,
       [normalizedEmail]
     );
 
@@ -59,60 +78,49 @@ router.post("/login", loginLimiter, async (req, res) => {
 
     const user = rows[0];
 
-    if (user.status.toUpperCase() !== "ACTIVE") {
-      return res.status(403).json({
-        success: false,
-        message: user.status.toUpperCase() === "INACTIVE"
+    if (user.account_status !== "ACTIVE") {
+      const message =
+        user.account_status === "INACTIVE"
           ? "Your account is inactive. Contact your administrator."
-          : "Your account has been suspended. Contact your administrator.",
-      });
+          : "Your account has been suspended. Contact your administrator.";
+      return res.status(403).json({ success: false, message });
     }
 
-    if (password !== user.password)
+    const passwordMatch = await bcrypt.compare(password, user.password_hash);
+    if (!passwordMatch)
       return res.status(401).json({ success: false, message: "Invalid email or password." });
 
-    // Single session: remove existing session for this user
-    await pool.query("DELETE FROM sessions WHERE user_id = $1", [user.user_id]);
-
-    // Create new session
-    const refreshToken = generateRefreshToken();
-    const expiresAt    = new Date(Date.now() + 60 * 60 * 1000);
-
-    await pool.query(
-      `INSERT INTO sessions (user_id, refresh_token, expires_at, last_active)
-       VALUES ($1, $2, $3, NOW())`,
-      [user.user_id, refreshToken, expiresAt]
+    const { rows: vRows } = await pool.query(
+      `UPDATE users
+       SET token_version = token_version + 1, last_login_at = now()
+       WHERE id = $1
+       RETURNING token_version`,
+      [user.id]
     );
 
-    const accessToken = signAccessToken({
-      userId:       user.user_id,
-      email:        user.email,
-      roleId:       user.role_id,
-      roleName:     user.role_name,
-      collegeId:    user.college_id,
-      departmentId: user.department_id,
+    const token = signToken({
+      userId:        user.id,
+      email:         user.email,
+      institutionId: user.institution_id,
+      departmentId:  user.department_id,
+      version:       vRows[0].token_version,
     });
 
     return res.status(200).json({
       success: true,
       message: "Login successful.",
-      accessToken,
-      refreshToken,
+      token,
       user: {
-        userId:           user.user_id,
-        userName:         user.user_name,
-        firstName:        user.first_name,
-        lastName:         user.last_name,
-        email:            user.email,
-        roleId:           user.role_id,
-        roleName:         user.role_name,
-        collegeId:        user.college_id,
-        collegeName:      user.college_name,
-        departmentId:     user.department_id,
-        departmentName:   user.department_name,
-        year:             user.year,
-        profilePictureUrl: user.profile_picture_url,
+        id:              user.id,
+        fullName:        user.full_name,
+        email:           user.email,
+        institutionId:   user.institution_id,
+        institutionName: user.institution_name,
+        departmentId:    user.department_id,
+        departmentName:  user.department_name,
+        profileImageUrl: user.profile_image_url,
         mustChangePassword: user.must_change_password,
+        roles:           user.roles,
       },
     });
 
@@ -122,130 +130,61 @@ router.post("/login", loginLimiter, async (req, res) => {
   }
 });
 
-/* ── POST /api/auth/refresh ── */
-router.post("/refresh", async (req, res) => {
+/* ── GET /api/auth/me — verify token + return fresh user data ── */
+router.get("/me", verifyToken, async (req, res) => {
   const pool = req.app.locals.pool;
-  const { refreshToken } = req.body;
-
-  if (!refreshToken)
-    return res.status(400).json({ success: false, message: "Refresh token required." });
-
   try {
     const { rows } = await pool.query(
-      `SELECT s.*, u.email, u.role_id, u.college_id, u.department_id, r.role_name
-       FROM sessions s
-       JOIN users u ON u.user_id = s.user_id
-       LEFT JOIN roles r ON r.role_id = u.role_id
-       WHERE s.refresh_token = $1`,
-      [refreshToken]
+      `SELECT
+         u.id,
+         u.full_name,
+         u.email,
+         u.profile_image_url,
+         u.must_change_password,
+         u.institution_id,
+         u.department_id,
+         i.institution_name,
+         d.name AS department_name,
+         COALESCE(
+           (SELECT json_agg(json_build_object(
+               'id',           r.id,
+               'name',         r.name,
+               'display_name', r.display_name,
+               'permissions',  r.permissions
+             ))
+            FROM user_roles ur
+            JOIN roles r ON r.id = ur.role_id
+            WHERE ur.user_id = u.id
+              AND ur.revoked_at IS NULL
+              AND (ur.expires_at IS NULL OR ur.expires_at > now())
+           ), '[]'::json
+         ) AS roles
+       FROM users u
+       LEFT JOIN institutions i ON i.institution_id = u.institution_id
+       LEFT JOIN departments  d ON d.department_id  = u.department_id
+       WHERE u.id = $1`,
+      [req.user.userId]
     );
 
-    if (rows.length === 0)
-      return res.status(401).json({ success: false, message: "Invalid session. Please sign in again." });
+    if (!rows.length)
+      return res.status(404).json({ success: false, message: "User not found." });
 
-    const session = rows[0];
-    const idleMs  = Date.now() - new Date(session.last_active).getTime();
-
-    if (idleMs > 60 * 60 * 1000) {
-      await pool.query("DELETE FROM sessions WHERE refresh_token = $1", [refreshToken]);
-      return res.status(401).json({
-        success: false, expired: true,
-        message: "Session expired due to inactivity. Please sign in again.",
-      });
-    }
-
-    await pool.query(
-      "UPDATE sessions SET last_active = NOW() WHERE refresh_token = $1",
-      [refreshToken]
-    );
-
-    const accessToken = signAccessToken({
-      userId:       session.user_id,
-      email:        session.email,
-      roleId:       session.role_id,
-      roleName:     session.role_name,
-      collegeId:    session.college_id,
-      departmentId: session.department_id,
-    });
-
-    return res.status(200).json({ success: true, accessToken });
-
-  } catch (err) {
-    console.error("[REFRESH ERROR]", err.message);
-    return res.status(500).json({ success: false, message: "Internal server error." });
-  }
-});
-
-/* ── GET /api/auth/me — restore session on page load ── */
-router.get("/me", async (req, res) => {
-  const pool = req.app.locals.pool;
-  const { refreshToken } = req.query;
-
-  if (!refreshToken)
-    return res.status(401).json({ success: false, message: "No session found." });
-
-  try {
-    const { rows } = await pool.query(
-      `SELECT s.last_active,
-              u.user_id, u.user_name, u.first_name, u.last_name, u.email,
-              u.role_id, u.college_id, u.department_id, u.year,
-              u.profile_picture_url, u.must_change_password,
-              r.role_name, c.college_name, d.name AS department_name
-       FROM sessions s
-       JOIN users u ON u.user_id = s.user_id
-       LEFT JOIN roles r ON r.role_id = u.role_id
-       LEFT JOIN college c ON c.college_id = u.college_id
-       LEFT JOIN department d ON d.department_id = u.department_id
-       WHERE s.refresh_token = $1`,
-      [refreshToken]
-    );
-
-    if (rows.length === 0)
-      return res.status(401).json({ success: false, message: "Session not found." });
-
-    const session = rows[0];
-    const idleMs  = Date.now() - new Date(session.last_active).getTime();
-
-    if (idleMs > 60 * 60 * 1000) {
-      await pool.query("DELETE FROM sessions WHERE refresh_token = $1", [refreshToken]);
-      return res.status(401).json({ success: false, expired: true, message: "Session expired." });
-    }
-
-    await pool.query(
-      "UPDATE sessions SET last_active = NOW() WHERE refresh_token = $1",
-      [refreshToken]
-    );
-
-    const accessToken = signAccessToken({
-      userId:       session.user_id,
-      email:        session.email,
-      roleId:       session.role_id,
-      roleName:     session.role_name,
-      collegeId:    session.college_id,
-      departmentId: session.department_id,
-    });
-
+    const u = rows[0];
     return res.status(200).json({
       success: true,
-      accessToken,
       user: {
-        userId:            session.user_id,
-        userName:          session.user_name,
-        firstName:         session.first_name,
-        lastName:          session.last_name,
-        email:             session.email,
-        roleId:            session.role_id,
-        roleName:          session.role_name,
-        collegeId:         session.college_id,
-        collegeName:       session.college_name,
-        departmentId:      session.department_id,
-        departmentName:    session.department_name,
-        year:              session.year,
-        profilePictureUrl: session.profile_picture_url,
-        mustChangePassword: session.must_change_password,
+        id:              u.id,
+        fullName:        u.full_name,
+        email:           u.email,
+        institutionId:   u.institution_id,
+        institutionName: u.institution_name,
+        departmentId:    u.department_id,
+        departmentName:  u.department_name,
+        profileImageUrl: u.profile_image_url,
+        mustChangePassword: u.must_change_password,
+        roles:           u.roles,
       },
     });
-
   } catch (err) {
     console.error("[ME ERROR]", err.message);
     return res.status(500).json({ success: false, message: "Internal server error." });
@@ -253,12 +192,7 @@ router.get("/me", async (req, res) => {
 });
 
 /* ── POST /api/auth/logout ── */
-router.post("/logout", async (req, res) => {
-  const pool = req.app.locals.pool;
-  const { refreshToken } = req.body;
-  if (refreshToken) {
-    await pool.query("DELETE FROM sessions WHERE refresh_token = $1", [refreshToken]);
-  }
+router.post("/logout", (_req, res) => {
   return res.status(200).json({ success: true, message: "Logged out successfully." });
 });
 

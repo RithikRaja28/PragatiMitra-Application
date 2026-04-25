@@ -1,14 +1,6 @@
 const jwt = require("jsonwebtoken");
 
-/**
- * verifyToken — Express middleware
- * Validates Bearer JWT on protected routes.
- *
- * Usage:
- *   const { verifyToken, requireRole } = require("./middleware/auth");
- *   router.get("/dashboard", verifyToken, requireRole(["admin"]), handler);
- */
-function verifyToken(req, res, next) {
+async function verifyToken(req, res, next) {
   const authHeader = req.headers["authorization"];
 
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
@@ -20,45 +12,74 @@ function verifyToken(req, res, next) {
 
   const token = authHeader.split(" ")[1];
 
+  let decoded;
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET, {
-      issuer: "pragatimitra-api",
+    decoded = jwt.verify(token, process.env.JWT_SECRET, {
+      issuer:   "pragatimitra-api",
       audience: "pragatimitra-app",
     });
-
-    // Attach decoded payload to request for downstream use
-    req.user = decoded;
-    next();
   } catch (err) {
-    if (err.name === "TokenExpiredError") {
+    const message =
+      err.name === "TokenExpiredError"
+        ? "Session expired. Please sign in again."
+        : "Invalid token. Please sign in again.";
+    return res.status(401).json({ success: false, message });
+  }
+
+  // Check token_version — invalidates all older tokens for this user
+  try {
+    const pool = req.app.locals.pool;
+    const { rows } = await pool.query(
+      `SELECT
+         u.token_version,
+         COALESCE(
+           (SELECT array_agg(r.name)
+            FROM user_roles ur
+            JOIN roles r ON r.id = ur.role_id
+            WHERE ur.user_id = u.id
+              AND ur.revoked_at IS NULL
+              AND (ur.expires_at IS NULL OR ur.expires_at > now())
+           ), ARRAY[]::text[]
+         ) AS role_names
+       FROM users u
+       WHERE u.id = $1 AND u.account_status = 'ACTIVE'`,
+      [decoded.userId]
+    );
+
+    if (!rows.length) {
       return res.status(401).json({
         success: false,
-        message: "Session expired. Please sign in again.",
+        message: "Account not found or inactive.",
       });
     }
-    return res.status(401).json({
-      success: false,
-      message: "Invalid token. Please sign in again.",
-    });
+
+    if (rows[0].token_version !== decoded.version) {
+      return res.status(401).json({
+        success: false,
+        invalidated: true,
+        message: "Session invalidated. Please sign in again.",
+      });
+    }
+
+    req.user = { ...decoded, roleNames: rows[0].role_names };
+    next();
+  } catch (err) {
+    console.error("[AUTH MIDDLEWARE ERROR]", err.message);
+    return res.status(500).json({ success: false, message: "Internal server error." });
   }
 }
 
-/**
- * requireRole — role-based access guard
- * Pass an array of allowed role names.
- *
- * Example: requireRole(["admin", "faculty"])
- */
+// Pass allowed role machine-key names: requireRole(["super_admin", "institute_admin"])
 function requireRole(allowedRoles = []) {
   return (req, res, next) => {
     if (!req.user) {
       return res.status(401).json({ success: false, message: "Unauthenticated." });
     }
 
-    const userRole = (req.user.roleName || "").toLowerCase();
-    const allowed  = allowedRoles.map((r) => r.toLowerCase());
+    const userRoles = req.user.roleNames || [];
+    const hasRole   = allowedRoles.some((r) => userRoles.includes(r));
 
-    if (!allowed.includes(userRole)) {
+    if (!hasRole) {
       return res.status(403).json({
         success: false,
         message: "You do not have permission to access this resource.",
