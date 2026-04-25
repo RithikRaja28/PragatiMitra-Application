@@ -9,6 +9,7 @@ const Home      = lazy(() => import('../pages/Home'))
 const Dashboard = lazy(() => import('../pages/Dashboard'))
 const Reports   = lazy(() => import('../pages/Reports'))
 const Login     = lazy(() => import('../pages/Login'))
+const App     = lazy(() => import('../App'))
 const NotFound  = lazy(() => import('../pages/NotFound'))
 
 const router = createBrowserRouter([
@@ -17,7 +18,7 @@ const router = createBrowserRouter([
     path: '/',
     element: <RootLayout />,      
     children: [
-      { index: true,           element: <Home /> },
+      { index: true,           element: <App /> },
       { path: 'dashboard',     element: <Dashboard /> },
       { path: 'reports',       element: <Reports /> },
       
