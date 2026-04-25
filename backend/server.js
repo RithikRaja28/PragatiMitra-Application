@@ -1,11 +1,10 @@
 require("dotenv").config();
 
-require("dotenv").config();
-
-const express = require("express");
-const helmet = require("helmet");
-const cors = require("cors");
-const rateLimit = require("express-rate-limit");
+const express    = require("express");
+const helmet     = require("helmet");
+const cors       = require("cors");
+const cookies    = require("cookie-parser");
+const rateLimit  = require("express-rate-limit");
 const { Pool } = require("pg");
 
 /* ---------------------------------------------------
@@ -38,6 +37,7 @@ app.use(
 );
 
 app.use(express.json({ limit: "10kb" }));
+app.use(cookies());
 
 /* ---------------------------------------------------
    POSTGRESQL CONNECTION POOL

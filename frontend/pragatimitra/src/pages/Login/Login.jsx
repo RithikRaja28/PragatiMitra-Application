@@ -326,7 +326,7 @@ export default function Login() {
         return;
       }
 
-      login(data.user, data.token);
+      login(data.user, data.accessToken);
       redirectByRole(data.user, navigate);
 
     } catch {
