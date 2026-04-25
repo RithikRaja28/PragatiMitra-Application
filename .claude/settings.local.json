@@ -2,7 +2,17 @@
   "permissions": {
     "allow": [
       "Bash(npm run *)",
-      "Bash(npx --yes acorn --ecma2020 --module src/router/index.jsx)"
+      "Bash(npx --yes acorn --ecma2020 --module src/router/index.jsx)",
+      "Bash(PGPASSWORD=admin123 psql -h localhost -p 5432 -U postgres -d pragati_mitra -c \"\\\\dt\")",
+      "Bash(PGPASSWORD=admin123 psql -h localhost -p 5432 -U postgres -d pragati_mitra -c \"\\\\d users\")",
+      "Bash(PGPASSWORD=admin123 psql -h localhost -p 5432 -U postgres -d pragati_mitra -c \"\\\\d user_roles\")",
+      "Bash(PGPASSWORD=admin123 psql -h localhost -p 5432 -U postgres -d pragati_mitra -c \"SELECT id, name, display_name FROM roles ORDER BY name;\")",
+      "Bash(PGPASSWORD=admin123 psql -h localhost -p 5432 -U postgres -d pragati_mitra -c \"SELECT id, institution_name, code FROM institutions;\")",
+      "Bash(PGPASSWORD=admin123 psql -h localhost -p 5432 -U postgres -d pragati_mitra -c \"SELECT COUNT\\(*\\) AS user_count FROM users;\")",
+      "Bash(PGPASSWORD=admin123 psql -h localhost -p 5432 -U postgres -d pragati_mitra -c \"\\\\d institutions\")",
+      "Bash(PGPASSWORD=admin123 psql -h localhost -p 5432 -U postgres -d pragati_mitra -c \"SELECT institution_id, institution_name, code FROM institutions;\")",
+      "Bash(PGPASSWORD=admin123 psql -h localhost -p 5432 -U postgres -d pragati_mitra -c \"SELECT id, full_name, email, account_status, token_version FROM users;\")",
+      "Bash(PGPASSWORD=admin123 psql -h localhost -p 5432 -U postgres -d pragati_mitra -c \"SELECT u.full_name, u.email, r.name AS role FROM user_roles ur JOIN users u ON u.id = ur.user_id JOIN roles r ON r.id = ur.role_id WHERE ur.revoked_at IS NULL ORDER BY u.full_name;\")"
     ]
   }
 }
