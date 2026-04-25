@@ -7,16 +7,15 @@ const router = express.Router();
 
 router.use(verifyToken);
 
-// Temporary: log decoded roles so we can confirm the exact role name in the DB
-router.use((req, _res, next) => {
-  console.log("[DEPT] request from userId:", req.user?.userId, "roles:", req.user?.roles);
-  next();
-});
+/* ── UUID validation helper ── */
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const isUUID = (v) => typeof v === "string" && UUID_RE.test(v);
 
 /* ── GET /api/departments/institutions ──────────────────────────
-   Returns all institutions for the institution-selector dropdown.
-   Must be registered BEFORE the parameterised "/:id" routes.
-────────────────────────────────────────────────────────────── */
+   Institution list for the dropdown selector.
+   Registered before "/:id" to avoid route collision.
+──────────────────────────────────────────────────────────────── */
 router.get("/institutions", async (req, res) => {
   const pool = req.app.locals.pool;
   try {
@@ -34,18 +33,14 @@ router.get("/institutions", async (req, res) => {
   }
 });
 
-/* ── GET /api/departments?institution_id=X ──────────────────────
-   Returns all departments for one institution, each with a live
-   member_count (users whose account_status != 'DELETED').
-
-   Expected department columns: department_id, name, code, status,
-   institution_id, created_at.
-────────────────────────────────────────────────────────────── */
+/* ── GET /api/departments?institution_id=<uuid> ─────────────────
+   All departments for one institution with live member_count.
+──────────────────────────────────────────────────────────────── */
 router.get("/", async (req, res) => {
   const pool = req.app.locals.pool;
-  const institutionId = Number(req.query.institution_id);
+  const { institution_id } = req.query;
 
-  if (!Number.isInteger(institutionId) || institutionId <= 0) {
+  if (!isUUID(institution_id)) {
     return res
       .status(400)
       .json({ success: false, message: "A valid institution_id is required." });
@@ -67,7 +62,7 @@ router.get("/", async (req, res) => {
        WHERE  d.institution_id = $1
        GROUP  BY d.department_id, d.name, d.code, d.status, d.created_at
        ORDER  BY d.name ASC`,
-      [institutionId]
+      [institution_id]
     );
     return res.json({ success: true, data: rows });
   } catch (err) {
@@ -78,36 +73,153 @@ router.get("/", async (req, res) => {
   }
 });
 
-/* ── PATCH /api/departments/:id/deactivate ──────────────────────
-   Soft-deletes a department by setting status = 'INACTIVE'.
-   Refuses if any ACTIVE users still belong to the department
-   under the given institution.
+/* ── POST /api/departments ──────────────────────────────────────
+   Create a new department.
 
-   Body: { institution_id: number }
-────────────────────────────────────────────────────────────── */
+   Body: { name, code, institution_id }
+
+   created_by / updated_by  → req.user.userId  (from JWT)
+   department_id, created_at, updated_at → DB defaults
+   status                   → DB default ('ACTIVE')
+
+   Enforces uniqueness of (institution_id, name) and
+   (institution_id, code) since no DB constraint exists.
+──────────────────────────────────────────────────────────────── */
+router.post("/", async (req, res) => {
+  const pool = req.app.locals.pool;
+  const createdBy = req.user?.userId;
+
+  const rawName = typeof req.body.name === "string" ? req.body.name.trim() : "";
+  const rawCode = typeof req.body.code === "string" ? req.body.code.trim().toUpperCase() : "";
+  const { institution_id } = req.body;
+
+  /* ── Input validation ── */
+  const errors = {};
+  if (!rawName) errors.name = "Department name is required.";
+  else if (rawName.length > 120) errors.name = "Name must be 120 characters or fewer.";
+
+  if (!rawCode) errors.code = "Department code is required.";
+  else if (rawCode.length > 20) errors.code = "Code must be 20 characters or fewer.";
+  else if (!/^[A-Z0-9_-]+$/.test(rawCode))
+    errors.code = "Code may only contain letters, digits, hyphens, and underscores.";
+
+  if (!isUUID(institution_id)) errors.institution_id = "A valid institution is required.";
+
+  if (Object.keys(errors).length) {
+    return res.status(400).json({ success: false, errors });
+  }
+
+  if (!isUUID(createdBy)) {
+    return res
+      .status(401)
+      .json({ success: false, message: "Session is invalid. Please sign in again." });
+  }
+
+  try {
+    /* ── Verify institution exists and is active ── */
+    const { rows: instRows } = await pool.query(
+      `SELECT 1 FROM institutions WHERE institution_id = $1 AND status = 'ACTIVE'`,
+      [institution_id]
+    );
+    if (!instRows.length) {
+      return res.status(400).json({
+        success: false,
+        errors: { institution_id: "Institution not found or is inactive." },
+      });
+    }
+
+    /* ── Duplicate name check within the same institution ── */
+    const { rows: dupName } = await pool.query(
+      `SELECT 1
+       FROM   departments
+       WHERE  institution_id = $1
+         AND  LOWER(name) = LOWER($2)`,
+      [institution_id, rawName]
+    );
+    if (dupName.length) {
+      return res.status(409).json({
+        success: false,
+        errors: {
+          name: `A department named "${rawName}" already exists in this institution.`,
+        },
+      });
+    }
+
+    /* ── Duplicate code check within the same institution ── */
+    const { rows: dupCode } = await pool.query(
+      `SELECT 1
+       FROM   departments
+       WHERE  institution_id = $1
+         AND  code = $2`,
+      [institution_id, rawCode]
+    );
+    if (dupCode.length) {
+      return res.status(409).json({
+        success: false,
+        errors: {
+          code: `Code "${rawCode}" is already used by another department in this institution.`,
+        },
+      });
+    }
+
+    /* ── Insert ── */
+    const {
+      rows: [newDept],
+    } = await pool.query(
+      `INSERT INTO departments (institution_id, name, code, created_by, updated_by)
+       VALUES ($1, $2, $3, $4, $4)
+       RETURNING
+         department_id,
+         name,
+         code,
+         status,
+         created_at`,
+      [institution_id, rawName, rawCode, createdBy]
+    );
+
+    return res.status(201).json({
+      success: true,
+      message: `Department "${newDept.name}" created successfully.`,
+      data: newDept,
+    });
+  } catch (err) {
+    console.error("[DEPT] create:", err.message);
+    return res
+      .status(500)
+      .json({ success: false, message: "Failed to create department." });
+  }
+});
+
+/* ── PATCH /api/departments/:id/deactivate ──────────────────────
+   Soft-deletes a department (status → INACTIVE).
+   Blocked if any ACTIVE users still belong to this department.
+
+   Body: { institution_id }
+──────────────────────────────────────────────────────────────── */
 router.patch("/:id/deactivate", async (req, res) => {
   const pool = req.app.locals.pool;
-  const departmentId = Number(req.params.id);
-  const institutionId = Number(req.body.institution_id);
+  const updatedBy = req.user?.userId;
+  const departmentId = req.params.id;
+  const { institution_id } = req.body;
 
-  if (!Number.isInteger(departmentId) || departmentId <= 0) {
+  if (!isUUID(departmentId)) {
     return res
       .status(400)
       .json({ success: false, message: "Invalid department ID." });
   }
-  if (!Number.isInteger(institutionId) || institutionId <= 0) {
+  if (!isUUID(institution_id)) {
     return res
       .status(400)
       .json({ success: false, message: "A valid institution_id is required." });
   }
 
   try {
-    // Verify the department exists and belongs to this institution
+    /* ── Verify department belongs to this institution ── */
     const { rows: deptRows } = await pool.query(
       `SELECT department_id, name, status
        FROM   departments
        WHERE  department_id = $1 AND institution_id = $2`,
-      [departmentId, institutionId]
+      [departmentId, institution_id]
     );
 
     if (!deptRows.length) {
@@ -118,13 +230,13 @@ router.patch("/:id/deactivate", async (req, res) => {
 
     const dept = deptRows[0];
 
-    if (dept.status.toUpperCase() === "INACTIVE") {
+    if (dept.status === "INACTIVE") {
       return res
         .status(409)
         .json({ success: false, message: "Department is already inactive." });
     }
 
-    // Block deactivation if any active users remain in this department
+    /* ── Block if active users exist ── */
     const {
       rows: [{ active_count }],
     } = await pool.query(
@@ -133,24 +245,29 @@ router.patch("/:id/deactivate", async (req, res) => {
        WHERE  department_id  = $1
          AND  institution_id = $2
          AND  account_status = 'ACTIVE'`,
-      [departmentId, institutionId]
+      [departmentId, institution_id]
     );
 
     if (Number(active_count) > 0) {
       return res.status(409).json({
         success: false,
-        message: `Cannot deactivate "${dept.name}": ${active_count} user(s) are still active. Please deactivate all members of this department first.`,
+        message: `Cannot deactivate "${dept.name}": ${active_count} user(s) are still active. Deactivate all members first.`,
       });
     }
 
+    /* ── Deactivate ── */
     await pool.query(
-      `UPDATE departments SET status = 'INACTIVE' WHERE department_id = $1`,
-      [departmentId]
+      `UPDATE departments
+       SET    status     = 'INACTIVE',
+              updated_at = now(),
+              updated_by = $2
+       WHERE  department_id = $1`,
+      [departmentId, updatedBy]
     );
 
     return res.json({
       success: true,
-      message: `"${dept.name}" has been deactivated successfully.`,
+      message: `"${dept.name}" has been deactivated.`,
     });
   } catch (err) {
     console.error("[DEPT] deactivate:", err.message);
