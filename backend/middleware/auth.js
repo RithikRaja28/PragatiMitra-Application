@@ -26,12 +26,10 @@ async function verifyToken(req, res, next) {
     return res.status(401).json({ success: false, message });
   }
 
-  // Check token_version — invalidates all older tokens for this user
   try {
     const pool = req.app.locals.pool;
     const { rows } = await pool.query(
       `SELECT
-         u.token_version,
          COALESCE(
            (SELECT array_agg(r.name)
             FROM user_roles ur
@@ -50,14 +48,6 @@ async function verifyToken(req, res, next) {
       return res.status(401).json({
         success: false,
         message: "Account not found or inactive.",
-      });
-    }
-
-    if (rows[0].token_version !== decoded.version) {
-      return res.status(401).json({
-        success: false,
-        invalidated: true,
-        message: "Session invalidated. Please sign in again.",
       });
     }
 

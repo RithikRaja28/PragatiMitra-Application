@@ -90,20 +90,13 @@ router.post("/login", loginLimiter, async (req, res) => {
     if (!passwordMatch)
       return res.status(401).json({ success: false, message: "Invalid email or password." });
 
-    const { rows: vRows } = await pool.query(
-      `UPDATE users
-       SET token_version = token_version + 1, last_login_at = now()
-       WHERE id = $1
-       RETURNING token_version`,
-      [user.id]
-    );
+    await pool.query(`UPDATE users SET last_login_at = now() WHERE id = $1`, [user.id]);
 
     const token = signToken({
       userId:        user.id,
       email:         user.email,
       institutionId: user.institution_id,
       departmentId:  user.department_id,
-      version:       vRows[0].token_version,
     });
 
     return res.status(200).json({

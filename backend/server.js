@@ -76,11 +76,9 @@ app.get("/", (req, res) => {
   res.json({ success: true, message: "Pragatimitra API running." });
 });
 
-app.use("/api/auth", authRoutes);
-
-// Future route modules go here:
-// app.use("/api/users",   require("./routes/users"));
-// app.use("/api/reports", require("./routes/reports"));
+app.use("/api/auth",   authRoutes);
+app.use("/api/users",  require("./routes/users"));
+app.use("/api/lookup", require("./routes/lookup"));
 
 /* ---------------------------------------------------
    GLOBAL ERROR HANDLER
