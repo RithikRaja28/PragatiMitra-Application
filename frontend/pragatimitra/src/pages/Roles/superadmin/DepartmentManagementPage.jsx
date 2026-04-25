@@ -372,74 +372,273 @@ function CreateDeptModal({ institutions, defaultInstitutionId, onClose, onCreate
   );
 }
 
-/* ─── Deactivate Confirm Dialog ──────────────────────────────── */
-function ConfirmDialog({ dept, onConfirm, onCancel, loading }) {
+/* ─── Edit Department Modal ──────────────────────────────────── */
+function EditDeptModal({ dept, onClose, onSaved }) {
+  const { apiFetch } = useApi();
+
+  const [form, setForm] = useState({
+    name: dept.name || "",
+    code: dept.code || "",
+    status: dept.status || "ACTIVE",
+  });
+  const [fieldErrors, setFieldErrors] = useState({});
+  const [submitError, setSubmitError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const nameRef = useRef(null);
+
+  useEffect(() => {
+    nameRef.current?.focus();
+  }, []);
+
+  function set(key, value) {
+    setForm((f) => ({ ...f, [key]: value }));
+    if (fieldErrors[key]) setFieldErrors((e) => ({ ...e, [key]: "" }));
+    if (submitError) setSubmitError("");
+  }
+
+  function clientValidate() {
+    const errs = {};
+    if (!form.name.trim()) errs.name = "Department name is required.";
+    if (!form.code.trim()) errs.code = "Department code is required.";
+    else if (!/^[A-Za-z0-9_-]+$/.test(form.code.trim()))
+      errs.code = "Only letters, digits, hyphens, and underscores allowed.";
+    if (!["ACTIVE", "INACTIVE"].includes(form.status))
+      errs.status = "Status must be Active or Inactive.";
+    setFieldErrors(errs);
+    return Object.keys(errs).length === 0;
+  }
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (!clientValidate()) return;
+
+    setSubmitting(true);
+    setSubmitError("");
+
+    try {
+      const res = await apiFetch(`/api/departments/${dept.department_id}`, {
+        method: "PUT",
+        body: JSON.stringify({
+          name: form.name.trim(),
+          code: form.code.trim().toUpperCase(),
+          status: form.status,
+        }),
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        onSaved(data.message);
+      } else if (data.errors) {
+        setFieldErrors(data.errors);
+      } else {
+        setSubmitError(data.message || "Failed to update department.");
+      }
+    } catch (err) {
+      if (!isAuthError(err)) {
+        setSubmitError("Network error. Please try again.");
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  const goingInactive = dept.status === "ACTIVE" && form.status === "INACTIVE";
+
   return (
     <Overlay>
       <div
         style={{
           background: "#fff",
-          borderRadius: 16,
-          padding: 32,
+          borderRadius: 18,
           width: "100%",
-          maxWidth: 400,
-          boxShadow: "0 20px 60px rgba(0,0,0,0.18)",
+          maxWidth: 480,
+          boxShadow: "0 24px 64px rgba(0,0,0,0.18)",
+          overflow: "hidden",
         }}
       >
+        {/* Header */}
         <div
           style={{
-            width: 44,
-            height: 44,
-            borderRadius: 12,
-            background: "#fef2f2",
+            padding: "24px 28px 20px",
+            borderBottom: "1px solid #f1f5f9",
             display: "flex",
             alignItems: "center",
-            justifyContent: "center",
-            marginBottom: 16,
-            fontSize: 22,
+            gap: 14,
           }}
         >
-          ⚠️
-        </div>
-        <h3 style={{ fontSize: 16, fontWeight: 700, color: "#1e293b", marginBottom: 8 }}>
-          Deactivate Department
-        </h3>
-        <p style={{ fontSize: 13, color: "#64748b", marginBottom: 6, lineHeight: 1.6 }}>
-          You are about to deactivate{" "}
-          <strong style={{ color: "#1e293b" }}>{dept.name}</strong>.
-        </p>
-        <p style={{ fontSize: 13, color: "#94a3b8", marginBottom: 24, lineHeight: 1.6 }}>
-          All members of this department must be inactive before proceeding. The
-          department status will be set to <strong>INACTIVE</strong> in the database.
-        </p>
-        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
-          <button onClick={onCancel} disabled={loading} style={S.btnGhost}>
-            Cancel
-          </button>
-          <button
-            onClick={onConfirm}
-            disabled={loading}
+          <div
             style={{
-              padding: "9px 20px",
-              borderRadius: 9,
-              border: "none",
-              background: loading ? "#fca5a5" : "#dc2626",
-              fontSize: 13,
-              fontWeight: 600,
-              color: "#fff",
-              cursor: loading ? "not-allowed" : "pointer",
+              width: 40,
+              height: 40,
+              borderRadius: 11,
+              background: "#fef3c7",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: 20,
+              flexShrink: 0,
             }}
           >
-            {loading ? "Deactivating…" : "Deactivate"}
+            ✏️
+          </div>
+          <div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: "#1e293b" }}>
+              Edit Department
+            </div>
+            <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 2 }}>
+              Update name, code, or status.
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            disabled={submitting}
+            style={{
+              marginLeft: "auto",
+              background: "none",
+              border: "none",
+              fontSize: 20,
+              color: "#94a3b8",
+              cursor: submitting ? "not-allowed" : "pointer",
+              lineHeight: 1,
+              padding: 4,
+            }}
+            aria-label="Close"
+          >
+            ✕
           </button>
         </div>
+
+        <form onSubmit={handleSubmit} noValidate>
+          <div style={{ padding: "24px 28px", display: "flex", flexDirection: "column", gap: 18 }}>
+
+            {/* Name */}
+            <div>
+              <label style={S.label}>Department Name</label>
+              <input
+                ref={nameRef}
+                type="text"
+                value={form.name}
+                onChange={(e) => set("name", e.target.value)}
+                disabled={submitting}
+                maxLength={120}
+                style={S.input(!!fieldErrors.name)}
+              />
+              {fieldErrors.name && <div style={S.errorText}>{fieldErrors.name}</div>}
+            </div>
+
+            {/* Code */}
+            <div>
+              <label style={S.label}>Department Code</label>
+              <input
+                type="text"
+                value={form.code}
+                onChange={(e) => set("code", e.target.value.toUpperCase())}
+                disabled={submitting}
+                maxLength={20}
+                style={{
+                  ...S.input(!!fieldErrors.code),
+                  fontFamily: "monospace",
+                  letterSpacing: 1,
+                }}
+              />
+              {fieldErrors.code ? (
+                <div style={S.errorText}>{fieldErrors.code}</div>
+              ) : (
+                <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 4 }}>
+                  Auto-uppercased. Letters, digits, hyphens, underscores only.
+                </div>
+              )}
+            </div>
+
+            {/* Status */}
+            <div>
+              <label style={S.label}>Status</label>
+              <select
+                value={form.status}
+                onChange={(e) => set("status", e.target.value)}
+                disabled={submitting}
+                style={{
+                  ...S.input(!!fieldErrors.status),
+                  appearance: "none",
+                  backgroundImage:
+                    "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%2394a3b8' d='M6 8L0 0h12z'/%3E%3C/svg%3E\")",
+                  backgroundRepeat: "no-repeat",
+                  backgroundPosition: "right 12px center",
+                  paddingRight: 32,
+                }}
+              >
+                <option value="ACTIVE">Active</option>
+                <option value="INACTIVE">Inactive</option>
+              </select>
+              {fieldErrors.status && <div style={S.errorText}>{fieldErrors.status}</div>}
+              {goingInactive && (
+                <div
+                  style={{
+                    marginTop: 8,
+                    padding: "8px 12px",
+                    background: "#fffbeb",
+                    border: "1px solid #fcd34d",
+                    borderRadius: 8,
+                    fontSize: 12,
+                    color: "#92400e",
+                    lineHeight: 1.5,
+                  }}
+                >
+                  Deactivating will fail unless every member of this department
+                  is already inactive.
+                </div>
+              )}
+            </div>
+
+            {submitError && (
+              <div
+                style={{
+                  background: "#fef2f2",
+                  border: "1px solid #fecaca",
+                  borderRadius: 8,
+                  padding: "10px 14px",
+                  fontSize: 13,
+                  color: "#b91c1c",
+                }}
+              >
+                {submitError}
+              </div>
+            )}
+          </div>
+
+          <div
+            style={{
+              padding: "16px 28px 24px",
+              display: "flex",
+              justifyContent: "flex-end",
+              gap: 10,
+              borderTop: "1px solid #f1f5f9",
+            }}
+          >
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={submitting}
+              style={S.btnGhost}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={submitting}
+              style={S.btnPrimary(submitting)}
+            >
+              {submitting ? "Saving…" : "Save Changes"}
+            </button>
+          </div>
+        </form>
       </div>
     </Overlay>
   );
 }
 
 /* ─── Department Card ────────────────────────────────────────── */
-function DepartmentCard({ dept, onDeactivate }) {
+function DepartmentCard({ dept, onEdit, onToggleStatus, isToggling }) {
   const isActive = dept.status === "ACTIVE";
 
   return (
@@ -545,25 +744,45 @@ function DepartmentCard({ dept, onDeactivate }) {
       </div>
 
       {/* Actions */}
-      <button
-        onClick={() => onDeactivate(dept)}
-        disabled={!isActive}
-        style={{
-          width: "100%",
-          padding: "8px 0",
-          borderRadius: 8,
-          border: "1.5px solid",
-          borderColor: isActive ? "#fee2e2" : "#e2e8f0",
-          background: "#fff",
-          fontSize: 12,
-          fontWeight: 600,
-          color: isActive ? "#dc2626" : "#cbd5e1",
-          cursor: isActive ? "pointer" : "not-allowed",
-        }}
-        title={isActive ? "Deactivate department" : "Already inactive"}
-      >
-        {isActive ? "Deactivate" : "Inactive"}
-      </button>
+      <div style={{ display: "flex", gap: 8 }}>
+        <button
+          onClick={() => onEdit(dept)}
+          style={{
+            flex: 1,
+            padding: "8px 0",
+            borderRadius: 8,
+            border: "1.5px solid #e2e8f0",
+            background: "#fff",
+            fontSize: 12,
+            fontWeight: 600,
+            color: "#2563eb",
+            cursor: "pointer",
+          }}
+          title="Edit department"
+        >
+          Edit
+        </button>
+        <button
+          onClick={() => onToggleStatus(dept)}
+          disabled={isToggling}
+          style={{
+            flex: 1,
+            padding: "8px 0",
+            borderRadius: 8,
+            border: "1.5px solid",
+            borderColor: isActive ? "#fee2e2" : "#bbf7d0",
+            background: "#fff",
+            fontSize: 12,
+            fontWeight: 600,
+            color: isActive ? "#dc2626" : "#059669",
+            cursor: isToggling ? "not-allowed" : "pointer",
+            opacity: isToggling ? 0.6 : 1,
+          }}
+          title={isActive ? "Deactivate department" : "Activate department"}
+        >
+          {isToggling ? "…" : isActive ? "Deactivate" : "Activate"}
+        </button>
+      </div>
     </div>
   );
 }
@@ -634,8 +853,8 @@ export default function DepartmentManagementPage() {
   const [institutionsError, setInstitutionsError] = useState(null);
 
   const [showCreate, setShowCreate] = useState(false);
-  const [confirmDeactivate, setConfirmDeactivate] = useState(null);
-  const [deactivating, setDeactivating] = useState(false);
+  const [editingDept, setEditingDept] = useState(null);
+  const [togglingId, setTogglingId] = useState(null);
 
   const [toast, setToast] = useState(null);
   const toastTimer = useRef(null);
@@ -711,33 +930,46 @@ export default function DepartmentManagementPage() {
     fetchDepartments(selectedInstitutionId);
   }, [selectedInstitutionId, fetchDepartments]);
 
-  /* ── Deactivate ── */
-  async function handleDeactivate() {
-    if (!confirmDeactivate) return;
-    setDeactivating(true);
+  /* ── Quick toggle status (Activate ⇄ Deactivate) ── */
+  async function handleToggleStatus(dept) {
+    const nextStatus = dept.status === "ACTIVE" ? "INACTIVE" : "ACTIVE";
+    setTogglingId(dept.department_id);
     try {
-      const res = await apiFetch(
-        `/api/departments/${confirmDeactivate.department_id}/deactivate`,
-        {
-          method: "PATCH",
-          body: JSON.stringify({ institution_id: selectedInstitutionId }),
-        }
-      );
+      const res = await apiFetch(`/api/departments/${dept.department_id}`, {
+        method: "PUT",
+        body: JSON.stringify({
+          name: dept.name,
+          code: dept.code,
+          status: nextStatus,
+        }),
+      });
       const data = await res.json();
       if (data.success) {
         showToast(data.message, "success");
-        setConfirmDeactivate(null);
         fetchDepartments(selectedInstitutionId);
       } else {
-        showToast(data.message || "Failed to deactivate.", "error");
-        setConfirmDeactivate(null);
+        showToast(
+          data.message ||
+            (nextStatus === "INACTIVE"
+              ? "Failed to deactivate department."
+              : "Failed to activate department."),
+          "error"
+        );
       }
     } catch (err) {
-      if (!isAuthError(err)) showToast("Failed to deactivate department.", "error");
-      setConfirmDeactivate(null);
+      if (!isAuthError(err)) {
+        showToast("Failed to update department status.", "error");
+      }
     } finally {
-      setDeactivating(false);
+      setTogglingId(null);
     }
+  }
+
+  /* ── Edit save callback ── */
+  function handleEditSaved(message) {
+    setEditingDept(null);
+    showToast(message, "success");
+    fetchDepartments(selectedInstitutionId);
   }
 
   /* ── Creation callback ── */
@@ -775,12 +1007,11 @@ export default function DepartmentManagementPage() {
           onCreated={handleCreated}
         />
       )}
-      {confirmDeactivate && (
-        <ConfirmDialog
-          dept={confirmDeactivate}
-          onConfirm={handleDeactivate}
-          onCancel={() => !deactivating && setConfirmDeactivate(null)}
-          loading={deactivating}
+      {editingDept && (
+        <EditDeptModal
+          dept={editingDept}
+          onClose={() => setEditingDept(null)}
+          onSaved={handleEditSaved}
         />
       )}
 
@@ -956,7 +1187,9 @@ export default function DepartmentManagementPage() {
             <DepartmentCard
               key={dept.department_id}
               dept={dept}
-              onDeactivate={setConfirmDeactivate}
+              onEdit={setEditingDept}
+              onToggleStatus={handleToggleStatus}
+              isToggling={togglingId === dept.department_id}
             />
           ))
         ) : (
