@@ -1,10 +1,17 @@
 require("dotenv").config();
 
+require("dotenv").config();
+
 const express = require("express");
 const helmet = require("helmet");
 const cors = require("cors");
 const rateLimit = require("express-rate-limit");
 const { Pool } = require("pg");
+
+/* ---------------------------------------------------
+   ROUTES
+--------------------------------------------------- */
+const authRoutes = require("./routes/login");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -12,43 +19,38 @@ const PORT = process.env.PORT || 3000;
 /* ---------------------------------------------------
    SECURITY MIDDLEWARE
 --------------------------------------------------- */
-
-// Secure HTTP headers
 app.use(helmet());
 
-// Allow frontend domains only
 app.use(
   cors({
     origin: ["http://localhost:5173", "https://yourfrontend.com"],
     methods: ["GET", "POST", "PUT", "DELETE"],
     credentials: true,
-  }),
+  })
 );
 
-// Prevent abuse / brute force
 app.use(
   rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 mins
+    windowMs: 15 * 60 * 1000,
     max: 200,
     message: "Too many requests, try again later.",
-  }),
+  })
 );
 
-// Parse JSON body safely
 app.use(express.json({ limit: "10kb" }));
 
 /* ---------------------------------------------------
    POSTGRESQL CONNECTION POOL
+   Attached to app.locals so all route files share it.
 --------------------------------------------------- */
-
 const pool = new Pool({
-  user: process.env.DB_USER,
-  host: process.env.DB_HOST,
+  user:     process.env.DB_USER,
+  host:     process.env.DB_HOST,
   database: process.env.DB_NAME,
   password: process.env.DB_PASSWORD,
-  port: process.env.DB_PORT,
-  max: 30, // max connections
-  idleTimeoutMillis: 30000,
+  port:     process.env.DB_PORT,
+  max:      30,
+  idleTimeoutMillis:    30000,
   connectionTimeoutMillis: 5000,
   ssl:
     process.env.NODE_ENV === "production"
@@ -56,7 +58,6 @@ const pool = new Pool({
       : false,
 });
 
-// Test DB connection
 pool.connect((err, client, release) => {
   if (err) {
     return console.error("Database connection failed:", err.message);
@@ -65,27 +66,33 @@ pool.connect((err, client, release) => {
   release();
 });
 
+// Make pool available in all route handlers via req.app.locals.pool
+app.locals.pool = pool;
 
-
-app.get("/", async (req, res) => {
-  res.json({
-    success: true,
-    message: "Server running successfully",
-  });
+/* ---------------------------------------------------
+   ROUTES
+--------------------------------------------------- */
+app.get("/", (req, res) => {
+  res.json({ success: true, message: "Pragatimitra API running." });
 });
 
+app.use("/api/auth", authRoutes);
 
+// Future route modules go here:
+// app.use("/api/users",   require("./routes/users"));
+// app.use("/api/reports", require("./routes/reports"));
 
+/* ---------------------------------------------------
+   GLOBAL ERROR HANDLER
+--------------------------------------------------- */
 app.use((err, req, res, next) => {
-  console.error(err.stack);
-
-  res.status(500).json({
-    success: false,
-    message: "Something went wrong",
-  });
+  console.error("[UNHANDLED ERROR]", err.stack);
+  res.status(500).json({ success: false, message: "Something went wrong." });
 });
 
-
+/* ---------------------------------------------------
+   START
+--------------------------------------------------- */
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
