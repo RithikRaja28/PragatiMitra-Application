@@ -1,7 +1,57 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useApi } from "../../../hooks/useApi";
 
-/* ── Helpers ─────────────────────────────────────────────────── */
+/* ─── Shared style tokens ────────────────────────────────────── */
+const S = {
+  label: {
+    display: "block",
+    fontSize: 11,
+    fontWeight: 700,
+    color: "#64748b",
+    textTransform: "uppercase",
+    letterSpacing: 0.7,
+    marginBottom: 6,
+  },
+  input: (hasError) => ({
+    width: "100%",
+    padding: "9px 12px",
+    border: `1.5px solid ${hasError ? "#f87171" : "#e2e8f0"}`,
+    borderRadius: 9,
+    fontSize: 13,
+    color: "#1e293b",
+    outline: "none",
+    boxSizing: "border-box",
+    background: "#fff",
+    transition: "border-color .15s",
+  }),
+  errorText: {
+    fontSize: 11,
+    color: "#dc2626",
+    marginTop: 4,
+  },
+  btnPrimary: (disabled) => ({
+    padding: "9px 22px",
+    borderRadius: 9,
+    border: "none",
+    background: disabled ? "#93c5fd" : "#2563eb",
+    fontSize: 13,
+    fontWeight: 700,
+    color: "#fff",
+    cursor: disabled ? "not-allowed" : "pointer",
+  }),
+  btnGhost: {
+    padding: "9px 20px",
+    borderRadius: 9,
+    border: "1.5px solid #e2e8f0",
+    background: "#fff",
+    fontSize: 13,
+    fontWeight: 600,
+    color: "#64748b",
+    cursor: "pointer",
+  },
+};
+
+/* ─── Helpers ────────────────────────────────────────────────── */
 function formatDate(iso) {
   if (!iso) return "—";
   return new Date(iso).toLocaleDateString("en-US", {
@@ -10,11 +60,16 @@ function formatDate(iso) {
   });
 }
 
-function normalizeStatus(s) {
-  return (s || "").toUpperCase();
+function isAuthError(err) {
+  const m = err?.message || "";
+  return (
+    m.includes("Session expired") ||
+    m.includes("signed in from another device") ||
+    m.includes("sign in again")
+  );
 }
 
-/* ── Toast ───────────────────────────────────────────────────── */
+/* ─── Toast ─────────────────────────────────────────────────── */
 function Toast({ message, type }) {
   return (
     <div
@@ -24,42 +79,310 @@ function Toast({ message, type }) {
         right: 28,
         background: type === "error" ? "#dc2626" : "#1e293b",
         color: "#fff",
-        padding: "12px 20px",
+        padding: "13px 20px",
         borderRadius: 10,
         fontSize: 13,
         fontWeight: 500,
         zIndex: 9999,
-        boxShadow: "0 8px 24px rgba(0,0,0,0.22)",
-        maxWidth: 420,
-        lineHeight: 1.5,
+        boxShadow: "0 8px 28px rgba(0,0,0,0.22)",
+        maxWidth: 440,
+        lineHeight: 1.55,
       }}
     >
-      {type === "error" ? "✕ " : "✓ "}
+      {type === "error" ? "✕  " : "✓  "}
       {message}
     </div>
   );
 }
 
-/* ── Confirm Dialog ──────────────────────────────────────────── */
-function ConfirmDialog({ dept, onConfirm, onCancel, loading }) {
+/* ─── Overlay wrapper ────────────────────────────────────────── */
+function Overlay({ children }) {
   return (
     <div
       style={{
         position: "fixed",
         inset: 0,
-        background: "rgba(15,23,42,0.45)",
+        background: "rgba(15,23,42,0.48)",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        zIndex: 999,
+        zIndex: 900,
+        padding: 16,
       }}
     >
+      {children}
+    </div>
+  );
+}
+
+/* ─── Create Department Modal ────────────────────────────────── */
+function CreateDeptModal({ institutions, defaultInstitutionId, onClose, onCreated }) {
+  const { apiFetch } = useApi();
+
+  const [form, setForm] = useState({
+    name: "",
+    code: "",
+    institution_id: defaultInstitutionId || institutions[0]?.institution_id || "",
+  });
+  const [fieldErrors, setFieldErrors] = useState({});
+  const [submitError, setSubmitError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const nameRef = useRef(null);
+
+  useEffect(() => {
+    nameRef.current?.focus();
+  }, []);
+
+  function set(key, value) {
+    setForm((f) => ({ ...f, [key]: value }));
+    if (fieldErrors[key]) setFieldErrors((e) => ({ ...e, [key]: "" }));
+    if (submitError) setSubmitError("");
+  }
+
+  function clientValidate() {
+    const errs = {};
+    if (!form.name.trim()) errs.name = "Department name is required.";
+    if (!form.code.trim()) errs.code = "Department code is required.";
+    else if (!/^[A-Za-z0-9_-]+$/.test(form.code.trim()))
+      errs.code = "Only letters, digits, hyphens, and underscores allowed.";
+    if (!form.institution_id) errs.institution_id = "Please select an institution.";
+    setFieldErrors(errs);
+    return Object.keys(errs).length === 0;
+  }
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (!clientValidate()) return;
+
+    setSubmitting(true);
+    setSubmitError("");
+
+    try {
+      const res = await apiFetch("/api/departments", {
+        method: "POST",
+        body: JSON.stringify({
+          name: form.name.trim(),
+          code: form.code.trim().toUpperCase(),
+          institution_id: form.institution_id,
+        }),
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        onCreated(form.institution_id, data.message);
+      } else if (data.errors) {
+        setFieldErrors(data.errors);
+      } else {
+        setSubmitError(data.message || "Failed to create department.");
+      }
+    } catch (err) {
+      if (!isAuthError(err)) {
+        setSubmitError("Network error. Please try again.");
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <Overlay>
+      <div
+        style={{
+          background: "#fff",
+          borderRadius: 18,
+          width: "100%",
+          maxWidth: 480,
+          boxShadow: "0 24px 64px rgba(0,0,0,0.18)",
+          overflow: "hidden",
+        }}
+      >
+        {/* Modal header */}
+        <div
+          style={{
+            padding: "24px 28px 20px",
+            borderBottom: "1px solid #f1f5f9",
+            display: "flex",
+            alignItems: "center",
+            gap: 14,
+          }}
+        >
+          <div
+            style={{
+              width: 40,
+              height: 40,
+              borderRadius: 11,
+              background: "#eff6ff",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: 20,
+              flexShrink: 0,
+            }}
+          >
+            🏛️
+          </div>
+          <div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: "#1e293b" }}>
+              New Department
+            </div>
+            <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 2 }}>
+              Fill in the details below to add a department.
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            disabled={submitting}
+            style={{
+              marginLeft: "auto",
+              background: "none",
+              border: "none",
+              fontSize: 20,
+              color: "#94a3b8",
+              cursor: submitting ? "not-allowed" : "pointer",
+              lineHeight: 1,
+              padding: 4,
+            }}
+            aria-label="Close"
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* Form body */}
+        <form onSubmit={handleSubmit} noValidate>
+          <div style={{ padding: "24px 28px", display: "flex", flexDirection: "column", gap: 18 }}>
+
+            {/* Institution */}
+            <div>
+              <label style={S.label}>Institution</label>
+              <select
+                value={form.institution_id}
+                onChange={(e) => set("institution_id", e.target.value)}
+                disabled={submitting}
+                style={{
+                  ...S.input(!!fieldErrors.institution_id),
+                  appearance: "none",
+                  backgroundImage:
+                    "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%2394a3b8' d='M6 8L0 0h12z'/%3E%3C/svg%3E\")",
+                  backgroundRepeat: "no-repeat",
+                  backgroundPosition: "right 12px center",
+                  paddingRight: 32,
+                }}
+              >
+                {institutions.map((inst) => (
+                  <option key={inst.institution_id} value={inst.institution_id}>
+                    {inst.institution_name}
+                  </option>
+                ))}
+              </select>
+              {fieldErrors.institution_id && (
+                <div style={S.errorText}>{fieldErrors.institution_id}</div>
+              )}
+            </div>
+
+            {/* Department Name */}
+            <div>
+              <label style={S.label}>Department Name</label>
+              <input
+                ref={nameRef}
+                type="text"
+                placeholder="e.g. Computer Science"
+                value={form.name}
+                onChange={(e) => set("name", e.target.value)}
+                disabled={submitting}
+                maxLength={120}
+                style={S.input(!!fieldErrors.name)}
+              />
+              {fieldErrors.name && (
+                <div style={S.errorText}>{fieldErrors.name}</div>
+              )}
+            </div>
+
+            {/* Department Code */}
+            <div>
+              <label style={S.label}>Department Code</label>
+              <input
+                type="text"
+                placeholder="e.g. CS or COMP_SCI"
+                value={form.code}
+                onChange={(e) => set("code", e.target.value.toUpperCase())}
+                disabled={submitting}
+                maxLength={20}
+                style={{
+                  ...S.input(!!fieldErrors.code),
+                  fontFamily: "monospace",
+                  letterSpacing: 1,
+                }}
+              />
+              {fieldErrors.code ? (
+                <div style={S.errorText}>{fieldErrors.code}</div>
+              ) : (
+                <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 4 }}>
+                  Auto-uppercased. Letters, digits, hyphens, underscores only.
+                </div>
+              )}
+            </div>
+
+            {/* Global submit error */}
+            {submitError && (
+              <div
+                style={{
+                  background: "#fef2f2",
+                  border: "1px solid #fecaca",
+                  borderRadius: 8,
+                  padding: "10px 14px",
+                  fontSize: 13,
+                  color: "#b91c1c",
+                }}
+              >
+                {submitError}
+              </div>
+            )}
+          </div>
+
+          {/* Footer */}
+          <div
+            style={{
+              padding: "16px 28px 24px",
+              display: "flex",
+              justifyContent: "flex-end",
+              gap: 10,
+              borderTop: "1px solid #f1f5f9",
+            }}
+          >
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={submitting}
+              style={S.btnGhost}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={submitting}
+              style={S.btnPrimary(submitting)}
+            >
+              {submitting ? "Creating…" : "Create Department"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </Overlay>
+  );
+}
+
+/* ─── Deactivate Confirm Dialog ──────────────────────────────── */
+function ConfirmDialog({ dept, onConfirm, onCancel, loading }) {
+  return (
+    <Overlay>
       <div
         style={{
           background: "#fff",
           borderRadius: 16,
           padding: 32,
-          width: 400,
+          width: "100%",
+          maxWidth: 400,
           boxShadow: "0 20px 60px rgba(0,0,0,0.18)",
         }}
       >
@@ -78,54 +401,19 @@ function ConfirmDialog({ dept, onConfirm, onCancel, loading }) {
         >
           ⚠️
         </div>
-        <h3
-          style={{
-            fontSize: 16,
-            fontWeight: 700,
-            color: "#1e293b",
-            marginBottom: 8,
-          }}
-        >
+        <h3 style={{ fontSize: 16, fontWeight: 700, color: "#1e293b", marginBottom: 8 }}>
           Deactivate Department
         </h3>
-        <p
-          style={{
-            fontSize: 13,
-            color: "#64748b",
-            marginBottom: 6,
-            lineHeight: 1.6,
-          }}
-        >
+        <p style={{ fontSize: 13, color: "#64748b", marginBottom: 6, lineHeight: 1.6 }}>
           You are about to deactivate{" "}
           <strong style={{ color: "#1e293b" }}>{dept.name}</strong>.
         </p>
-        <p
-          style={{
-            fontSize: 13,
-            color: "#94a3b8",
-            marginBottom: 24,
-            lineHeight: 1.6,
-          }}
-        >
-          All members of this department must be inactive before proceeding.
-          This action sets the department status to inactive in the database.
+        <p style={{ fontSize: 13, color: "#94a3b8", marginBottom: 24, lineHeight: 1.6 }}>
+          All members of this department must be inactive before proceeding. The
+          department status will be set to <strong>INACTIVE</strong> in the database.
         </p>
         <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
-          <button
-            onClick={onCancel}
-            disabled={loading}
-            style={{
-              padding: "9px 20px",
-              borderRadius: 9,
-              border: "1.5px solid #e2e8f0",
-              background: "#fff",
-              fontSize: 13,
-              fontWeight: 600,
-              color: "#64748b",
-              cursor: loading ? "not-allowed" : "pointer",
-              opacity: loading ? 0.6 : 1,
-            }}
-          >
+          <button onClick={onCancel} disabled={loading} style={S.btnGhost}>
             Cancel
           </button>
           <button
@@ -135,26 +423,24 @@ function ConfirmDialog({ dept, onConfirm, onCancel, loading }) {
               padding: "9px 20px",
               borderRadius: 9,
               border: "none",
-              background: "#dc2626",
+              background: loading ? "#fca5a5" : "#dc2626",
               fontSize: 13,
               fontWeight: 600,
               color: "#fff",
               cursor: loading ? "not-allowed" : "pointer",
-              opacity: loading ? 0.7 : 1,
             }}
           >
             {loading ? "Deactivating…" : "Deactivate"}
           </button>
         </div>
       </div>
-    </div>
+    </Overlay>
   );
 }
 
-/* ── Department Card ─────────────────────────────────────────── */
+/* ─── Department Card ────────────────────────────────────────── */
 function DepartmentCard({ dept, onDeactivate }) {
-  const status = normalizeStatus(dept.status);
-  const isActive = status === "ACTIVE";
+  const isActive = dept.status === "ACTIVE";
 
   return (
     <div
@@ -165,9 +451,11 @@ function DepartmentCard({ dept, onDeactivate }) {
         padding: "22px 24px",
         boxShadow: "0 1px 4px rgba(0,0,0,0.05)",
         opacity: isActive ? 1 : 0.72,
+        display: "flex",
+        flexDirection: "column",
       }}
     >
-      {/* Card header: code badge + name + status pill */}
+      {/* Top row */}
       <div
         style={{
           display: "flex",
@@ -186,10 +474,11 @@ function DepartmentCard({ dept, onDeactivate }) {
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              fontSize: 11,
+              fontSize: 10,
               fontWeight: 800,
               color: isActive ? "#2563eb" : "#94a3b8",
               letterSpacing: 0.5,
+              fontFamily: "monospace",
             }}
           >
             {dept.code || "—"}
@@ -214,13 +503,14 @@ function DepartmentCard({ dept, onDeactivate }) {
             color: isActive ? "#065f46" : "#94a3b8",
             whiteSpace: "nowrap",
             flexShrink: 0,
+            marginLeft: 8,
           }}
         >
           {isActive ? "Active" : "Inactive"}
         </span>
       </div>
 
-      {/* Stats row */}
+      {/* Stats */}
       <div
         style={{
           display: "flex",
@@ -229,21 +519,18 @@ function DepartmentCard({ dept, onDeactivate }) {
           padding: "12px 14px",
           background: "#f8fafc",
           borderRadius: 10,
+          flex: 1,
         }}
       >
         <div>
-          <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 2 }}>
-            Members
-          </div>
+          <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 2 }}>Members</div>
           <div style={{ fontSize: 20, fontWeight: 700, color: "#1e293b" }}>
             {Number(dept.member_count)}
           </div>
         </div>
         <div style={{ width: 1, background: "#e2e8f0" }} />
         <div>
-          <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 2 }}>
-            Code
-          </div>
+          <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 2 }}>Code</div>
           <div
             style={{
               fontSize: 13,
@@ -258,32 +545,30 @@ function DepartmentCard({ dept, onDeactivate }) {
       </div>
 
       {/* Actions */}
-      <div style={{ display: "flex", gap: 6 }}>
-        <button
-          onClick={() => onDeactivate(dept)}
-          disabled={!isActive}
-          style={{
-            flex: 1,
-            padding: "7px 0",
-            borderRadius: 8,
-            border: "1.5px solid",
-            borderColor: isActive ? "#fee2e2" : "#e2e8f0",
-            background: "#fff",
-            fontSize: 12,
-            fontWeight: 600,
-            color: isActive ? "#dc2626" : "#cbd5e1",
-            cursor: isActive ? "pointer" : "not-allowed",
-          }}
-          title={isActive ? "Deactivate department" : "Already inactive"}
-        >
-          {isActive ? "Deactivate" : "Inactive"}
-        </button>
-      </div>
+      <button
+        onClick={() => onDeactivate(dept)}
+        disabled={!isActive}
+        style={{
+          width: "100%",
+          padding: "8px 0",
+          borderRadius: 8,
+          border: "1.5px solid",
+          borderColor: isActive ? "#fee2e2" : "#e2e8f0",
+          background: "#fff",
+          fontSize: 12,
+          fontWeight: 600,
+          color: isActive ? "#dc2626" : "#cbd5e1",
+          cursor: isActive ? "pointer" : "not-allowed",
+        }}
+        title={isActive ? "Deactivate department" : "Already inactive"}
+      >
+        {isActive ? "Deactivate" : "Inactive"}
+      </button>
     </div>
   );
 }
 
-/* ── Skeleton card (loading placeholder) ─────────────────────── */
+/* ─── Skeleton card ──────────────────────────────────────────── */
 function SkeletonCard() {
   return (
     <div
@@ -292,18 +577,17 @@ function SkeletonCard() {
         border: "1px solid rgba(0,0,0,0.07)",
         borderRadius: 14,
         padding: "22px 24px",
-        boxShadow: "0 1px 4px rgba(0,0,0,0.05)",
       }}
     >
-      {[44, 20, 56, 32].map((w, i) => (
+      {[55, 100, 70, 40].map((w, i) => (
         <div
           key={i}
           style={{
-            height: i === 0 ? 42 : 14,
+            height: i === 1 ? 56 : 14,
             width: `${w}%`,
             background: "#f1f5f9",
             borderRadius: 8,
-            marginBottom: 12,
+            marginBottom: 14,
             animation: "pulse 1.4s ease-in-out infinite",
           }}
         />
@@ -312,7 +596,7 @@ function SkeletonCard() {
   );
 }
 
-/* ── Select ──────────────────────────────────────────────────── */
+/* ─── Styled select ──────────────────────────────────────────── */
 function StyledSelect({ value, onChange, children, minWidth = 180 }) {
   return (
     <select
@@ -336,7 +620,7 @@ function StyledSelect({ value, onChange, children, minWidth = 180 }) {
   );
 }
 
-/* ── Main Export ─────────────────────────────────────────────── */
+/* ─── Main page ──────────────────────────────────────────────── */
 export default function DepartmentManagementPage() {
   const { apiFetch } = useApi();
 
@@ -349,10 +633,11 @@ export default function DepartmentManagementPage() {
   const [loadingDepts, setLoadingDepts] = useState(false);
   const [institutionsError, setInstitutionsError] = useState(null);
 
+  const [showCreate, setShowCreate] = useState(false);
   const [confirmDeactivate, setConfirmDeactivate] = useState(null);
   const [deactivating, setDeactivating] = useState(false);
 
-  const [toast, setToast] = useState(null); // { message, type }
+  const [toast, setToast] = useState(null);
   const toastTimer = useRef(null);
 
   const showToast = useCallback((message, type = "success") => {
@@ -360,11 +645,11 @@ export default function DepartmentManagementPage() {
     setToast({ message, type });
     toastTimer.current = setTimeout(
       () => setToast(null),
-      type === "error" ? 5000 : 3000
+      type === "error" ? 5500 : 3000
     );
   }, []);
 
-  /* ── Fetch institutions once on mount ── */
+  /* ── Load institutions once ── */
   useEffect(() => {
     let cancelled = false;
 
@@ -380,14 +665,13 @@ export default function DepartmentManagementPage() {
           setSelectedInstitutionId(data.data[0].institution_id);
         } else if (data.success) {
           setInstitutions([]);
-          setInstitutionsError("No institutions found.");
+          setInstitutionsError("No institutions found in the system.");
         } else {
           setInstitutionsError(data.message || "Failed to load institutions.");
         }
       } catch (err) {
-        if (cancelled) return;
-        if (!isAuthError(err)) {
-          setInstitutionsError("Failed to load institutions. Please refresh.");
+        if (!cancelled && !isAuthError(err)) {
+          setInstitutionsError("Failed to load institutions. Please refresh the page.");
         }
       } finally {
         if (!cancelled) setLoadingInstitutions(false);
@@ -398,16 +682,14 @@ export default function DepartmentManagementPage() {
     return () => { cancelled = true; };
   }, [apiFetch]);
 
-  /* ── Fetch departments when institution changes ── */
+  /* ── Load departments when institution changes ── */
   const fetchDepartments = useCallback(
     async (institutionId) => {
       if (!institutionId) return;
       setLoadingDepts(true);
       setDepartments([]);
       try {
-        const res = await apiFetch(
-          `/api/departments?institution_id=${institutionId}`
-        );
+        const res = await apiFetch(`/api/departments?institution_id=${institutionId}`);
         const data = await res.json();
         if (data.success) {
           setDepartments(data.data);
@@ -429,7 +711,7 @@ export default function DepartmentManagementPage() {
     fetchDepartments(selectedInstitutionId);
   }, [selectedInstitutionId, fetchDepartments]);
 
-  /* ── Deactivate handler ── */
+  /* ── Deactivate ── */
   async function handleDeactivate() {
     if (!confirmDeactivate) return;
     setDeactivating(true);
@@ -451,20 +733,29 @@ export default function DepartmentManagementPage() {
         setConfirmDeactivate(null);
       }
     } catch (err) {
-      if (!isAuthError(err)) {
-        showToast("Failed to deactivate department.", "error");
-      }
+      if (!isAuthError(err)) showToast("Failed to deactivate department.", "error");
       setConfirmDeactivate(null);
     } finally {
       setDeactivating(false);
     }
   }
 
-  /* ── Client-side status filter ── */
-  const filteredDepts = departments.filter((d) => {
-    if (statusFilter === "ALL") return true;
-    return normalizeStatus(d.status) === statusFilter;
-  });
+  /* ── Creation callback ── */
+  function handleCreated(institutionId, message) {
+    setShowCreate(false);
+    showToast(message, "success");
+    if (institutionId === selectedInstitutionId) {
+      fetchDepartments(institutionId);
+    } else {
+      setSelectedInstitutionId(institutionId);
+    }
+  }
+
+  /* ── Client-side filter ── */
+  const filteredDepts =
+    statusFilter === "ALL"
+      ? departments
+      : departments.filter((d) => d.status === statusFilter);
 
   const selectedInstitutionName =
     institutions.find((i) => i.institution_id === selectedInstitutionId)
@@ -472,16 +763,18 @@ export default function DepartmentManagementPage() {
 
   /* ── Render ── */
   return (
-    <div
-      style={{
-        padding: "32px 36px",
-        fontFamily: "'Plus Jakarta Sans', sans-serif",
-      }}
-    >
-      {/* pulse animation keyframes */}
-      <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}`}</style>
+    <div style={{ padding: "32px 36px", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+      <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.42}}`}</style>
 
       {/* Modals */}
+      {showCreate && (
+        <CreateDeptModal
+          institutions={institutions}
+          defaultInstitutionId={selectedInstitutionId}
+          onClose={() => setShowCreate(false)}
+          onCreated={handleCreated}
+        />
+      )}
       {confirmDeactivate && (
         <ConfirmDialog
           dept={confirmDeactivate}
@@ -491,7 +784,6 @@ export default function DepartmentManagementPage() {
         />
       )}
 
-      {/* Toast */}
       {toast && <Toast message={toast.message} type={toast.type} />}
 
       {/* ── Header ── */}
@@ -518,12 +810,7 @@ export default function DepartmentManagementPage() {
             }}
           >
             <div
-              style={{
-                width: 7,
-                height: 7,
-                borderRadius: "50%",
-                background: "#059669",
-              }}
+              style={{ width: 7, height: 7, borderRadius: "50%", background: "#059669" }}
             />
             <span
               style={{
@@ -549,50 +836,56 @@ export default function DepartmentManagementPage() {
             Departments
           </h1>
           <p style={{ color: "#94a3b8", fontSize: 14 }}>
-            View and manage departments across institutions.
+            Create and manage departments across institutions.
           </p>
         </div>
 
-        {/* Institution selector */}
-        {!loadingInstitutions && !institutionsError && institutions.length > 0 && (
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "flex-end",
-              gap: 4,
-            }}
-          >
-            <span
+        <div style={{ display: "flex", alignItems: "flex-end", gap: 12, flexWrap: "wrap" }}>
+          {/* Institution selector */}
+          {!loadingInstitutions && !institutionsError && institutions.length > 0 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <span style={{ ...S.label, marginBottom: 4 }}>Institution</span>
+              <StyledSelect
+                value={selectedInstitutionId ?? ""}
+                onChange={(v) => setSelectedInstitutionId(v)}
+                minWidth={220}
+              >
+                {institutions.map((inst) => (
+                  <option key={inst.institution_id} value={inst.institution_id}>
+                    {inst.institution_name}
+                  </option>
+                ))}
+              </StyledSelect>
+            </div>
+          )}
+
+          {/* New Department button */}
+          {!loadingInstitutions && !institutionsError && institutions.length > 0 && (
+            <button
+              onClick={() => setShowCreate(true)}
               style={{
-                fontSize: 11,
-                fontWeight: 600,
-                color: "#94a3b8",
-                textTransform: "uppercase",
-                letterSpacing: 0.6,
+                padding: "10px 20px",
+                borderRadius: 10,
+                border: "none",
+                background: "#2563eb",
+                fontSize: 13,
+                fontWeight: 700,
+                color: "#fff",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: 7,
+                whiteSpace: "nowrap",
               }}
             >
-              Institution
-            </span>
-            <StyledSelect
-              value={selectedInstitutionId ?? ""}
-              onChange={(v) => setSelectedInstitutionId(Number(v))}
-              minWidth={220}
-            >
-              {institutions.map((inst) => (
-                <option
-                  key={inst.institution_id}
-                  value={inst.institution_id}
-                >
-                  {inst.institution_name}
-                </option>
-              ))}
-            </StyledSelect>
-          </div>
-        )}
+              <span style={{ fontSize: 18, lineHeight: 1 }}>+</span>
+              New Department
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* ── Institution load error ── */}
+      {/* Institution load error */}
       {institutionsError && (
         <div
           style={{
@@ -623,30 +916,24 @@ export default function DepartmentManagementPage() {
         >
           <div style={{ fontSize: 13, color: "#64748b" }}>
             {loadingDepts ? (
-              "Loading…"
+              "Loading departments…"
             ) : (
               <>
                 <strong style={{ color: "#1e293b" }}>{filteredDepts.length}</strong>{" "}
                 {statusFilter === "ALL"
                   ? "department(s)"
-                  : `${statusFilter.toLowerCase()} department(s)`}{" "}
+                  : `${statusFilter.toLowerCase()} department(s)`}
                 {selectedInstitutionName && (
                   <>
-                    in{" "}
-                    <strong style={{ color: "#1e293b" }}>
-                      {selectedInstitutionName}
-                    </strong>
+                    {" "}in{" "}
+                    <strong style={{ color: "#1e293b" }}>{selectedInstitutionName}</strong>
                   </>
                 )}
               </>
             )}
           </div>
 
-          <StyledSelect
-            value={statusFilter}
-            onChange={setStatusFilter}
-            minWidth={150}
-          >
+          <StyledSelect value={statusFilter} onChange={setStatusFilter} minWidth={150}>
             <option value="ALL">All Statuses</option>
             <option value="ACTIVE">Active</option>
             <option value="INACTIVE">Inactive</option>
@@ -654,7 +941,7 @@ export default function DepartmentManagementPage() {
         </div>
       )}
 
-      {/* ── Department grid ── */}
+      {/* ── Cards grid ── */}
       <div
         style={{
           display: "grid",
@@ -662,42 +949,41 @@ export default function DepartmentManagementPage() {
           gap: 16,
         }}
       >
-        {loadingDepts
-          ? Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)
-          : filteredDepts.length > 0
-          ? filteredDepts.map((dept) => (
-              <DepartmentCard
-                key={dept.department_id}
-                dept={dept}
-                onDeactivate={setConfirmDeactivate}
-              />
-            ))
-          : !loadingInstitutions && (
-              <div
-                style={{
-                  gridColumn: "1 / -1",
-                  textAlign: "center",
-                  padding: "60px 0",
-                  color: "#94a3b8",
-                  fontSize: 14,
-                }}
-              >
+        {loadingDepts ? (
+          Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)
+        ) : filteredDepts.length > 0 ? (
+          filteredDepts.map((dept) => (
+            <DepartmentCard
+              key={dept.department_id}
+              dept={dept}
+              onDeactivate={setConfirmDeactivate}
+            />
+          ))
+        ) : (
+          !loadingInstitutions && (
+            <div
+              style={{
+                gridColumn: "1 / -1",
+                textAlign: "center",
+                padding: "64px 0",
+                color: "#94a3b8",
+              }}
+            >
+              <div style={{ fontSize: 36, marginBottom: 12 }}>🏛️</div>
+              <div style={{ fontSize: 15, fontWeight: 600, color: "#64748b", marginBottom: 6 }}>
                 {statusFilter !== "ALL"
-                  ? `No ${statusFilter.toLowerCase()} departments found.`
-                  : "No departments found for this institution."}
+                  ? `No ${statusFilter.toLowerCase()} departments`
+                  : "No departments yet"}
               </div>
-            )}
+              <div style={{ fontSize: 13 }}>
+                {statusFilter === "ALL"
+                  ? 'Click “New Department” to add the first one.'
+                  : 'Try switching the filter to “All Statuses”.'}
+              </div>
+            </div>
+          )
+        )}
       </div>
     </div>
-  );
-}
-
-/* ── Utility: detect auth errors thrown by useApi ── */
-function isAuthError(err) {
-  const msg = err?.message || "";
-  return (
-    msg.includes("Session expired") ||
-    msg.includes("signed in from another device") ||
-    msg.includes("sign in again")
   );
 }
