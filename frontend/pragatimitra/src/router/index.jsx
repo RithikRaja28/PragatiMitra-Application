@@ -72,6 +72,11 @@ const DirectorsOfficeDash = placeholder("Director's Office Dashboard");
 const Unauthorized        = placeholder("403 — Access Denied");
 
 const router = createBrowserRouter([
+
+  // Redirect root to login
+  { index: true, path: '/', element: <Navigate to="/login" replace /> },
+
+  // Auth routes (login, etc.)
   /* ── Public: Auth pages ── */
   {
     element: <AuthLayout />,
