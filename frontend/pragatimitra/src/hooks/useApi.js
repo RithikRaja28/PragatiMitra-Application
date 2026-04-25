@@ -4,7 +4,7 @@ import { useAuth } from "../store/AuthContext";
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
 export function useApi() {
-  const { token, logout } = useAuth();
+  const { accessToken: token, logout } = useAuth();
 
   const apiFetch = useCallback(
     async (path, options = {}) => {

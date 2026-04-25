@@ -10,7 +10,8 @@ const { Pool } = require("pg");
 /* ---------------------------------------------------
    ROUTES
 --------------------------------------------------- */
-const authRoutes = require("./routes/login");
+const authRoutes        = require("./routes/login");
+const departmentRoutes  = require("./routes/departments");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -76,11 +77,8 @@ app.get("/", (req, res) => {
   res.json({ success: true, message: "Pragatimitra API running." });
 });
 
-app.use("/api/auth", authRoutes);
-
-// Future route modules go here:
-// app.use("/api/users",   require("./routes/users"));
-// app.use("/api/reports", require("./routes/reports"));
+app.use("/api/auth",        authRoutes);
+app.use("/api/departments", departmentRoutes);
 
 /* ---------------------------------------------------
    GLOBAL ERROR HANDLER
