@@ -190,6 +190,150 @@ router.post("/", async (req, res) => {
   }
 });
 
+/* ── PUT /api/departments/:id ───────────────────────────────────
+   Update a department's name, code, and/or status.
+
+   Body: { name, code, status }
+
+   updated_by → req.user.userId  (from JWT)
+   updated_at → now()
+
+   Rules:
+   - Status change to INACTIVE blocked if any ACTIVE users still
+     belong to this department.
+   - Duplicate (name) and (code) checked within the same institution,
+     excluding the department being edited.
+──────────────────────────────────────────────────────────────── */
+router.put("/:id", async (req, res) => {
+  const pool = req.app.locals.pool;
+  const updatedBy = req.user?.userId;
+  const departmentId = req.params.id;
+
+  if (!isUUID(departmentId)) {
+    return res
+      .status(400)
+      .json({ success: false, message: "Invalid department ID." });
+  }
+  if (!isUUID(updatedBy)) {
+    return res
+      .status(401)
+      .json({ success: false, message: "Session is invalid. Please sign in again." });
+  }
+
+  const rawName = typeof req.body.name === "string" ? req.body.name.trim() : "";
+  const rawCode = typeof req.body.code === "string" ? req.body.code.trim().toUpperCase() : "";
+  const rawStatus = typeof req.body.status === "string" ? req.body.status.trim().toUpperCase() : "";
+
+  const errors = {};
+  if (!rawName) errors.name = "Department name is required.";
+  else if (rawName.length > 120) errors.name = "Name must be 120 characters or fewer.";
+
+  if (!rawCode) errors.code = "Department code is required.";
+  else if (rawCode.length > 20) errors.code = "Code must be 20 characters or fewer.";
+  else if (!/^[A-Z0-9_-]+$/.test(rawCode))
+    errors.code = "Code may only contain letters, digits, hyphens, and underscores.";
+
+  if (!["ACTIVE", "INACTIVE"].includes(rawStatus))
+    errors.status = "Status must be ACTIVE or INACTIVE.";
+
+  if (Object.keys(errors).length) {
+    return res.status(400).json({ success: false, errors });
+  }
+
+  try {
+    const { rows: existingRows } = await pool.query(
+      `SELECT department_id, name, code, status, institution_id
+       FROM   departments
+       WHERE  department_id = $1`,
+      [departmentId]
+    );
+    if (!existingRows.length) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Department not found." });
+    }
+    const existing = existingRows[0];
+
+    /* ── Duplicate name (within same institution, excluding self) ── */
+    const { rows: dupName } = await pool.query(
+      `SELECT 1 FROM departments
+       WHERE  institution_id = $1
+         AND  LOWER(name) = LOWER($2)
+         AND  department_id <> $3`,
+      [existing.institution_id, rawName, departmentId]
+    );
+    if (dupName.length) {
+      return res.status(409).json({
+        success: false,
+        errors: {
+          name: `A department named "${rawName}" already exists in this institution.`,
+        },
+      });
+    }
+
+    /* ── Duplicate code (within same institution, excluding self) ── */
+    const { rows: dupCode } = await pool.query(
+      `SELECT 1 FROM departments
+       WHERE  institution_id = $1
+         AND  code = $2
+         AND  department_id <> $3`,
+      [existing.institution_id, rawCode, departmentId]
+    );
+    if (dupCode.length) {
+      return res.status(409).json({
+        success: false,
+        errors: {
+          code: `Code "${rawCode}" is already used by another department in this institution.`,
+        },
+      });
+    }
+
+    /* ── Going ACTIVE → INACTIVE: block if any active users exist ── */
+    if (existing.status === "ACTIVE" && rawStatus === "INACTIVE") {
+      const {
+        rows: [{ active_count }],
+      } = await pool.query(
+        `SELECT COUNT(*) AS active_count
+         FROM   users
+         WHERE  department_id  = $1
+           AND  account_status = 'ACTIVE'`,
+        [departmentId]
+      );
+      if (Number(active_count) > 0) {
+        return res.status(409).json({
+          success: false,
+          message: `Cannot deactivate "${existing.name}": ${active_count} user(s) are still active. Deactivate all members first.`,
+        });
+      }
+    }
+
+    const {
+      rows: [updated],
+    } = await pool.query(
+      `UPDATE departments
+       SET    name       = $2,
+              code       = $3,
+              status     = $4,
+              updated_at = now(),
+              updated_by = $5
+       WHERE  department_id = $1
+       RETURNING department_id, name, code, status, created_at, updated_at`,
+      [departmentId, rawName, rawCode, rawStatus, updatedBy]
+    );
+
+    return res.json({
+      success: true,
+      message: `Department "${updated.name}" updated successfully.`,
+      data: updated,
+    });
+  } catch (err) {
+    console.error("[DEPT] update:", err.message);
+    return res
+      .status(500)
+      .json({ success: false, message: "Failed to update department." });
+  }
+});
+
 /* ── PATCH /api/departments/:id/deactivate ──────────────────────
    Soft-deletes a department (status → INACTIVE).
    Blocked if any ACTIVE users still belong to this department.
