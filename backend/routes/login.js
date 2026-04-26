@@ -58,7 +58,7 @@ async function fetchUser(pool, whereClause, params) {
   const { rows } = await pool.query(
     `SELECT
        u.id, u.email, u.full_name, u.password_hash,
-       u.must_change_password, u.account_status,
+       u.must_change_password, u.is_temporary_password, u.account_status,
        u.institution_id, u.department_id, u.profile_image_url,
        i.institution_name,
        d.name AS department_name,
@@ -104,9 +104,10 @@ function buildUserObject(user) {
     institutionName:    user.institution_name,
     departmentId:       user.department_id,
     departmentName:     user.department_name,
-    profileImageUrl:    user.profile_image_url,
-    mustChangePassword: user.must_change_password,
-    roles:              user.roles || [],
+    profileImageUrl:      user.profile_image_url,
+    mustChangePassword:   user.must_change_password,
+    isTemporaryPassword:  user.is_temporary_password,
+    roles:                user.roles || [],
   };
 }
 
@@ -300,6 +301,64 @@ router.get("/me", refreshLimiter, async (req, res) => {
 
   } catch (err) {
     console.error("[ME ERROR]", err.message);
+    return res.status(500).json({ success: false, message: "Internal server error." });
+  }
+});
+
+/* ── POST /api/auth/change-password ── */
+const { verifyToken } = require("../middleware/auth");
+
+router.post("/change-password", verifyToken, async (req, res) => {
+  const pool = req.app.locals.pool;
+  const { currentPassword, newPassword } = req.body;
+
+  if (!newPassword)
+    return res.status(400).json({ success: false, message: "newPassword is required." });
+
+  if (newPassword.length < 8)
+    return res.status(400).json({ success: false, message: "New password must be at least 8 characters." });
+
+  if (currentPassword === newPassword)
+    return res.status(400).json({ success: false, message: "New password must differ from the current password." });
+
+  try {
+    const { rows } = await pool.query(
+      "SELECT id, password_hash, is_temporary_password FROM users WHERE id = $1 AND account_status = 'ACTIVE'",
+      [req.user.userId]
+    );
+
+    if (!rows.length)
+      return res.status(404).json({ success: false, message: "User not found." });
+
+    const dbUser = rows[0];
+
+    // Skip current-password check for temporary passwords; require it otherwise
+    if (!dbUser.is_temporary_password) {
+      if (!currentPassword)
+        return res.status(400).json({ success: false, message: "currentPassword is required." });
+
+      const match = await bcrypt.compare(currentPassword, dbUser.password_hash);
+      if (!match)
+        return res.status(401).json({ success: false, message: "Current password is incorrect." });
+    }
+
+    const newHash = await bcrypt.hash(newPassword, 12);
+
+    await pool.query(
+      "UPDATE users SET password_hash = $1, must_change_password = false, is_temporary_password = false WHERE id = $2",
+      [newHash, req.user.userId]
+    );
+
+    const user = await fetchUser(pool, "WHERE u.id = $1", [req.user.userId]);
+
+    return res.json({
+      success: true,
+      message: "Password changed successfully.",
+      user: buildUserObject(user),
+    });
+
+  } catch (err) {
+    console.error("[CHANGE-PASSWORD ERROR]", err.message);
     return res.status(500).json({ success: false, message: "Internal server error." });
   }
 });
