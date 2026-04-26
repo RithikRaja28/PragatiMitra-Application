@@ -1,25 +1,18 @@
 /**
  * RootLayout.jsx
  * ─────────────────────────────────────────────────────────────
- * Main layout shell — role-aware.
+ * Main layout shell — role-aware, permission-driven.
  *
  * Flow:
- *  1. useRole() resolves the role (localStorage → backend later)
- *  2. getRoleConfig(role) returns navItems + pages + defaultPage
- *  3. AppShell renders with exactly the right sidebar + content
+ *  1. getRoleConfig(role) returns the full navItems + pages for the role
+ *  2. navItems are filtered by user.roles[0].permissions — items whose
+ *     permission key is false/missing are removed; empty groups are dropped
+ *  3. pages map is narrowed to only the ids visible in filteredNavItems
+ *  4. defaultPage falls back to the first visible item if the configured
+ *     default was filtered out
+ *  5. AppShell receives only what the user is allowed to see
  * ─────────────────────────────────────────────────────────────
-lets plan the Manage role access for the super admin, where he/she must be able to modify the access of these users. The Frontend must display the pages which they have only access to . So this page plays a vital role.
-
-Lets discuss on how we would be designing this page, In the backend we have the role table which has permissions as JSON inside which i think we will be storing this. So lets clarify on how we are going to implement and later start the coding.
-
-"permissions"	"jsonb"	"NO"	"'{}'::jsonb"
-"is_system"	"boolean"	"NO"	"true"
-"created_at"	"timestamp with time zone"	"NO"	"now()"
-"id"	"uuid"	"NO"	"gen_random_uuid()"
-"description"	"text"	"YES"	
-"name"	"text"	"NO"	
-"display_name"	"text"	"NO" 
-*/
+ */
 
 import { Suspense } from "react";
 import AppShell from "../../components/Dashboard/AppShell";
@@ -150,14 +143,29 @@ export default function RootLayout() {
   const config = getRoleConfig(role);
 
   const permissions = user?.roles?.[0]?.permissions ?? {};
+
+  // 1. Filter nav items — keep items with no permission key, or whose key is true
   const filteredNavItems = config.navItems
     .map((group) => ({
       ...group,
       items: group.items.filter(
-        (item) => item.permission === null || item.permission === undefined || permissions[item.permission] === true
+        (item) => item.permission == null || permissions[item.permission] === true
       ),
     }))
     .filter((group) => group.items.length > 0);
+
+  // 2. Narrow pages to only ids reachable via filteredNavItems
+  const visibleIds = new Set(
+    filteredNavItems.flatMap((g) => g.items.map((item) => item.id))
+  );
+  const filteredPages = Object.fromEntries(
+    Object.entries(config.pages).filter(([id]) => visibleIds.has(id))
+  );
+
+  // 3. Ensure defaultPage is still visible; fall back to first visible item
+  const defaultPage = visibleIds.has(config.defaultPage)
+    ? config.defaultPage
+    : filteredNavItems[0]?.items[0]?.id ?? "home";
 
   const shellUser = {
     name: user?.fullName,
@@ -177,8 +185,8 @@ export default function RootLayout() {
       <AppShell
         appName="PragatiMitra"
         navItems={filteredNavItems}
-        pages={config.pages}
-        defaultPage={config.defaultPage}
+        pages={filteredPages}
+        defaultPage={defaultPage}
         user={shellUser}
         notificationCount={2}
         onNavigate={(id) => console.log("Navigated to:", id)}
