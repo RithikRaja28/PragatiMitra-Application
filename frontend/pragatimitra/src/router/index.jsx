@@ -43,11 +43,12 @@ function RootRedirect() {
 }
 
 /* ── Pages ── */
-const Home      = lazy(() => import("../pages/Home"));
-const Dashboard = lazy(() => import("../pages/Dashboard"));
-const Reports   = lazy(() => import("../pages/Reports"));
-const Login     = lazy(() => import("../pages/Login/Login"));
-const NotFound  = lazy(() => import("../pages/NotFound"));
+const Home           = lazy(() => import("../pages/Home"));
+const Dashboard      = lazy(() => import("../pages/Dashboard"));
+const Reports        = lazy(() => import("../pages/Reports"));
+const Login          = lazy(() => import("../pages/Login/Login"));
+const ChangePassword = lazy(() => import("../pages/ChangePassword/ChangePassword"));
+const NotFound       = lazy(() => import("../pages/NotFound"));
 
 const placeholder = (title) => lazy(() =>
   Promise.resolve({
@@ -89,6 +90,11 @@ const router = createBrowserRouter([
   {
     element: <ProtectedRoute />,
     children: [
+      /* Change password — no sidebar, centered card via AuthLayout */
+      {
+        element: <AuthLayout />,
+        children: [{ path: "change-password", element: <ChangePassword /> }],
+      },
       {
         element: <RootLayout />,
         children: [

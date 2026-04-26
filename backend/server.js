@@ -77,10 +77,10 @@ app.get("/", (req, res) => {
   res.json({ success: true, message: "Pragatimitra API running." });
 });
 
-app.use("/api/auth",   authRoutes);
-app.use("/api/users",  require("./routes/users"));
-app.use("/api/lookup", require("./routes/lookup"));
 app.use("/api/auth",        authRoutes);
+app.use("/api/users",       require("./routes/users"));
+app.use("/api/lookup",      require("./routes/lookup"));
+app.use("/api/roles",       require("./routes/roles"));
 app.use("/api/departments", departmentRoutes);
 
 /* ---------------------------------------------------

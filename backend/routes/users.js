@@ -110,8 +110,8 @@ router.post("/", verifyToken, requireRole(["super_admin", "institute_admin"]), a
 
     const { rows } = await pool.query(
       `INSERT INTO users
-         (full_name, email, password_hash, institution_id, department_id, must_change_password, created_by)
-       VALUES ($1, $2, $3, $4, $5, true, $6)
+         (full_name, email, password_hash, institution_id, department_id, must_change_password, is_temporary_password, created_by)
+       VALUES ($1, $2, $3, $4, $5, true, true, $6)
        RETURNING id, full_name, email, account_status`,
       [
         full_name.trim(),

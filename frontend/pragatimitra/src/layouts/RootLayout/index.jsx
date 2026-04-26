@@ -8,7 +8,18 @@
  *  2. getRoleConfig(role) returns navItems + pages + defaultPage
  *  3. AppShell renders with exactly the right sidebar + content
  * ─────────────────────────────────────────────────────────────
- */
+lets plan the Manage role access for the super admin, where he/she must be able to modify the access of these users. The Frontend must display the pages which they have only access to . So this page plays a vital role.
+
+Lets discuss on how we would be designing this page, In the backend we have the role table which has permissions as JSON inside which i think we will be storing this. So lets clarify on how we are going to implement and later start the coding.
+
+"permissions"	"jsonb"	"NO"	"'{}'::jsonb"
+"is_system"	"boolean"	"NO"	"true"
+"created_at"	"timestamp with time zone"	"NO"	"now()"
+"id"	"uuid"	"NO"	"gen_random_uuid()"
+"description"	"text"	"YES"	
+"name"	"text"	"NO"	
+"display_name"	"text"	"NO" 
+*/
 
 import { Suspense } from "react";
 import AppShell from "../../components/Dashboard/AppShell";
@@ -137,16 +148,27 @@ export default function RootLayout() {
   const { user, loading } = useAuth();
   const role = user?.roles?.[0]?.name;
   const config = getRoleConfig(role);
+
+  const permissions = user?.roles?.[0]?.permissions ?? {};
+  const filteredNavItems = config.navItems
+    .map((group) => ({
+      ...group,
+      items: group.items.filter(
+        (item) => item.permission === null || item.permission === undefined || permissions[item.permission] === true
+      ),
+    }))
+    .filter((group) => group.items.length > 0);
+
   const shellUser = {
-  name: user?.fullName,
-  org: user?.institutionName,
-  initials: user?.fullName
-    ?.split(" ")
-    .map(w => w[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase()
-};
+    name: user?.fullName,
+    org: user?.institutionName,
+    initials: user?.fullName
+      ?.split(" ")
+      .map((w) => w[0])
+      .join("")
+      .slice(0, 2)
+      .toUpperCase(),
+  };
 
   if (loading) return <ShellSkeleton />;
 
@@ -154,7 +176,7 @@ export default function RootLayout() {
     <Suspense fallback={<PageLoader />}>
       <AppShell
         appName="PragatiMitra"
-        navItems={config.navItems}
+        navItems={filteredNavItems}
         pages={config.pages}
         defaultPage={config.defaultPage}
         user={shellUser}
