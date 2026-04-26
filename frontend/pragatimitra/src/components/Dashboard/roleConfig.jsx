@@ -20,6 +20,7 @@ import React from "react";
 import UserManagementPage from "../../pages/Roles/superadmin/UserManagementPage";
 import AuditLogsPage from "../../pages/Roles/superadmin/AuditLogsPage";
 import DepartmentManagementPage from "../../pages/Roles/superadmin/DepartmentManagementPage";
+import InstitutionManagementPage from "../../pages/Roles/superadmin/InstitutionManagementPage";
 import RoleAccessPage from "../../pages/Roles/superadmin/RoleAccessPage";
 /* ── Shared placeholder shell (for pages not yet built) ─────── */
 function PlaceholderPage({ title, subtitle, color = "#2563eb" }) {
@@ -255,6 +256,10 @@ export const ROLE_CONFIG = {
         items: [{ id: "departments", label: "Departments", icon: "Building2", permission: "master_data" }],
       },
       {
+        group: "Institution Management",
+        items: [{ id: "institutions", label: "Institutions", icon: "University", permission: "master_data" }],
+    },
+      {
         group: "Access & Data",
         items: [
           { id: "role-access", label: "Role & Access Control", icon: "ShieldCheck", permission: "assign_roles_institute" },
@@ -277,6 +282,7 @@ export const ROLE_CONFIG = {
       
       // Dept Management
       departments: <DepartmentManagementPage />,
+      institutions: <InstitutionManagementPage />,
       // Access & Data
       "role-access": <RoleAccessPage />,
       "master-data": <SuperAdminMasterDataPage />,
