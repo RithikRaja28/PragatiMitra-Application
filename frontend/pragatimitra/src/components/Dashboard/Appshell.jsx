@@ -686,7 +686,7 @@ export default function AppShell({
   pages = {},
   defaultPage,
   logo,
-  appName = "PragatiMitra",
+  appName = "Pragati Mitra",
   user,
   searchPlaceholder,
   onSearch,
