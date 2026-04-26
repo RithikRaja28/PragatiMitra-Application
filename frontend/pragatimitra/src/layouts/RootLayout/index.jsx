@@ -12,8 +12,9 @@
 
 import { Suspense } from "react";
 import AppShell from "../../components/Dashboard/AppShell";
-import { useRole } from "../../components/Dashboard/useRole";
 import "./RootLayout.css";
+import { useAuth } from "../../store/AuthContext";
+import { getRoleConfig } from "../../components/Dashboard/roleConfig";
 
 /* ── Loading state while role resolves ─────────────────────── */
 function ShellSkeleton() {
@@ -133,7 +134,19 @@ function PageLoader() {
 
 /* ── RootLayout ─────────────────────────────────────────────── */
 export default function RootLayout() {
-  const { config, loading } = useRole();
+  const { user, loading } = useAuth();
+  const role = user?.roles?.[0]?.name;
+  const config = getRoleConfig(role);
+  const shellUser = {
+  name: user?.fullName,
+  org: user?.institutionName,
+  initials: user?.fullName
+    ?.split(" ")
+    .map(w => w[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase()
+};
 
   if (loading) return <ShellSkeleton />;
 
@@ -144,7 +157,7 @@ export default function RootLayout() {
         navItems={config.navItems}
         pages={config.pages}
         defaultPage={config.defaultPage}
-        user={config.user}
+        user={shellUser}
         notificationCount={2}
         onNavigate={(id) => console.log("Navigated to:", id)}
       />

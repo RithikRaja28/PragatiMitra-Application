@@ -6,7 +6,7 @@ const rateLimit = require("express-rate-limit");
 
 const router = express.Router();
 
-const REFRESH_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+const REFRESH_TOKEN_TTL_MS = 1 * 24 * 60 * 60 * 1000; // 1 days
 
 /* ── Rate limiters ── */
 const loginLimiter = rateLimit({
