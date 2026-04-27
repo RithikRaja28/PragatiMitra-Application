@@ -83,6 +83,7 @@ app.use("/api/lookup", require("./routes/lookup"));
 app.use("/api/auth",        authRoutes);
 app.use("/api/departments", departmentRoutes);
 app.use("/api/institutions", require("./routes/institutions"));
+app.use("/api/committees", require("./routes/committees"));
 
 /* ---------------------------------------------------
    GLOBAL ERROR HANDLER
