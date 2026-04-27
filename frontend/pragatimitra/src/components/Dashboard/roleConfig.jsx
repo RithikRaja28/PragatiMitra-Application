@@ -251,7 +251,7 @@ export const ROLE_CONFIG = {
       {
         group: "User Management",
         items: [
-          { id: "users", label: "Users", icon: "Users", badge: "12", permission: "manage_dept_users" },
+          { id: "users", label: "Users", icon: "Users", permission: "manage_dept_users" },
         ],
       },
       {
@@ -279,7 +279,7 @@ export const ROLE_CONFIG = {
       {
         group: "Audit",
         items: [
-          { id: "audit-logs", label: "Logs", icon: "ScrollText", badge: "3", permission: "audit_logs" },
+          { id: "audit-logs", label: "Logs", icon: "ScrollText", permission: "audit_logs" },
         ],
       }
     ],
