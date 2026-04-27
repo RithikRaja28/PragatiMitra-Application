@@ -263,9 +263,9 @@ export const ROLE_CONFIG = {
         items: [{ id: "departments", label: "Departments", icon: "Building2" }],
       },
       {
-  group: "Institution Management",
-  items: [{ id: "institutions", label: "Institutions", icon: "University" }],
-},
+        group: "Institution Management",
+        items: [{ id: "institutions", label: "Institutions", icon: "University" }],
+      },
       {
         group: "Access & Data",
         items: [
