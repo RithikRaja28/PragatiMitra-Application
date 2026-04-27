@@ -81,6 +81,9 @@ app.get("/", (req, res) => {
 });
 
 app.use("/api/auth",        authRoutes);
+app.use("/api/users",       require("./routes/users"));
+app.use("/api/lookup",      require("./routes/lookup"));
+app.use("/api/roles",       require("./routes/roles"));
 app.use("/api/users",       userRoutes);
 app.use("/api/lookup",      lookupRoutes);
 app.use("/api/departments", departmentRoutes);
