@@ -2,6 +2,7 @@
 
 const express = require("express");
 const { verifyToken } = require("../middleware/auth");
+const { writeAuditLog } = require("../utils/audit");
 
 const router = express.Router();
 
@@ -75,15 +76,6 @@ router.get("/", async (req, res) => {
 
 /* ── POST /api/departments ──────────────────────────────────────
    Create a new department.
-
-   Body: { name, code, institution_id }
-
-   created_by / updated_by  → req.user.userId  (from JWT)
-   department_id, created_at, updated_at → DB defaults
-   status                   → DB default ('ACTIVE')
-
-   Enforces uniqueness of (institution_id, name) and
-   (institution_id, code) since no DB constraint exists.
 ──────────────────────────────────────────────────────────────── */
 router.post("/", async (req, res) => {
   const pool = req.app.locals.pool;
@@ -93,7 +85,6 @@ router.post("/", async (req, res) => {
   const rawCode = typeof req.body.code === "string" ? req.body.code.trim().toUpperCase() : "";
   const { institution_id } = req.body;
 
-  /* ── Input validation ── */
   const errors = {};
   if (!rawName) errors.name = "Department name is required.";
   else if (rawName.length > 120) errors.name = "Name must be 120 characters or fewer.";
@@ -116,7 +107,6 @@ router.post("/", async (req, res) => {
   }
 
   try {
-    /* ── Verify institution exists and is active ── */
     const { rows: instRows } = await pool.query(
       `SELECT 1 FROM institutions WHERE institution_id = $1 AND status = 'ACTIVE'`,
       [institution_id]
@@ -128,54 +118,46 @@ router.post("/", async (req, res) => {
       });
     }
 
-    /* ── Duplicate name check within the same institution ── */
     const { rows: dupName } = await pool.query(
-      `SELECT 1
-       FROM   departments
-       WHERE  institution_id = $1
-         AND  LOWER(name) = LOWER($2)`,
+      `SELECT 1 FROM departments
+       WHERE  institution_id = $1 AND LOWER(name) = LOWER($2)`,
       [institution_id, rawName]
     );
     if (dupName.length) {
       return res.status(409).json({
         success: false,
-        errors: {
-          name: `A department named "${rawName}" already exists in this institution.`,
-        },
+        errors: { name: `A department named "${rawName}" already exists in this institution.` },
       });
     }
 
-    /* ── Duplicate code check within the same institution ── */
     const { rows: dupCode } = await pool.query(
-      `SELECT 1
-       FROM   departments
-       WHERE  institution_id = $1
-         AND  code = $2`,
+      `SELECT 1 FROM departments
+       WHERE  institution_id = $1 AND code = $2`,
       [institution_id, rawCode]
     );
     if (dupCode.length) {
       return res.status(409).json({
         success: false,
-        errors: {
-          code: `Code "${rawCode}" is already used by another department in this institution.`,
-        },
+        errors: { code: `Code "${rawCode}" is already used by another department in this institution.` },
       });
     }
 
-    /* ── Insert ── */
-    const {
-      rows: [newDept],
-    } = await pool.query(
+    const { rows: [newDept] } = await pool.query(
       `INSERT INTO departments (institution_id, name, code, created_by, updated_by)
        VALUES ($1, $2, $3, $4, $4)
-       RETURNING
-         department_id,
-         name,
-         code,
-         status,
-         created_at`,
+       RETURNING department_id, name, code, status, created_at`,
       [institution_id, rawName, rawCode, createdBy]
     );
+
+    // ── Audit log ──
+    await writeAuditLog(req, {
+      actionType: "DEPT_CREATED",
+      entityType: "DEPARTMENT",
+      entityId:   newDept.department_id,
+      newValue:   { name: newDept.name, code: newDept.code, status: newDept.status },
+      status:     "SUCCESS",
+      message:    `Department "${newDept.name}" created`,
+    });
 
     return res.status(201).json({
       success: true,
@@ -192,17 +174,6 @@ router.post("/", async (req, res) => {
 
 /* ── PUT /api/departments/:id ───────────────────────────────────
    Update a department's name, code, and/or status.
-
-   Body: { name, code, status }
-
-   updated_by → req.user.userId  (from JWT)
-   updated_at → now()
-
-   Rules:
-   - Status change to INACTIVE blocked if any ACTIVE users still
-     belong to this department.
-   - Duplicate (name) and (code) checked within the same institution,
-     excluding the department being edited.
 ──────────────────────────────────────────────────────────────── */
 router.put("/:id", async (req, res) => {
   const pool = req.app.locals.pool;
@@ -220,9 +191,9 @@ router.put("/:id", async (req, res) => {
       .json({ success: false, message: "Session is invalid. Please sign in again." });
   }
 
-  const rawName = typeof req.body.name === "string" ? req.body.name.trim() : "";
-  const rawCode = typeof req.body.code === "string" ? req.body.code.trim().toUpperCase() : "";
-  const rawStatus = typeof req.body.status === "string" ? req.body.status.trim().toUpperCase() : "";
+  const rawName   = typeof req.body.name   === "string" ? req.body.name.trim()                    : "";
+  const rawCode   = typeof req.body.code   === "string" ? req.body.code.trim().toUpperCase()       : "";
+  const rawStatus = typeof req.body.status === "string" ? req.body.status.trim().toUpperCase()     : "";
 
   const errors = {};
   if (!rawName) errors.name = "Department name is required.";
@@ -254,7 +225,6 @@ router.put("/:id", async (req, res) => {
     }
     const existing = existingRows[0];
 
-    /* ── Duplicate name (within same institution, excluding self) ── */
     const { rows: dupName } = await pool.query(
       `SELECT 1 FROM departments
        WHERE  institution_id = $1
@@ -265,13 +235,10 @@ router.put("/:id", async (req, res) => {
     if (dupName.length) {
       return res.status(409).json({
         success: false,
-        errors: {
-          name: `A department named "${rawName}" already exists in this institution.`,
-        },
+        errors: { name: `A department named "${rawName}" already exists in this institution.` },
       });
     }
 
-    /* ── Duplicate code (within same institution, excluding self) ── */
     const { rows: dupCode } = await pool.query(
       `SELECT 1 FROM departments
        WHERE  institution_id = $1
@@ -282,17 +249,12 @@ router.put("/:id", async (req, res) => {
     if (dupCode.length) {
       return res.status(409).json({
         success: false,
-        errors: {
-          code: `Code "${rawCode}" is already used by another department in this institution.`,
-        },
+        errors: { code: `Code "${rawCode}" is already used by another department in this institution.` },
       });
     }
 
-    /* ── Going ACTIVE → INACTIVE: block if any active users exist ── */
     if (existing.status === "ACTIVE" && rawStatus === "INACTIVE") {
-      const {
-        rows: [{ active_count }],
-      } = await pool.query(
+      const { rows: [{ active_count }] } = await pool.query(
         `SELECT COUNT(*) AS active_count
          FROM   users
          WHERE  department_id  = $1
@@ -307,9 +269,7 @@ router.put("/:id", async (req, res) => {
       }
     }
 
-    const {
-      rows: [updated],
-    } = await pool.query(
+    const { rows: [updated] } = await pool.query(
       `UPDATE departments
        SET    name       = $2,
               code       = $3,
@@ -320,6 +280,22 @@ router.put("/:id", async (req, res) => {
        RETURNING department_id, name, code, status, created_at, updated_at`,
       [departmentId, rawName, rawCode, rawStatus, updatedBy]
     );
+
+    // ── Audit log — only record fields that actually changed ──
+    const changedFields = ["name", "code", "status"].filter(
+      (f) => existing[f] !== updated[f]
+    );
+
+    await writeAuditLog(req, {
+      actionType:    "DEPT_UPDATED",
+      entityType:    "DEPARTMENT",
+      entityId:      updated.department_id,
+      oldValue:      { name: existing.name, code: existing.code, status: existing.status },
+      newValue:      { name: updated.name,  code: updated.code,  status: updated.status  },
+      changedFields,
+      status:        "SUCCESS",
+      message:       `Department "${updated.name}" updated`,
+    });
 
     return res.json({
       success: true,
@@ -336,9 +312,6 @@ router.put("/:id", async (req, res) => {
 
 /* ── PATCH /api/departments/:id/deactivate ──────────────────────
    Soft-deletes a department (status → INACTIVE).
-   Blocked if any ACTIVE users still belong to this department.
-
-   Body: { institution_id }
 ──────────────────────────────────────────────────────────────── */
 router.patch("/:id/deactivate", async (req, res) => {
   const pool = req.app.locals.pool;
@@ -358,7 +331,6 @@ router.patch("/:id/deactivate", async (req, res) => {
   }
 
   try {
-    /* ── Verify department belongs to this institution ── */
     const { rows: deptRows } = await pool.query(
       `SELECT department_id, name, status
        FROM   departments
@@ -380,10 +352,7 @@ router.patch("/:id/deactivate", async (req, res) => {
         .json({ success: false, message: "Department is already inactive." });
     }
 
-    /* ── Block if active users exist ── */
-    const {
-      rows: [{ active_count }],
-    } = await pool.query(
+    const { rows: [{ active_count }] } = await pool.query(
       `SELECT COUNT(*) AS active_count
        FROM   users
        WHERE  department_id  = $1
@@ -399,7 +368,6 @@ router.patch("/:id/deactivate", async (req, res) => {
       });
     }
 
-    /* ── Deactivate ── */
     await pool.query(
       `UPDATE departments
        SET    status     = 'INACTIVE',
@@ -408,6 +376,18 @@ router.patch("/:id/deactivate", async (req, res) => {
        WHERE  department_id = $1`,
       [departmentId, updatedBy]
     );
+
+    // ── Audit log ──
+    await writeAuditLog(req, {
+      actionType:    "DEPT_DEACTIVATED",
+      entityType:    "DEPARTMENT",
+      entityId:      departmentId,
+      oldValue:      { status: "ACTIVE" },
+      newValue:      { status: "INACTIVE" },
+      changedFields: ["status"],
+      status:        "SUCCESS",
+      message:       `Department "${dept.name}" deactivated`,
+    });
 
     return res.json({
       success: true,

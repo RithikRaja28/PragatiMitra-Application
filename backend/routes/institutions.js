@@ -2,22 +2,17 @@
 
 const express = require("express");
 const { verifyToken } = require("../middleware/auth");
+const { writeAuditLog } = require("../utils/audit");
 
 const router = express.Router();
 
 router.use(verifyToken);
 
-/* ── UUID validation helper ── */
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const isUUID = (v) => typeof v === "string" && UUID_RE.test(v);
 
-/* ── GET /api/institutions ──────────────────────────────────────
-   List all institutions with department_count and user_count.
-   Uses correlated subqueries instead of JOINs to avoid the
-   row-multiplication bug that inflates counts when both
-   departments and users are joined simultaneously.
-──────────────────────────────────────────────────────────────── */
+/* ── GET /api/institutions ── */
 router.get("/", async (req, res) => {
   const pool = req.app.locals.pool;
   try {
@@ -57,11 +52,7 @@ router.get("/", async (req, res) => {
   }
 });
 
-/* ── POST /api/institutions ─────────────────────────────────────
-   Create a new institution.
-   Body: { institution_name, code, email_domain, address_line1,
-           address_line2?, city, state, country?, pincode }
-──────────────────────────────────────────────────────────────── */
+/* ── POST /api/institutions ── */
 router.post("/", async (req, res) => {
   const pool = req.app.locals.pool;
   const createdBy = req.user?.userId;
@@ -70,17 +61,16 @@ router.post("/", async (req, res) => {
     return res.status(401).json({ success: false, message: "Session is invalid. Please sign in again." });
   }
 
-  const rawName        = typeof req.body.institution_name === "string" ? req.body.institution_name.trim() : "";
-  const rawCode        = typeof req.body.code === "string" ? req.body.code.trim().toUpperCase() : "";
-  const rawDomain      = typeof req.body.email_domain === "string" ? req.body.email_domain.trim().toLowerCase() : "";
-  const rawAddr1       = typeof req.body.address_line1 === "string" ? req.body.address_line1.trim() : "";
-  const rawAddr2       = typeof req.body.address_line2 === "string" ? req.body.address_line2.trim() : "";
-  const rawCity        = typeof req.body.city === "string" ? req.body.city.trim() : "";
-  const rawState       = typeof req.body.state === "string" ? req.body.state.trim() : "";
-  const rawCountry     = typeof req.body.country === "string" ? req.body.country.trim() : "India";
-  const rawPincode     = typeof req.body.pincode === "string" ? req.body.pincode.trim() : "";
+  const rawName    = typeof req.body.institution_name === "string" ? req.body.institution_name.trim() : "";
+  const rawCode    = typeof req.body.code === "string" ? req.body.code.trim().toUpperCase() : "";
+  const rawDomain  = typeof req.body.email_domain === "string" ? req.body.email_domain.trim().toLowerCase() : "";
+  const rawAddr1   = typeof req.body.address_line1 === "string" ? req.body.address_line1.trim() : "";
+  const rawAddr2   = typeof req.body.address_line2 === "string" ? req.body.address_line2.trim() : "";
+  const rawCity    = typeof req.body.city === "string" ? req.body.city.trim() : "";
+  const rawState   = typeof req.body.state === "string" ? req.body.state.trim() : "";
+  const rawCountry = typeof req.body.country === "string" ? req.body.country.trim() : "India";
+  const rawPincode = typeof req.body.pincode === "string" ? req.body.pincode.trim() : "";
 
-  /* ── Validation ── */
   const errors = {};
   if (!rawName)   errors.institution_name = "Institution name is required.";
   else if (rawName.length > 200) errors.institution_name = "Name must be 200 characters or fewer.";
@@ -92,9 +82,9 @@ router.post("/", async (req, res) => {
   if (!rawDomain) errors.email_domain = "Email domain is required.";
   else if (!/^[a-z0-9.-]+\.[a-z]{2,}$/.test(rawDomain)) errors.email_domain = "Enter a valid domain (e.g. college.edu.in).";
 
-  if (!rawAddr1)  errors.address_line1 = "Address line 1 is required.";
-  if (!rawCity)   errors.city = "City is required.";
-  if (!rawState)  errors.state = "State is required.";
+  if (!rawAddr1)   errors.address_line1 = "Address line 1 is required.";
+  if (!rawCity)    errors.city = "City is required.";
+  if (!rawState)   errors.state = "State is required.";
   if (!rawPincode) errors.pincode = "Pincode is required.";
   else if (!/^\d{6}$/.test(rawPincode)) errors.pincode = "Pincode must be 6 digits.";
 
@@ -103,7 +93,6 @@ router.post("/", async (req, res) => {
   }
 
   try {
-    /* ── Duplicate code check ── */
     const { rows: dupCode } = await pool.query(
       `SELECT 1 FROM institutions WHERE LOWER(code) = LOWER($1)`,
       [rawCode]
@@ -115,7 +104,6 @@ router.post("/", async (req, res) => {
       });
     }
 
-    /* ── Duplicate domain check ── */
     const { rows: dupDomain } = await pool.query(
       `SELECT 1 FROM institutions WHERE LOWER(email_domain) = LOWER($1)`,
       [rawDomain]
@@ -127,7 +115,6 @@ router.post("/", async (req, res) => {
       });
     }
 
-    /* ── Insert ── */
     const { rows: [newInst] } = await pool.query(
       `INSERT INTO institutions
          (institution_name, code, email_domain, address_line1, address_line2,
@@ -138,6 +125,24 @@ router.post("/", async (req, res) => {
       [rawName, rawCode, rawDomain, rawAddr1, rawAddr2 || null,
        rawCity, rawState, rawCountry, rawPincode, createdBy]
     );
+
+    // ── Audit log ──
+    await writeAuditLog(req, {
+      actionType: "INST_CREATED",
+      entityType: "INSTITUTION",
+      entityId:   newInst.institution_id,
+      newValue: {
+        name:         newInst.institution_name,
+        code:         newInst.code,
+        email_domain: newInst.email_domain,
+        city:         newInst.city,
+        state:        newInst.state,
+        pincode:      newInst.pincode,
+        status:       newInst.status,
+      },
+      status:  "SUCCESS",
+      message: `Institution "${newInst.institution_name}" created`,
+    });
 
     return res.status(201).json({
       success: true,
@@ -150,9 +155,7 @@ router.post("/", async (req, res) => {
   }
 });
 
-/* ── PUT /api/institutions/:id ──────────────────────────────────
-   Update an institution's details.
-──────────────────────────────────────────────────────────────── */
+/* ── PUT /api/institutions/:id ── */
 router.put("/:id", async (req, res) => {
   const pool = req.app.locals.pool;
   const updatedBy = req.user?.userId;
@@ -177,13 +180,13 @@ router.put("/:id", async (req, res) => {
   const rawStatus  = typeof req.body.status === "string" ? req.body.status.trim().toUpperCase() : "";
 
   const errors = {};
-  if (!rawName)    errors.institution_name = "Institution name is required.";
-  if (!rawCode)    errors.code = "Code is required.";
+  if (!rawName)   errors.institution_name = "Institution name is required.";
+  if (!rawCode)   errors.code = "Code is required.";
   else if (!/^[A-Z0-9_-]+$/.test(rawCode)) errors.code = "Only letters, digits, hyphens, underscores allowed.";
-  if (!rawDomain)  errors.email_domain = "Email domain is required.";
-  if (!rawAddr1)   errors.address_line1 = "Address line 1 is required.";
-  if (!rawCity)    errors.city = "City is required.";
-  if (!rawState)   errors.state = "State is required.";
+  if (!rawDomain) errors.email_domain = "Email domain is required.";
+  if (!rawAddr1)  errors.address_line1 = "Address line 1 is required.";
+  if (!rawCity)   errors.city = "City is required.";
+  if (!rawState)  errors.state = "State is required.";
   if (!rawPincode) errors.pincode = "Pincode is required.";
   else if (!/^\d{6}$/.test(rawPincode)) errors.pincode = "Pincode must be 6 digits.";
   if (!["ACTIVE", "INACTIVE"].includes(rawStatus)) errors.status = "Status must be ACTIVE or INACTIVE.";
@@ -193,16 +196,17 @@ router.put("/:id", async (req, res) => {
   }
 
   try {
-    /* ── Check exists ── */
-    const { rows: existing } = await pool.query(
-      `SELECT institution_id, institution_name, status FROM institutions WHERE institution_id = $1`,
+    const { rows: existingRows } = await pool.query(
+      `SELECT institution_id, institution_name, code, email_domain,
+              city, state, pincode, status
+       FROM institutions WHERE institution_id = $1`,
       [institutionId]
     );
-    if (!existing.length) {
+    if (!existingRows.length) {
       return res.status(404).json({ success: false, message: "Institution not found." });
     }
+    const existing = existingRows[0];
 
-    /* ── Duplicate code (excluding self) ── */
     const { rows: dupCode } = await pool.query(
       `SELECT 1 FROM institutions WHERE LOWER(code) = LOWER($1) AND institution_id <> $2`,
       [rawCode, institutionId]
@@ -214,7 +218,6 @@ router.put("/:id", async (req, res) => {
       });
     }
 
-    /* ── Duplicate domain (excluding self) ── */
     const { rows: dupDomain } = await pool.query(
       `SELECT 1 FROM institutions WHERE LOWER(email_domain) = LOWER($1) AND institution_id <> $2`,
       [rawDomain, institutionId]
@@ -226,8 +229,7 @@ router.put("/:id", async (req, res) => {
       });
     }
 
-    /* ── Block INACTIVE if active users exist ── */
-    if (existing[0].status === "ACTIVE" && rawStatus === "INACTIVE") {
+    if (existing.status === "ACTIVE" && rawStatus === "INACTIVE") {
       const { rows: [{ active_count }] } = await pool.query(
         `SELECT COUNT(*) AS active_count FROM users
          WHERE institution_id = $1 AND account_status = 'ACTIVE'`,
@@ -253,6 +255,39 @@ router.put("/:id", async (req, res) => {
       [rawName, rawCode, rawDomain, rawAddr1, rawAddr2 || null,
        rawCity, rawState, rawCountry, rawPincode, rawStatus, updatedBy, institutionId]
     );
+
+    // ── Audit log — only record fields that actually changed ──
+    const changedFields = [
+      "institution_name", "code", "email_domain",
+      "city", "state", "pincode", "status",
+    ].filter((f) => String(existing[f] ?? "") !== String(updated[f] ?? ""));
+
+    await writeAuditLog(req, {
+      actionType: "INST_UPDATED",
+      entityType: "INSTITUTION",
+      entityId:   updated.institution_id,
+      oldValue: {
+        name:         existing.institution_name,
+        code:         existing.code,
+        email_domain: existing.email_domain,
+        city:         existing.city,
+        state:        existing.state,
+        pincode:      existing.pincode,
+        status:       existing.status,
+      },
+      newValue: {
+        name:         updated.institution_name,
+        code:         updated.code,
+        email_domain: updated.email_domain,
+        city:         updated.city,
+        state:        updated.state,
+        pincode:      updated.pincode,
+        status:       updated.status,
+      },
+      changedFields,
+      status:  "SUCCESS",
+      message: `Institution "${updated.institution_name}" updated`,
+    });
 
     return res.json({
       success: true,

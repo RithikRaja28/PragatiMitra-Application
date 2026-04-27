@@ -1,19 +1,23 @@
 require("dotenv").config();
 
-const express    = require("express");
-const helmet     = require("helmet");
-const cors       = require("cors");
-const cookies    = require("cookie-parser");
-const rateLimit  = require("express-rate-limit");
-const { Pool } = require("pg");
+const express   = require("express");
+const helmet    = require("helmet");
+const cors      = require("cors");
+const cookies   = require("cookie-parser");
+const rateLimit = require("express-rate-limit");
+const { Pool }  = require("pg");
 
 /* ---------------------------------------------------
    ROUTES
 --------------------------------------------------- */
 const authRoutes        = require("./routes/login");
 const departmentRoutes  = require("./routes/departments");
+const institutionRoutes = require("./routes/institutions");
+const userRoutes        = require("./routes/users");
+const lookupRoutes      = require("./routes/lookup");
+const auditLogRoutes    = require("./routes/auditLogs");
 
-const app = express();
+const app  = express();
 const PORT = process.env.PORT || 3000;
 
 /* ---------------------------------------------------
@@ -51,7 +55,7 @@ const pool = new Pool({
   password: process.env.DB_PASSWORD,
   port:     process.env.DB_PORT,
   max:      30,
-  idleTimeoutMillis:    30000,
+  idleTimeoutMillis:       30000,
   connectionTimeoutMillis: 5000,
   ssl:
     process.env.NODE_ENV === "production"
@@ -67,7 +71,6 @@ pool.connect((err, client, release) => {
   release();
 });
 
-// Make pool available in all route handlers via req.app.locals.pool
 app.locals.pool = pool;
 
 /* ---------------------------------------------------
@@ -77,14 +80,17 @@ app.get("/", (req, res) => {
   res.json({ success: true, message: "Pragatimitra API running." });
 });
 
-app.use("/api/auth",   authRoutes);
-app.use("/api/users",  require("./routes/users"));
-app.use("/api/lookup", require("./routes/lookup"));
 app.use("/api/auth",        authRoutes);
+app.use("/api/users",       require("./routes/users"));
+app.use("/api/lookup",      require("./routes/lookup"));
+app.use("/api/roles",       require("./routes/roles"));
+app.use("/api/users",       userRoutes);
+app.use("/api/lookup",      lookupRoutes);
 app.use("/api/departments", departmentRoutes);
 app.use("/api/institutions", require("./routes/institutions"));
 app.use("/api/committees", require("./routes/committees"));
-
+app.use("/api/institutions", institutionRoutes);
+app.use("/api/audit-logs",  auditLogRoutes);
 /* ---------------------------------------------------
    GLOBAL ERROR HANDLER
 --------------------------------------------------- */

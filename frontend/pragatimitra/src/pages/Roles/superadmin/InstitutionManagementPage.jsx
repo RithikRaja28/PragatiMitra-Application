@@ -243,7 +243,7 @@ function CreateInstitutionModal({ onClose, onCreated }) {
 
             <div>
               <label style={S.label}>Institution Name</label>
-              <input ref={nameRef} type="text" placeholder="e.g. RMK Engineering College"
+              <input ref={nameRef} type="text" placeholder="e.g. All India Institute of Ayurveda"
                 value={form.institution_name} onChange={(e) => set("institution_name", e.target.value)}
                 disabled={submitting} maxLength={200} style={S.input(!!fieldErrors.institution_name)} />
               {fieldErrors.institution_name && <div style={S.errorText}>{fieldErrors.institution_name}</div>}
@@ -252,7 +252,7 @@ function CreateInstitutionModal({ onClose, onCreated }) {
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
               <div>
                 <label style={S.label}>Institution Code</label>
-                <input type="text" placeholder="e.g. RMKEC"
+                <input type="text" placeholder="e.g. AIIA"
                   value={form.code} onChange={(e) => set("code", e.target.value.toUpperCase())}
                   disabled={submitting} maxLength={20}
                   style={{ ...S.input(!!fieldErrors.code), fontFamily: "monospace", letterSpacing: 1 }} />
@@ -262,7 +262,7 @@ function CreateInstitutionModal({ onClose, onCreated }) {
               </div>
               <div>
                 <label style={S.label}>Email Domain</label>
-                <input type="text" placeholder="e.g. rmkec.edu.in"
+                <input type="text" placeholder="e.g. aiia.edu.in"
                   value={form.email_domain} onChange={(e) => set("email_domain", e.target.value.toLowerCase())}
                   disabled={submitting} style={S.input(!!fieldErrors.email_domain)} />
                 {fieldErrors.email_domain && <div style={S.errorText}>{fieldErrors.email_domain}</div>}
@@ -290,7 +290,7 @@ function CreateInstitutionModal({ onClose, onCreated }) {
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
               <div>
                 <label style={S.label}>City</label>
-                <input type="text" placeholder="e.g. Chennai"
+                <input type="text" placeholder="e.g. Delhi"
                   value={form.city} onChange={(e) => set("city", e.target.value)}
                   disabled={submitting} style={S.input(!!fieldErrors.city)} />
                 {fieldErrors.city && <div style={S.errorText}>{fieldErrors.city}</div>}
