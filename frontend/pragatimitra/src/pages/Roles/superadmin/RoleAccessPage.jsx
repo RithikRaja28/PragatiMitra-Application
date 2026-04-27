@@ -183,30 +183,17 @@ const BADGE_STYLES = {
   Finance: { background: "#dcfce7", color: "#166534" },
 };
 
-const ROLE_ACCENT_COLORS = [
-  "#2563eb",
-  "#7c3aed",
-  "#059669",
-  "#d97706",
-  "#dc2626",
-  "#0891b2",
-  "#db2777",
-  "#4f46e5",
-  "#16a34a",
-  "#ea580c",
-];
-
 const EMPTY_PERMS = () =>
   Object.fromEntries(ALL_CAP_KEYS.map((k) => [k, false]));
-function permsToChecked(permissions = {}) {
-  return Object.fromEntries(ALL_CAP_KEYS.map((k) => [k, !!permissions[k]]));
+function permsToChecked(p = {}) {
+  return Object.fromEntries(ALL_CAP_KEYS.map((k) => [k, !!p[k]]));
 }
 function countCheckedInGroup(group, checked) {
   return group.caps.filter((c) => checked[c.key]).length;
 }
 
 /* ══════════════════════════════════════════════════════════════
-   SHARED STYLES
+   SHARED
 ══════════════════════════════════════════════════════════════════ */
 const inputStyle = {
   width: "100%",
@@ -271,15 +258,13 @@ function PageBadge({ color, label }) {
 }
 
 /* ══════════════════════════════════════════════════════════════
-   CAPABILITY GROUP — enhanced toggle rows
+   EDITOR: CAPABILITY GROUP — professional, neutral
 ══════════════════════════════════════════════════════════════════ */
 function CapabilityGroup({ group, checked, onChange }) {
   const [open, setOpen] = useState(true);
   const checkedCount = countCheckedInGroup(group, checked);
   const total = group.caps.length;
   const allOn = checkedCount === total;
-  const pct = total > 0 ? (checkedCount / total) * 100 : 0;
-
   const toggleAll = () => {
     const next = !allOn;
     group.caps.forEach((c) => onChange(c.key, next));
@@ -290,124 +275,83 @@ function CapabilityGroup({ group, checked, onChange }) {
       style={{
         background: "#fff",
         border: "1px solid #e2e8f0",
-        borderRadius: 12,
-        marginBottom: 12,
+        borderRadius: 10,
+        marginBottom: 8,
         overflow: "hidden",
-        borderLeft: `3px solid ${group.color}`,
-        boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
       }}
     >
-      {/* Group header */}
+      {/* Header */}
       <div
+        onClick={() => setOpen((o) => !o)}
         style={{
-          padding: "14px 18px",
-          background: "#fafbfc",
-          borderBottom: open ? "1px solid #e2e8f0" : "none",
+          padding: "11px 16px",
           display: "flex",
           alignItems: "center",
           gap: 10,
           cursor: "pointer",
           userSelect: "none",
+          background: open ? "#fafbfc" : "#fff",
+          borderBottom: open ? "1px solid #e2e8f0" : "none",
         }}
-        onClick={() => setOpen((o) => !o)}
       >
-        {/* Icon pill */}
-        <div
+        <span
+          style={{ fontSize: 13, fontWeight: 600, color: "#1e293b", flex: 1 }}
+        >
+          {group.label}
+        </span>
+
+        {/* Count badge — blue only if something checked, grey otherwise */}
+        <span
           style={{
-            width: 32,
-            height: 32,
-            borderRadius: 9,
-            background: group.colorBg,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: 15,
-            flexShrink: 0,
+            fontSize: 11,
+            fontWeight: 600,
+            padding: "1px 7px",
+            borderRadius: 99,
+            background: checkedCount > 0 ? "#eff6ff" : "#f8fafc",
+            color: checkedCount > 0 ? "#2563eb" : "#94a3b8",
+            border: `1px solid ${checkedCount > 0 ? "#bfdbfe" : "#e2e8f0"}`,
+            transition: "all 0.15s",
           }}
         >
-          {group.icon}
-        </div>
+          {checkedCount}/{total}
+        </span>
 
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: "#1e293b" }}>
-            {group.label}
-          </div>
-          {/* Mini progress bar */}
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              marginTop: 4,
-            }}
-          >
-            <div
-              style={{
-                flex: 1,
-                height: 4,
-                borderRadius: 99,
-                background: "#e2e8f0",
-                overflow: "hidden",
-                maxWidth: 120,
-              }}
-            >
-              <div
-                style={{
-                  height: "100%",
-                  width: `${pct}%`,
-                  background: group.color,
-                  borderRadius: 99,
-                  transition: "width 0.25s",
-                }}
-              />
-            </div>
-            <span
-              style={{
-                fontSize: 11,
-                fontWeight: 600,
-                color: checkedCount > 0 ? group.color : "#94a3b8",
-              }}
-            >
-              {checkedCount}/{total}
-            </span>
-          </div>
-        </div>
-
-        {/* Toggle all */}
-        <div
+        {/* Select all — plain text link */}
+        <button
           onClick={(e) => {
             e.stopPropagation();
             toggleAll();
           }}
           style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            padding: "4px 10px",
-            borderRadius: 7,
-            border: `1.5px solid ${allOn ? group.color : "#e2e8f0"}`,
-            background: allOn ? group.colorBg : "#fff",
+            background: "none",
+            border: "none",
             cursor: "pointer",
-            fontSize: 11,
-            fontWeight: 700,
-            color: allOn ? group.color : "#94a3b8",
-            transition: "all 0.15s",
-            flexShrink: 0,
+            padding: 0,
+            fontSize: 12,
+            fontWeight: 600,
+            color: allOn ? "#2563eb" : "#94a3b8",
+            fontFamily: "'Plus Jakarta Sans', sans-serif",
+            transition: "color 0.1s",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.color = "#2563eb";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.color = allOn ? "#2563eb" : "#94a3b8";
           }}
         >
-          {allOn ? "✓ All on" : "Select all"}
-        </div>
+          {allOn ? "Deselect all" : "Select all"}
+        </button>
 
-        {/* Chevron */}
         <svg
-          width="14"
-          height="14"
+          width="13"
+          height="13"
           viewBox="0 0 14 14"
           fill="none"
           style={{
             transform: open ? "rotate(0deg)" : "rotate(-90deg)",
-            transition: "transform 0.2s",
-            color: "#94a3b8",
+            transition: "transform 0.18s",
+            color: "#cbd5e1",
             flexShrink: 0,
           }}
         >
@@ -421,7 +365,7 @@ function CapabilityGroup({ group, checked, onChange }) {
         </svg>
       </div>
 
-      {/* Capability rows */}
+      {/* Rows */}
       {open && (
         <div>
           {group.caps.map((cap, i) => {
@@ -433,41 +377,41 @@ function CapabilityGroup({ group, checked, onChange }) {
                 style={{
                   display: "flex",
                   alignItems: "flex-start",
-                  gap: 14,
-                  padding: "13px 18px",
+                  gap: 12,
+                  padding: "11px 16px",
                   borderBottom:
-                    i < group.caps.length - 1 ? "1px solid #f1f5f9" : "none",
+                    i < group.caps.length - 1 ? "1px solid #f8fafc" : "none",
                   cursor: "pointer",
                   transition: "background 0.1s",
-                  background: isOn ? group.color + "06" : "transparent",
+                  background: isOn ? "#f8faff" : "transparent",
                 }}
                 onMouseEnter={(e) => {
-                  if (!isOn) e.currentTarget.style.background = "#f8fafc";
+                  if (!isOn) e.currentTarget.style.background = "#fafbfc";
                 }}
                 onMouseLeave={(e) => {
                   e.currentTarget.style.background = isOn
-                    ? group.color + "06"
+                    ? "#f8faff"
                     : "transparent";
                 }}
               >
-                {/* Custom toggle */}
+                {/* Checkbox — single blue accent, no per-group colour */}
                 <div
                   style={{
-                    width: 20,
-                    height: 20,
-                    borderRadius: 6,
+                    width: 17,
+                    height: 17,
+                    borderRadius: 5,
                     flexShrink: 0,
-                    marginTop: 1,
-                    border: `2px solid ${isOn ? group.color : "#d1d5db"}`,
-                    background: isOn ? group.color : "#fff",
+                    marginTop: 2,
+                    border: `1.5px solid ${isOn ? "#2563eb" : "#d1d5db"}`,
+                    background: isOn ? "#2563eb" : "#fff",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
-                    transition: "all 0.15s",
+                    transition: "all 0.12s",
                   }}
                 >
                   {isOn && (
-                    <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                    <svg width="9" height="9" viewBox="0 0 10 10" fill="none">
                       <path
                         d="M2 5l2.5 2.5 3.5-4"
                         stroke="#fff"
@@ -483,8 +427,8 @@ function CapabilityGroup({ group, checked, onChange }) {
                   <div
                     style={{
                       fontSize: 13,
-                      fontWeight: isOn ? 600 : 500,
-                      color: isOn ? "#1e293b" : "#374151",
+                      fontWeight: isOn ? 600 : 400,
+                      color: isOn ? "#0f172a" : "#374151",
                       lineHeight: 1.4,
                     }}
                   >
@@ -494,7 +438,7 @@ function CapabilityGroup({ group, checked, onChange }) {
                     style={{
                       fontSize: 11,
                       color: "#94a3b8",
-                      marginTop: 3,
+                      marginTop: 2,
                       lineHeight: 1.5,
                     }}
                   >
@@ -502,17 +446,20 @@ function CapabilityGroup({ group, checked, onChange }) {
                   </div>
                 </div>
 
+                {/* Badge — uniform neutral pill, no per-type colours */}
                 {cap.badge && (
                   <span
                     style={{
                       fontSize: 10,
-                      fontWeight: 700,
-                      padding: "2px 8px",
-                      borderRadius: 99,
+                      fontWeight: 600,
+                      padding: "2px 7px",
+                      borderRadius: 5,
                       flexShrink: 0,
                       marginTop: 2,
-                      letterSpacing: 0.3,
-                      ...BADGE_STYLES[cap.badge],
+                      letterSpacing: 0.2,
+                      background: "#f1f5f9",
+                      color: "#64748b",
+                      border: "1px solid #e2e8f0",
                     }}
                   >
                     {cap.badge}
@@ -528,13 +475,12 @@ function CapabilityGroup({ group, checked, onChange }) {
 }
 
 /* ══════════════════════════════════════════════════════════════
-   PERMISSION SUMMARY SIDEBAR
+   EDITOR: PERMISSION SIDEBAR (colorful)
 ══════════════════════════════════════════════════════════════════ */
 function PermissionSummary({ checked }) {
   const total = ALL_CAP_KEYS.length;
   const selected = ALL_CAP_KEYS.filter((k) => checked[k]).length;
   const pct = total > 0 ? Math.round((selected / total) * 100) : 0;
-
   return (
     <div
       style={{
@@ -559,8 +505,6 @@ function PermissionSummary({ checked }) {
       >
         Permission Summary
       </div>
-
-      {/* Big donut-style percentage */}
       <div style={{ textAlign: "center", marginBottom: 16 }}>
         <div
           style={{
@@ -595,7 +539,6 @@ function PermissionSummary({ checked }) {
           />
         </div>
       </div>
-
       <div
         style={{
           borderTop: "1px solid #f1f5f9",
@@ -672,10 +615,6 @@ function RoleEditor({ role, onSave, onCancel, saving }) {
     );
   }
 
-  function toggleCap(key, val) {
-    setChecked((prev) => ({ ...prev, [key]: val }));
-  }
-
   function handleSave() {
     if (!displayName.trim()) return;
     if (isNew) {
@@ -700,15 +639,24 @@ function RoleEditor({ role, onSave, onCancel, saving }) {
     });
   }
 
+  /* shared focused input style */
+  const focusInput = {
+    ...inputStyle,
+    padding: "10px 14px",
+    borderRadius: 8,
+    fontSize: 13.5,
+    transition: "border-color 0.15s, box-shadow 0.15s",
+  };
+
   return (
     <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
-      {/* Breadcrumb header */}
+      {/* ── Breadcrumb nav ── */}
       <div
         style={{
           display: "flex",
           alignItems: "center",
-          gap: 10,
-          marginBottom: 24,
+          gap: 6,
+          marginBottom: 28,
         }}
       >
         <button
@@ -716,197 +664,333 @@ function RoleEditor({ role, onSave, onCancel, saving }) {
           style={{
             display: "flex",
             alignItems: "center",
-            gap: 6,
-            background: "#f1f5f9",
+            gap: 5,
+            background: "none",
             border: "none",
             cursor: "pointer",
-            color: "#475569",
+            color: "#94a3b8",
             fontSize: 13,
-            fontWeight: 600,
-            padding: "7px 14px",
-            borderRadius: 8,
+            fontWeight: 500,
+            padding: "0",
             fontFamily: "'Plus Jakarta Sans', sans-serif",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.color = "#475569";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.color = "#94a3b8";
           }}
         >
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
             <path
               d="M9 3L5 7l4 4"
               stroke="currentColor"
-              strokeWidth="1.8"
+              strokeWidth="1.6"
               strokeLinecap="round"
               strokeLinejoin="round"
             />
           </svg>
-          Back
+          Roles & Permissions
         </button>
-        <span style={{ color: "#e2e8f0" }}>|</span>
-        <div>
-          <PageBadge color="#0891b2" label="Role & Access Control" />
-        </div>
-        <h2
-          style={{ fontSize: 18, fontWeight: 700, color: "#1e293b", margin: 0 }}
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 14 14"
+          fill="none"
+          style={{ color: "#d1d5db", flexShrink: 0 }}
         >
-          {isNew ? "Create New Role" : `Editing: ${role.display_name}`}
-        </h2>
+          <path
+            d="M5 3l4 4-4 4"
+            stroke="currentColor"
+            strokeWidth="1.4"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+        <span style={{ fontSize: 13, color: "#1e293b", fontWeight: 600 }}>
+          {isNew ? "New Role" : role.display_name}
+        </span>
         {role?.is_system && (
           <span
             style={{
-              fontSize: 11,
+              fontSize: 10,
               fontWeight: 700,
-              background: "#dbeafe",
-              color: "#1d4ed8",
-              padding: "3px 10px",
+              background: "#f1f5f9",
+              color: "#475569",
+              padding: "2px 8px",
               borderRadius: 99,
+              border: "1px solid #e2e8f0",
+              marginLeft: 4,
             }}
           >
-            System Role
+            System
           </span>
         )}
       </div>
 
-      {/* Metadata card */}
-      <div
-        style={{
-          background: "#fff",
-          border: "1px solid #e2e8f0",
-          borderRadius: 14,
-          padding: "20px 24px",
-          marginBottom: 20,
-          boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
-        }}
-      >
-        <div
+      {/* ── Page title block ── */}
+      <div style={{ marginBottom: 32 }}>
+        <h1
           style={{
-            fontSize: 12,
+            fontSize: 22,
             fontWeight: 700,
-            color: "#64748b",
-            textTransform: "uppercase",
-            letterSpacing: 0.6,
-            marginBottom: 16,
+            color: "#0f172a",
+            letterSpacing: "-0.4px",
+            margin: "0 0 4px",
           }}
         >
-          Role Details
-        </div>
-        <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
-          {isNew && (
-            <div style={{ flex: 1, minWidth: 180 }}>
-              <FieldLabel>Role Key *</FieldLabel>
-              <input
-                value={name}
-                onChange={(e) => {
-                  setName(e.target.value);
-                  setNameErr("");
-                }}
-                placeholder="e.g. dept_viewer"
-                style={{
-                  ...inputStyle,
-                  borderColor: nameErr ? "#f87171" : "#e2e8f0",
-                }}
-              />
-              {nameErr && (
-                <span
-                  style={{
-                    fontSize: 11,
-                    color: "#ef4444",
-                    marginTop: 4,
-                    display: "block",
-                  }}
-                >
-                  {nameErr}
-                </span>
-              )}
-            </div>
-          )}
-          <div style={{ flex: 1, minWidth: 180 }}>
-            <FieldLabel>Display Name *</FieldLabel>
-            <input
-              value={displayName}
-              onChange={(e) => setDN(e.target.value)}
-              placeholder="e.g. Department Viewer"
-              style={{
-                ...inputStyle,
-                borderColor: !displayName.trim() ? "#f87171" : "#e2e8f0",
-              }}
-            />
-          </div>
-          {isNew && (
-            <div style={{ flex: 1, minWidth: 180 }}>
-              <FieldLabel>Start from template</FieldLabel>
-              <select
-                onChange={(e) => applyTemplate(e.target.value)}
-                style={inputStyle}
-              >
-                <option value="">— Blank role —</option>
-                {Object.keys(TEMPLATES).map((k) => (
-                  <option key={k} value={k}>
-                    {k.replace(/_/g, " ")}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-          <div style={{ flex: 2, minWidth: 200 }}>
-            <FieldLabel>Description</FieldLabel>
-            <input
-              value={description}
-              onChange={(e) => setDesc(e.target.value)}
-              placeholder="Optional description…"
-              style={inputStyle}
-            />
-          </div>
-        </div>
+          {isNew ? "Create a new role" : `Edit role`}
+        </h1>
+        <p style={{ fontSize: 13.5, color: "#64748b", margin: 0 }}>
+          {isNew
+            ? "Define a name, key, and the capabilities this role will have."
+            : `Adjust the display name, description, and capabilities for ${role.display_name}.`}
+        </p>
       </div>
 
-      {/* Split: capabilities + sidebar */}
-      <div style={{ display: "flex", gap: 20, alignItems: "flex-start" }}>
-        {/* Left: capability groups */}
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div
+      {/* ── Inline fields — no card wrapper ── */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: isNew ? "1fr 1fr 1fr" : "1.4fr 2fr",
+          gap: "0 24px",
+          marginBottom: 28,
+          paddingBottom: 28,
+          borderBottom: "1px solid #f1f5f9",
+        }}
+      >
+        {isNew && (
+          <div>
+            <FieldLabel>Role Key *</FieldLabel>
+            <input
+              value={name}
+              onChange={(e) => {
+                setName(e.target.value);
+                setNameErr("");
+              }}
+              placeholder="e.g. dept_viewer"
+              style={{
+                ...focusInput,
+                borderColor: nameErr ? "#f87171" : "#e2e8f0",
+                fontFamily: "monospace",
+                fontSize: 13,
+              }}
+              onFocus={(e) => {
+                e.target.style.borderColor = "#93c5fd";
+                e.target.style.boxShadow = "0 0 0 3px rgba(59,130,246,0.08)";
+              }}
+              onBlur={(e) => {
+                e.target.style.borderColor = nameErr ? "#f87171" : "#e2e8f0";
+                e.target.style.boxShadow = "none";
+              }}
+            />
+            {nameErr ? (
+              <span
+                style={{
+                  fontSize: 11,
+                  color: "#ef4444",
+                  marginTop: 5,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 4,
+                }}
+              >
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                  <circle
+                    cx="5"
+                    cy="5"
+                    r="4.5"
+                    stroke="#ef4444"
+                    strokeWidth="1"
+                  />
+                  <path
+                    d="M5 3v2.5M5 7h.01"
+                    stroke="#ef4444"
+                    strokeWidth="1.2"
+                    strokeLinecap="round"
+                  />
+                </svg>
+                {nameErr}
+              </span>
+            ) : (
+              <span
+                style={{
+                  fontSize: 11,
+                  color: "#94a3b8",
+                  marginTop: 5,
+                  display: "block",
+                }}
+              >
+                Lowercase snake_case, cannot be changed later.
+              </span>
+            )}
+          </div>
+        )}
+
+        <div>
+          <FieldLabel>Display Name *</FieldLabel>
+          <input
+            value={displayName}
+            onChange={(e) => setDN(e.target.value)}
+            placeholder="e.g. Department Viewer"
             style={{
-              fontSize: 12,
-              fontWeight: 700,
-              color: "#64748b",
-              textTransform: "uppercase",
-              letterSpacing: 0.6,
-              marginBottom: 12,
+              ...focusInput,
+              borderColor:
+                !displayName.trim() && displayName !== ""
+                  ? "#f87171"
+                  : "#e2e8f0",
+            }}
+            onFocus={(e) => {
+              e.target.style.borderColor = "#93c5fd";
+              e.target.style.boxShadow = "0 0 0 3px rgba(59,130,246,0.08)";
+            }}
+            onBlur={(e) => {
+              e.target.style.borderColor = "#e2e8f0";
+              e.target.style.boxShadow = "none";
+            }}
+          />
+          <span
+            style={{
+              fontSize: 11,
+              color: "#94a3b8",
+              marginTop: 5,
+              display: "block",
             }}
           >
-            Capabilities
+            Shown across the platform UI.
+          </span>
+        </div>
+
+        <div>
+          <FieldLabel>Description</FieldLabel>
+          <input
+            value={description}
+            onChange={(e) => setDesc(e.target.value)}
+            placeholder="What is this role for?"
+            style={focusInput}
+            onFocus={(e) => {
+              e.target.style.borderColor = "#93c5fd";
+              e.target.style.boxShadow = "0 0 0 3px rgba(59,130,246,0.08)";
+            }}
+            onBlur={(e) => {
+              e.target.style.borderColor = "#e2e8f0";
+              e.target.style.boxShadow = "none";
+            }}
+          />
+          <span
+            style={{
+              fontSize: 11,
+              color: "#94a3b8",
+              marginTop: 5,
+              display: "block",
+            }}
+          >
+            Optional — helps admins understand the role.
+          </span>
+        </div>
+
+        {isNew && (
+          <div style={{ gridColumn: "1 / -1", marginTop: 4 }}>
+            <FieldLabel>
+              Start from a template{" "}
+              <span
+                style={{
+                  fontWeight: 400,
+                  textTransform: "none",
+                  letterSpacing: 0,
+                  color: "#94a3b8",
+                }}
+              >
+                — optional
+              </span>
+            </FieldLabel>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {Object.keys(TEMPLATES).map((k) => (
+                <button
+                  key={k}
+                  onClick={() => applyTemplate(k)}
+                  style={{
+                    padding: "5px 13px",
+                    borderRadius: 8,
+                    border: "1.5px solid #e2e8f0",
+                    background: "#fff",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color: "#475569",
+                    cursor: "pointer",
+                    fontFamily: "'Plus Jakarta Sans', sans-serif",
+                    transition: "all 0.12s",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.borderColor = "#93c5fd";
+                    e.currentTarget.style.color = "#2563eb";
+                    e.currentTarget.style.background = "#eff6ff";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.borderColor = "#e2e8f0";
+                    e.currentTarget.style.color = "#475569";
+                    e.currentTarget.style.background = "#fff";
+                  }}
+                >
+                  {k.replace(/_/g, " ")}
+                </button>
+              ))}
+              <button
+                onClick={() => applyTemplate("")}
+                style={{
+                  padding: "5px 13px",
+                  borderRadius: 8,
+                  border: "1.5px dashed #e2e8f0",
+                  background: "transparent",
+                  fontSize: 12,
+                  fontWeight: 500,
+                  color: "#94a3b8",
+                  cursor: "pointer",
+                  fontFamily: "'Plus Jakarta Sans', sans-serif",
+                }}
+              >
+                Clear
+              </button>
+            </div>
           </div>
+        )}
+      </div>
+
+      {/* ── Capabilities + sidebar ── */}
+      <div style={{ display: "flex", gap: 20, alignItems: "flex-start" }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <p
+            style={{
+              fontSize: 13,
+              color: "#64748b",
+              margin: "0 0 14px",
+              fontWeight: 400,
+            }}
+          >
+            Select the capabilities this role can perform. Click a group header
+            to collapse it.
+          </p>
           {CAPABILITY_GROUPS.map((g) => (
             <CapabilityGroup
               key={g.label}
               group={g}
               checked={checked}
-              onChange={toggleCap}
+              onChange={(key, val) => setChecked((p) => ({ ...p, [key]: val }))}
             />
           ))}
         </div>
-
-        {/* Right: summary sidebar */}
-        <div style={{ width: 220, flexShrink: 0 }}>
-          <div
-            style={{
-              fontSize: 12,
-              fontWeight: 700,
-              color: "#64748b",
-              textTransform: "uppercase",
-              letterSpacing: 0.6,
-              marginBottom: 12,
-            }}
-          >
-            &nbsp;
-          </div>
+        <div style={{ width: 220, flexShrink: 0, paddingTop: 36 }}>
           <PermissionSummary checked={checked} />
         </div>
       </div>
 
-      {/* Footer */}
+      {/* ── Footer actions ── */}
       <div
         style={{
           display: "flex",
+          alignItems: "center",
           gap: 10,
-          marginTop: 24,
+          marginTop: 28,
           paddingTop: 20,
           borderTop: "1px solid #f1f5f9",
         }}
@@ -916,15 +1000,23 @@ function RoleEditor({ role, onSave, onCancel, saving }) {
           disabled={saving || !displayName.trim()}
           style={{
             padding: "10px 28px",
-            borderRadius: 10,
-            fontSize: 13,
+            borderRadius: 9,
+            fontSize: 13.5,
             fontWeight: 700,
             cursor: saving || !displayName.trim() ? "not-allowed" : "pointer",
-            background: saving || !displayName.trim() ? "#93c5fd" : "#2563eb",
+            background: saving || !displayName.trim() ? "#bfdbfe" : "#2563eb",
             color: "#fff",
             border: "none",
             fontFamily: "'Plus Jakarta Sans', sans-serif",
-            transition: "background 0.2s",
+            transition: "background 0.15s, transform 0.1s",
+          }}
+          onMouseEnter={(e) => {
+            if (!saving && displayName.trim())
+              e.currentTarget.style.background = "#1d4ed8";
+          }}
+          onMouseLeave={(e) => {
+            if (!saving && displayName.trim())
+              e.currentTarget.style.background = "#2563eb";
           }}
         >
           {saving ? "Saving…" : isNew ? "Create Role" : "Save Changes"}
@@ -932,134 +1024,126 @@ function RoleEditor({ role, onSave, onCancel, saving }) {
         <button
           onClick={onCancel}
           style={{
-            padding: "10px 24px",
-            borderRadius: 10,
+            padding: "10px 22px",
+            borderRadius: 9,
             fontSize: 13,
             fontWeight: 600,
             cursor: "pointer",
             background: "#fff",
-            color: "#475569",
+            color: "#64748b",
             border: "1.5px solid #e2e8f0",
             fontFamily: "'Plus Jakarta Sans', sans-serif",
+            transition: "all 0.15s",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.borderColor = "#cbd5e1";
+            e.currentTarget.style.color = "#475569";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.borderColor = "#e2e8f0";
+            e.currentTarget.style.color = "#64748b";
           }}
         >
           Cancel
         </button>
+        {!isNew && !role?.is_system && (
+          <span style={{ fontSize: 12, color: "#94a3b8", marginLeft: "auto" }}>
+            Role key:{" "}
+            <code
+              style={{
+                fontFamily: "monospace",
+                background: "#f8fafc",
+                padding: "1px 6px",
+                borderRadius: 4,
+                color: "#475569",
+              }}
+            >
+              {role.name}
+            </code>
+          </span>
+        )}
       </div>
     </div>
   );
 }
 
 /* ══════════════════════════════════════════════════════════════
-   ROLE CARD (replaces plain table row)
+   ROLE CARD — professional, monochromatic
 ══════════════════════════════════════════════════════════════════ */
-function RoleCard({ role, index, onEdit, onDelete, deleting }) {
-  const accentColor = ROLE_ACCENT_COLORS[index % ROLE_ACCENT_COLORS.length];
+function RoleCard({ role, onEdit, onDelete, deleting }) {
   const permCount = Object.values(role.permissions || {}).filter(
     Boolean,
   ).length;
   const totalCaps = ALL_CAP_KEYS.length;
   const pct = totalCaps > 0 ? Math.round((permCount / totalCaps) * 100) : 0;
+  const activeGroups = CAPABILITY_GROUPS.filter((g) =>
+    g.caps.some((c) => role.permissions?.[c.key]),
+  );
 
   return (
     <div
       style={{
         background: "#fff",
         border: "1px solid #e2e8f0",
-        borderRadius: 14,
-        padding: "20px 22px",
-        boxShadow: "0 1px 4px rgba(0,0,0,0.05)",
-        borderTop: `3px solid ${accentColor}`,
+        borderRadius: 12,
+        padding: "18px 20px",
+        boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
         display: "flex",
         flexDirection: "column",
-        gap: 0,
-        transition: "box-shadow 0.15s, transform 0.15s",
+        transition: "box-shadow 0.15s",
       }}
       onMouseEnter={(e) => {
-        e.currentTarget.style.boxShadow = "0 4px 16px rgba(0,0,0,0.1)";
-        e.currentTarget.style.transform = "translateY(-1px)";
+        e.currentTarget.style.boxShadow = "0 4px 14px rgba(0,0,0,0.08)";
       }}
       onMouseLeave={(e) => {
-        e.currentTarget.style.boxShadow = "0 1px 4px rgba(0,0,0,0.05)";
-        e.currentTarget.style.transform = "translateY(0)";
+        e.currentTarget.style.boxShadow = "0 1px 3px rgba(0,0,0,0.04)";
       }}
     >
-      {/* Top row */}
+      {/* Name + badge */}
       <div
         style={{
           display: "flex",
           alignItems: "flex-start",
           justifyContent: "space-between",
-          marginBottom: 12,
+          marginBottom: 10,
+          gap: 10,
         }}
       >
-        {/* Avatar + name */}
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
           <div
             style={{
-              width: 38,
-              height: 38,
-              borderRadius: 11,
-              background: accentColor + "18",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontSize: 16,
-              flexShrink: 0,
+              fontSize: 14,
+              fontWeight: 700,
+              color: "#1e293b",
+              marginBottom: 2,
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
             }}
           >
-            {
-              ["🛡️", "🔑", "👥", "📊", "💼", "🔍", "📋", "⚙️", "💰", "🎯"][
-                index % 10
-              ]
-            }
+            {role.display_name}
           </div>
-          <div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: "#1e293b" }}>
-              {role.display_name}
-            </div>
-            <div
-              style={{
-                fontSize: 11,
-                color: "#94a3b8",
-                fontFamily: "monospace",
-                marginTop: 1,
-              }}
-            >
-              {role.name}
-            </div>
+          <div
+            style={{ fontSize: 11, color: "#94a3b8", fontFamily: "monospace" }}
+          >
+            {role.name}
           </div>
         </div>
-        {/* Type badge */}
-        {role.is_system ? (
-          <span
-            style={{
-              fontSize: 10,
-              fontWeight: 700,
-              background: "#dbeafe",
-              color: "#1d4ed8",
-              padding: "2px 9px",
-              borderRadius: 99,
-              letterSpacing: 0.3,
-            }}
-          >
-            System
-          </span>
-        ) : (
-          <span
-            style={{
-              fontSize: 10,
-              fontWeight: 700,
-              background: "#f1f5f9",
-              color: "#64748b",
-              padding: "2px 9px",
-              borderRadius: 99,
-              letterSpacing: 0.3,
-            }}
-          >
-            Custom
-          </span>
-        )}
+        <span
+          style={{
+            fontSize: 10,
+            fontWeight: 700,
+            padding: "3px 9px",
+            borderRadius: 99,
+            flexShrink: 0,
+            letterSpacing: 0.3,
+            background: role.is_system ? "#f1f5f9" : "#f8fafc",
+            color: role.is_system ? "#475569" : "#94a3b8",
+            border: "1px solid #e2e8f0",
+          }}
+        >
+          {role.is_system ? "System" : "Custom"}
+        </span>
       </div>
 
       {/* Description */}
@@ -1067,9 +1151,9 @@ function RoleCard({ role, index, onEdit, onDelete, deleting }) {
         style={{
           fontSize: 12,
           color: "#64748b",
-          minHeight: 32,
-          marginBottom: 14,
           lineHeight: 1.6,
+          marginBottom: 14,
+          minHeight: 36,
         }}
       >
         {role.description || (
@@ -1080,7 +1164,7 @@ function RoleCard({ role, index, onEdit, onDelete, deleting }) {
       </div>
 
       {/* Permission bar */}
-      <div style={{ marginBottom: 16 }}>
+      <div style={{ marginBottom: 12 }}>
         <div
           style={{
             display: "flex",
@@ -1091,13 +1175,13 @@ function RoleCard({ role, index, onEdit, onDelete, deleting }) {
           <span style={{ fontSize: 11, color: "#94a3b8", fontWeight: 500 }}>
             Permissions
           </span>
-          <span style={{ fontSize: 11, fontWeight: 700, color: accentColor }}>
-            {permCount}/{totalCaps}
+          <span style={{ fontSize: 11, fontWeight: 700, color: "#475569" }}>
+            {permCount} / {totalCaps}
           </span>
         </div>
         <div
           style={{
-            height: 5,
+            height: 4,
             borderRadius: 99,
             background: "#f1f5f9",
             overflow: "hidden",
@@ -1107,62 +1191,68 @@ function RoleCard({ role, index, onEdit, onDelete, deleting }) {
             style={{
               height: "100%",
               width: `${pct}%`,
-              background: accentColor,
+              background: "#2563eb",
               borderRadius: 99,
+              opacity: pct === 0 ? 0 : 1,
             }}
           />
         </div>
       </div>
 
-      {/* Capability group dots */}
+      {/* Capability area tags — neutral grey pills */}
       <div
-        style={{ display: "flex", gap: 6, marginBottom: 16, flexWrap: "wrap" }}
+        style={{
+          display: "flex",
+          gap: 5,
+          flexWrap: "wrap",
+          marginBottom: 16,
+          minHeight: 22,
+        }}
       >
-        {CAPABILITY_GROUPS.map((g) => {
-          const count = g.caps.filter((c) => role.permissions?.[c.key]).length;
-          return count > 0 ? (
+        {activeGroups.length === 0 ? (
+          <span style={{ fontSize: 11, color: "#cbd5e1", fontStyle: "italic" }}>
+            No capabilities assigned
+          </span>
+        ) : (
+          activeGroups.map((g) => (
             <span
               key={g.label}
               style={{
                 fontSize: 10,
                 fontWeight: 600,
                 padding: "2px 8px",
-                borderRadius: 99,
-                background: g.colorBg,
-                color: g.color,
-                display: "flex",
-                alignItems: "center",
-                gap: 4,
+                borderRadius: 6,
+                background: "#f1f5f9",
+                color: "#64748b",
+                letterSpacing: 0.2,
               }}
             >
-              {g.icon} {g.label}
+              {g.label}
             </span>
-          ) : null;
-        })}
+          ))
+        )}
       </div>
 
       {/* Actions */}
-      <div
-        style={{ display: "flex", gap: 8, marginTop: "auto", paddingTop: 4 }}
-      >
+      <div style={{ display: "flex", gap: 8, marginTop: "auto" }}>
         <button
           onClick={() => onEdit(role)}
           style={{
             flex: 1,
-            padding: "8px 0",
-            borderRadius: 9,
+            padding: "7px 0",
+            borderRadius: 8,
             border: "1.5px solid #e2e8f0",
             background: "#fff",
             fontSize: 12,
             fontWeight: 700,
-            color: accentColor,
+            color: "#2563eb",
             cursor: "pointer",
             fontFamily: "'Plus Jakarta Sans', sans-serif",
             transition: "all 0.15s",
           }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.background = accentColor + "0d";
-            e.currentTarget.style.borderColor = accentColor + "66";
+            e.currentTarget.style.background = "#eff6ff";
+            e.currentTarget.style.borderColor = "#bfdbfe";
           }}
           onMouseLeave={(e) => {
             e.currentTarget.style.background = "#fff";
@@ -1176,15 +1266,28 @@ function RoleCard({ role, index, onEdit, onDelete, deleting }) {
             onClick={() => onDelete(role)}
             disabled={deleting === role.id}
             style={{
-              padding: "8px 14px",
-              borderRadius: 9,
-              border: "1.5px solid #fee2e2",
+              padding: "7px 14px",
+              borderRadius: 8,
+              border: "1.5px solid #e2e8f0",
               background: "#fff",
               fontSize: 12,
               fontWeight: 700,
-              color: deleting === role.id ? "#fca5a5" : "#dc2626",
+              color: deleting === role.id ? "#fca5a5" : "#94a3b8",
               cursor: deleting === role.id ? "not-allowed" : "pointer",
               fontFamily: "'Plus Jakarta Sans', sans-serif",
+              transition: "all 0.15s",
+            }}
+            onMouseEnter={(e) => {
+              if (deleting !== role.id) {
+                e.currentTarget.style.color = "#dc2626";
+                e.currentTarget.style.borderColor = "#fecaca";
+                e.currentTarget.style.background = "#fff5f5";
+              }
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.color = "#94a3b8";
+              e.currentTarget.style.borderColor = "#e2e8f0";
+              e.currentTarget.style.background = "#fff";
             }}
           >
             {deleting === role.id ? "…" : "Delete"}
@@ -1214,14 +1317,10 @@ function RoleList({ roles, onEdit, onDelete, onCreate, deleting }) {
 
   const systemCount = roles.filter((r) => r.is_system).length;
   const customCount = roles.filter((r) => !r.is_system).length;
-  const totalPerms = roles.reduce(
-    (sum, r) => sum + Object.values(r.permissions || {}).filter(Boolean).length,
-    0,
-  );
 
   return (
     <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
-      {/* Page header */}
+      {/* Header */}
       <div style={{ marginBottom: 28 }}>
         <PageBadge color="#0891b2" label="Role & Access Control" />
         <div
@@ -1269,88 +1368,43 @@ function RoleList({ roles, onEdit, onDelete, onCreate, deleting }) {
         </div>
       </div>
 
-      {/* Stat cards */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(3, 1fr)",
-          gap: 14,
-          marginBottom: 24,
-        }}
-      >
+      {/* Stat row — minimal, no colour fills */}
+      <div style={{ display: "flex", gap: 12, marginBottom: 24 }}>
         {[
-          {
-            label: "Total Roles",
-            value: roles.length,
-            color: "#2563eb",
-            bg: "#dbeafe",
-            icon: "🛡️",
-          },
-          {
-            label: "System Roles",
-            value: systemCount,
-            color: "#6d28d9",
-            bg: "#ede9fe",
-            icon: "🔐",
-          },
-          {
-            label: "Custom Roles",
-            value: customCount,
-            color: "#059669",
-            bg: "#d1fae5",
-            icon: "✏️",
-          },
-        ].map(({ label, value, color, bg, icon }) => (
+          { label: "Total Roles", value: roles.length },
+          { label: "System Roles", value: systemCount },
+          { label: "Custom Roles", value: customCount },
+        ].map(({ label, value }) => (
           <div
             key={label}
             style={{
               background: "#fff",
               border: "1px solid #e2e8f0",
-              borderRadius: 14,
-              padding: "18px 20px",
+              borderRadius: 12,
+              padding: "14px 22px",
               boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
-              display: "flex",
-              alignItems: "center",
-              gap: 14,
             }}
           >
             <div
               style={{
-                width: 44,
-                height: 44,
-                borderRadius: 12,
-                background: bg,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: 20,
-                flexShrink: 0,
+                fontSize: 26,
+                fontWeight: 800,
+                color: "#1e293b",
+                letterSpacing: "-0.5px",
+                lineHeight: 1,
               }}
             >
-              {icon}
+              {value}
             </div>
-            <div>
-              <div
-                style={{
-                  fontSize: 28,
-                  fontWeight: 800,
-                  color: "#1e293b",
-                  letterSpacing: "-1px",
-                  lineHeight: 1,
-                }}
-              >
-                {value}
-              </div>
-              <div
-                style={{
-                  fontSize: 12,
-                  color: "#94a3b8",
-                  marginTop: 4,
-                  fontWeight: 500,
-                }}
-              >
-                {label}
-              </div>
+            <div
+              style={{
+                fontSize: 12,
+                color: "#94a3b8",
+                marginTop: 5,
+                fontWeight: 500,
+              }}
+            >
+              {label}
             </div>
           </div>
         ))}
@@ -1358,12 +1412,42 @@ function RoleList({ roles, onEdit, onDelete, onCreate, deleting }) {
 
       {/* Filters */}
       <div style={{ display: "flex", gap: 10, marginBottom: 20 }}>
-        <input
-          placeholder="Search roles…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          style={{ ...inputStyle, flex: 1 }}
-        />
+        <div style={{ position: "relative", flex: 1 }}>
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 14 14"
+            fill="none"
+            style={{
+              position: "absolute",
+              left: 11,
+              top: "50%",
+              transform: "translateY(-50%)",
+              color: "#94a3b8",
+              pointerEvents: "none",
+            }}
+          >
+            <circle
+              cx="6"
+              cy="6"
+              r="4.5"
+              stroke="currentColor"
+              strokeWidth="1.5"
+            />
+            <path
+              d="M10 10l2 2"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+            />
+          </svg>
+          <input
+            placeholder="Search roles…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            style={{ ...inputStyle, paddingLeft: 32 }}
+          />
+        </div>
         <div
           style={{
             display: "flex",
@@ -1402,7 +1486,7 @@ function RoleList({ roles, onEdit, onDelete, onCreate, deleting }) {
         </div>
       </div>
 
-      {/* Role cards grid */}
+      {/* Grid */}
       {filtered.length === 0 ? (
         <div
           style={{
@@ -1421,15 +1505,14 @@ function RoleList({ roles, onEdit, onDelete, onCreate, deleting }) {
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
-            gap: 16,
+            gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
+            gap: 14,
           }}
         >
-          {filtered.map((r, i) => (
+          {filtered.map((r) => (
             <RoleCard
               key={r.id}
               role={r}
-              index={i}
               onEdit={onEdit}
               onDelete={onDelete}
               deleting={deleting}
@@ -1442,11 +1525,10 @@ function RoleList({ roles, onEdit, onDelete, onCreate, deleting }) {
 }
 
 /* ══════════════════════════════════════════════════════════════
-   ROOT ORCHESTRATOR
+   ROOT
 ══════════════════════════════════════════════════════════════════ */
 export default function RoleAccessPage() {
   const { apiFetch } = useApi();
-
   const [roles, setRoles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -1531,7 +1613,6 @@ export default function RoleAccessPage() {
         fontFamily: "'Plus Jakarta Sans', sans-serif",
       }}
     >
-      {/* Toast */}
       {toast && (
         <div
           style={{
@@ -1554,7 +1635,6 @@ export default function RoleAccessPage() {
           {toast.type === "error" ? "✕" : "✓"} {toast.msg}
         </div>
       )}
-
       {loading && (
         <div
           style={{
@@ -1580,7 +1660,6 @@ export default function RoleAccessPage() {
           Loading roles…
         </div>
       )}
-
       {!loading && error && (
         <div
           style={{
@@ -1595,7 +1674,7 @@ export default function RoleAccessPage() {
             gap: 12,
           }}
         >
-          {error}
+          {error}{" "}
           <button
             onClick={loadRoles}
             style={{
@@ -1611,7 +1690,6 @@ export default function RoleAccessPage() {
           </button>
         </div>
       )}
-
       {!loading && !error && view === "list" && (
         <RoleList
           roles={roles}
@@ -1627,7 +1705,6 @@ export default function RoleAccessPage() {
           deleting={deleting}
         />
       )}
-
       {!loading && !error && (view === "edit" || view === "create") && (
         <RoleEditor
           role={view === "edit" ? editing : null}

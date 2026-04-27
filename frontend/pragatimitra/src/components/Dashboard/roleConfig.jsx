@@ -260,7 +260,7 @@ export const ROLE_CONFIG = {
       },
       {
   group: "Institution Management",
-  items: [{ id: "institutions", label: "Institutions", icon: "University ", permission: "master_data" }],
+  items: [{ id: "institutions", label: "Institutions", icon: "University", permission: "master_data" }],
 },
 {
   group: "Committee Management",
