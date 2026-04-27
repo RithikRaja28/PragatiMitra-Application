@@ -85,13 +85,14 @@ async function fetchUser(pool, whereClause, params) {
   return rows[0] || null;
 }
 
-function buildAccessPayload(user) {
+function buildAccessPayload(user, sessionId) {
   return {
     userId:        user.id,
     email:         user.email,
     institutionId: user.institution_id,
     departmentId:  user.department_id,
     roles:         (user.roles || []).map((r) => r.name),
+    sessionId,
   };
 }
 
@@ -154,9 +155,10 @@ router.post("/login", loginLimiter, async (req, res) => {
     const rawRefreshToken = generateRefreshToken();
     const expiresAt       = new Date(Date.now() + REFRESH_TOKEN_TTL_MS);
 
-    await pool.query(
+    const { rows: [{ id: sessionId }] } = await pool.query(
       `INSERT INTO sessions (user_id, token_hash, expires_at)
-       VALUES ($1, $2, $3)`,
+       VALUES ($1, $2, $3)
+       RETURNING id`,
       [user.id, hashToken(rawRefreshToken), expiresAt]
     );
 
@@ -168,7 +170,7 @@ router.post("/login", loginLimiter, async (req, res) => {
     return res.status(200).json({
       success:     true,
       message:     "Login successful.",
-      accessToken: signAccessToken(buildAccessPayload(user)),
+      accessToken: signAccessToken(buildAccessPayload(user, sessionId)),
       user:        buildUserObject(user),
     });
 
@@ -243,7 +245,7 @@ router.post("/refresh", refreshLimiter, async (req, res) => {
 
     return res.status(200).json({
       success:     true,
-      accessToken: signAccessToken(buildAccessPayload(user)),
+      accessToken: signAccessToken(buildAccessPayload(user, session.id)),
     });
 
   } catch (err) {
@@ -295,7 +297,7 @@ router.get("/me", refreshLimiter, async (req, res) => {
 
     return res.status(200).json({
       success:     true,
-      accessToken: signAccessToken(buildAccessPayload(user)),
+      accessToken: signAccessToken(buildAccessPayload(user, session.id)),
       user:        buildUserObject(user),
     });
 
