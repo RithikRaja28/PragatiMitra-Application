@@ -21,6 +21,8 @@ import UserManagementPage from "../../pages/Roles/superadmin/UserManagementPage"
 import AuditLogsPage from "../../pages/Roles/superadmin/AuditLogsPage";
 import DepartmentManagementPage from "../../pages/Roles/superadmin/DepartmentManagementPage";
 import InstitutionManagementPage from "../../pages/Roles/superadmin/InstitutionManagementPage";
+import CommitteeManagementPage from "../../pages/Roles/superadmin/CommitteesManagementPage";
+
 /* ── Shared placeholder shell (for pages not yet built) ─────── */
 function PlaceholderPage({ title, subtitle, color = "#2563eb" }) {
   return (
@@ -266,6 +268,12 @@ export const ROLE_CONFIG = {
   group: "Institution Management",
   items: [{ id: "institutions", label: "Institutions", icon: "University" }],
 },
+{
+  group: "Committee Management",
+  items: [{ id: "committees", label: "Committees", icon: "Users2" }],
+},
+
+
       {
         group: "Access & Data",
         items: [
@@ -277,6 +285,7 @@ export const ROLE_CONFIG = {
           { id: "master-data", label: "Master Data", icon: "Database" },
         ],
       },
+
       {
         group: "Audit",
         items: [
@@ -294,9 +303,11 @@ export const ROLE_CONFIG = {
       // Dept Management
       departments: <DepartmentManagementPage />,
       institutions: <InstitutionManagementPage />,
+      committees: <CommitteeManagementPage />,
       // Access & Data
       "role-access": <SuperAdminRoleAccessPage />,
       "master-data": <SuperAdminMasterDataPage />,
+      
     
       // Audit
       "audit-logs": <AuditLogsPage />,
