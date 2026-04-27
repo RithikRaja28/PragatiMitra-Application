@@ -1,12 +1,16 @@
 /**
  * RootLayout.jsx
  * ─────────────────────────────────────────────────────────────
- * Main layout shell — role-aware.
+ * Main layout shell — role-aware, permission-driven.
  *
  * Flow:
- *  1. useRole() resolves the role (localStorage → backend later)
- *  2. getRoleConfig(role) returns navItems + pages + defaultPage
- *  3. AppShell renders with exactly the right sidebar + content
+ *  1. getRoleConfig(role) returns the full navItems + pages for the role
+ *  2. navItems are filtered by user.roles[0].permissions — items whose
+ *     permission key is false/missing are removed; empty groups are dropped
+ *  3. pages map is narrowed to only the ids visible in filteredNavItems
+ *  4. defaultPage falls back to the first visible item if the configured
+ *     default was filtered out
+ *  5. AppShell receives only what the user is allowed to see
  * ─────────────────────────────────────────────────────────────
  */
 
@@ -137,16 +141,42 @@ export default function RootLayout() {
   const { user, loading } = useAuth();
   const role = user?.roles?.[0]?.name;
   const config = getRoleConfig(role);
+
+  const permissions = user?.roles?.[0]?.permissions ?? {};
+
+  // 1. Filter nav items — keep items with no permission key, or whose key is true
+  const filteredNavItems = config.navItems
+    .map((group) => ({
+      ...group,
+      items: group.items.filter(
+        (item) => item.permission == null || permissions[item.permission] === true
+      ),
+    }))
+    .filter((group) => group.items.length > 0);
+
+  // 2. Narrow pages to only ids reachable via filteredNavItems
+  const visibleIds = new Set(
+    filteredNavItems.flatMap((g) => g.items.map((item) => item.id))
+  );
+  const filteredPages = Object.fromEntries(
+    Object.entries(config.pages).filter(([id]) => visibleIds.has(id))
+  );
+
+  // 3. Ensure defaultPage is still visible; fall back to first visible item
+  const defaultPage = visibleIds.has(config.defaultPage)
+    ? config.defaultPage
+    : filteredNavItems[0]?.items[0]?.id ?? "home";
+
   const shellUser = {
-  name: user?.fullName,
-  org: user?.institutionName,
-  initials: user?.fullName
-    ?.split(" ")
-    .map(w => w[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase()
-};
+    name: user?.fullName,
+    org: user?.institutionName,
+    initials: user?.fullName
+      ?.split(" ")
+      .map((w) => w[0])
+      .join("")
+      .slice(0, 2)
+      .toUpperCase(),
+  };
 
   if (loading) return <ShellSkeleton />;
 
@@ -154,9 +184,9 @@ export default function RootLayout() {
     <Suspense fallback={<PageLoader />}>
       <AppShell
         appName="PragatiMitra"
-        navItems={config.navItems}
-        pages={config.pages}
-        defaultPage={config.defaultPage}
+        navItems={filteredNavItems}
+        pages={filteredPages}
+        defaultPage={defaultPage}
         user={shellUser}
         notificationCount={2}
         onNavigate={(id) => console.log("Navigated to:", id)}

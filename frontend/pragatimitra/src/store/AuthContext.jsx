@@ -131,10 +131,18 @@ export function AuthProvider({ children }) {
     refreshTimer.current = setInterval(refreshAccess, REFRESH_INTERVAL);
   }, [resetIdle, refreshAccess]);
 
+  const updateUser = useCallback((updatedFields) => {
+    setUser((prev) => {
+      const merged = { ...prev, ...updatedFields };
+      localStorage.setItem("pm_user", JSON.stringify(merged));
+      return merged;
+    });
+  }, []);
+
   return (
     <AuthContext.Provider value={{
       user, accessToken, loading, sessionMsg,
-      login, logout, setMsg,
+      login, logout, setMsg, updateUser,
     }}>
       {children}
     </AuthContext.Provider>
