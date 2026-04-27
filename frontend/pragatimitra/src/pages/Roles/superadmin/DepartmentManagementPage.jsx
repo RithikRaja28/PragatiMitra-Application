@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useApi } from "../../../hooks/useApi";
+import { createPortal } from "react-dom"; 
 
 /* ─── Shared style tokens ────────────────────────────────────── */
 const S = {
@@ -75,8 +76,8 @@ function Toast({ message, type }) {
     <div
       style={{
         position: "fixed",
-        bottom: 28,
-        right: 28,
+        top: 20,
+        right: 24,
         background: type === "error" ? "#dc2626" : "#1e293b",
         color: "#fff",
         padding: "13px 20px",
@@ -97,21 +98,32 @@ function Toast({ message, type }) {
 
 /* ─── Overlay wrapper ────────────────────────────────────────── */
 function Overlay({ children }) {
-  return (
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, []);
+
+  return createPortal(
     <div
       style={{
         position: "fixed",
         inset: 0,
         background: "rgba(15,23,42,0.48)",
+        zIndex: 9000,
+        overflowY: "auto",
         display: "flex",
-        alignItems: "center",
         justifyContent: "center",
-        zIndex: 900,
-        padding: 16,
+        alignItems: "center",
+        padding: "24px 16px",
+        boxSizing: "border-box",
       }}
     >
       {children}
-    </div>
+    </div>,
+    document.body,
   );
 }
 
