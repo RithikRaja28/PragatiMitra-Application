@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
+import { createPortal } from "react-dom"; 
 import { useApi } from "../../../hooks/useApi";
 
 /* ─── Shared style tokens ── */
@@ -74,7 +75,7 @@ function isAuthError(err) {
 function Toast({ message, type }) {
   return (
     <div style={{
-      position: "fixed", bottom: 28, right: 28,
+      position: "fixed", top: 20, right: 24,
       background: type === "error" ? "#dc2626" : "#1e293b",
       color: "#fff", padding: "13px 20px", borderRadius: 10,
       fontSize: 13, fontWeight: 500, zIndex: 9999,
@@ -95,25 +96,32 @@ function Toast({ message, type }) {
  * viewport edge-to-edge at all times.
  */
 function Overlay({ children }) {
-  return (
-    <div style={{
-      position: "fixed",
-      inset: 0,
-      background: "rgba(15,23,42,0.48)",
-      zIndex: 900,
-      overflowY: "auto",
-      display: "flex",
-      justifyContent: "center",
-      alignItems: "flex-start",
-      /* top padding gives breathing room; no bottom padding so backdrop
-         hugs the modal bottom — zero grey gap below */
-      paddingTop: 48,
-      paddingLeft: 16,
-      paddingRight: 16,
-      boxSizing: "border-box",
-    }}>
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, []);
+
+  return createPortal(
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(15,23,42,0.48)",
+        zIndex: 9000,
+        overflowY: "auto",
+        display: "flex",
+        justifyContent: "center",
+        alignItems: "center",
+        padding: "24px 16px",
+        boxSizing: "border-box",
+      }}
+    >
       {children}
-    </div>
+    </div>,
+    document.body,
   );
 }
 
