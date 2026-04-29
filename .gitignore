@@ -1,0 +1,26 @@
+# ── Dependencies ─────────────────────────────────────────────
+node_modules/
+**/node_modules/
+
+# ── Environment variables (never commit secrets) ─────────────
+.env
+.env.*
+!.env.example
+
+# ── Log files (generated at runtime, not source code) ────────
+backend/logs/
+*.log
+
+# ── Build output ─────────────────────────────────────────────
+frontend/pragatimitra/dist/
+frontend/pragatimitra/.vite/
+
+# ── OS / editor junk ─────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.vscode/settings.json
+
+# ── Misc ─────────────────────────────────────────────────────
+*.pem
+npm-debug.log*
+yarn-error.log

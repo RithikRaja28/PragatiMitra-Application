@@ -1,3 +1,5 @@
+const logger = require("./logger");
+
 /**
  * audit.js — Call this helper from any route to record an audit event.
  *
@@ -78,7 +80,7 @@ async function writeAuditLog(req, options) {
     );
   } catch (err) {
     // Never let audit failures crash the main request
-    console.error("[AUDIT] Failed to write log:", err.message);
+    logger.error("Failed to write audit log", { stack: err.stack });
   }
 }
 

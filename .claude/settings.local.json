@@ -12,7 +12,10 @@
       "Bash(PGPASSWORD=admin123 psql -h localhost -p 5432 -U postgres -d pragati_mitra -c \"\\\\d institutions\")",
       "Bash(PGPASSWORD=admin123 psql -h localhost -p 5432 -U postgres -d pragati_mitra -c \"SELECT institution_id, institution_name, code FROM institutions;\")",
       "Bash(PGPASSWORD=admin123 psql -h localhost -p 5432 -U postgres -d pragati_mitra -c \"SELECT id, full_name, email, account_status, token_version FROM users;\")",
-      "Bash(PGPASSWORD=admin123 psql -h localhost -p 5432 -U postgres -d pragati_mitra -c \"SELECT u.full_name, u.email, r.name AS role FROM user_roles ur JOIN users u ON u.id = ur.user_id JOIN roles r ON r.id = ur.role_id WHERE ur.revoked_at IS NULL ORDER BY u.full_name;\")"
+      "Bash(PGPASSWORD=admin123 psql -h localhost -p 5432 -U postgres -d pragati_mitra -c \"SELECT u.full_name, u.email, r.name AS role FROM user_roles ur JOIN users u ON u.id = ur.user_id JOIN roles r ON r.id = ur.role_id WHERE ur.revoked_at IS NULL ORDER BY u.full_name;\")",
+      "Bash(npm install *)",
+      "Bash(node -e \"require\\('./utils/logger'\\); console.log\\('logger OK'\\)\")",
+      "Bash(node -e \"require\\('./middleware/requestLogger'\\); require\\('./middleware/errorHandler'\\); console.log\\('middleware OK'\\)\")"
     ]
   }
 }

@@ -5,6 +5,9 @@ const bcrypt  = require("bcrypt");
 const { verifyToken, requireRole } = require("../middleware/auth");
 const { writeAuditLog } = require("../utils/audit");
 
+const logger            = require("../utils/logger");
+const { getLogContext } = logger;
+
 const router = express.Router();
 
 /* ── GET /api/users ── */
@@ -43,7 +46,7 @@ router.get("/", verifyToken, requireRole(["super_admin", "institute_admin"]), as
     `);
     return res.json({ success: true, users: rows });
   } catch (err) {
-    console.error("[GET USERS ERROR]", err.message);
+    logger.error("GET /api/users failed", { ...getLogContext(req), stack: err.stack });
     return res.status(500).json({ success: false, message: "Internal server error." });
   }
 });
@@ -129,7 +132,7 @@ router.put("/:id", verifyToken, requireRole(["super_admin", "institute_admin"]),
   } catch (err) {
     if (err.code === "23505")
       return res.status(409).json({ success: false, message: "Email already in use at this institution." });
-    console.error("[UPDATE USER ERROR]", err.message);
+    logger.error("PUT /api/users/:id failed", { ...getLogContext(req), stack: err.stack });
     return res.status(500).json({ success: false, message: "Internal server error." });
   }
 });
@@ -196,7 +199,7 @@ router.post("/", verifyToken, requireRole(["super_admin", "institute_admin"]), a
   } catch (err) {
     if (err.code === "23505")
       return res.status(409).json({ success: false, message: "Email already exists at this institution." });
-    console.error("[CREATE USER ERROR]", err.message);
+    logger.error("POST /api/users failed", { ...getLogContext(req), stack: err.stack });
     return res.status(500).json({ success: false, message: "Internal server error." });
   }
 });
