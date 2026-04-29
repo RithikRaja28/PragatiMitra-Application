@@ -1633,8 +1633,8 @@ export default function RoleAccessPage() {
         <div
           style={{
             position: "fixed",
-            bottom: 28,
-            right: 28,
+            top: 20,
+            right: 24,
             zIndex: 9999,
             padding: "12px 20px",
             borderRadius: 10,
