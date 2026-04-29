@@ -1,141 +1,34 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useApi } from "../../../hooks/useApi";
-import { createPortal } from "react-dom"; 
+import FormScreen from "../../../components/shared/FormScreen";
+import { S, Toast, isAuthError, formatDate } from "../../../components/shared/formUtils";
 
-/* ─── Shared style tokens ────────────────────────────────────── */
-const S = {
-  label: {
-    display: "block",
-    fontSize: 11,
-    fontWeight: 700,
-    color: "#64748b",
-    textTransform: "uppercase",
-    letterSpacing: 0.7,
-    marginBottom: 6,
-  },
-  input: (hasError) => ({
-    width: "100%",
-    padding: "9px 12px",
-    border: `1.5px solid ${hasError ? "#f87171" : "#e2e8f0"}`,
-    borderRadius: 9,
-    fontSize: 13,
-    color: "#1e293b",
-    outline: "none",
-    boxSizing: "border-box",
-    background: "#fff",
-    transition: "border-color .15s",
-  }),
-  errorText: {
-    fontSize: 11,
-    color: "#dc2626",
-    marginTop: 4,
-  },
-  btnPrimary: (disabled) => ({
-    padding: "9px 22px",
-    borderRadius: 9,
-    border: "none",
-    background: disabled ? "#93c5fd" : "#2563eb",
-    fontSize: 13,
-    fontWeight: 700,
-    color: "#fff",
-    cursor: disabled ? "not-allowed" : "pointer",
-  }),
-  btnGhost: {
-    padding: "9px 20px",
-    borderRadius: 9,
-    border: "1.5px solid #e2e8f0",
-    background: "#fff",
-    fontSize: 13,
-    fontWeight: 600,
-    color: "#64748b",
-    cursor: "pointer",
-  },
-};
-
-/* ─── Helpers ────────────────────────────────────────────────── */
-function formatDate(iso) {
-  if (!iso) return "—";
-  return new Date(iso).toLocaleDateString("en-US", {
-    month: "short",
-    year: "numeric",
-  });
-}
-
-function isAuthError(err) {
-  const m = err?.message || "";
-  return (
-    m.includes("Session expired") ||
-    m.includes("signed in from another device") ||
-    m.includes("sign in again")
-  );
-}
-
-/* ─── Toast ─────────────────────────────────────────────────── */
-function Toast({ message, type }) {
-  return (
-    <div
-      style={{
-        position: "fixed",
-        top: 20,
-        right: 24,
-        background: type === "error" ? "#dc2626" : "#1e293b",
-        color: "#fff",
-        padding: "13px 20px",
-        borderRadius: 10,
-        fontSize: 13,
-        fontWeight: 500,
-        zIndex: 9999,
-        boxShadow: "0 8px 28px rgba(0,0,0,0.22)",
-        maxWidth: 440,
-        lineHeight: 1.55,
-      }}
-    >
-      {type === "error" ? "✕  " : "✓  "}
-      {message}
-    </div>
-  );
-}
-
-/* ─── Overlay wrapper ────────────────────────────────────────── */
-function Overlay({ children }) {
-  useEffect(() => {
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = prev;
-    };
-  }, []);
-
-  return createPortal(
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(15,23,42,0.48)",
-        zIndex: 9000,
-        overflowY: "auto",
-        display: "flex",
-        justifyContent: "center",
-        alignItems: "center",
-        padding: "24px 16px",
-        boxSizing: "border-box",
-      }}
-    >
-      {children}
-    </div>,
-    document.body,
-  );
-}
-
-/* ─── Create Department Modal ────────────────────────────────── */
-function CreateDeptModal({ institutions, defaultInstitutionId, onClose, onCreated }) {
+/* ─── Department Form (create + edit) ───────────────────────────
+   Rendered as a full screen instead of an overlay modal.
+   mode === 'create' → shows institution selector, no status field
+   mode === 'edit'   → shows status dropdown, no institution selector
+─────────────────────────────────────────────────────────────── */
+function DepartmentForm({
+  mode,
+  entity,
+  institutions,
+  defaultInstitutionId,
+  onCreated,
+  onSaved,
+  onBack,
+}) {
   const { apiFetch } = useApi();
+  const isEdit = mode === "edit";
 
-  const [form, setForm] = useState({
-    name: "",
-    code: "",
-    institution_id: defaultInstitutionId || institutions[0]?.institution_id || "",
-  });
+  const [form, setForm] = useState(
+    isEdit
+      ? { name: entity.name || "", code: entity.code || "", status: entity.status || "ACTIVE" }
+      : {
+          name: "",
+          code: "",
+          institution_id: defaultInstitutionId || institutions[0]?.institution_id || "",
+        }
+  );
   const [fieldErrors, setFieldErrors] = useState({});
   const [submitError, setSubmitError] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -157,264 +50,8 @@ function CreateDeptModal({ institutions, defaultInstitutionId, onClose, onCreate
     if (!form.code.trim()) errs.code = "Department code is required.";
     else if (!/^[A-Za-z0-9_-]+$/.test(form.code.trim()))
       errs.code = "Only letters, digits, hyphens, and underscores allowed.";
-    if (!form.institution_id) errs.institution_id = "Please select an institution.";
-    setFieldErrors(errs);
-    return Object.keys(errs).length === 0;
-  }
-
-  async function handleSubmit(e) {
-    e.preventDefault();
-    if (!clientValidate()) return;
-
-    setSubmitting(true);
-    setSubmitError("");
-
-    try {
-      const res = await apiFetch("/api/departments", {
-        method: "POST",
-        body: JSON.stringify({
-          name: form.name.trim(),
-          code: form.code.trim().toUpperCase(),
-          institution_id: form.institution_id,
-        }),
-      });
-      const data = await res.json();
-
-      if (data.success) {
-        onCreated(form.institution_id, data.message);
-      } else if (data.errors) {
-        setFieldErrors(data.errors);
-      } else {
-        setSubmitError(data.message || "Failed to create department.");
-      }
-    } catch (err) {
-      if (!isAuthError(err)) {
-        setSubmitError("Network error. Please try again.");
-      }
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  return (
-    <Overlay>
-      <div
-        style={{
-          background: "#fff",
-          borderRadius: 18,
-          width: "100%",
-          maxWidth: 480,
-          boxShadow: "0 24px 64px rgba(0,0,0,0.18)",
-          overflow: "hidden",
-        }}
-      >
-        {/* Modal header */}
-        <div
-          style={{
-            padding: "24px 28px 20px",
-            borderBottom: "1px solid #f1f5f9",
-            display: "flex",
-            alignItems: "center",
-            gap: 14,
-          }}
-        >
-          <div
-            style={{
-              width: 40,
-              height: 40,
-              borderRadius: 11,
-              background: "#eff6ff",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontSize: 20,
-              flexShrink: 0,
-            }}
-          >
-            🏛️
-          </div>
-          <div>
-            <div style={{ fontSize: 16, fontWeight: 700, color: "#1e293b" }}>
-              New Department
-            </div>
-            <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 2 }}>
-              Fill in the details below to add a department.
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            disabled={submitting}
-            style={{
-              marginLeft: "auto",
-              background: "none",
-              border: "none",
-              fontSize: 20,
-              color: "#94a3b8",
-              cursor: submitting ? "not-allowed" : "pointer",
-              lineHeight: 1,
-              padding: 4,
-            }}
-            aria-label="Close"
-          >
-            ✕
-          </button>
-        </div>
-
-        {/* Form body */}
-        <form onSubmit={handleSubmit} noValidate>
-          <div style={{ padding: "24px 28px", display: "flex", flexDirection: "column", gap: 18 }}>
-
-            {/* Institution */}
-            <div>
-              <label style={S.label}>Institution</label>
-              <select
-                value={form.institution_id}
-                onChange={(e) => set("institution_id", e.target.value)}
-                disabled={submitting}
-                style={{
-                  ...S.input(!!fieldErrors.institution_id),
-                  appearance: "none",
-                  backgroundImage:
-                    "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%2394a3b8' d='M6 8L0 0h12z'/%3E%3C/svg%3E\")",
-                  backgroundRepeat: "no-repeat",
-                  backgroundPosition: "right 12px center",
-                  paddingRight: 32,
-                }}
-              >
-                {institutions.map((inst) => (
-                  <option key={inst.institution_id} value={inst.institution_id}>
-                    {inst.institution_name}
-                  </option>
-                ))}
-              </select>
-              {fieldErrors.institution_id && (
-                <div style={S.errorText}>{fieldErrors.institution_id}</div>
-              )}
-            </div>
-
-            {/* Department Name */}
-            <div>
-              <label style={S.label}>Department Name</label>
-              <input
-                ref={nameRef}
-                type="text"
-                placeholder="e.g. Computer Science"
-                value={form.name}
-                onChange={(e) => set("name", e.target.value)}
-                disabled={submitting}
-                maxLength={120}
-                style={S.input(!!fieldErrors.name)}
-              />
-              {fieldErrors.name && (
-                <div style={S.errorText}>{fieldErrors.name}</div>
-              )}
-            </div>
-
-            {/* Department Code */}
-            <div>
-              <label style={S.label}>Department Code</label>
-              <input
-                type="text"
-                placeholder="e.g. CS or COMP_SCI"
-                value={form.code}
-                onChange={(e) => set("code", e.target.value.toUpperCase())}
-                disabled={submitting}
-                maxLength={20}
-                style={{
-                  ...S.input(!!fieldErrors.code),
-                  fontFamily: "monospace",
-                  letterSpacing: 1,
-                }}
-              />
-              {fieldErrors.code ? (
-                <div style={S.errorText}>{fieldErrors.code}</div>
-              ) : (
-                <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 4 }}>
-                  Auto-uppercased. Letters, digits, hyphens, underscores only.
-                </div>
-              )}
-            </div>
-
-            {/* Global submit error */}
-            {submitError && (
-              <div
-                style={{
-                  background: "#fef2f2",
-                  border: "1px solid #fecaca",
-                  borderRadius: 8,
-                  padding: "10px 14px",
-                  fontSize: 13,
-                  color: "#b91c1c",
-                }}
-              >
-                {submitError}
-              </div>
-            )}
-          </div>
-
-          {/* Footer */}
-          <div
-            style={{
-              padding: "16px 28px 24px",
-              display: "flex",
-              justifyContent: "flex-end",
-              gap: 10,
-              borderTop: "1px solid #f1f5f9",
-            }}
-          >
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={submitting}
-              style={S.btnGhost}
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={submitting}
-              style={S.btnPrimary(submitting)}
-            >
-              {submitting ? "Creating…" : "Create Department"}
-            </button>
-          </div>
-        </form>
-      </div>
-    </Overlay>
-  );
-}
-
-/* ─── Edit Department Modal ──────────────────────────────────── */
-function EditDeptModal({ dept, onClose, onSaved }) {
-  const { apiFetch } = useApi();
-
-  const [form, setForm] = useState({
-    name: dept.name || "",
-    code: dept.code || "",
-    status: dept.status || "ACTIVE",
-  });
-  const [fieldErrors, setFieldErrors] = useState({});
-  const [submitError, setSubmitError] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const nameRef = useRef(null);
-
-  useEffect(() => {
-    nameRef.current?.focus();
-  }, []);
-
-  function set(key, value) {
-    setForm((f) => ({ ...f, [key]: value }));
-    if (fieldErrors[key]) setFieldErrors((e) => ({ ...e, [key]: "" }));
-    if (submitError) setSubmitError("");
-  }
-
-  function clientValidate() {
-    const errs = {};
-    if (!form.name.trim()) errs.name = "Department name is required.";
-    if (!form.code.trim()) errs.code = "Department code is required.";
-    else if (!/^[A-Za-z0-9_-]+$/.test(form.code.trim()))
-      errs.code = "Only letters, digits, hyphens, and underscores allowed.";
-    if (!["ACTIVE", "INACTIVE"].includes(form.status))
+    if (!isEdit && !form.institution_id) errs.institution_id = "Please select an institution.";
+    if (isEdit && !["ACTIVE", "INACTIVE"].includes(form.status))
       errs.status = "Status must be Active or Inactive.";
     setFieldErrors(errs);
     return Object.keys(errs).length === 0;
@@ -423,229 +60,153 @@ function EditDeptModal({ dept, onClose, onSaved }) {
   async function handleSubmit(e) {
     e.preventDefault();
     if (!clientValidate()) return;
-
     setSubmitting(true);
     setSubmitError("");
-
     try {
-      const res = await apiFetch(`/api/departments/${dept.department_id}`, {
-        method: "PUT",
-        body: JSON.stringify({
-          name: form.name.trim(),
-          code: form.code.trim().toUpperCase(),
-          status: form.status,
-        }),
-      });
+      const res = isEdit
+        ? await apiFetch(`/api/departments/${entity.department_id}`, {
+            method: "PUT",
+            body: JSON.stringify({
+              name: form.name.trim(),
+              code: form.code.trim().toUpperCase(),
+              status: form.status,
+            }),
+          })
+        : await apiFetch("/api/departments", {
+            method: "POST",
+            body: JSON.stringify({
+              name: form.name.trim(),
+              code: form.code.trim().toUpperCase(),
+              institution_id: form.institution_id,
+            }),
+          });
       const data = await res.json();
-
       if (data.success) {
-        onSaved(data.message);
+        if (isEdit) onSaved(data.message);
+        else onCreated(form.institution_id, data.message);
       } else if (data.errors) {
         setFieldErrors(data.errors);
       } else {
-        setSubmitError(data.message || "Failed to update department.");
+        setSubmitError(data.message || `Failed to ${isEdit ? "update" : "create"} department.`);
       }
     } catch (err) {
-      if (!isAuthError(err)) {
-        setSubmitError("Network error. Please try again.");
-      }
+      if (!isAuthError(err)) setSubmitError("Network error. Please try again.");
     } finally {
       setSubmitting(false);
     }
   }
 
-  const goingInactive = dept.status === "ACTIVE" && form.status === "INACTIVE";
+  const goingInactive = isEdit && entity.status === "ACTIVE" && form.status === "INACTIVE";
 
   return (
-    <Overlay>
-      <div
-        style={{
-          background: "#fff",
-          borderRadius: 18,
-          width: "100%",
-          maxWidth: 480,
-          boxShadow: "0 24px 64px rgba(0,0,0,0.18)",
-          overflow: "hidden",
-        }}
-      >
-        {/* Header */}
-        <div
-          style={{
-            padding: "24px 28px 20px",
-            borderBottom: "1px solid #f1f5f9",
-            display: "flex",
-            alignItems: "center",
-            gap: 14,
-          }}
-        >
-          <div
-            style={{
-              width: 40,
-              height: 40,
-              borderRadius: 11,
-              background: "#fef3c7",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontSize: 20,
-              flexShrink: 0,
-            }}
-          >
-            ✏️
-          </div>
-          <div>
-            <div style={{ fontSize: 16, fontWeight: 700, color: "#1e293b" }}>
-              Edit Department
-            </div>
-            <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 2 }}>
-              Update name, code, or status.
-            </div>
-          </div>
-          <button
-            onClick={onClose}
+    <FormScreen
+      pageTitle="Departments"
+      formTitle={isEdit ? "Edit Department" : "New Department"}
+      formSubtitle={
+        isEdit
+          ? "Update name, code, or status."
+          : "Fill in the details below to add a department."
+      }
+      icon={isEdit ? "✏️" : "🏛️"}
+      iconBg={isEdit ? "#fef3c7" : "#eff6ff"}
+      onBack={onBack}
+      onSubmit={handleSubmit}
+      submitting={submitting}
+      submitLabel={isEdit ? "Save Changes" : "Create Department"}
+      submitError={submitError}
+    >
+      {/* Institution (create only) */}
+      {!isEdit && (
+        <div>
+          <label style={S.label}>Institution</label>
+          <select
+            value={form.institution_id}
+            onChange={(e) => set("institution_id", e.target.value)}
             disabled={submitting}
-            style={{
-              marginLeft: "auto",
-              background: "none",
-              border: "none",
-              fontSize: 20,
-              color: "#94a3b8",
-              cursor: submitting ? "not-allowed" : "pointer",
-              lineHeight: 1,
-              padding: 4,
-            }}
-            aria-label="Close"
+            style={S.select(!!fieldErrors.institution_id)}
           >
-            ✕
-          </button>
+            {institutions.map((inst) => (
+              <option key={inst.institution_id} value={inst.institution_id}>
+                {inst.institution_name}
+              </option>
+            ))}
+          </select>
+          {fieldErrors.institution_id && (
+            <div style={S.errorText}>{fieldErrors.institution_id}</div>
+          )}
         </div>
+      )}
 
-        <form onSubmit={handleSubmit} noValidate>
-          <div style={{ padding: "24px 28px", display: "flex", flexDirection: "column", gap: 18 }}>
-
-            {/* Name */}
-            <div>
-              <label style={S.label}>Department Name</label>
-              <input
-                ref={nameRef}
-                type="text"
-                value={form.name}
-                onChange={(e) => set("name", e.target.value)}
-                disabled={submitting}
-                maxLength={120}
-                style={S.input(!!fieldErrors.name)}
-              />
-              {fieldErrors.name && <div style={S.errorText}>{fieldErrors.name}</div>}
-            </div>
-
-            {/* Code */}
-            <div>
-              <label style={S.label}>Department Code</label>
-              <input
-                type="text"
-                value={form.code}
-                onChange={(e) => set("code", e.target.value.toUpperCase())}
-                disabled={submitting}
-                maxLength={20}
-                style={{
-                  ...S.input(!!fieldErrors.code),
-                  fontFamily: "monospace",
-                  letterSpacing: 1,
-                }}
-              />
-              {fieldErrors.code ? (
-                <div style={S.errorText}>{fieldErrors.code}</div>
-              ) : (
-                <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 4 }}>
-                  Auto-uppercased. Letters, digits, hyphens, underscores only.
-                </div>
-              )}
-            </div>
-
-            {/* Status */}
-            <div>
-              <label style={S.label}>Status</label>
-              <select
-                value={form.status}
-                onChange={(e) => set("status", e.target.value)}
-                disabled={submitting}
-                style={{
-                  ...S.input(!!fieldErrors.status),
-                  appearance: "none",
-                  backgroundImage:
-                    "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%2394a3b8' d='M6 8L0 0h12z'/%3E%3C/svg%3E\")",
-                  backgroundRepeat: "no-repeat",
-                  backgroundPosition: "right 12px center",
-                  paddingRight: 32,
-                }}
-              >
-                <option value="ACTIVE">Active</option>
-                <option value="INACTIVE">Inactive</option>
-              </select>
-              {fieldErrors.status && <div style={S.errorText}>{fieldErrors.status}</div>}
-              {goingInactive && (
-                <div
-                  style={{
-                    marginTop: 8,
-                    padding: "8px 12px",
-                    background: "#fffbeb",
-                    border: "1px solid #fcd34d",
-                    borderRadius: 8,
-                    fontSize: 12,
-                    color: "#92400e",
-                    lineHeight: 1.5,
-                  }}
-                >
-                  Deactivating will fail unless every member of this department
-                  is already inactive.
-                </div>
-              )}
-            </div>
-
-            {submitError && (
-              <div
-                style={{
-                  background: "#fef2f2",
-                  border: "1px solid #fecaca",
-                  borderRadius: 8,
-                  padding: "10px 14px",
-                  fontSize: 13,
-                  color: "#b91c1c",
-                }}
-              >
-                {submitError}
-              </div>
-            )}
-          </div>
-
-          <div
-            style={{
-              padding: "16px 28px 24px",
-              display: "flex",
-              justifyContent: "flex-end",
-              gap: 10,
-              borderTop: "1px solid #f1f5f9",
-            }}
-          >
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={submitting}
-              style={S.btnGhost}
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={submitting}
-              style={S.btnPrimary(submitting)}
-            >
-              {submitting ? "Saving…" : "Save Changes"}
-            </button>
-          </div>
-        </form>
+      {/* Name */}
+      <div>
+        <label style={S.label}>Department Name</label>
+        <input
+          ref={nameRef}
+          type="text"
+          placeholder="e.g. Computer Science"
+          value={form.name}
+          onChange={(e) => set("name", e.target.value)}
+          disabled={submitting}
+          maxLength={120}
+          style={S.input(!!fieldErrors.name)}
+        />
+        {fieldErrors.name && <div style={S.errorText}>{fieldErrors.name}</div>}
       </div>
-    </Overlay>
+
+      {/* Code */}
+      <div>
+        <label style={S.label}>Department Code</label>
+        <input
+          type="text"
+          placeholder="e.g. CS or COMP_SCI"
+          value={form.code}
+          onChange={(e) => set("code", e.target.value.toUpperCase())}
+          disabled={submitting}
+          maxLength={20}
+          style={{ ...S.input(!!fieldErrors.code), fontFamily: "monospace", letterSpacing: 1 }}
+        />
+        {fieldErrors.code ? (
+          <div style={S.errorText}>{fieldErrors.code}</div>
+        ) : (
+          <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 4 }}>
+            Auto-uppercased. Letters, digits, hyphens, underscores only.
+          </div>
+        )}
+      </div>
+
+      {/* Status (edit only) */}
+      {isEdit && (
+        <div>
+          <label style={S.label}>Status</label>
+          <select
+            value={form.status}
+            onChange={(e) => set("status", e.target.value)}
+            disabled={submitting}
+            style={S.select(!!fieldErrors.status)}
+          >
+            <option value="ACTIVE">Active</option>
+            <option value="INACTIVE">Inactive</option>
+          </select>
+          {fieldErrors.status && <div style={S.errorText}>{fieldErrors.status}</div>}
+          {goingInactive && (
+            <div
+              style={{
+                marginTop: 8,
+                padding: "8px 12px",
+                background: "#fffbeb",
+                border: "1px solid #fcd34d",
+                borderRadius: 8,
+                fontSize: 12,
+                color: "#92400e",
+                lineHeight: 1.5,
+              }}
+            >
+              Deactivating will fail unless every member of this department is already inactive.
+            </div>
+          )}
+        </div>
+      )}
+    </FormScreen>
   );
 }
 
@@ -695,9 +256,7 @@ function DepartmentCard({ dept, onEdit, onToggleStatus, isToggling }) {
             {dept.code || "—"}
           </div>
           <div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: "#1e293b" }}>
-              {dept.name}
-            </div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: "#1e293b" }}>{dept.name}</div>
             <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>
               Since {formatDate(dept.created_at)}
             </div>
@@ -743,12 +302,7 @@ function DepartmentCard({ dept, onEdit, onToggleStatus, isToggling }) {
         <div>
           <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 2 }}>Code</div>
           <div
-            style={{
-              fontSize: 13,
-              fontWeight: 600,
-              color: "#1e293b",
-              fontFamily: "monospace",
-            }}
+            style={{ fontSize: 13, fontWeight: 600, color: "#1e293b", fontFamily: "monospace" }}
           >
             {dept.code || "—"}
           </div>
@@ -827,7 +381,7 @@ function SkeletonCard() {
   );
 }
 
-/* ─── Styled select ──────────────────────────────────────────── */
+/* ─── Styled select (filter bar only) ───────────────────────── */
 function StyledSelect({ value, onChange, children, minWidth = 180 }) {
   return (
     <select
@@ -864,8 +418,8 @@ export default function DepartmentManagementPage() {
   const [loadingDepts, setLoadingDepts] = useState(false);
   const [institutionsError, setInstitutionsError] = useState(null);
 
-  const [showCreate, setShowCreate] = useState(false);
-  const [editingDept, setEditingDept] = useState(null);
+  /* formView: null = list, { mode: 'create'|'edit', entity } = form screen */
+  const [formView, setFormView] = useState(null);
   const [togglingId, setTogglingId] = useState(null);
 
   const [toast, setToast] = useState(null);
@@ -910,7 +464,9 @@ export default function DepartmentManagementPage() {
     }
 
     load();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [apiFetch]);
 
   /* ── Load departments when institution changes ── */
@@ -942,18 +498,14 @@ export default function DepartmentManagementPage() {
     fetchDepartments(selectedInstitutionId);
   }, [selectedInstitutionId, fetchDepartments]);
 
-  /* ── Quick toggle status (Activate ⇄ Deactivate) ── */
+  /* ── Quick toggle status ── */
   async function handleToggleStatus(dept) {
     const nextStatus = dept.status === "ACTIVE" ? "INACTIVE" : "ACTIVE";
     setTogglingId(dept.department_id);
     try {
       const res = await apiFetch(`/api/departments/${dept.department_id}`, {
         method: "PUT",
-        body: JSON.stringify({
-          name: dept.name,
-          code: dept.code,
-          status: nextStatus,
-        }),
+        body: JSON.stringify({ name: dept.name, code: dept.code, status: nextStatus }),
       });
       const data = await res.json();
       if (data.success) {
@@ -977,16 +529,9 @@ export default function DepartmentManagementPage() {
     }
   }
 
-  /* ── Edit save callback ── */
-  function handleEditSaved(message) {
-    setEditingDept(null);
-    showToast(message, "success");
-    fetchDepartments(selectedInstitutionId);
-  }
-
-  /* ── Creation callback ── */
+  /* ── Callbacks from DepartmentForm ── */
   function handleCreated(institutionId, message) {
-    setShowCreate(false);
+    setFormView(null);
     showToast(message, "success");
     if (institutionId === selectedInstitutionId) {
       fetchDepartments(institutionId);
@@ -995,37 +540,39 @@ export default function DepartmentManagementPage() {
     }
   }
 
-  /* ── Client-side filter ── */
+  function handleSaved(message) {
+    setFormView(null);
+    showToast(message, "success");
+    fetchDepartments(selectedInstitutionId);
+  }
+
+  /* ── Render form screen when formView is set ── */
+  if (formView) {
+    return (
+      <DepartmentForm
+        mode={formView.mode}
+        entity={formView.entity}
+        institutions={institutions}
+        defaultInstitutionId={selectedInstitutionId}
+        onCreated={handleCreated}
+        onSaved={handleSaved}
+        onBack={() => setFormView(null)}
+      />
+    );
+  }
+
+  /* ── List view ── */
   const filteredDepts =
     statusFilter === "ALL"
       ? departments
       : departments.filter((d) => d.status === statusFilter);
 
   const selectedInstitutionName =
-    institutions.find((i) => i.institution_id === selectedInstitutionId)
-      ?.institution_name || "";
+    institutions.find((i) => i.institution_id === selectedInstitutionId)?.institution_name || "";
 
-  /* ── Render ── */
   return (
     <div style={{ padding: "32px 36px", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
       <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.42}}`}</style>
-
-      {/* Modals */}
-      {showCreate && (
-        <CreateDeptModal
-          institutions={institutions}
-          defaultInstitutionId={selectedInstitutionId}
-          onClose={() => setShowCreate(false)}
-          onCreated={handleCreated}
-        />
-      )}
-      {editingDept && (
-        <EditDeptModal
-          dept={editingDept}
-          onClose={() => setEditingDept(null)}
-          onSaved={handleEditSaved}
-        />
-      )}
 
       {toast && <Toast message={toast.message} type={toast.type} />}
 
@@ -1052,9 +599,7 @@ export default function DepartmentManagementPage() {
               marginBottom: 12,
             }}
           >
-            <div
-              style={{ width: 7, height: 7, borderRadius: "50%", background: "#059669" }}
-            />
+            <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#059669" }} />
             <span
               style={{
                 fontSize: 11,
@@ -1105,7 +650,7 @@ export default function DepartmentManagementPage() {
           {/* New Department button */}
           {!loadingInstitutions && !institutionsError && institutions.length > 0 && (
             <button
-              onClick={() => setShowCreate(true)}
+              onClick={() => setFormView({ mode: "create", entity: null })}
               style={{
                 padding: "10px 20px",
                 borderRadius: 10,
@@ -1199,7 +744,7 @@ export default function DepartmentManagementPage() {
             <DepartmentCard
               key={dept.department_id}
               dept={dept}
-              onEdit={setEditingDept}
+              onEdit={(d) => setFormView({ mode: "edit", entity: d })}
               onToggleStatus={handleToggleStatus}
               isToggling={togglingId === dept.department_id}
             />
@@ -1215,15 +760,17 @@ export default function DepartmentManagementPage() {
               }}
             >
               <div style={{ fontSize: 36, marginBottom: 12 }}>🏛️</div>
-              <div style={{ fontSize: 15, fontWeight: 600, color: "#64748b", marginBottom: 6 }}>
+              <div
+                style={{ fontSize: 15, fontWeight: 600, color: "#64748b", marginBottom: 6 }}
+              >
                 {statusFilter !== "ALL"
                   ? `No ${statusFilter.toLowerCase()} departments`
                   : "No departments yet"}
               </div>
               <div style={{ fontSize: 13 }}>
                 {statusFilter === "ALL"
-                  ? 'Click “New Department” to add the first one.'
-                  : 'Try switching the filter to “All Statuses”.'}
+                  ? 'Click "New Department" to add the first one.'
+                  : 'Try switching the filter to "All Statuses".'}
               </div>
             </div>
           )
