@@ -4,6 +4,9 @@ const express = require("express");
 const router = express.Router();
 const { verifyToken } = require("../middleware/auth");
 
+const logger            = require("../utils/logger");
+const { getLogContext } = logger;
+
 // Apply auth to ALL routes at once — same pattern as departments.js / institutions.js
 router.use(verifyToken);
 
@@ -33,7 +36,7 @@ router.get("/summary", async (req, res) => {
 
     res.json({ success: true, data: summary });
   } catch (err) {
-    console.error("[AUDIT LOGS] GET /summary", err.message);
+    logger.error("GET /api/audit-logs/summary failed", { ...getLogContext(req), stack: err.stack });
     res.status(500).json({ success: false, message: "Failed to fetch audit summary." });
   }
 });
@@ -116,7 +119,7 @@ router.get("/", async (req, res) => {
       },
     });
   } catch (err) {
-    console.error("[AUDIT LOGS] GET /", err.message);
+    logger.error("GET /api/audit-logs failed", { ...getLogContext(req), stack: err.stack });
     res.status(500).json({ success: false, message: "Failed to fetch audit logs." });
   }
 });
@@ -147,7 +150,7 @@ router.get("/:id", async (req, res) => {
 
     res.json({ success: true, data: result.rows[0] });
   } catch (err) {
-    console.error("[AUDIT LOGS] GET /:id", err.message);
+    logger.error("GET /api/audit-logs/:id failed", { ...getLogContext(req), stack: err.stack });
     res.status(500).json({ success: false, message: "Failed to fetch log entry." });
   }
 });

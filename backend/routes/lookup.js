@@ -1,6 +1,9 @@
 const express = require("express");
 const { verifyToken } = require("../middleware/auth");
 
+const logger            = require("../utils/logger");
+const { getLogContext } = logger;
+
 const router = express.Router();
 
 /* ── GET /api/lookup/institutions ── */
@@ -15,7 +18,7 @@ router.get("/institutions", verifyToken, async (req, res) => {
     );
     return res.json({ success: true, institutions: rows });
   } catch (err) {
-    console.error("[LOOKUP INSTITUTIONS ERROR]", err.message);
+    logger.error("GET /api/lookup/institutions failed", { ...getLogContext(req), stack: err.stack });
     return res.status(500).json({ success: false, message: "Internal server error." });
   }
 });
@@ -35,7 +38,7 @@ router.get("/departments", verifyToken, async (req, res) => {
     );
     return res.json({ success: true, departments: rows });
   } catch (err) {
-    console.error("[LOOKUP DEPARTMENTS ERROR]", err.message);
+    logger.error("GET /api/lookup/departments failed", { ...getLogContext(req), stack: err.stack });
     return res.status(500).json({ success: false, message: "Internal server error." });
   }
 });
@@ -49,7 +52,7 @@ router.get("/roles", verifyToken, async (req, res) => {
     );
     return res.json({ success: true, roles: rows });
   } catch (err) {
-    console.error("[LOOKUP ROLES ERROR]", err.message);
+    logger.error("GET /api/lookup/roles failed", { ...getLogContext(req), stack: err.stack });
     return res.status(500).json({ success: false, message: "Internal server error." });
   }
 });
