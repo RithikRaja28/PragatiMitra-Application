@@ -121,9 +121,21 @@ const CAPABILITY_GROUPS = [
     colorBg: "#fee2e2",
     caps: [
       {
+        key: "manage_departments",
+        label: "Manage departments",
+        desc: "Create, update, and deactivate departments across the institution.",
+        badge: "Restricted",
+      },
+      {
+        key: "manage_institutions",
+        label: "Manage institutions",
+        desc: "Create, update, and configure institution-level records.",
+        badge: "Restricted",
+      },
+      {
         key: "master_data",
         label: "Manage master data",
-        desc: "Departments, designations, KPI definitions, notification templates, and access policies.",
+        desc: "Designations, KPI definitions, notification templates, and access policies.",
         badge: "Restricted",
       },
       {
@@ -153,12 +165,16 @@ const TEMPLATES = {
     "fill_finance_forms",
     "upload_statements",
     "compile_report",
+    "manage_departments",
+    "manage_institutions",
     "master_data",
     "audit_logs",
   ],
   institute_admin: [
     "manage_cycles",
     "configure_templates",
+    "manage_departments",
+    "manage_institutions",
     "audit_logs",
     "master_data",
   ],
