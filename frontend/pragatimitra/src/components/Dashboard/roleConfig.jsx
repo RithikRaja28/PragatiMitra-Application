@@ -256,12 +256,12 @@ export const ROLE_CONFIG = {
       },
       {
         group: "Dept Management",
-        items: [{ id: "departments", label: "Departments", icon: "Building2", permission: "master_data" }],
+        items: [{ id: "departments", label: "Departments", icon: "Building2", permission: "manage_departments" }],
       },
       {
-  group: "Institution Management",
-  items: [{ id: "institutions", label: "Institutions", icon: "University", permission: "master_data" }],
-},
+        group: "Institution Management",
+        items: [{ id: "institutions", label: "Institutions", icon: "University", permission: "manage_institutions" }],
+      },
 {
   group: "Committee Management",
   items: [{ id: "committees", label: "Committees", icon: "Users2" }],
@@ -271,7 +271,7 @@ export const ROLE_CONFIG = {
       {
         group: "Access & Data",
         items: [
-          { id: "role-access", label: "Role & Access Control", icon: "ShieldCheck", permission: "assign_roles_institute" },
+          { id: "role-access", label: "Role & Access Control", icon: "ShieldCheck", permission: null },
           { id: "master-data", label: "Master Data", icon: "Database", permission: "master_data" },
         ],
       },
