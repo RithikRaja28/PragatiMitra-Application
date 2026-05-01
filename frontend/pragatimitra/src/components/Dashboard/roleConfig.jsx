@@ -139,53 +139,96 @@ const SystemPage         = () => <PlaceholderPage title="System"          subtit
    ⚠️  Key must EXACTLY match user?.roles?.[0]?.name (backend value)
 ══════════════════════════════════════════════════════════════ */
 export const ROLE_CONFIG = {
-
   /* ── SUPER ADMIN ──────────────────────────────────────────── */
   super_admin: {
     navItems: [
       {
         group: "",
-        items: [{ id: "overview", label: "Dashboard", icon: "LayoutDashboard", permission: null }],
+        items: [
+          {
+            id: "overview",
+            label: "Dashboard",
+            icon: "LayoutDashboard",
+            permission: null,
+          },
+        ],
       },
       {
         group: "User Management",
-        items: [{ id: "users", label: "Users", icon: "Users", permission: "manage_dept_users" }],
+        items: [
+          {
+            id: "users",
+            label: "Users",
+            icon: "Users",
+            permission: "manage_dept_users",
+          },
+        ],
       },
       {
         group: "Dept Management",
-        items: [{ id: "departments", label: "Departments", icon: "Building2", permission: "manage_departments" }],
+        items: [
+          {
+            id: "departments",
+            label: "Departments",
+            icon: "Building2",
+            permission: "manage_departments",
+          },
+        ],
       },
       {
         group: "Institution Management",
-        items: [{ id: "institutions", label: "Institutions", icon: "University", permission: "manage_institutions" }],
+        items: [
+          {
+            id: "institutions",
+            label: "Institutions",
+            icon: "University",
+            permission: "manage_institutions",
+          },
+        ],
       },
-{
-  group: "Committee Management",
-  items: [{ id: "committees", label: "Committees", icon: "Users2" }],
-},
-
+      {
+        group: "Committee Management",
+        items: [{ id: "committees", label: "Committees", icon: "Users2" }],
+      },
 
       {
         group: "Access & Data",
         items: [
-          { id: "role-access", label: "Role & Access Control", icon: "ShieldCheck", permission: null },
-          { id: "master-data", label: "Master Data", icon: "Database", permission: "master_data" },
+          {
+            id: "role-access",
+            label: "Role & Access Control",
+            icon: "ShieldCheck",
+            permission: null,
+          },
+          {
+            id: "master-data",
+            label: "Master Data",
+            icon: "Database",
+            permission: "master_data",
+          },
         ],
       },
       {
         group: "Audit",
-        items: [{ id: "audit-logs", label: "Logs", icon: "ScrollText", permission: "audit_logs" }],
+        items: [
+          {
+            id: "audit-logs",
+            label: "Logs",
+            icon: "ScrollText",
+            permission: "audit_logs",
+          },
+        ],
       },
     ],
     pages: {
-      overview:      <SuperAdminOverviewPage />,
-      users:         <UserManagementPage initialTab="list" />,
-      departments:   <DepartmentManagementPage />,
-      institutions:  <InstitutionManagementPage />,
-      committees:    <CommitteeManagementPage />,
+      overview: <SuperAdminOverviewPage />,
+      users: <UserManagementPage initialTab="list" />,
+      departments: <DepartmentManagementPage />,
+      institutions: <InstitutionManagementPage />,
+      committees: <CommitteeManagementPage />,
       "role-access": <RoleAccessPage />,
       "master-data": <SuperAdminMasterDataPage />,
-      "audit-logs":  <AuditLogsPage />,
+      "audit-logs": <AuditLogsPage />,
     },
     defaultPage: "overview",
     user: { name: "Super Admin", initials: "SA", org: "PragatiMitra HQ" },
@@ -198,44 +241,79 @@ export const ROLE_CONFIG = {
       {
         group: "",
         items: [
-          { id: "ia-overview", label: "Dashboard", icon: "LayoutDashboard", permission: null },
+          {
+            id: "ia-overview",
+            label: "Dashboard",
+            icon: "LayoutDashboard",
+            permission: null,
+          },
         ],
       },
       {
         group: "Reports",
         items: [
-          { id: "ia-report-setup", label: "Report Setup", icon: "FileText", permission: null },
+          {
+            id: "ia-report-setup",
+            label: "Report Setup",
+            icon: "FileText",
+            permission: null,
+          },
         ],
       },
       {
         group: "Structure",
         items: [
-          { id: "ia-sections", label: "Sections", icon: "Layers", permission: null },
+          {
+            id: "ia-sections",
+            label: "Sections",
+            icon: "Layers",
+            permission: null,
+          },
         ],
       },
       {
         group: "Workflow",
         items: [
-          { id: "ia-workflow",      label: "Workflow",      icon: "GitBranch", permission: null },
-          { id: "ia-task-workflow", label: "Task Workflow", icon: "ListTodo",  permission: null },
+          {
+            id: "ia-workflow",
+            label: "Workflow",
+            icon: "GitBranch",
+            permission: null,
+          },
+          {
+            id: "ia-task-workflow",
+            label: "Task Workflow",
+            icon: "ListTodo",
+            permission: null,
+          },
         ],
       },
       {
         group: "Version & System",
         items: [
-          { id: "ia-version-control", label: "Version Control", icon: "History",   permission: null },
-          { id: "ia-system",          label: "System",          icon: "Settings2", permission: null },
+          {
+            id: "ia-version-control",
+            label: "Version Control",
+            icon: "History",
+            permission: null,
+          },
+          {
+            id: "ia-system",
+            label: "System",
+            icon: "Settings2",
+            permission: null,
+          },
         ],
       },
     ],
     pages: {
-      "ia-overview":        <InstitutionAdminOverviewPage />,
-      "ia-report-setup":    <ReportSetupPage />,
-      "ia-sections":        <SectionsPage />,
-      "ia-workflow":        <WorkflowPage />,
-      "ia-task-workflow":   <TaskWorkflowPage />,
+      "ia-overview": <InstitutionAdminOverviewPage />,
+      "ia-report-setup": <ReportSetupPage />,
+      "ia-sections": <SectionsPage />,
+      "ia-workflow": <WorkflowPage />,
+      "ia-task-workflow": <TaskWorkflowPage />,
       "ia-version-control": <VersionControlPage />,
-      "ia-system":          <SystemPage />,
+      "ia-system": <SystemPage />,
     },
     defaultPage: "ia-overview",
     user: { name: "Institute Admin", initials: "IA", org: "PragatiMitra" },
@@ -248,22 +326,42 @@ export const ROLE_CONFIG = {
       {
         group: "",
         items: [
-          { id: "fo-overview", label: "Dashboard", icon: "LayoutDashboard", permission: null },
+          {
+            id: "fo-overview",
+            label: "Dashboard",
+            icon: "LayoutDashboard",
+            permission: null,
+          },
         ],
       },
       {
         group: "Finance",
         items: [
-          { id: "fo-estimates",     label: "Estimates",     icon: "FileSpreadsheet", permission: null },
-          { id: "fo-audits",        label: "Audits",        icon: "ClipboardCheck",  permission: null },
-          { id: "fo-balance-sheet", label: "Balance Sheet", icon: "Scale",           permission: null },
+          {
+            id: "fo-estimates",
+            label: "Estimates",
+            icon: "FileSpreadsheet",
+            permission: null,
+          },
+          {
+            id: "fo-audits",
+            label: "Audits",
+            icon: "ClipboardCheck",
+            permission: null,
+          },
+          {
+            id: "fo-balance-sheet",
+            label: "Balance Sheet",
+            icon: "Scale",
+            permission: null,
+          },
         ],
       },
     ],
     pages: {
-      "fo-overview":      <FinanceOverviewPage />,
-      "fo-estimates":     <EstimatesPage />,
-      "fo-audits":        <AuditsPage />,
+      "fo-overview": <FinanceOverviewPage />,
+      "fo-estimates": <EstimatesPage />,
+      "fo-audits": <AuditsPage />,
       "fo-balance-sheet": <BalanceSheetPage />,
     },
     defaultPage: "fo-overview",
@@ -276,19 +374,37 @@ export const ROLE_CONFIG = {
     navItems: [
       {
         group: "",
-        items: [{ id: "do-dashboard", label: "Dashboard", icon: "LayoutDashboard", permission: null }],
+        items: [
+          {
+            id: "do-dashboard",
+            label: "Dashboard",
+            icon: "LayoutDashboard",
+            permission: null,
+          },
+        ],
       },
       {
         group: "Review",
-        items: [{ id: "do-review-queue", label: "Review Queue", icon: "ClipboardList", permission: null }],
+        items: [
+          {
+            id: "do-review-queue",
+            label: "Review Queue",
+            icon: "ClipboardList",
+            permission: null,
+          },
+        ],
       },
     ],
     pages: {
-      "do-dashboard":    <DirectorsDashboardPage />,
+      "do-dashboard": <DirectorsDashboardPage />,
       "do-review-queue": <ReviewQueuePage />,
     },
     defaultPage: "do-dashboard",
-    user: { name: "Director's Office", initials: "DO", org: "PragatiMitra Institute" },
+    user: {
+      name: "Director's Office",
+      initials: "DO",
+      org: "PragatiMitra Institute",
+    },
   },
 
   /* ── DEPARTMENT ADMIN ─────────────────────────────────────── */
@@ -297,46 +413,92 @@ export const ROLE_CONFIG = {
     navItems: [
       {
         group: "",
-        items: [{ id: "da-dashboard", label: "Dashboard", icon: "LayoutDashboard", permission: null }],
+        items: [
+          {
+            id: "da-dashboard",
+            label: "Dashboard",
+            icon: "LayoutDashboard",
+            permission: null,
+          },
+        ],
       },
       {
         group: "Users",
-        items: [{ id: "da-users", label: "Department Users", icon: "Users", permission: null }],
+        items: [
+          {
+            id: "da-users",
+            label: "Department Users",
+            icon: "Users",
+            permission: null,
+          },
+        ],
       },
       {
         group: "Tasks",
-        items: [{ id: "da-tasks", label: "Task Overview", icon: "ListChecks", permission: null }],
+        items: [
+          {
+            id: "da-tasks",
+            label: "Task Overview",
+            icon: "ListChecks",
+            permission: null,
+          },
+        ],
       },
     ],
     pages: {
       "da-dashboard": <DeptAdminDashboardPage />,
-      "da-users":     <DeptUsersPage />,
-      "da-tasks":     <TaskOverviewPage />,
+      "da-users": <DeptUsersPage />,
+      "da-tasks": <TaskOverviewPage />,
     },
     defaultPage: "da-dashboard",
-    user: { name: "Department Admin", initials: "DA", org: "Samhita Siddhanta" },
+    user: {
+      name: "Department Admin",
+      initials: "DA",
+      org: "Samhita Siddhanta",
+    },
   },
 
   /* ── DEPARTMENT NODAL OFFICER ─────────────────────────────── */
   // ✅ key = "department_nodal_officer" — matches backend exactly
-  department_nodal_officer: {
+  nodal_officer: {
     navItems: [
       {
         group: "",
-        items: [{ id: "dno-dashboard", label: "Dashboard", icon: "LayoutDashboard", permission: null }],
+        items: [
+          {
+            id: "dno-dashboard",
+            label: "Dashboard",
+            icon: "LayoutDashboard",
+            permission: null,
+          },
+        ],
       },
       {
         group: "Sections",
-        items: [{ id: "dno-sections", label: "Assigned Sections", icon: "FileEdit", permission: null }],
+        items: [
+          {
+            id: "dno-sections",
+            label: "Assigned Sections",
+            icon: "FileEdit",
+            permission: null,
+          },
+        ],
       },
       {
         group: "Submissions",
-        items: [{ id: "dno-submissions", label: "Submissions", icon: "Send", permission: null }],
+        items: [
+          {
+            id: "dno-submissions",
+            label: "Submissions",
+            icon: "Send",
+            permission: null,
+          },
+        ],
       },
     ],
     pages: {
-      "dno-dashboard":   <NodalDashboardPage />,
-      "dno-sections":    <AssignedSectionsPage />,
+      "dno-dashboard": <NodalDashboardPage />,
+      "dno-sections": <AssignedSectionsPage />,
       "dno-submissions": <SubmissionsPage />,
     },
     defaultPage: "dno-dashboard",
@@ -350,10 +512,13 @@ export const ROLE_CONFIG = {
     ],
     pages: {
       home: (
-        <div style={{ padding: 40, fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+        <div
+          style={{ padding: 40, fontFamily: "'Plus Jakarta Sans', sans-serif" }}
+        >
           <h2 style={{ color: "#1e293b" }}>Access Restricted</h2>
           <p style={{ color: "#94a3b8", marginTop: 8 }}>
-            Your role does not have a configured dashboard. Please contact your administrator.
+            Your role does not have a configured dashboard. Please contact your
+            administrator.
           </p>
         </div>
       ),
