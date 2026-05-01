@@ -13,7 +13,7 @@ export const ROLE_ROUTES = {
   publication_cell:           "/dashboard/publication-cell",
   department_admin:           "/dashboard/department-admin",
   head_of_department:         "/dashboard/head-of-department",
-  department_nodal_officer:   "/dashboard/nodal-officer",
+  nodal_officer:   "/dashboard/nodal-officer",
   contributor:                "/dashboard/contributor",
   reviewer:                   "/dashboard/reviewer",
   finance_officer:            "/dashboard/finance-officer",
