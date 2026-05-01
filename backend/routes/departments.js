@@ -4,6 +4,9 @@ const express = require("express");
 const { verifyToken } = require("../middleware/auth");
 const { writeAuditLog } = require("../utils/audit");
 
+const logger            = require("../utils/logger");
+const { getLogContext } = logger;
+
 const router = express.Router();
 
 router.use(verifyToken);
@@ -27,7 +30,7 @@ router.get("/institutions", async (req, res) => {
     );
     return res.json({ success: true, data: rows });
   } catch (err) {
-    console.error("[DEPT] institutions fetch:", err.message);
+    logger.error("GET /api/departments/institutions failed", { ...getLogContext(req), stack: err.stack });
     return res
       .status(500)
       .json({ success: false, message: "Failed to fetch institutions." });
@@ -67,7 +70,7 @@ router.get("/", async (req, res) => {
     );
     return res.json({ success: true, data: rows });
   } catch (err) {
-    console.error("[DEPT] list:", err.message);
+    logger.error("GET /api/departments failed", { ...getLogContext(req), stack: err.stack });
     return res
       .status(500)
       .json({ success: false, message: "Failed to fetch departments." });
@@ -165,7 +168,7 @@ router.post("/", async (req, res) => {
       data: newDept,
     });
   } catch (err) {
-    console.error("[DEPT] create:", err.message);
+    logger.error("POST /api/departments failed", { ...getLogContext(req), stack: err.stack });
     return res
       .status(500)
       .json({ success: false, message: "Failed to create department." });
@@ -303,7 +306,7 @@ router.put("/:id", async (req, res) => {
       data: updated,
     });
   } catch (err) {
-    console.error("[DEPT] update:", err.message);
+    logger.error("PUT /api/departments/:id failed", { ...getLogContext(req), stack: err.stack });
     return res
       .status(500)
       .json({ success: false, message: "Failed to update department." });
@@ -394,7 +397,7 @@ router.patch("/:id/deactivate", async (req, res) => {
       message: `"${dept.name}" has been deactivated.`,
     });
   } catch (err) {
-    console.error("[DEPT] deactivate:", err.message);
+    logger.error("PATCH /api/departments/:id/status failed", { ...getLogContext(req), stack: err.stack });
     return res
       .status(500)
       .json({ success: false, message: "Failed to deactivate department." });

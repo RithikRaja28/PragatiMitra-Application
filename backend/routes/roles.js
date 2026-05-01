@@ -2,6 +2,9 @@ const express = require("express");
 const { verifyToken, requireRole } = require("../middleware/auth");
 const { writeAuditLog } = require("../utils/audit"); // ← only addition to imports
 
+const logger            = require("../utils/logger");
+const { getLogContext } = logger;
+
 const router = express.Router();
 
 const SUPER_ADMIN = ["super_admin"];
@@ -17,7 +20,7 @@ router.get("/", verifyToken, requireRole(SUPER_ADMIN), async (req, res) => {
     `);
     res.json({ success: true, data: rows });
   } catch (err) {
-    console.error("[GET /api/roles]", err);
+    logger.error("GET /api/roles failed", { ...getLogContext(req), stack: err.stack });
     res.status(500).json({ success: false, message: "Failed to fetch roles." });
   }
 });
@@ -63,7 +66,7 @@ router.post("/", verifyToken, requireRole(SUPER_ADMIN), async (req, res) => {
     if (err.code === "23505") {
       return res.status(409).json({ success: false, message: "A role with that name already exists." });
     }
-    console.error("[POST /api/roles]", err);
+    logger.error("POST /api/roles failed", { ...getLogContext(req), stack: err.stack });
     res.status(500).json({ success: false, message: "Failed to create role." });
   }
 });
@@ -158,7 +161,7 @@ router.put("/:id", verifyToken, requireRole(SUPER_ADMIN), async (req, res) => {
 
     res.json({ success: true, data: updated });
   } catch (err) {
-    console.error("[PUT /api/roles/:id]", err);
+    logger.error("PUT /api/roles/:id failed", { ...getLogContext(req), stack: err.stack });
     res.status(500).json({ success: false, message: "Failed to update role." });
   }
 });
@@ -199,7 +202,7 @@ router.delete("/:id", verifyToken, requireRole(SUPER_ADMIN), async (req, res) =>
 
     res.json({ success: true, message: "Role deleted." });
   } catch (err) {
-    console.error("[DELETE /api/roles/:id]", err);
+    logger.error("DELETE /api/roles/:id failed", { ...getLogContext(req), stack: err.stack });
     res.status(500).json({ success: false, message: "Failed to delete role." });
   }
 });

@@ -1,8 +1,6 @@
 const jwt = require("jsonwebtoken");
 
-// Pure JWT verification — zero DB hits.
-// Role checks use claims embedded in the token at login time.
-function verifyToken(req, res, next) {
+async function verifyToken(req, res, next) {
   const authHeader = req.headers["authorization"];
 
   if (!authHeader || !authHeader.startsWith("Bearer "))
@@ -15,13 +13,30 @@ function verifyToken(req, res, next) {
       issuer:   "pragatimitra-api",
       audience: "pragatimitra-app",
     });
-    next();
   } catch (err) {
     const message = err.name === "TokenExpiredError"
       ? "Session expired. Please sign in again."
       : "Invalid token. Please sign in again.";
     return res.status(401).json({ success: false, message });
   }
+
+  // Verify the session that issued this token still exists.
+  // This ensures a login on another device immediately invalidates this token.
+  if (req.user.sessionId) {
+    try {
+      const pool = req.app.locals.pool;
+      const { rows } = await pool.query(
+        "SELECT 1 FROM sessions WHERE id = $1 AND user_id = $2",
+        [req.user.sessionId, req.user.userId]
+      );
+      if (!rows.length)
+        return res.status(401).json({ success: false, message: "Session is no longer valid. Please sign in again." });
+    } catch {
+      return res.status(500).json({ success: false, message: "Internal server error." });
+    }
+  }
+
+  next();
 }
 
 // Pass machine key role names: requireRole(["super_admin", "institute_admin"])

@@ -1,15 +1,29 @@
 require("dotenv").config();
 
-const express   = require("express");
-const helmet    = require("helmet");
-const cors      = require("cors");
-const cookies   = require("cookie-parser");
-const rateLimit = require("express-rate-limit");
-const { Pool }  = require("pg");
+const express        = require("express");
+const helmet         = require("helmet");
+const cors           = require("cors");
+const cookies        = require("cookie-parser");
+const rateLimit      = require("express-rate-limit");
+const { Pool }       = require("pg");
 
-/* ---------------------------------------------------
-   ROUTES
---------------------------------------------------- */
+const logger         = require("./utils/logger");
+const requestId      = require("./middleware/requestId");
+const requestLogger  = require("./middleware/requestLogger");
+const errorHandler   = require("./middleware/errorHandler");
+
+/* ─── Uncaught / unhandled errors ──────────────────────────── */
+process.on("uncaughtException", (err) => {
+  logger.error("Uncaught exception — shutting down", { stack: err.stack });
+  process.exit(1);
+});
+
+process.on("unhandledRejection", (reason) => {
+  const stack = reason instanceof Error ? reason.stack : String(reason);
+  logger.error("Unhandled promise rejection", { stack });
+});
+
+/* ─── Routes ────────────────────────────────────────────────── */
 const authRoutes        = require("./routes/login");
 const departmentRoutes  = require("./routes/departments");
 const institutionRoutes = require("./routes/institutions");
@@ -20,15 +34,13 @@ const auditLogRoutes    = require("./routes/auditLogs");
 const app  = express();
 const PORT = process.env.PORT || 3000;
 
-/* ---------------------------------------------------
-   SECURITY MIDDLEWARE
---------------------------------------------------- */
+/* ─── Security middleware ───────────────────────────────────── */
 app.use(helmet());
 
 app.use(
   cors({
-    origin: ["http://localhost:5173", "https://yourfrontend.com"],
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
+    origin:      ["http://localhost:5173", "https://yourfrontend.com"],
+    methods:     ["GET", "POST", "PUT", "PATCH", "DELETE"],
     credentials: true,
   })
 );
@@ -36,18 +48,19 @@ app.use(
 app.use(
   rateLimit({
     windowMs: 15 * 60 * 1000,
-    max: 200,
-    message: "Too many requests, try again later.",
+    max:      200,
+    message:  "Too many requests, try again later.",
   })
 );
 
 app.use(express.json({ limit: "10kb" }));
 app.use(cookies());
 
-/* ---------------------------------------------------
-   POSTGRESQL CONNECTION POOL
-   Attached to app.locals so all route files share it.
---------------------------------------------------- */
+/* ─── Request ID + logging (order matters) ──────────────────── */
+app.use(requestId);      // must be first — stamps req.id before anything logs
+app.use(requestLogger);  // reads req.id set above
+
+/* ─── PostgreSQL pool ───────────────────────────────────────── */
 const pool = new Pool({
   user:     process.env.DB_USER,
   host:     process.env.DB_HOST,
@@ -63,45 +76,43 @@ const pool = new Pool({
       : false,
 });
 
+// Log idle-client errors from the pool (e.g., connection drops)
+pool.on("error", (err) => {
+  logger.error("PostgreSQL pool error", { stack: err.stack });
+});
+
 pool.connect((err, client, release) => {
   if (err) {
-    return console.error("Database connection failed:", err.message);
+    logger.error("Database connection failed", { stack: err.stack });
+    return;
   }
-  console.log("Connected to PostgreSQL successfully");
+  logger.info("Connected to PostgreSQL successfully");
   release();
 });
 
 app.locals.pool = pool;
 
-/* ---------------------------------------------------
-   ROUTES
---------------------------------------------------- */
+/* ─── Routes ────────────────────────────────────────────────── */
 app.get("/", (req, res) => {
   res.json({ success: true, message: "Pragatimitra API running." });
 });
 
-app.use("/api/auth",        authRoutes);
-app.use("/api/users",       require("./routes/users"));
-app.use("/api/lookup",      require("./routes/lookup"));
-app.use("/api/roles",       require("./routes/roles"));
-app.use("/api/users",       userRoutes);
-app.use("/api/lookup",      lookupRoutes);
-app.use("/api/departments", departmentRoutes);
+app.use("/api/auth",         authRoutes);
+app.use("/api/users",        require("./routes/users"));
+app.use("/api/lookup",       require("./routes/lookup"));
+app.use("/api/roles",        require("./routes/roles"));
+app.use("/api/users",        userRoutes);
+app.use("/api/lookup",       lookupRoutes);
+app.use("/api/departments",  departmentRoutes);
 app.use("/api/institutions", require("./routes/institutions"));
-app.use("/api/committees", require("./routes/committees"));
+app.use("/api/committees",   require("./routes/committees"));
 app.use("/api/institutions", institutionRoutes);
-app.use("/api/audit-logs",  auditLogRoutes);
-/* ---------------------------------------------------
-   GLOBAL ERROR HANDLER
---------------------------------------------------- */
-app.use((err, req, res, next) => {
-  console.error("[UNHANDLED ERROR]", err.stack);
-  res.status(500).json({ success: false, message: "Something went wrong." });
-});
+app.use("/api/audit-logs",   auditLogRoutes);
 
-/* ---------------------------------------------------
-   START
---------------------------------------------------- */
+/* ─── Global error handler (must be last) ───────────────────── */
+app.use(errorHandler);
+
+/* ─── Start ─────────────────────────────────────────────────── */
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  logger.info(`Server running on port ${PORT}`, { port: PORT, env: process.env.NODE_ENV || "development" });
 });
