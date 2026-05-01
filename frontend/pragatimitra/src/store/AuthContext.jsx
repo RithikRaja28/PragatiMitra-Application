@@ -1,22 +1,23 @@
 import { createContext, useContext, useState, useEffect, useRef, useCallback } from "react";
 
 const API_BASE         = import.meta.env.VITE_API_URL || "http://localhost:5000";
-const IDLE_TIMEOUT     = 60 * 60 * 1000;  // 1 hour
-const REFRESH_INTERVAL = 14 * 60 * 1000;  // keep access token alive before 15m expiry
+const IDLE_TIMEOUT     = 60 * 60 * 1000;
+const REFRESH_INTERVAL = 14 * 60 * 1000;
 
 const AuthContext = createContext(null);
 
+// ✅ ALL keys are snake_case to match backend exactly
 export const ROLE_ROUTES = {
-  super_admin:              "/dashboard/super-admin",
-  institute_admin:          "/dashboard/institute-admin",
-  publication_cell:         "/dashboard/publication-cell",
-  department_admin:         "/dashboard/department-admin",
-  head_of_department:       "/dashboard/head-of-department",
-  nodal_officer:            "/dashboard/nodal-officer",
-  contributor:              "/dashboard/contributor",
-  reviewer:                 "/dashboard/reviewer",
-  finance_officer:          "/dashboard/finance-officer",
-  directors_office:         "/dashboard/directors-office",
+  super_admin:                "/dashboard/super-admin",
+  institute_admin:            "/dashboard/institute-admin",
+  publication_cell:           "/dashboard/publication-cell",
+  department_admin:           "/dashboard/department-admin",
+  head_of_department:         "/dashboard/head-of-department",
+  department_nodal_officer:   "/dashboard/nodal-officer",
+  contributor:                "/dashboard/contributor",
+  reviewer:                   "/dashboard/reviewer",
+  finance_officer:            "/dashboard/finance-officer",
+  directors_office:           "/dashboard/directors-office",
 };
 
 export function redirectByRole(user, navigate) {
@@ -31,7 +32,7 @@ export function redirectByRole(user, navigate) {
 
 export function AuthProvider({ children }) {
   const [user, setUser]          = useState(null);
-  const [accessToken, setAccess] = useState(null); // memory only — cleared on page close
+  const [accessToken, setAccess] = useState(null);
   const [loading, setLoading]    = useState(true);
   const [sessionMsg, setMsg]     = useState("");
 
@@ -45,10 +46,9 @@ export function AuthProvider({ children }) {
     clearTimeout(idleTimer.current);
     clearInterval(refreshTimer.current);
     if (message) setMsg(message);
-    // Tell the server to delete the session and clear the HttpOnly cookie
     fetch(`${API_BASE}/api/auth/logout`, {
       method: "POST",
-      credentials: "include", // sends the HttpOnly cookie
+      credentials: "include",
     }).catch(() => {});
   }, []);
 
@@ -69,10 +69,9 @@ export function AuthProvider({ children }) {
     try {
       const res  = await fetch(`${API_BASE}/api/auth/refresh`, {
         method:      "POST",
-        credentials: "include", // browser sends HttpOnly cookie automatically
+        credentials: "include",
       });
       const data = await res.json();
-
       if (!data.success) {
         logout(data.expired ? "Your session expired. Please sign in again." : "");
         return;
@@ -81,16 +80,13 @@ export function AuthProvider({ children }) {
     } catch {}
   }, [logout]);
 
-  /* ── Restore session on page load ── */
   useEffect(() => {
     const cachedUser = (() => {
       try { return JSON.parse(localStorage.getItem("pm_user")); }
       catch { return null; }
     })();
 
-    fetch(`${API_BASE}/api/auth/me`, {
-      credentials: "include", // browser sends the HttpOnly cookie
-    })
+    fetch(`${API_BASE}/api/auth/me`, { credentials: "include" })
       .then((r) => r.json())
       .then((data) => {
         if (!data.success) {
@@ -107,7 +103,6 @@ export function AuthProvider({ children }) {
         setLoading(false);
       })
       .catch(() => {
-        // Network error — restore from localStorage so app still loads offline
         if (cachedUser) {
           setUser(cachedUser);
           resetIdle();
