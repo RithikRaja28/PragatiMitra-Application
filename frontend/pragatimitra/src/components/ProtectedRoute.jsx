@@ -26,7 +26,7 @@ export default function ProtectedRoute({ allowedRoles }) {
 
   // Wrong role → go to unauthorized
   if (allowedRoles?.length) {
-    if (!allowedRoles.some((r) => r.toLowerCase() === (user.roleName || "").toLowerCase())) {
+   if (!allowedRoles.some((r) => r.toLowerCase() === (user?.roles?.[0]?.name || "").toLowerCase())) {
       return <Navigate to="/unauthorized" replace />;
     }
   }
