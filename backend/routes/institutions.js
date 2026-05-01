@@ -4,6 +4,9 @@ const express = require("express");
 const { verifyToken } = require("../middleware/auth");
 const { writeAuditLog } = require("../utils/audit");
 
+const logger            = require("../utils/logger");
+const { getLogContext } = logger;
+
 const router = express.Router();
 
 router.use(verifyToken);
@@ -47,7 +50,7 @@ router.get("/", async (req, res) => {
     );
     return res.json({ success: true, data: rows });
   } catch (err) {
-    console.error("[INST] list:", err.message);
+    logger.error("GET /api/institutions failed", { ...getLogContext(req), stack: err.stack });
     return res.status(500).json({ success: false, message: "Failed to fetch institutions." });
   }
 });
@@ -150,7 +153,7 @@ router.post("/", async (req, res) => {
       data: newInst,
     });
   } catch (err) {
-    console.error("[INST] create:", err.message);
+    logger.error("POST /api/institutions failed", { ...getLogContext(req), stack: err.stack });
     return res.status(500).json({ success: false, message: "Failed to create institution." });
   }
 });
@@ -295,7 +298,7 @@ router.put("/:id", async (req, res) => {
       data: updated,
     });
   } catch (err) {
-    console.error("[INST] update:", err.message);
+    logger.error("PUT /api/institutions/:id failed", { ...getLogContext(req), stack: err.stack });
     return res.status(500).json({ success: false, message: "Failed to update institution." });
   }
 });

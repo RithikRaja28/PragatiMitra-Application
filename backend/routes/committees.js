@@ -21,6 +21,9 @@
 const express         = require("express");
 const { verifyToken } = require("../middleware/auth");
 
+const logger            = require("../utils/logger");
+const { getLogContext } = logger;
+
 const router = express.Router();
 router.use(verifyToken);
 
@@ -162,7 +165,7 @@ router.get("/", async (req, res) => {
 
     return res.json({ success: true, data: rows });
   } catch (err) {
-    console.error("[COMMITTEE] list:", err.message);
+    logger.error("GET /api/committees failed", { ...getLogContext(req), stack: err.stack });
     return res.status(500).json({ success: false, message: "Failed to fetch committees." });
   }
 });
@@ -226,7 +229,7 @@ router.post("/", async (req, res) => {
       data: created,
     });
   } catch (err) {
-    console.error("[COMMITTEE] create — full error:", err);
+    logger.error("POST /api/committees failed", { ...getLogContext(req), stack: err.stack });
     return res.status(500).json({ success: false, message: "Failed to create committee.", detail: err.message });
   }
 });
@@ -302,7 +305,7 @@ router.put("/:id", async (req, res) => {
 
     return res.json({ success: true, message: "Committee updated successfully.", data: updated });
   } catch (err) {
-    console.error("[COMMITTEE] update:", err.message);
+    logger.error("PUT /api/committees/:id failed", { ...getLogContext(req), stack: err.stack });
     return res.status(500).json({ success: false, message: "Failed to update committee." });
   }
 });
@@ -345,7 +348,7 @@ router.patch("/:id/status", async (req, res) => {
       message: `"${label}" has been ${status === "ACTIVE" ? "activated" : "deactivated"}.`,
     });
   } catch (err) {
-    console.error("[COMMITTEE] status toggle:", err.message);
+    logger.error("PATCH /api/committees/:id/status failed", { ...getLogContext(req), stack: err.stack });
     return res.status(500).json({ success: false, message: "Failed to update committee status." });
   }
 });
@@ -372,7 +375,7 @@ router.delete("/:id", async (req, res) => {
                   ?? rows[0].committee_type.replace(/_/g, " ");
     return res.json({ success: true, message: `"${label}" has been deleted.` });
   } catch (err) {
-    console.error("[COMMITTEE] delete:", err.message);
+    logger.error("DELETE /api/committees/:id failed", { ...getLogContext(req), stack: err.stack });
     return res.status(500).json({ success: false, message: "Failed to delete committee." });
   }
 });

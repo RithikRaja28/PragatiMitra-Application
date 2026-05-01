@@ -4,6 +4,9 @@ const bcrypt    = require("bcrypt");
 const crypto    = require("crypto");
 const rateLimit = require("express-rate-limit");
 
+const logger            = require("../utils/logger");
+const { getLogContext } = logger;
+
 const router = express.Router();
 
 const REFRESH_TOKEN_TTL_MS = 1 * 24 * 60 * 60 * 1000; // 1 days
@@ -85,13 +88,14 @@ async function fetchUser(pool, whereClause, params) {
   return rows[0] || null;
 }
 
-function buildAccessPayload(user) {
+function buildAccessPayload(user, sessionId) {
   return {
     userId:        user.id,
     email:         user.email,
     institutionId: user.institution_id,
     departmentId:  user.department_id,
     roles:         (user.roles || []).map((r) => r.name),
+    sessionId,
   };
 }
 
@@ -154,9 +158,10 @@ router.post("/login", loginLimiter, async (req, res) => {
     const rawRefreshToken = generateRefreshToken();
     const expiresAt       = new Date(Date.now() + REFRESH_TOKEN_TTL_MS);
 
-    await pool.query(
+    const { rows: [{ id: sessionId }] } = await pool.query(
       `INSERT INTO sessions (user_id, token_hash, expires_at)
-       VALUES ($1, $2, $3)`,
+       VALUES ($1, $2, $3)
+       RETURNING id`,
       [user.id, hashToken(rawRefreshToken), expiresAt]
     );
 
@@ -168,12 +173,12 @@ router.post("/login", loginLimiter, async (req, res) => {
     return res.status(200).json({
       success:     true,
       message:     "Login successful.",
-      accessToken: signAccessToken(buildAccessPayload(user)),
+      accessToken: signAccessToken(buildAccessPayload(user, sessionId)),
       user:        buildUserObject(user),
     });
 
   } catch (err) {
-    console.error("[LOGIN ERROR]", err.message);
+    logger.error("POST /api/auth/login failed", { ...getLogContext(req), stack: err.stack });
     return res.status(500).json({ success: false, message: "An internal server error occurred." });
   }
 });
@@ -243,11 +248,11 @@ router.post("/refresh", refreshLimiter, async (req, res) => {
 
     return res.status(200).json({
       success:     true,
-      accessToken: signAccessToken(buildAccessPayload(user)),
+      accessToken: signAccessToken(buildAccessPayload(user, session.id)),
     });
 
   } catch (err) {
-    console.error("[REFRESH ERROR]", err.message);
+    logger.error("POST /api/auth/refresh failed", { ...getLogContext(req), stack: err.stack });
     return res.status(500).json({ success: false, message: "Internal server error." });
   }
 });
@@ -295,12 +300,12 @@ router.get("/me", refreshLimiter, async (req, res) => {
 
     return res.status(200).json({
       success:     true,
-      accessToken: signAccessToken(buildAccessPayload(user)),
+      accessToken: signAccessToken(buildAccessPayload(user, session.id)),
       user:        buildUserObject(user),
     });
 
   } catch (err) {
-    console.error("[ME ERROR]", err.message);
+    logger.error("GET /api/auth/me failed", { ...getLogContext(req), stack: err.stack });
     return res.status(500).json({ success: false, message: "Internal server error." });
   }
 });
@@ -358,7 +363,7 @@ router.post("/change-password", verifyToken, async (req, res) => {
     });
 
   } catch (err) {
-    console.error("[CHANGE-PASSWORD ERROR]", err.message);
+    logger.error("POST /api/auth/change-password failed", { ...getLogContext(req), stack: err.stack });
     return res.status(500).json({ success: false, message: "Internal server error." });
   }
 });

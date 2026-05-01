@@ -1,3 +1,5 @@
+const logger = require("./logger");
+
 /**
  * utils/audit.js
  *
@@ -87,7 +89,8 @@ async function writeAuditLog(req, options) {
       ]
     );
   } catch (err) {
-    console.error("[AUDIT] Failed to write log:", err.message);
+    // Never let audit failures crash the main request
+    logger.error("Failed to write audit log", { stack: err.stack });
   }
 }
 
