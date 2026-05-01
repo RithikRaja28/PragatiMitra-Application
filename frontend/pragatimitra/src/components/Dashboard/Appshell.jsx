@@ -4,9 +4,10 @@ import {
   useState,
   useEffect,
   useCallback,
+  useRef,
 } from "react";
 import * as Icons from "lucide-react";
-
+import { useAuth } from "../../store/AuthContext";
 /* ─── Context ───────────────────────────────────────────────── */
 const ShellContext = createContext(null);
 export const useShell = () => useContext(ShellContext);
@@ -68,6 +69,7 @@ const CSS = `
     border-bottom: 1px solid rgba(255,255,255,0.05);
     box-shadow: 0 2px 16px rgba(0,0,0,0.22);
     flex-shrink: 0;
+    overflow: visible;
     z-index: 60;
   }
 
@@ -317,6 +319,55 @@ const CSS = `
     from { opacity:0; transform:translateY(6px); }
     to   { opacity:1; transform:translateY(0); }
   }
+
+  /* ── USER DROPDOWN ── */
+  .sh-user-wrap { position: relative; }
+
+  .sh-user-menu {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    background: #fff;
+    border-radius: 14px;
+    border: 1px solid rgba(0,0,0,0.08);
+    box-shadow: 0 12px 40px rgba(0,0,0,0.16);
+    min-width: 232px;
+    z-index: 9999;
+    overflow: hidden;
+    animation: shMenuIn .13s ease both;
+  }
+  @keyframes shMenuIn {
+    from { opacity:0; transform:translateY(-6px) scale(.97); }
+    to   { opacity:1; transform:translateY(0)    scale(1);   }
+  }
+
+  .sh-menu-header {
+    padding: 16px 16px 12px;
+    background: #fafbfc;
+    border-bottom: 1px solid #f1f5f9;
+  }
+  .sh-menu-avatar {
+    width: 38px; height: 38px; border-radius: 10px;
+    background: linear-gradient(135deg, var(--sh-accent), var(--sh-accent2));
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 700; color: #fff; flex-shrink: 0;
+  }
+  .sh-menu-name  { font-size: 13px; font-weight: 700; color: #1e293b; }
+  .sh-menu-email { font-size: 11px; color: #94a3b8; margin-top: 2px; }
+
+  .sh-menu-body { padding: 8px; }
+
+  .sh-menu-btn {
+    display: flex; align-items: center; gap: 10px;
+    width: 100%; padding: 9px 12px; border-radius: 8px;
+    border: none; background: transparent; cursor: pointer;
+    font-family: var(--sh-font); font-size: 13px; font-weight: 500;
+    text-align: left; color: #475569;
+    transition: background .12s, color .12s;
+  }
+  .sh-menu-btn:hover { background: #f1f5f9; color: #1e293b; }
+  .sh-menu-btn.danger { color: #dc2626; }
+  .sh-menu-btn.danger:hover { background: #fef2f2; color: #dc2626; }
 `;
 
 function injectCSS(id, css) {
@@ -329,24 +380,55 @@ function injectCSS(id, css) {
 
 /* ─── Topbar ────────────────────────────────────────────────── */
 function Topbar({ appName, logo, user, onHamburger, onSearch, searchPlaceholder, headerActions, notificationCount }) {
-  const [query, setQuery] = useState("");
+  const [query,    setQuery]    = useState("");
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef(null);
+
+  const { user: authUser, logout } = useAuth();
+
+  const displayName = authUser?.full_name || user?.name || "User";
+  const displayOrg  = user?.org || "";
+  const displayEmail = authUser?.email || "";
   const initials =
     user?.initials ||
-    (user?.name
-      ? user.name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase()
+    (displayName !== "User"
+      ? displayName.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase()
       : "U");
+
+  /* Close menu on outside click */
+  useEffect(() => {
+    if (!menuOpen) return;
+    const handler = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) setMenuOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [menuOpen]);
+
+  const handleLogout = () => {
+    setMenuOpen(false);
+    logout();
+  };
 
   return (
     <header className="sh-topbar">
       {/* Hamburger — mobile only */}
-      <button className="sh-hamburger" onClick={onHamburger} aria-label="Open menu">
+      <button
+        className="sh-hamburger"
+        onClick={onHamburger}
+        aria-label="Open menu"
+      >
         <Icons.Menu size={18} />
       </button>
 
       {/* Logo + App name */}
       <div className="sh-logo">
         <div className="sh-logo-mark">
-          {typeof logo === "string" ? logo : (appName ? appName.slice(0, 2).toUpperCase() : "PM")}
+          {typeof logo === "string"
+            ? logo
+            : appName
+              ? appName.slice(0, 2).toUpperCase()
+              : "PM"}
         </div>
         <span className="sh-logo-name">{appName || "PragatiMitra"}</span>
       </div>
@@ -360,7 +442,10 @@ function Topbar({ appName, logo, user, onHamburger, onSearch, searchPlaceholder,
         <input
           type="text"
           value={query}
-          onChange={(e) => { setQuery(e.target.value); onSearch?.(e.target.value); }}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            onSearch?.(e.target.value);
+          }}
           placeholder={searchPlaceholder || "Search…"}
         />
         <span className="sh-search-kbd">/</span>
@@ -381,14 +466,55 @@ function Topbar({ appName, logo, user, onHamburger, onSearch, searchPlaceholder,
           <Icons.Settings size={16} />
         </button>
 
-        {/* Avatar */}
-        <div className="sh-avatar" role="button" tabIndex={0} aria-label="User menu">
-          <div className="sh-avatar-circle">{initials}</div>
-          <div className="sh-avatar-info">
-            <div className="sh-avatar-name">{user?.name || "User"}</div>
-            <div className="sh-avatar-org">{user?.org || ""}</div>
-          </div>
-          <Icons.ChevronDown size={12} color="rgba(255,255,255,0.4)" style={{ marginLeft: 4 }} />
+        {/* Avatar + dropdown */}
+        <div className="sh-user-wrap" ref={menuRef}>
+          <button
+            className="sh-avatar"
+            aria-label="User menu"
+            aria-expanded={menuOpen}
+            onClick={() => setMenuOpen((o) => !o)}
+          >
+            <div className="sh-avatar-circle">{initials}</div>
+            <div className="sh-avatar-info">
+              <div className="sh-avatar-name">{displayName}</div>
+              {displayOrg && <div className="sh-avatar-org">{displayOrg}</div>}
+            </div>
+            <Icons.ChevronDown
+              size={12}
+              color="rgba(255,255,255,0.4)"
+              style={{
+                marginLeft: 4,
+                transition: "transform .2s",
+                transform: menuOpen ? "rotate(180deg)" : "rotate(0deg)",
+              }}
+            />
+          </button>
+
+          {menuOpen && (
+              <div className="sh-user-menu" role="menu">
+                <div className="sh-menu-header">
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <div className="sh-menu-avatar">{initials}</div>
+                    <div>
+                      <div className="sh-menu-name">{displayName}</div>
+                      {displayEmail && (
+                        <div className="sh-menu-email">{displayEmail}</div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <div className="sh-menu-body">
+                  <button
+                    className="sh-menu-btn danger"
+                    role="menuitem"
+                    onClick={handleLogout}
+                  >
+                    <Icons.LogOut size={15} />
+                    Sign out
+                  </button>
+                </div>
+              </div>
+            )}
         </div>
       </div>
     </header>

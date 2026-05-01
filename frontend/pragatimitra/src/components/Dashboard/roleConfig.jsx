@@ -29,6 +29,20 @@ import RoleAccessPage            from "../../pages/Roles/superadmin/RoleAccessPa
 import InstitutionAdminOverviewPage from "../../pages/Roles/institutionadmin/InstitutionAdminOverviewPage";
 import ReportSetupPage              from "../../pages/Roles/institutionadmin/ReportSetupPage";
 
+/* ── Director's Office page imports ─────────────────────────── */
+import DirectorsDashboardPage from "../../pages/Roles/directorsoffice/DirectorsDashboardPage";
+import ReviewQueuePage        from "../../pages/Roles/directorsoffice/ReviewQueuePage";
+
+/* ── Department Admin page imports ───────────────────────────── */
+import DeptAdminDashboardPage from "../../pages/Roles/departmentadmin/DeptAdminDashboardPage";
+import DeptUsersPage          from "../../pages/Roles/departmentadmin/DeptUsersPage";
+import TaskOverviewPage       from "../../pages/Roles/departmentadmin/TaskOverviewPage";
+
+/* ── Dept Nodal Officer page imports ─────────────────────────── */
+import NodalDashboardPage    from "../../pages/Roles/departmentnodalofficer/NodalDashboardPage";
+import AssignedSectionsPage  from "../../pages/Roles/departmentnodalofficer/AssignedSectionsPage";
+import SubmissionsPage       from "../../pages/Roles/departmentnodalofficer/SubmissionsPage";
+
 /* ── Finance Officer page imports ───────────────────────────── */
 import FinanceOverviewPage from "../../pages/Roles/financeofficer/FinanceOverviewPage";
 import EstimatesPage       from "../../pages/Roles/financeofficer/EstimatesPage";
@@ -254,6 +268,79 @@ export const ROLE_CONFIG = {
     },
     defaultPage: "fo-overview",
     user: { name: "Finance Officer", initials: "FO", org: "PragatiMitra" },
+  },
+
+  /* ── DIRECTOR'S OFFICE ───────────────────────────────────────── */
+  // ✅ key = "directors_office" — matches backend exactly
+  directors_office: {
+    navItems: [
+      {
+        group: "",
+        items: [{ id: "do-dashboard", label: "Dashboard", icon: "LayoutDashboard", permission: null }],
+      },
+      {
+        group: "Review",
+        items: [{ id: "do-review-queue", label: "Review Queue", icon: "ClipboardList", permission: null }],
+      },
+    ],
+    pages: {
+      "do-dashboard":    <DirectorsDashboardPage />,
+      "do-review-queue": <ReviewQueuePage />,
+    },
+    defaultPage: "do-dashboard",
+    user: { name: "Director's Office", initials: "DO", org: "PragatiMitra Institute" },
+  },
+
+  /* ── DEPARTMENT ADMIN ─────────────────────────────────────── */
+  // ✅ key = "department_admin" — matches backend exactly
+  department_admin: {
+    navItems: [
+      {
+        group: "",
+        items: [{ id: "da-dashboard", label: "Dashboard", icon: "LayoutDashboard", permission: null }],
+      },
+      {
+        group: "Users",
+        items: [{ id: "da-users", label: "Department Users", icon: "Users", permission: null }],
+      },
+      {
+        group: "Tasks",
+        items: [{ id: "da-tasks", label: "Task Overview", icon: "ListChecks", permission: null }],
+      },
+    ],
+    pages: {
+      "da-dashboard": <DeptAdminDashboardPage />,
+      "da-users":     <DeptUsersPage />,
+      "da-tasks":     <TaskOverviewPage />,
+    },
+    defaultPage: "da-dashboard",
+    user: { name: "Department Admin", initials: "DA", org: "Samhita Siddhanta" },
+  },
+
+  /* ── DEPARTMENT NODAL OFFICER ─────────────────────────────── */
+  // ✅ key = "department_nodal_officer" — matches backend exactly
+  department_nodal_officer: {
+    navItems: [
+      {
+        group: "",
+        items: [{ id: "dno-dashboard", label: "Dashboard", icon: "LayoutDashboard", permission: null }],
+      },
+      {
+        group: "Sections",
+        items: [{ id: "dno-sections", label: "Assigned Sections", icon: "FileEdit", permission: null }],
+      },
+      {
+        group: "Submissions",
+        items: [{ id: "dno-submissions", label: "Submissions", icon: "Send", permission: null }],
+      },
+    ],
+    pages: {
+      "dno-dashboard":   <NodalDashboardPage />,
+      "dno-sections":    <AssignedSectionsPage />,
+      "dno-submissions": <SubmissionsPage />,
+    },
+    defaultPage: "dno-dashboard",
+    user: { name: "Nodal Officer", initials: "NO", org: "Samhita Siddhanta" },
   },
 
   /* ── FALLBACK ───────────────────────────────────────────────── */
