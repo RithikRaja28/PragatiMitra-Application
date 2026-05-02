@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useApi } from "../../../hooks/useApi";
 import FormScreen from "../../../components/shared/FormScreen";
+import ImportWizard from "../../../components/shared/ImportWizard";
 import { S, Toast, isAuthError, formatDate } from "../../../components/shared/formUtils";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { t } from "../../../i18n/translations";
@@ -504,6 +505,55 @@ function SkeletonCard() {
   );
 }
 
+function ExportMenu({ loading, onExport }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div style={{ position: "relative" }}>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        disabled={!!loading}
+        style={{
+          display: "inline-flex", alignItems: "center", gap: 6,
+          padding: "10px 18px", borderRadius: 10,
+          border: "1.5px solid #e2e8f0", background: "#fff",
+          fontSize: 13, fontWeight: 700, color: "#475569", cursor: "pointer",
+          opacity: loading ? 0.6 : 1,
+        }}
+      >
+        {loading ? "Exporting…" : "↓ Export"} ▾
+      </button>
+      {open && (
+        <>
+          <div style={{ position: "fixed", inset: 0, zIndex: 99 }} onClick={() => setOpen(false)} />
+          <div style={{
+            position: "absolute", top: "calc(100% + 6px)", right: 0, zIndex: 100,
+            background: "#fff", border: "1.5px solid #e2e8f0", borderRadius: 10,
+            boxShadow: "0 8px 24px rgba(0,0,0,0.12)", minWidth: 180, overflow: "hidden",
+          }}>
+            {[
+              { fmt: "csv",  label: "Export as CSV"   },
+              { fmt: "xlsx", label: "Export as Excel"  },
+            ].map(({ fmt, label }) => (
+              <button key={fmt}
+                onClick={() => { setOpen(false); onExport(fmt); }}
+                style={{
+                  display: "block", width: "100%", padding: "10px 16px",
+                  background: "none", border: "none", textAlign: "left",
+                  fontSize: 13, color: "#1e293b", cursor: "pointer", fontWeight: 500,
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.background = "#f8fafc"}
+                onMouseLeave={(e) => e.currentTarget.style.background = "none"}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function StyledSelect({ value, onChange, children, minWidth = 180 }) {
   return (
     <select
@@ -538,8 +588,10 @@ export default function InstitutionManagementPage() {
 
   /* formView: null = list, { mode: 'create'|'edit', entity } = form screen */
   const [formView, setFormView] = useState(null);
-  const [togglingId, setTogglingId] = useState(null);
-  const [toast, setToast] = useState(null);
+  const [togglingId,      setTogglingId]      = useState(null);
+  const [toast,           setToast]           = useState(null);
+  const [showImport,      setShowImport]      = useState(false);
+  const [exportingFormat, setExportingFormat] = useState(null);
   const toastTimer = useRef(null);
 
   const showToast = useCallback((message, type = "success") => {
@@ -550,6 +602,24 @@ export default function InstitutionManagementPage() {
       type === "error" ? 5500 : 3000
     );
   }, []);
+
+  const handleExport = async (format) => {
+    setExportingFormat(format);
+    try {
+      const res  = await apiFetch(`/api/institutions/export?format=${format}`);
+      const blob = await res.blob();
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement("a");
+      a.href     = url;
+      a.download = `institutions_export.${format}`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      showToast("Export failed. Please try again.", "error");
+    } finally {
+      setExportingFormat(null);
+    }
+  };
 
   const fetchInstitutions = useCallback(async () => {
     setLoading(true);
@@ -618,6 +688,28 @@ export default function InstitutionManagementPage() {
     );
   }
 
+  if (showImport) {
+    return (
+      <>
+        {toast && <Toast message={toast.message} type={toast.type} />}
+        <ImportWizard
+          apiPath="/api/institutions"
+          entityLabel="Institutions"
+          entityIcon="🏛️"
+          onBack={() => setShowImport(false)}
+          onSuccess={(result) => {
+            setShowImport(false);
+            fetchInstitutions();
+            showToast(
+              `Import complete: ${result.imported} institution${result.imported !== 1 ? "s" : ""} imported.`,
+              "success"
+            );
+          }}
+        />
+      </>
+    );
+  }
+
   /* ── List view ── */
   const filtered =
     statusFilter === "ALL"
@@ -681,25 +773,31 @@ export default function InstitutionManagementPage() {
             Create and manage institutions on the platform.
           </p>
         </div>
-        <button
-          onClick={() => setFormView({ mode: "create", entity: null })}
-          style={{
-            padding: "10px 20px",
-            borderRadius: 10,
-            border: "none",
-            background: "#2563eb",
-            fontSize: 13,
-            fontWeight: 700,
-            color: "#fff",
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            gap: 7,
-            whiteSpace: "nowrap",
-          }}
-        >
-          <span style={{ fontSize: 18, lineHeight: 1 }}>+</span> {t("+ New Institution", lang)}
-        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+          <ExportMenu loading={exportingFormat} onExport={handleExport} />
+          <button
+            onClick={() => setShowImport(true)}
+            style={{
+              display: "inline-flex", alignItems: "center", gap: 6,
+              padding: "10px 18px", borderRadius: 10,
+              border: "1.5px solid #2563eb", background: "#eff6ff",
+              fontSize: 13, fontWeight: 700, color: "#2563eb", cursor: "pointer",
+            }}
+          >
+            ↑ Import
+          </button>
+          <button
+            onClick={() => setFormView({ mode: "create", entity: null })}
+            style={{
+              padding: "10px 20px", borderRadius: 10, border: "none",
+              background: "#2563eb", fontSize: 13, fontWeight: 700,
+              color: "#fff", cursor: "pointer", display: "flex",
+              alignItems: "center", gap: 7, whiteSpace: "nowrap",
+            }}
+          >
+            <span style={{ fontSize: 18, lineHeight: 1 }}>+</span> {t("New Institution", lang)}
+          </button>
+        </div>
       </div>
 
       {error && (
