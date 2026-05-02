@@ -540,6 +540,79 @@ function UserList({ apiFetch, onEdit }) {
   );
 }
 
+/* ── UserImportWizard — loads institution/role lookups, passes as extras ── */
+function UserImportWizard({ onBack, onSuccess }) {
+  const { apiFetch } = useApi();
+  const [institutions, setInstitutions] = useState([]);
+  const [roles,        setRoles]        = useState([]);
+  const [defaults, setDefaults] = useState({ defaultInstitutionId: "", defaultRoleName: "" });
+
+  useEffect(() => {
+    apiFetch("/api/lookup/institutions")
+      .then((r) => r.json())
+      .then((d) => { if (d.success) setInstitutions(d.institutions); })
+      .catch(() => {});
+    apiFetch("/api/lookup/roles")
+      .then((r) => r.json())
+      .then((d) => { if (d.success) setRoles(d.roles); })
+      .catch(() => {});
+  }, [apiFetch]);
+
+  const extraSettingsSlot = (
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+      <div>
+        <label style={S.label}>Default Institution</label>
+        <select
+          style={S.select(false)}
+          value={defaults.defaultInstitutionId}
+          onChange={(e) => setDefaults((d) => ({ ...d, defaultInstitutionId: e.target.value }))}
+        >
+          <option value="">— Use value from file —</option>
+          {institutions.map((i) => (
+            <option key={i.institution_id} value={i.institution_id}>
+              {i.institution_name}
+            </option>
+          ))}
+        </select>
+        <span style={{ fontSize: 11, color: "#94a3b8", marginTop: 4, display: "block" }}>
+          Applied when the row has no institution.
+        </span>
+      </div>
+      <div>
+        <label style={S.label}>Default Role</label>
+        <select
+          style={S.select(false)}
+          value={defaults.defaultRoleName}
+          onChange={(e) => setDefaults((d) => ({ ...d, defaultRoleName: e.target.value }))}
+        >
+          <option value="">— Use value from file —</option>
+          {roles.map((r) => (
+            <option key={r.id} value={r.name}>{r.display_name}</option>
+          ))}
+        </select>
+        <span style={{ fontSize: 11, color: "#94a3b8", marginTop: 4, display: "block" }}>
+          Applied when the row has no role.
+        </span>
+      </div>
+    </div>
+  );
+
+  return (
+    <ImportWizard
+      apiPath="/api/users"
+      entityLabel="Users"
+      entityIcon="👥"
+      extraSettingsSlot={extraSettingsSlot}
+      extraImportBody={{
+        defaultInstitutionId: defaults.defaultInstitutionId || null,
+        defaultRoleName:      defaults.defaultRoleName || "",
+      }}
+      onBack={onBack}
+      onSuccess={onSuccess}
+    />
+  );
+}
+
 /* ── Main Export ─────────────────────────────────────────────────── */
 export default function UserManagementPage() {
   const { lang } = useLanguage();
@@ -593,9 +666,10 @@ export default function UserManagementPage() {
     return (
       <>
         {toast && <Toast message={toast.message} type={toast.type} />}
-        <ImportWizard
+        <UserImportWizard
           onBack={() => setShowImport(false)}
           onSuccess={(result) => {
+            setShowImport(false);
             setRefreshKey((k) => k + 1);
             showToast(`Import complete: ${result.imported} user${result.imported !== 1 ? "s" : ""} imported.`);
           }}

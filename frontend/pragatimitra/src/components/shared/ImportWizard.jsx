@@ -5,7 +5,6 @@ import { S as FS } from "./formUtils";
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
-/* ─── Local style tokens ─────────────────────────────────────────── */
 const S = {
   ...FS,
   btnDanger: {
@@ -21,19 +20,13 @@ function StepBar({ current }) {
   return (
     <div style={{ display: "flex", alignItems: "center", marginBottom: 36 }}>
       {steps.map((label, idx) => {
-        const n      = idx + 1;
-        const active = current === n;
-        const done   = current > n;
-        const bg     = done ? "#10b981" : active ? "#2563eb" : "#e2e8f0";
-        const fg     = done || active ? "#fff" : "#94a3b8";
+        const n = idx + 1; const active = current === n; const done = current > n;
+        const bg = done ? "#10b981" : active ? "#2563eb" : "#e2e8f0";
+        const fg = done || active ? "#fff" : "#94a3b8";
         return (
           <div key={n} style={{ display: "flex", alignItems: "center", flex: idx < steps.length - 1 ? 1 : 0 }}>
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5, flexShrink: 0 }}>
-              <div style={{
-                width: 32, height: 32, borderRadius: "50%", background: bg, color: fg,
-                display: "flex", alignItems: "center", justifyContent: "center",
-                fontSize: 13, fontWeight: 700, transition: "background .2s",
-              }}>
+              <div style={{ width: 32, height: 32, borderRadius: "50%", background: bg, color: fg, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, transition: "background .2s" }}>
                 {done ? "✓" : n}
               </div>
               <span style={{ fontSize: 11, fontWeight: 600, color: active ? "#2563eb" : done ? "#10b981" : "#94a3b8", whiteSpace: "nowrap" }}>
@@ -60,10 +53,7 @@ function Alert({ type, children }) {
   };
   const s = styles[type] || styles.info;
   return (
-    <div style={{
-      background: s.bg, border: `1.5px solid ${s.border}`, color: s.color,
-      borderRadius: 9, padding: "10px 14px", fontSize: 13, lineHeight: 1.55, marginBottom: 16,
-    }}>
+    <div style={{ background: s.bg, border: `1.5px solid ${s.border}`, color: s.color, borderRadius: 9, padding: "10px 14px", fontSize: 13, lineHeight: 1.55, marginBottom: 16 }}>
       {children}
     </div>
   );
@@ -72,21 +62,12 @@ function Alert({ type, children }) {
 /* ─── Error Details Modal ────────────────────────────────────────── */
 function ErrorDetailsModal({ errors, onClose }) {
   const [page, setPage] = useState(0);
-  const PAGE_SIZE  = 10;
+  const PAGE_SIZE = 10;
   const totalPages = Math.ceil(errors.length / PAGE_SIZE);
   const pageErrors = errors.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
-
   return (
-    <div style={{
-      position: "fixed", inset: 0, zIndex: 2000,
-      background: "rgba(15,23,42,0.65)", display: "flex",
-      alignItems: "center", justifyContent: "center", padding: 24,
-    }}>
-      <div style={{
-        background: "#fff", borderRadius: 14, width: "100%", maxWidth: 680,
-        padding: "28px 28px 24px", boxShadow: "0 24px 80px rgba(0,0,0,0.28)",
-        maxHeight: "80vh", display: "flex", flexDirection: "column",
-      }}>
+    <div style={{ position: "fixed", inset: 0, zIndex: 2000, background: "rgba(15,23,42,0.65)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+      <div style={{ background: "#fff", borderRadius: 14, width: "100%", maxWidth: 680, padding: "28px 28px 24px", boxShadow: "0 24px 80px rgba(0,0,0,0.28)", maxHeight: "80vh", display: "flex", flexDirection: "column" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
           <div>
             <div style={{ fontSize: 16, fontWeight: 700, color: "#1e293b" }}>Skipped Rows — Details</div>
@@ -96,7 +77,6 @@ function ErrorDetailsModal({ errors, onClose }) {
           </div>
           <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 20, color: "#94a3b8", cursor: "pointer" }}>✕</button>
         </div>
-
         <div style={{ flex: 1, overflowY: "auto", border: "1px solid #e2e8f0", borderRadius: 10 }}>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
@@ -125,7 +105,6 @@ function ErrorDetailsModal({ errors, onClose }) {
             </tbody>
           </table>
         </div>
-
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 16 }}>
           <div style={{ fontSize: 12, color: "#94a3b8" }}>
             {totalPages > 1 ? `Page ${page + 1} of ${totalPages}` : `${errors.length} row${errors.length !== 1 ? "s" : ""}`}
@@ -146,22 +125,15 @@ function ErrorDetailsModal({ errors, onClose }) {
 }
 
 /* ─── STEP 1: Configure ──────────────────────────────────────────── */
-function Step1Configure({ file, settings, institutions, roles, onFileChange, onSettingsChange, onNext, onDownloadSample }) {
+function Step1Configure({ file, settings, onFileChange, onSettingsChange, onNext, onDownloadSample, extraSettingsSlot }) {
   const [dragOver, setDragOver] = useState(false);
   const fileRef = useRef(null);
 
   const handleDrop = (e) => {
-    e.preventDefault();
-    setDragOver(false);
-    const f = e.dataTransfer.files[0];
-    if (f) onFileChange(f);
+    e.preventDefault(); setDragOver(false);
+    const f = e.dataTransfer.files[0]; if (f) onFileChange(f);
   };
-
-  const formatSize = (bytes) => {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  };
+  const formatSize = (b) => b < 1024 ? `${b} B` : b < 1048576 ? `${(b / 1024).toFixed(1)} KB` : `${(b / 1048576).toFixed(1)} MB`;
 
   return (
     <div>
@@ -170,18 +142,12 @@ function Step1Configure({ file, settings, institutions, roles, onFileChange, onS
         Supported formats: <strong>.csv</strong>, <strong>.xlsx</strong>, <strong>.xls</strong> — Max 25 MB
       </p>
 
-      {/* Drop zone */}
       <div
         onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
         onDragLeave={() => setDragOver(false)}
         onDrop={handleDrop}
         onClick={() => fileRef.current?.click()}
-        style={{
-          border: `2px dashed ${dragOver ? "#2563eb" : file ? "#10b981" : "#cbd5e1"}`,
-          borderRadius: 12, padding: "36px 24px", textAlign: "center",
-          background: dragOver ? "#eff6ff" : file ? "#f0fdf4" : "#fafafa",
-          cursor: "pointer", transition: "all .2s", marginBottom: 20,
-        }}
+        style={{ border: `2px dashed ${dragOver ? "#2563eb" : file ? "#10b981" : "#cbd5e1"}`, borderRadius: 12, padding: "36px 24px", textAlign: "center", background: dragOver ? "#eff6ff" : file ? "#f0fdf4" : "#fafafa", cursor: "pointer", transition: "all .2s", marginBottom: 20 }}
       >
         <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" style={{ display: "none" }}
           onChange={(e) => e.target.files[0] && onFileChange(e.target.files[0])} />
@@ -201,13 +167,11 @@ function Step1Configure({ file, settings, institutions, roles, onFileChange, onS
         )}
       </div>
 
-      {/* Sample download */}
       <div style={{ display: "flex", gap: 10, marginBottom: 28 }}>
         <button style={{ ...S.btnGhost, fontSize: 12 }} onClick={() => onDownloadSample("csv")}>↓ Sample CSV</button>
         <button style={{ ...S.btnGhost, fontSize: 12 }} onClick={() => onDownloadSample("xlsx")}>↓ Sample Excel (with dropdowns)</button>
       </div>
 
-      {/* Settings */}
       <div style={{ background: "#f8fafc", borderRadius: 12, padding: "20px 20px 16px", border: "1px solid #e2e8f0" }}>
         <div style={{ fontSize: 13, fontWeight: 700, color: "#1e293b", marginBottom: 16 }}>Import Settings</div>
 
@@ -215,16 +179,15 @@ function Step1Configure({ file, settings, institutions, roles, onFileChange, onS
           <label style={S.label}>Duplicate Handling</label>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {[
-              { value: "skip",      label: "Skip Duplicates",          desc: "Existing users will not be updated" },
-              { value: "overwrite", label: "Overwrite Existing Users", desc: "Update name, department and status" },
-              { value: "new",       label: "Add as New",               desc: "Insert even if email already exists" },
+              { value: "skip",      label: "Skip Duplicates",          desc: "Existing records will not be updated" },
+              { value: "overwrite", label: "Overwrite Existing",       desc: "Update matching records" },
+              { value: "new",       label: "Add as New",               desc: "Insert even if record already exists" },
             ].map(({ value, label, desc }) => (
               <label key={value} style={{ display: "flex", alignItems: "flex-start", gap: 10, cursor: "pointer" }}>
                 <input type="radio" name="dupHandling" value={value}
                   checked={settings.duplicateHandling === value}
                   onChange={() => onSettingsChange("duplicateHandling", value)}
-                  style={{ marginTop: 2 }}
-                />
+                  style={{ marginTop: 2 }} />
                 <div>
                   <span style={{ fontSize: 13, fontWeight: 600, color: "#1e293b" }}>{label}</span>
                   <span style={{ fontSize: 11, color: "#94a3b8", marginLeft: 8 }}>{desc}</span>
@@ -234,7 +197,7 @@ function Step1Configure({ file, settings, institutions, roles, onFileChange, onS
           </div>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 16 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: extraSettingsSlot ? 16 : 0 }}>
           <div>
             <label style={S.label}>Character Encoding</label>
             <select style={S.select()} value={settings.encoding} onChange={(e) => onSettingsChange("encoding", e.target.value)}>
@@ -253,32 +216,8 @@ function Step1Configure({ file, settings, institutions, roles, onFileChange, onS
           </div>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-          <div>
-            <label style={S.label}>
-              Default Institution{" "}
-              <span style={{ color: "#94a3b8", fontWeight: 400, textTransform: "none" }}>(if not in file)</span>
-            </label>
-            <select style={S.select()} value={settings.defaultInstitutionId} onChange={(e) => onSettingsChange("defaultInstitutionId", e.target.value)}>
-              <option value="">— None —</option>
-              {institutions.map((i) => (
-                <option key={i.institution_id} value={i.institution_id}>{i.institution_name}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label style={S.label}>
-              Default Role{" "}
-              <span style={{ color: "#94a3b8", fontWeight: 400, textTransform: "none" }}>(if not in file)</span>
-            </label>
-            <select style={S.select()} value={settings.defaultRoleName} onChange={(e) => onSettingsChange("defaultRoleName", e.target.value)}>
-              <option value="">— None —</option>
-              {roles.map((r) => (
-                <option key={r.id} value={r.name}>{r.display_name}</option>
-              ))}
-            </select>
-          </div>
-        </div>
+        {/* Entity-specific extra settings injected by parent */}
+        {extraSettingsSlot}
       </div>
 
       <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 24 }}>
@@ -293,7 +232,6 @@ function Step1Configure({ file, settings, institutions, roles, onFileChange, onS
 /* ─── STEP 2: Map Fields ─────────────────────────────────────────── */
 function Step2MapFields({ systemFields, fileColumns, mapping, onMappingChange, onNext, onBack, parseError, validating }) {
   const unmappedRequired = systemFields.filter((f) => f.required && !mapping[f.key]);
-
   return (
     <div>
       <h3 style={{ fontSize: 15, fontWeight: 700, color: "#1e293b", marginBottom: 4 }}>Map Fields</h3>
@@ -311,12 +249,7 @@ function Step2MapFields({ systemFields, fileColumns, mapping, onMappingChange, o
         </Alert>
       )}
 
-      <div style={{
-        display: "grid", gridTemplateColumns: "1fr 1fr",
-        background: "#f8fafc", borderRadius: "10px 10px 0 0",
-        border: "1px solid #e2e8f0", borderBottom: "none",
-        padding: "10px 16px",
-      }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", background: "#f8fafc", borderRadius: "10px 10px 0 0", border: "1px solid #e2e8f0", borderBottom: "none", padding: "10px 16px" }}>
         <span style={{ fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.7 }}>System Field</span>
         <span style={{ fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.7 }}>Your File Column</span>
       </div>
@@ -326,12 +259,7 @@ function Step2MapFields({ systemFields, fileColumns, mapping, onMappingChange, o
           const mapped = !!mapping[field.key];
           const isLast = idx === systemFields.length - 1;
           return (
-            <div key={field.key} style={{
-              display: "grid", gridTemplateColumns: "1fr 1fr",
-              padding: "12px 16px", alignItems: "center",
-              borderBottom: isLast ? "none" : "1px solid #f1f5f9",
-              background: mapped ? "#fff" : field.required ? "#fffbeb" : "#fff",
-            }}>
+            <div key={field.key} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", padding: "12px 16px", alignItems: "center", borderBottom: isLast ? "none" : "1px solid #f1f5f9", background: mapped ? "#fff" : field.required ? "#fffbeb" : "#fff" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <span style={{ fontSize: 13, fontWeight: 600, color: "#1e293b" }}>{field.label}</span>
                 {field.required
@@ -346,9 +274,7 @@ function Step2MapFields({ systemFields, fileColumns, mapping, onMappingChange, o
                   onChange={(e) => onMappingChange(field.key, e.target.value)}
                 >
                   <option value="">— Not mapped —</option>
-                  {fileColumns.map((col) => (
-                    <option key={col} value={col}>{col}</option>
-                  ))}
+                  {fileColumns.map((col) => <option key={col} value={col}>{col}</option>)}
                 </select>
               </div>
             </div>
@@ -357,18 +283,12 @@ function Step2MapFields({ systemFields, fileColumns, mapping, onMappingChange, o
       </div>
 
       <div style={{ marginTop: 12 }}>
-        <Alert type="info">
-          Fields auto-mapped using alias matching. You can override any mapping using the dropdowns above.
-        </Alert>
+        <Alert type="info">Fields auto-mapped using alias matching. You can override any mapping using the dropdowns above.</Alert>
       </div>
 
       <div style={{ display: "flex", justifyContent: "space-between", marginTop: 24 }}>
         <button style={S.btnGhost} onClick={onBack} disabled={validating}>← Previous</button>
-        <button
-          style={S.btnPrimary(unmappedRequired.length > 0 || validating)}
-          disabled={unmappedRequired.length > 0 || validating}
-          onClick={onNext}
-        >
+        <button style={S.btnPrimary(unmappedRequired.length > 0 || validating)} disabled={unmappedRequired.length > 0 || validating} onClick={onNext}>
           {validating ? "Validating…" : "Next: Preview & Import →"}
         </button>
       </div>
@@ -377,7 +297,7 @@ function Step2MapFields({ systemFields, fileColumns, mapping, onMappingChange, o
 }
 
 /* ─── STEP 3: Preview & Import ───────────────────────────────────── */
-function Step3Preview({ systemFields, mapping, parsedData, validationResult, onBack, onImport, importing, importResult, onBack: goBack }) {
+function Step3Preview({ entityLabel, systemFields, mapping, parsedData, validationResult, onBack, onImport, importing, importResult }) {
   const [showErrors, setShowErrors] = useState(false);
 
   if (importResult) {
@@ -389,7 +309,6 @@ function Step3Preview({ systemFields, mapping, parsedData, validationResult, onB
             Import {importResult.failed === 0 ? "Complete!" : "Finished with some errors"}
           </h3>
         </div>
-
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 24 }}>
           {[
             { label: "Total",    value: importResult.total,    color: "#2563eb", bg: "#eff6ff" },
@@ -403,12 +322,9 @@ function Step3Preview({ systemFields, mapping, parsedData, validationResult, onB
             </div>
           ))}
         </div>
-
         {importResult.errors?.length > 0 && (
           <div style={{ marginBottom: 20 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: "#dc2626", marginBottom: 10 }}>
-              Failed Rows ({importResult.errors.length})
-            </div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#dc2626", marginBottom: 10 }}>Failed Rows ({importResult.errors.length})</div>
             <div style={{ background: "#fef2f2", borderRadius: 10, border: "1px solid #fecaca", maxHeight: 200, overflowY: "auto", padding: 12 }}>
               {importResult.errors.map((e, i) => (
                 <div key={i} style={{ fontSize: 12, color: "#7f1d1d", padding: "3px 0", borderBottom: i < importResult.errors.length - 1 ? "1px solid #fecaca" : "none" }}>
@@ -418,49 +334,29 @@ function Step3Preview({ systemFields, mapping, parsedData, validationResult, onB
             </div>
           </div>
         )}
-
         <Alert type={importResult.failed === 0 ? "success" : "info"}>
-          {importResult.imported > 0
-            ? `${importResult.imported} user${importResult.imported !== 1 ? "s" : ""} successfully imported.`
-            : "No users were imported."
-          }
+          {importResult.imported > 0 ? `${importResult.imported} ${entityLabel.toLowerCase()} successfully imported.` : "No records were imported."}
           {importResult.skipped > 0 ? ` ${importResult.skipped} skipped (duplicates).` : ""}
         </Alert>
       </div>
     );
   }
 
-  const previewCols = systemFields
-    .filter((f) => mapping[f.key])
-    .map((f) => ({ key: f.key, label: f.label, col: mapping[f.key] }));
+  const previewCols = systemFields.filter((f) => mapping[f.key]).map((f) => ({ key: f.key, label: f.label, col: mapping[f.key] }));
 
   const stats = validationResult
     ? { total: validationResult.total, ready: validationResult.ready, skipped: validationResult.skipped, unmapped: validationResult.unmappedRequired }
-    : {
-        total:   parsedData.totalRows,
-        ready:   parsedData.rows.filter((row) => {
-          const nc = mapping["full_name"];
-          const ec = mapping["email"];
-          return (nc ? String(row[nc] || "").trim() : "") && (ec ? String(row[ec] || "").trim() : "");
-        }).length,
-        skipped: 0,
-        unmapped: systemFields.filter((f) => !mapping[f.key]).length,
-      };
+    : { total: parsedData.totalRows, ready: parsedData.totalRows, skipped: 0, unmapped: systemFields.filter((f) => !mapping[f.key]).length };
 
   const errorRows = validationResult?.errors || [];
 
   return (
     <div>
-      {showErrors && errorRows.length > 0 && (
-        <ErrorDetailsModal errors={errorRows} onClose={() => setShowErrors(false)} />
-      )}
+      {showErrors && errorRows.length > 0 && <ErrorDetailsModal errors={errorRows} onClose={() => setShowErrors(false)} />}
 
       <h3 style={{ fontSize: 15, fontWeight: 700, color: "#1e293b", marginBottom: 4 }}>Preview & Import</h3>
-      <p style={{ fontSize: 13, color: "#64748b", marginBottom: 20 }}>
-        Review the import summary and first 5 rows, then click Import.
-      </p>
+      <p style={{ fontSize: 13, color: "#64748b", marginBottom: 20 }}>Review the import summary and first 5 rows, then click Import.</p>
 
-      {/* Stats */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 16 }}>
         {[
           { label: "Total Rows",        value: stats.total,   color: "#2563eb", bg: "#eff6ff" },
@@ -475,7 +371,6 @@ function Step3Preview({ systemFields, mapping, parsedData, validationResult, onB
         ))}
       </div>
 
-      {/* View details */}
       {errorRows.length > 0 && (
         <div style={{ display: "flex", alignItems: "flex-start", gap: 12, marginBottom: 4 }}>
           <div style={{ flex: 1 }}>
@@ -483,17 +378,12 @@ function Step3Preview({ systemFields, mapping, parsedData, validationResult, onB
               <strong>{errorRows.length} row{errorRows.length !== 1 ? "s" : ""}</strong> will be skipped due to validation errors.
             </Alert>
           </div>
-          <button style={{ ...S.btnDanger, marginTop: 0 }} onClick={() => setShowErrors(true)}>
-            View Details
-          </button>
+          <button style={S.btnDanger} onClick={() => setShowErrors(true)}>View Details</button>
         </div>
       )}
 
-      {stats.ready === 0 && (
-        <Alert type="error">No valid rows found. Please go back and fix your field mapping.</Alert>
-      )}
+      {stats.ready === 0 && <Alert type="error">No valid rows found. Please go back and fix your field mapping.</Alert>}
 
-      {/* Preview table */}
       {previewCols.length > 0 && (
         <div style={{ marginBottom: 24 }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: "#475569", marginBottom: 10 }}>
@@ -505,9 +395,7 @@ function Step3Preview({ systemFields, mapping, parsedData, validationResult, onB
                 <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
                   <th style={{ padding: "10px 14px", fontSize: 11, fontWeight: 700, color: "#94a3b8", textAlign: "left", textTransform: "uppercase" }}>#</th>
                   {previewCols.map(({ key, label }) => (
-                    <th key={key} style={{ padding: "10px 14px", fontSize: 11, fontWeight: 700, color: "#94a3b8", textAlign: "left", textTransform: "uppercase", whiteSpace: "nowrap" }}>
-                      {label}
-                    </th>
+                    <th key={key} style={{ padding: "10px 14px", fontSize: 11, fontWeight: 700, color: "#94a3b8", textAlign: "left", textTransform: "uppercase", whiteSpace: "nowrap" }}>{label}</th>
                   ))}
                 </tr>
               </thead>
@@ -528,35 +416,42 @@ function Step3Preview({ systemFields, mapping, parsedData, validationResult, onB
         </div>
       )}
 
-      <Alert type="info">
-        Default password for rows without a password column: <strong>Welcome@123</strong>. Users will be prompted to change it on first login.
-      </Alert>
-
       <div style={{ display: "flex", justifyContent: "space-between", marginTop: 24 }}>
         <button style={S.btnGhost} onClick={onBack} disabled={importing}>← Previous</button>
-        <button
-          style={S.btnPrimary(importing || stats.ready === 0)}
-          disabled={importing || stats.ready === 0}
-          onClick={onImport}
-        >
-          {importing ? "Importing…" : `Import ${stats.ready} Users`}
+        <button style={S.btnPrimary(importing || stats.ready === 0)} disabled={importing || stats.ready === 0} onClick={onImport}>
+          {importing ? "Importing…" : `Import ${stats.ready} ${entityLabel}`}
         </button>
       </div>
     </div>
   );
 }
 
-/* ─── Main ImportWizard — full-page, same pattern as FormScreen ──── */
-export default function ImportWizard({ onBack, onSuccess }) {
+/* ─── Main ImportWizard — generic, full-page ─────────────────────── */
+/*
+ * Props:
+ *   apiPath       — e.g. "/api/users" or "/api/institutions"
+ *   entityLabel   — e.g. "Users" or "Institutions"
+ *   entityIcon    — emoji for the card header (default "📥")
+ *   extraSettingsSlot — optional React node rendered inside the settings box
+ *   extraImportBody   — optional object merged into the execute POST body
+ *   onBack        — navigate back to the list
+ *   onSuccess     — called after successful import with the result object
+ */
+export default function ImportWizard({
+  apiPath      = "/api/users",
+  entityLabel  = "Records",
+  entityIcon   = "📥",
+  extraSettingsSlot = null,
+  extraImportBody   = {},
+  onBack,
+  onSuccess,
+}) {
   const { accessToken } = useAuth();
   const { apiFetch }    = useApi();
 
   const [step,             setStep]             = useState(1);
   const [file,             setFile]             = useState(null);
-  const [settings,         setSettings]         = useState({
-    duplicateHandling: "skip", encoding: "UTF-8", delimiter: ",",
-    defaultInstitutionId: "", defaultRoleName: "",
-  });
+  const [settings,         setSettings]         = useState({ duplicateHandling: "skip", encoding: "UTF-8", delimiter: "," });
   const [systemFields,     setSystemFields]     = useState([]);
   const [fileColumns,      setFileColumns]      = useState([]);
   const [parsedData,       setParsedData]       = useState(null);
@@ -566,150 +461,110 @@ export default function ImportWizard({ onBack, onSuccess }) {
   const [validating,       setValidating]       = useState(false);
   const [validationResult, setValidationResult] = useState(null);
   const [validateError,    setValidateError]    = useState("");
-  const [institutions,     setInstitutions]     = useState([]);
-  const [roles,            setRoles]            = useState([]);
   const [importing,        setImporting]        = useState(false);
   const [importResult,     setImportResult]     = useState(null);
   const [importError,      setImportError]      = useState("");
 
   useEffect(() => {
-    apiFetch("/api/users/import/schema")
+    apiFetch(`${apiPath}/import/schema`)
       .then((r) => r.json())
       .then((d) => { if (d.success) setSystemFields(d.fields); })
       .catch(() => {});
-
-    apiFetch("/api/lookup/institutions")
-      .then((r) => r.json())
-      .then((d) => { if (d.success) setInstitutions(d.institutions); })
-      .catch(() => {});
-
-    apiFetch("/api/lookup/roles")
-      .then((r) => r.json())
-      .then((d) => { if (d.success) setRoles(d.roles); })
-      .catch(() => {});
-  }, [apiFetch]);
+  }, [apiFetch, apiPath]);
 
   const handleSettingsChange = useCallback((key, value) => setSettings((s) => ({ ...s, [key]: value })), []);
-  const handleMappingChange  = useCallback((fieldKey, colValue) => setMapping((m) => ({ ...m, [fieldKey]: colValue })), []);
+  const handleMappingChange  = useCallback((k, v) => setMapping((m) => ({ ...m, [k]: v })), []);
 
+  /* Step 1 → 2: parse file */
   const handleStep1Next = async () => {
     if (!file) return;
-    setParseLoading(true);
-    setParseError("");
+    setParseLoading(true); setParseError("");
     try {
-      const formData = new FormData();
-      formData.append("file",      file);
-      formData.append("encoding",  settings.encoding);
-      formData.append("delimiter", settings.delimiter);
-
-      const res  = await fetch(`${API_BASE}/api/users/import/parse`, {
-        method: "POST", headers: { Authorization: `Bearer ${accessToken}` }, body: formData,
+      const fd = new FormData();
+      fd.append("file",      file);
+      fd.append("encoding",  settings.encoding);
+      fd.append("delimiter", settings.delimiter);
+      const res  = await fetch(`${API_BASE}${apiPath}/import/parse`, {
+        method: "POST", headers: { Authorization: `Bearer ${accessToken}` }, body: fd,
       });
       const data = await res.json();
-      if (!data.success) { setParseError(data.message || "Failed to parse file."); setParseLoading(false); return; }
-
-      setParsedData(data);
-      setFileColumns(data.columns);
-      setMapping(data.autoMapping || {});
-      setValidationResult(null);
+      if (!data.success) { setParseError(data.message || "Failed to parse file."); return; }
+      setParsedData(data); setFileColumns(data.columns);
+      setMapping(data.autoMapping || {}); setValidationResult(null);
       setStep(2);
-    } catch {
-      setParseError("Network error while parsing file. Please try again.");
-    } finally {
-      setParseLoading(false);
-    }
+    } catch { setParseError("Network error while parsing file. Please try again."); }
+    finally   { setParseLoading(false); }
   };
 
+  /* Step 2 → 3: server-side validation */
   const handleStep2Next = async () => {
     if (!parsedData?.rows) return;
-    setValidating(true);
-    setValidateError("");
+    setValidating(true); setValidateError("");
     try {
-      const res  = await apiFetch("/api/users/import/validate", {
+      const res  = await apiFetch(`${apiPath}/import/validate`, {
         method: "POST",
-        body: JSON.stringify({ mapping, data: parsedData.rows, defaultInstitutionId: settings.defaultInstitutionId || null }),
+        body: JSON.stringify({ mapping, data: parsedData.rows, ...extraImportBody }),
       });
       const data = await res.json();
       if (data.success) { setValidationResult(data); setStep(3); }
       else setValidateError(data.message || "Validation failed.");
-    } catch {
-      setValidateError("Network error during validation. Please try again.");
-    } finally {
-      setValidating(false);
-    }
+    } catch { setValidateError("Network error during validation. Please try again."); }
+    finally   { setValidating(false); }
   };
 
+  /* Sample file download */
   const handleDownloadSample = async (format) => {
     try {
-      const res  = await apiFetch(`/api/users/export/sample?format=${format}`);
+      const res  = await apiFetch(`${apiPath}/export/sample?format=${format}`);
       const blob = await res.blob();
       const url  = URL.createObjectURL(blob);
       const a    = document.createElement("a");
-      a.href = url; a.download = `users_import_sample.${format}`; a.click();
+      a.href = url; a.download = `import_sample.${format}`; a.click();
       URL.revokeObjectURL(url);
     } catch {}
   };
 
+  /* Execute import */
   const handleImport = async () => {
     if (!parsedData?.rows) return;
-    setImporting(true);
-    setImportError("");
+    setImporting(true); setImportError("");
     try {
-      const res  = await apiFetch("/api/users/import/execute", {
+      const res  = await apiFetch(`${apiPath}/import/execute`, {
         method: "POST",
         body: JSON.stringify({
           mapping, data: parsedData.rows,
           duplicateHandling: settings.duplicateHandling,
-          defaultInstitutionId: settings.defaultInstitutionId || null,
-          defaultRoleName: settings.defaultRoleName || "",
+          ...extraImportBody,
         }),
       });
       const data = await res.json();
-      if (!data.success) { setImportError(data.message || "Import failed."); }
+      if (!data.success) setImportError(data.message || "Import failed.");
       else { setImportResult(data); if (data.imported > 0 && onSuccess) onSuccess(data); }
-    } catch {
-      setImportError("Network error during import. Please try again.");
-    } finally {
-      setImporting(false);
-    }
+    } catch { setImportError("Network error during import. Please try again."); }
+    finally   { setImporting(false); }
   };
 
-  /* ── Full-page layout — same structure as FormScreen ─────────── */
+  /* ── Page layout (same structure as FormScreen) ───────────────── */
   return (
     <div style={{ padding: "32px 36px", fontFamily: "'Plus Jakarta Sans', sans-serif", minHeight: "100%" }}>
-
-      {/* Back navigation */}
+      {/* Back nav */}
       <button
-        type="button"
-        onClick={onBack}
-        disabled={importing}
-        style={{
-          display: "inline-flex", alignItems: "center", gap: 6,
-          background: "none", border: "none", fontSize: 13, fontWeight: 600,
-          color: "#2563eb", cursor: importing ? "not-allowed" : "pointer",
-          padding: 0, marginBottom: 24, opacity: importing ? 0.5 : 1,
-        }}
+        type="button" onClick={onBack} disabled={importing}
+        style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "none", border: "none", fontSize: 13, fontWeight: 600, color: "#2563eb", cursor: importing ? "not-allowed" : "pointer", padding: 0, marginBottom: 24, opacity: importing ? 0.5 : 1 }}
       >
-        ← Back to Users
+        ← Back to {entityLabel}
       </button>
 
       {/* Wizard card */}
-      <div style={{
-        background: "#fff", borderRadius: 18,
-        border: "1px solid rgba(0,0,0,0.07)",
-        boxShadow: "0 2px 16px rgba(0,0,0,0.06)", overflow: "hidden",
-      }}>
+      <div style={{ background: "#fff", borderRadius: 18, border: "1px solid rgba(0,0,0,0.07)", boxShadow: "0 2px 16px rgba(0,0,0,0.06)", overflow: "hidden" }}>
         {/* Card header */}
         <div style={{ padding: "24px 28px 20px", borderBottom: "1px solid #f1f5f9", display: "flex", alignItems: "center", gap: 14 }}>
-          <div style={{
-            width: 44, height: 44, borderRadius: 12, background: "#eff6ff",
-            display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, flexShrink: 0,
-          }}>
-            📥
+          <div style={{ width: 44, height: 44, borderRadius: 12, background: "#eff6ff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, flexShrink: 0 }}>
+            {entityIcon}
           </div>
           <div>
-            <div style={{ fontSize: 17, fontWeight: 700, color: "#1e293b" }}>Import Users</div>
-            <div style={{ fontSize: 13, color: "#94a3b8", marginTop: 3 }}>Upload CSV or Excel file to bulk-create users</div>
+            <div style={{ fontSize: 17, fontWeight: 700, color: "#1e293b" }}>Import {entityLabel}</div>
+            <div style={{ fontSize: 13, color: "#94a3b8", marginTop: 3 }}>Upload CSV or Excel file to bulk-create {entityLabel.toLowerCase()}</div>
           </div>
         </div>
 
@@ -720,11 +575,7 @@ export default function ImportWizard({ onBack, onSuccess }) {
           {/* Parsing spinner */}
           {parseLoading && (
             <div style={{ textAlign: "center", padding: "40px 0", color: "#64748b", fontSize: 13 }}>
-              <div style={{
-                width: 32, height: 32, border: "3px solid #e2e8f0",
-                borderTopColor: "#2563eb", borderRadius: "50%",
-                animation: "spin 0.7s linear infinite", margin: "0 auto 12px",
-              }} />
+              <div style={{ width: 32, height: 32, border: "3px solid #e2e8f0", borderTopColor: "#2563eb", borderRadius: "50%", animation: "spin 0.7s linear infinite", margin: "0 auto 12px" }} />
               Parsing file…
               <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
             </div>
@@ -735,8 +586,7 @@ export default function ImportWizard({ onBack, onSuccess }) {
             <Step1Configure
               file={file}
               settings={settings}
-              institutions={institutions}
-              roles={roles}
+              extraSettingsSlot={extraSettingsSlot}
               onFileChange={(f) => { setFile(f); setParsedData(null); setParseError(""); setValidationResult(null); }}
               onSettingsChange={handleSettingsChange}
               onNext={handleStep1Next}
@@ -766,6 +616,7 @@ export default function ImportWizard({ onBack, onSuccess }) {
             <>
               {importError && <div style={{ marginBottom: 12 }}><Alert type="error">{importError}</Alert></div>}
               <Step3Preview
+                entityLabel={entityLabel}
                 systemFields={systemFields}
                 mapping={mapping}
                 parsedData={parsedData}
@@ -777,7 +628,7 @@ export default function ImportWizard({ onBack, onSuccess }) {
               />
               {importResult && (
                 <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 20, borderTop: "1px solid #f1f5f9", paddingTop: 20 }}>
-                  <button style={S.btnGhost} onClick={onBack}>← Back to Users</button>
+                  <button style={S.btnGhost} onClick={onBack}>← Back to {entityLabel}</button>
                 </div>
               )}
             </>
