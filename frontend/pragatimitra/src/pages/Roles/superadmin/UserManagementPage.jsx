@@ -605,57 +605,103 @@ export default function UserManagementPage() {
   }
 
   return (
-    <div style={{ padding: "32px 36px", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+    <div
+      style={{
+        padding: "32px 36px",
+        fontFamily: "'Plus Jakarta Sans', sans-serif",
+      }}
+    >
       {toast && <Toast message={toast.message} type={toast.type} />}
 
       {/* Header */}
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 28, flexWrap: "wrap", gap: 12 }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "flex-start",
+          justifyContent: "space-between",
+          marginBottom: 28,
+          flexWrap: "wrap",
+          gap: 12,
+        }}
+      >
         <div>
-          <div style={{
-            display: "inline-flex", alignItems: "center", gap: 8,
-            background: "#7c3aed14", borderRadius: 8, padding: "4px 12px", marginBottom: 12,
-          }}>
-            <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#7c3aed" }} />
-            <span style={{ fontSize: 11, fontWeight: 600, color: "#7c3aed", textTransform: "uppercase", letterSpacing: 1 }}>
+          <div
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 8,
+              background: "#7c3aed14",
+              borderRadius: 8,
+              padding: "4px 12px",
+              marginBottom: 12,
+            }}
+          >
+            <div
+              style={{
+                width: 7,
+                height: 7,
+                borderRadius: "50%",
+                background: "#7c3aed",
+              }}
+            />
+            <span
+              style={{
+                fontSize: 11,
+                fontWeight: 600,
+                color: "#7c3aed",
+                textTransform: "uppercase",
+                letterSpacing: 1,
+              }}
+            >
               {t("User Management", lang)}
             </span>
           </div>
-          <h1 style={{ fontSize: 24, fontWeight: 700, color: "#1e293b", letterSpacing: "-0.4px", marginBottom: 6 }}>
+          <h1
+            style={{
+              fontSize: 24,
+              fontWeight: 700,
+              color: "#1e293b",
+              letterSpacing: "-0.4px",
+              marginBottom: 6,
+            }}
+          >
             {t("Users", lang)}
           </h1>
           <p style={{ color: "#94a3b8", fontSize: 14 }}>
-            Create, edit, activate/deactivate, and manage roles for all platform users.
+            Create, edit, activate/deactivate, and manage roles for all platform
+            users.
           </p>
         </div>
 
-        <button
-          onClick={() => setFormView({ mode: "create", entity: null })}
+        <div
           style={{
-            display: "inline-flex", alignItems: "center", gap: 8,
-            padding: "10px 20px", borderRadius: 10, border: "none",
-            background: "#2563eb", fontSize: 13, fontWeight: 700,
-            color: "#fff", cursor: "pointer", flexShrink: 0, marginTop: 4,
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            flexShrink: 0,
+            marginTop: 4,
           }}
         >
-          {t("+ New User", lang)}
-        </button>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0, marginTop: 4 }}>
           {/* Export dropdown */}
           <div style={{ position: "relative" }}>
-            <ExportMenu
-              loading={exportingFormat}
-              onExport={handleExport}
-            />
+            <ExportMenu loading={exportingFormat} onExport={handleExport} />
           </div>
 
           {/* Import button */}
           <button
             onClick={() => setShowImport(true)}
             style={{
-              display: "inline-flex", alignItems: "center", gap: 6,
-              padding: "10px 18px", borderRadius: 10,
-              border: "1.5px solid #2563eb", background: "#eff6ff",
-              fontSize: 13, fontWeight: 700, color: "#2563eb", cursor: "pointer",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              padding: "10px 18px",
+              borderRadius: 10,
+              border: "1.5px solid #2563eb",
+              background: "#eff6ff",
+              fontSize: 13,
+              fontWeight: 700,
+              color: "#2563eb",
+              cursor: "pointer",
             }}
           >
             ↑ Import
@@ -665,13 +711,22 @@ export default function UserManagementPage() {
           <button
             onClick={() => setFormView({ mode: "create", entity: null })}
             style={{
-              display: "inline-flex", alignItems: "center", gap: 8,
-              padding: "10px 20px", borderRadius: 10, border: "none",
-              background: "#2563eb", fontSize: 13, fontWeight: 700,
-              color: "#fff", cursor: "pointer",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "10px 20px",
+              borderRadius: 10,
+              border: "none",
+              background: "#2563eb",
+              fontSize: 13,
+              fontWeight: 700,
+              color: "#fff",
+              cursor: "pointer",
+              flexShrink: 0,
+              marginTop: 4,
             }}
           >
-            + New User
+            {t("+ New User", lang)}
           </button>
         </div>
       </div>
