@@ -2,6 +2,9 @@ import { useState, useEffect, useCallback } from "react";
 import { useApi } from "../../../hooks/useApi";
 import { S, Toast } from "../../../components/shared/formUtils";
 import FormScreen from "../../../components/shared/FormScreen";
+import ImportWizard from "../../../components/shared/ImportWizard";
+
+const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
 /* ── Constants & pure helpers ──────────────────────────────────── */
 const STATUS_OPTIONS = ["ACTIVE", "INACTIVE", "SUSPENDED"];
@@ -534,14 +537,34 @@ function UserList({ apiFetch, onEdit }) {
 
 /* ── Main Export ─────────────────────────────────────────────────── */
 export default function UserManagementPage() {
-  const { apiFetch } = useApi();
-  const [formView,   setFormView]   = useState(null);
-  const [toast,      setToast]      = useState(null);
-  const [refreshKey, setRefreshKey] = useState(0);
+  const { apiFetch }      = useApi();
+  const [formView,        setFormView]        = useState(null);
+  const [toast,           setToast]           = useState(null);
+  const [refreshKey,      setRefreshKey]      = useState(0);
+  const [showImport,      setShowImport]      = useState(false);
+  const [exportingFormat, setExportingFormat] = useState(null);
 
   const showToast = (message, type = "success") => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3500);
+  };
+
+  const handleExport = async (format) => {
+    setExportingFormat(format);
+    try {
+      const res  = await apiFetch(`/api/users/export?format=${format}`);
+      const blob = await res.blob();
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement("a");
+      a.href     = url;
+      a.download = `users_export.${format}`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      showToast("Export failed. Please try again.", "error");
+    } finally {
+      setExportingFormat(null);
+    }
   };
 
   if (formView) {
@@ -560,12 +583,27 @@ export default function UserManagementPage() {
     );
   }
 
+  if (showImport) {
+    return (
+      <>
+        {toast && <Toast message={toast.message} type={toast.type} />}
+        <ImportWizard
+          onBack={() => setShowImport(false)}
+          onSuccess={(result) => {
+            setRefreshKey((k) => k + 1);
+            showToast(`Import complete: ${result.imported} user${result.imported !== 1 ? "s" : ""} imported.`);
+          }}
+        />
+      </>
+    );
+  }
+
   return (
     <div style={{ padding: "32px 36px", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
       {toast && <Toast message={toast.message} type={toast.type} />}
 
       {/* Header */}
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 28 }}>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 28, flexWrap: "wrap", gap: 12 }}>
         <div>
           <div style={{
             display: "inline-flex", alignItems: "center", gap: 8,
@@ -584,17 +622,41 @@ export default function UserManagementPage() {
           </p>
         </div>
 
-        <button
-          onClick={() => setFormView({ mode: "create", entity: null })}
-          style={{
-            display: "inline-flex", alignItems: "center", gap: 8,
-            padding: "10px 20px", borderRadius: 10, border: "none",
-            background: "#2563eb", fontSize: 13, fontWeight: 700,
-            color: "#fff", cursor: "pointer", flexShrink: 0, marginTop: 4,
-          }}
-        >
-          + New User
-        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0, marginTop: 4 }}>
+          {/* Export dropdown */}
+          <div style={{ position: "relative" }}>
+            <ExportMenu
+              loading={exportingFormat}
+              onExport={handleExport}
+            />
+          </div>
+
+          {/* Import button */}
+          <button
+            onClick={() => setShowImport(true)}
+            style={{
+              display: "inline-flex", alignItems: "center", gap: 6,
+              padding: "10px 18px", borderRadius: 10,
+              border: "1.5px solid #2563eb", background: "#eff6ff",
+              fontSize: 13, fontWeight: 700, color: "#2563eb", cursor: "pointer",
+            }}
+          >
+            ↑ Import
+          </button>
+
+          {/* New user button */}
+          <button
+            onClick={() => setFormView({ mode: "create", entity: null })}
+            style={{
+              display: "inline-flex", alignItems: "center", gap: 8,
+              padding: "10px 20px", borderRadius: 10, border: "none",
+              background: "#2563eb", fontSize: 13, fontWeight: 700,
+              color: "#fff", cursor: "pointer",
+            }}
+          >
+            + New User
+          </button>
+        </div>
       </div>
 
       <UserList
@@ -602,6 +664,58 @@ export default function UserManagementPage() {
         apiFetch={apiFetch}
         onEdit={(u) => setFormView({ mode: "edit", entity: u })}
       />
+    </div>
+  );
+}
+
+/* ── Export dropdown menu ────────────────────────────────────────── */
+function ExportMenu({ loading, onExport }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div style={{ position: "relative" }}>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        disabled={!!loading}
+        style={{
+          display: "inline-flex", alignItems: "center", gap: 6,
+          padding: "10px 18px", borderRadius: 10,
+          border: "1.5px solid #e2e8f0", background: "#fff",
+          fontSize: 13, fontWeight: 700, color: "#475569", cursor: "pointer",
+          opacity: loading ? 0.6 : 1,
+        }}
+      >
+        {loading ? "Exporting…" : "↓ Export"} ▾
+      </button>
+      {open && (
+        <>
+          {/* click-away overlay */}
+          <div style={{ position: "fixed", inset: 0, zIndex: 99 }} onClick={() => setOpen(false)} />
+          <div style={{
+            position: "absolute", top: "calc(100% + 6px)", right: 0, zIndex: 100,
+            background: "#fff", border: "1.5px solid #e2e8f0", borderRadius: 10,
+            boxShadow: "0 8px 24px rgba(0,0,0,0.12)", minWidth: 160, overflow: "hidden",
+          }}>
+            {[
+              { fmt: "csv",  label: "Export as CSV" },
+              { fmt: "xlsx", label: "Export as Excel" },
+            ].map(({ fmt, label }) => (
+              <button key={fmt}
+                onClick={() => { setOpen(false); onExport(fmt); }}
+                style={{
+                  display: "block", width: "100%", padding: "10px 16px",
+                  background: "none", border: "none", textAlign: "left",
+                  fontSize: 13, color: "#1e293b", cursor: "pointer",
+                  fontWeight: 500,
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.background = "#f8fafc"}
+                onMouseLeave={(e) => e.currentTarget.style.background = "none"}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }
