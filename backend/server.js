@@ -53,7 +53,7 @@ app.use(
   })
 );
 
-app.use(express.json({ limit: "10kb" }));
+app.use(express.json({ limit: "10mb" }));
 app.use(cookies());
 
 /* ─── Request ID + logging (order matters) ──────────────────── */
@@ -98,15 +98,12 @@ app.get("/", (req, res) => {
 });
 const uploadRoutes = require("./routes/upload");
 app.use("/api/auth",         authRoutes);
-app.use("/api/users",        require("./routes/users"));
-app.use("/api/lookup",       require("./routes/lookup"));
-app.use("/api/roles",        require("./routes/roles"));
 app.use("/api/users",        userRoutes);
 app.use("/api/lookup",       lookupRoutes);
+app.use("/api/roles",        require("./routes/roles"));
 app.use("/api/departments",  departmentRoutes);
-app.use("/api/institutions", require("./routes/institutions"));
-app.use("/api/committees",   require("./routes/committees"));
 app.use("/api/institutions", institutionRoutes);
+app.use("/api/committees",   require("./routes/committees"));
 app.use("/api/audit-logs",   auditLogRoutes);
 app.use("/api/upload",       uploadRoutes);
 
