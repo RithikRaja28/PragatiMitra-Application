@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useApi } from "../../../hooks/useApi";
+import { useLanguage } from "../../../i18n/LanguageContext";
+import { t } from "../../../i18n/translations";
 
 /* ══════════════════════════════════════════════════════════════
    CAPABILITY DEFINITIONS
@@ -277,6 +279,7 @@ function PageBadge({ color, label }) {
    EDITOR: CAPABILITY GROUP — professional, neutral
 ══════════════════════════════════════════════════════════════════ */
 function CapabilityGroup({ group, checked, onChange }) {
+  const { lang } = useLanguage();
   const [open, setOpen] = useState(true);
   const checkedCount = countCheckedInGroup(group, checked);
   const total = group.caps.length;
@@ -356,7 +359,7 @@ function CapabilityGroup({ group, checked, onChange }) {
             e.currentTarget.style.color = allOn ? "#2563eb" : "#94a3b8";
           }}
         >
-          {allOn ? "Deselect all" : "Select all"}
+          {allOn ? t("Deselect all", lang) : t("Select all", lang)}
         </button>
 
         <svg
@@ -494,6 +497,7 @@ function CapabilityGroup({ group, checked, onChange }) {
    EDITOR: PERMISSION SIDEBAR (colorful)
 ══════════════════════════════════════════════════════════════════ */
 function PermissionSummary({ checked }) {
+  const { lang } = useLanguage();
   const total = ALL_CAP_KEYS.length;
   const selected = ALL_CAP_KEYS.filter((k) => checked[k]).length;
   const pct = total > 0 ? Math.round((selected / total) * 100) : 0;
@@ -519,7 +523,7 @@ function PermissionSummary({ checked }) {
           marginBottom: 16,
         }}
       >
-        Permission Summary
+        {t("Permission Summary", lang)}
       </div>
       <div style={{ textAlign: "center", marginBottom: 16 }}>
         <div
@@ -611,6 +615,7 @@ function PermissionSummary({ checked }) {
    ROLE EDITOR
 ══════════════════════════════════════════════════════════════════ */
 function RoleEditor({ role, onSave, onCancel, saving }) {
+  const { lang } = useLanguage();
   const isNew = !role;
   const [name, setName] = useState(role?.name ?? "");
   const [displayName, setDN] = useState(role?.display_name ?? "");
@@ -706,7 +711,7 @@ function RoleEditor({ role, onSave, onCancel, saving }) {
               strokeLinejoin="round"
             />
           </svg>
-          Roles & Permissions
+          {t("Roles & Permissions", lang)}
         </button>
         <svg
           width="14"
@@ -755,7 +760,7 @@ function RoleEditor({ role, onSave, onCancel, saving }) {
             margin: "0 0 4px",
           }}
         >
-          {isNew ? "Create a new role" : `Edit role`}
+          {isNew ? t("Create a new role", lang) : t("Edit Role", lang)}
         </h1>
         <p style={{ fontSize: 13.5, color: "#64748b", margin: 0 }}>
           {isNew
@@ -777,7 +782,7 @@ function RoleEditor({ role, onSave, onCancel, saving }) {
       >
         {isNew && (
           <div>
-            <FieldLabel>Role Key *</FieldLabel>
+            <FieldLabel>{t("Role Key *", lang)}</FieldLabel>
             <input
               value={name}
               onChange={(e) => {
@@ -844,7 +849,7 @@ function RoleEditor({ role, onSave, onCancel, saving }) {
         )}
 
         <div>
-          <FieldLabel>Display Name *</FieldLabel>
+          <FieldLabel>{t("Display Name *", lang)}</FieldLabel>
           <input
             value={displayName}
             onChange={(e) => setDN(e.target.value)}
@@ -878,7 +883,7 @@ function RoleEditor({ role, onSave, onCancel, saving }) {
         </div>
 
         <div>
-          <FieldLabel>Description</FieldLabel>
+          <FieldLabel>{t("Description", lang)}</FieldLabel>
           <input
             value={description}
             onChange={(e) => setDesc(e.target.value)}
@@ -965,7 +970,7 @@ function RoleEditor({ role, onSave, onCancel, saving }) {
                   fontFamily: "'Plus Jakarta Sans', sans-serif",
                 }}
               >
-                Clear
+                {t("Clear", lang)}
               </button>
             </div>
           </div>
@@ -1035,7 +1040,7 @@ function RoleEditor({ role, onSave, onCancel, saving }) {
               e.currentTarget.style.background = "#2563eb";
           }}
         >
-          {saving ? "Saving…" : isNew ? "Create Role" : "Save Changes"}
+          {saving ? t("Saving…", lang) : isNew ? t("Create Role", lang) : t("Save Changes", lang)}
         </button>
         <button
           onClick={onCancel}
@@ -1060,7 +1065,7 @@ function RoleEditor({ role, onSave, onCancel, saving }) {
             e.currentTarget.style.color = "#64748b";
           }}
         >
-          Cancel
+          {t("Cancel", lang)}
         </button>
         {!isNew && !role?.is_system && (
           <span style={{ fontSize: 12, color: "#94a3b8", marginLeft: "auto" }}>
@@ -1087,6 +1092,7 @@ function RoleEditor({ role, onSave, onCancel, saving }) {
    ROLE CARD — professional, monochromatic
 ══════════════════════════════════════════════════════════════════ */
 function RoleCard({ role, onEdit, onDelete, deleting }) {
+  const { lang } = useLanguage();
   const permCount = Object.values(role.permissions || {}).filter(
     Boolean,
   ).length;
@@ -1158,7 +1164,7 @@ function RoleCard({ role, onEdit, onDelete, deleting }) {
             border: "1px solid #e2e8f0",
           }}
         >
-          {role.is_system ? "System" : "Custom"}
+          {role.is_system ? t("System", lang) : t("Custom", lang)}
         </span>
       </div>
 
@@ -1174,7 +1180,7 @@ function RoleCard({ role, onEdit, onDelete, deleting }) {
       >
         {role.description || (
           <span style={{ color: "#cbd5e1", fontStyle: "italic" }}>
-            No description
+            {t("No description", lang)}
           </span>
         )}
       </div>
@@ -1189,7 +1195,7 @@ function RoleCard({ role, onEdit, onDelete, deleting }) {
           }}
         >
           <span style={{ fontSize: 11, color: "#94a3b8", fontWeight: 500 }}>
-            Permissions
+            {t("Permissions", lang)}
           </span>
           <span style={{ fontSize: 11, fontWeight: 700, color: "#475569" }}>
             {permCount} / {totalCaps}
@@ -1227,7 +1233,7 @@ function RoleCard({ role, onEdit, onDelete, deleting }) {
       >
         {activeGroups.length === 0 ? (
           <span style={{ fontSize: 11, color: "#cbd5e1", fontStyle: "italic" }}>
-            No capabilities assigned
+            {t("No capabilities assigned", lang)}
           </span>
         ) : (
           activeGroups.map((g) => (
@@ -1275,7 +1281,7 @@ function RoleCard({ role, onEdit, onDelete, deleting }) {
             e.currentTarget.style.borderColor = "#e2e8f0";
           }}
         >
-          Edit Role
+          {t("Edit Role", lang)}
         </button>
         {!role.is_system && (
           <button
@@ -1306,7 +1312,7 @@ function RoleCard({ role, onEdit, onDelete, deleting }) {
               e.currentTarget.style.background = "#fff";
             }}
           >
-            {deleting === role.id ? "…" : "Delete"}
+            {deleting === role.id ? "…" : t("Delete", lang)}
           </button>
         )}
       </div>
@@ -1318,6 +1324,7 @@ function RoleCard({ role, onEdit, onDelete, deleting }) {
    ROLE LIST
 ══════════════════════════════════════════════════════════════════ */
 function RoleList({ roles, onEdit, onDelete, onCreate, deleting }) {
+  const { lang } = useLanguage();
   const [search, setSearch] = useState("");
   const [filterType, setFilterType] = useState("all");
 
@@ -1338,7 +1345,7 @@ function RoleList({ roles, onEdit, onDelete, onCreate, deleting }) {
     <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
       {/* Header */}
       <div style={{ marginBottom: 28 }}>
-        <PageBadge color="#0891b2" label="Role & Access Control" />
+        <PageBadge color="#0891b2" label={t("Role & Access Control", lang)} />
         <div
           style={{
             display: "flex",
@@ -1356,7 +1363,7 @@ function RoleList({ roles, onEdit, onDelete, onCreate, deleting }) {
                 marginBottom: 6,
               }}
             >
-              Roles & Permissions
+              {t("Roles & Permissions", lang)}
             </h1>
             <p style={{ color: "#94a3b8", fontSize: 14 }}>
               Define what each role can access and do across the platform.
@@ -1379,7 +1386,7 @@ function RoleList({ roles, onEdit, onDelete, onCreate, deleting }) {
               fontFamily: "'Plus Jakarta Sans', sans-serif",
             }}
           >
-            + Create Role
+            {t("+ Create Role", lang)}
           </button>
         </div>
       </div>
@@ -1420,7 +1427,7 @@ function RoleList({ roles, onEdit, onDelete, onCreate, deleting }) {
                 fontWeight: 500,
               }}
             >
-              {label}
+              {t(label, lang)}
             </div>
           </div>
         ))}
@@ -1458,7 +1465,7 @@ function RoleList({ roles, onEdit, onDelete, onCreate, deleting }) {
             />
           </svg>
           <input
-            placeholder="Search roles…"
+            placeholder={t("Search roles…", lang)}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             style={{ ...inputStyle, paddingLeft: 32 }}
@@ -1496,7 +1503,7 @@ function RoleList({ roles, onEdit, onDelete, onCreate, deleting }) {
                 fontFamily: "'Plus Jakarta Sans', sans-serif",
               }}
             >
-              {label}
+              {t(label, lang)}
             </button>
           ))}
         </div>
@@ -1515,7 +1522,7 @@ function RoleList({ roles, onEdit, onDelete, onCreate, deleting }) {
             border: "1px solid #e2e8f0",
           }}
         >
-          No roles match your search.
+          {t("No roles match your search.", lang)}
         </div>
       ) : (
         <div
@@ -1544,6 +1551,7 @@ function RoleList({ roles, onEdit, onDelete, onCreate, deleting }) {
    ROOT
 ══════════════════════════════════════════════════════════════════ */
 export default function RoleAccessPage() {
+  const { lang } = useLanguage();
   const { apiFetch } = useApi();
   const [roles, setRoles] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -1673,7 +1681,7 @@ export default function RoleAccessPage() {
             }}
           />
           <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-          Loading roles…
+          {t("Loading roles…", lang)}
         </div>
       )}
       {!loading && error && (
@@ -1702,7 +1710,7 @@ export default function RoleAccessPage() {
               fontWeight: 600,
             }}
           >
-            Retry
+            {t("Retry", lang)}
           </button>
         </div>
       )}

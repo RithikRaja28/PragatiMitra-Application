@@ -1,4 +1,6 @@
 import { useState, useRef, useCallback } from "react";
+import { useLanguage } from "../../../i18n/LanguageContext";
+import { t } from "../../../i18n/translations";
 
 const SCHEDULES = [
   { num: "1",   name: "Corpus / Capital Fund" },
@@ -149,6 +151,7 @@ function FilePill({ file, onRemove }) {
 
 /* ─── Upload zone ─── */
 function UploadZone({ onFiles }) {
+  const { lang } = useLanguage();
   const ref = useRef();
   return (
     <label
@@ -163,7 +166,7 @@ function UploadZone({ onFiles }) {
         <path d="M8 2v8M5 5l3-3 3 3" stroke="#94a3b8" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
         <rect x="2" y="11" width="12" height="2.5" rx="1" fill="#94a3b8" opacity=".35" />
       </svg>
-      Upload PDF / image
+      {t("Upload PDF / image", lang)}
       <input ref={ref} type="file" accept="image/*,.pdf" multiple style={{ display: "none" }}
         onChange={(e) => { onFiles(e.target.files); ref.current.value = ""; }} />
     </label>
@@ -172,6 +175,7 @@ function UploadZone({ onFiles }) {
 
 /* ─── Single row entry in form ─── */
 function RowEntry({ row, onUpdate, onRemove, onAddFiles, onRemoveFile, canRemove }) {
+  const { lang } = useLanguage();
   return (
     <div style={{
       background: "#f8fafc", border: "1px solid rgba(0,0,0,0.07)",
@@ -181,22 +185,22 @@ function RowEntry({ row, onUpdate, onRemove, onAddFiles, onRemoveFile, canRemove
 
         {/* Schedule selector */}
         <div>
-          <span style={S.label}>Schedule</span>
+          <span style={S.label}>{t("Schedule", lang)}</span>
           <select
             value={row.schedule}
             onChange={(e) => onUpdate("schedule", e.target.value)}
             style={{ ...S.input, paddingRight: 4 }}
           >
-            <option value="">Select schedule…</option>
+            <option value="">{t("Select schedule…", lang)}</option>
             {SCHEDULES.map((s) => (
               <option key={s.num} value={s.num}>Schedule {s.num} — {s.name}</option>
             ))}
-            <option value="__custom__">+ Custom schedule name</option>
+            <option value="__custom__">+ {t("Custom schedule name", lang)}</option>
           </select>
           {row.useCustom && (
             <input
               type="text"
-              placeholder="Enter custom schedule name"
+              placeholder={t("Enter custom schedule name", lang)}
               value={row.customName}
               onChange={(e) => onUpdate("customName", e.target.value)}
               style={{ ...S.input, marginTop: 6 }}
@@ -206,7 +210,7 @@ function RowEntry({ row, onUpdate, onRemove, onAddFiles, onRemoveFile, canRemove
 
         {/* Date */}
         <div>
-          <span style={S.label}>Date</span>
+          <span style={S.label}>{t("Date", lang)}</span>
           <input
             type="date"
             value={row.date}
@@ -217,7 +221,7 @@ function RowEntry({ row, onUpdate, onRemove, onAddFiles, onRemoveFile, canRemove
 
         {/* Files */}
         <div>
-          <span style={S.label}>Supporting files</span>
+          <span style={S.label}>{t("Supporting files", lang)}</span>
           <UploadZone onFiles={onAddFiles} />
           {row.files.length > 0 && (
             <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap" }}>
@@ -307,6 +311,7 @@ function ThumbCell({ file, size = 64, onClick }) {
 
 /* ─── Lightbox ─── */
 function Lightbox({ files, startIndex, onClose }) {
+  const { lang } = useLanguage();
   const [idx, setIdx] = useState(startIndex);
   const file = files[idx];
   const isImg = file.type && file.type.startsWith("image/");
@@ -344,7 +349,7 @@ function Lightbox({ files, startIndex, onClose }) {
               {file.name}
             </div>
             <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 1 }}>
-              {idx + 1} of {files.length} &nbsp;·&nbsp; {isImg ? "Image" : "PDF"}
+              {idx + 1} of {files.length} &nbsp;·&nbsp; {isImg ? t("Image", lang) : "PDF"}
             </div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -380,7 +385,7 @@ function Lightbox({ files, startIndex, onClose }) {
                 <path d="M8 2v8M5 8l3 4 3-4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
                 <rect x="2" y="12" width="12" height="2" rx="1" fill="currentColor" opacity=".4" />
               </svg>
-              Download
+              {t("Download", lang)}
             </a>
             <button onClick={onClose} style={{
               ...S.btnOutline, width: 32, height: 32, padding: 0,
@@ -416,7 +421,7 @@ function Lightbox({ files, startIndex, onClose }) {
               </div>
               <div style={{ fontSize: 14, fontWeight: 600, color: "#1e293b", marginBottom: 6 }}>{file.name}</div>
               <div style={{ fontSize: 12, color: "#94a3b8", marginBottom: 20 }}>
-                PDF preview not available in browser — use the download button above.
+                {t("PDF preview not available in browser — use the download button above.", lang)}
               </div>
               <a href={file.url} download={file.name} style={{ ...S.btnPrimary, textDecoration: "none",
                 display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13 }}>
@@ -424,7 +429,7 @@ function Lightbox({ files, startIndex, onClose }) {
                   <path d="M8 2v8M5 8l3 4 3-4" stroke="#E6F1FB" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
                   <rect x="2" y="12" width="12" height="2" rx="1" fill="#E6F1FB" opacity=".6" />
                 </svg>
-                Download PDF
+                {t("Download PDF", lang)}
               </a>
             </div>
           )}
@@ -459,6 +464,7 @@ function Lightbox({ files, startIndex, onClose }) {
 
 /* ─── Schedule card (cards view) ─── */
 function ScheduleCard({ entry, onClick }) {
+  const { lang } = useLanguage();
   const st = STATUS_STYLES[entry.status] || STATUS_STYLES.draft;
   const previewFiles = entry.files.slice(0, 3);
   const extra = entry.files.length - 3;
@@ -505,7 +511,7 @@ function ScheduleCard({ entry, onClick }) {
           border: "1px dashed rgba(0,0,0,0.1)", display: "flex",
           alignItems: "center", justifyContent: "center",
         }}>
-          <span style={{ fontSize: 11, color: "#cbd5e1" }}>No files</span>
+          <span style={{ fontSize: 11, color: "#cbd5e1" }}>{t("No files", lang)}</span>
         </div>
       )}
 
@@ -545,6 +551,7 @@ function ScheduleCard({ entry, onClick }) {
 
 /* ─── Detail view ─── */
 function DetailView({ entry, onBack, onEdit }) {
+  const { lang } = useLanguage();
   const [lightboxIdx, setLightboxIdx] = useState(null);
   const st = STATUS_STYLES[entry.status] || STATUS_STYLES.draft;
 
@@ -570,7 +577,7 @@ function DetailView({ entry, onBack, onEdit }) {
         <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
           <path d="M10 3L5 8l5 5" stroke="#64748b" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
-        Back to schedules
+        {t("Back to schedules", lang)}
       </div>
 
       {/* Main card */}
@@ -610,15 +617,15 @@ function DetailView({ entry, onBack, onEdit }) {
           gap: 16, marginBottom: 22,
         }}>
           <div style={{ background: "#f8fafc", borderRadius: 8, padding: "12px 14px" }}>
-            <span style={S.label}>Document date</span>
+            <span style={S.label}>{t("Document date", lang)}</span>
             <div style={{ fontSize: 14, fontWeight: 700, color: "#1e293b" }}>{formatDate(entry.date)}</div>
           </div>
           <div style={{ background: "#f8fafc", borderRadius: 8, padding: "12px 14px" }}>
-            <span style={S.label}>Saved on</span>
+            <span style={S.label}>{t("Saved on", lang)}</span>
             <div style={{ fontSize: 13, fontWeight: 600, color: "#1e293b" }}>{formatDateTime(entry.savedAt)}</div>
           </div>
           <div style={{ background: "#f8fafc", borderRadius: 8, padding: "12px 14px" }}>
-            <span style={S.label}>Files uploaded</span>
+            <span style={S.label}>{t("Files uploaded", lang)}</span>
             <div style={{ fontSize: 22, fontWeight: 700, color: "#185FA5" }}>{entry.files.length}</div>
           </div>
         </div>
@@ -627,7 +634,7 @@ function DetailView({ entry, onBack, onEdit }) {
 
         {/* Files section */}
         <div style={{ marginBottom: 4 }}>
-          <span style={S.label}>Uploaded files</span>
+          <span style={S.label}>{t("Uploaded files", lang)}</span>
         </div>
 
         {entry.files.length === 0 ? (
@@ -636,7 +643,7 @@ function DetailView({ entry, onBack, onEdit }) {
             border: "1px dashed rgba(0,0,0,0.1)", borderRadius: 10,
             color: "#94a3b8", fontSize: 13,
           }}>
-            No files attached to this schedule entry.
+            {t("No files attached to this schedule entry.", lang)}
           </div>
         ) : (
           <div style={{
@@ -693,7 +700,7 @@ function DetailView({ entry, onBack, onEdit }) {
                       background: "rgba(255,255,255,0.9)", borderRadius: 6,
                       padding: "3px 7px", fontSize: 10, color: "#185FA5", fontWeight: 600,
                     }}>
-                      Preview
+                      {t("Preview", lang)}
                     </div>
                   </div>
 
@@ -706,7 +713,7 @@ function DetailView({ entry, onBack, onEdit }) {
                       {f.name}
                     </div>
                     <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 2 }}>
-                      {isImg ? "Image" : "PDF"} &nbsp;·&nbsp; click to preview
+                      {isImg ? t("Image", lang) : "PDF"} &nbsp;·&nbsp; {t("click to preview", lang)}
                     </div>
                   </div>
                 </div>
@@ -718,8 +725,8 @@ function DetailView({ entry, onBack, onEdit }) {
 
       {/* Actions */}
       <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16, gap: 10 }}>
-        <button style={S.btnOutline} onClick={onBack}>Back</button>
-        <button style={S.btnPrimary} onClick={onEdit}>Edit entry</button>
+        <button style={S.btnOutline} onClick={onBack}>{t("Back", lang)}</button>
+        <button style={S.btnPrimary} onClick={onEdit}>{t("Edit entry", lang)}</button>
       </div>
     </div>
   );
@@ -727,6 +734,7 @@ function DetailView({ entry, onBack, onEdit }) {
 
 /* ─── Report metadata bar ─── */
 function ReportMeta({ meta }) {
+  const { lang } = useLanguage();
   if (!meta) return null;
   return (
     <div style={{
@@ -734,12 +742,12 @@ function ReportMeta({ meta }) {
       display: "flex", gap: 28, flexWrap: "wrap",
     }}>
       <div>
-        <span style={S.label}>Last saved</span>
+        <span style={S.label}>{t("Last saved", lang)}</span>
         <div style={{ fontSize: 13, fontWeight: 600, color: "#1e293b" }}>{formatDateTime(meta.savedAt)}</div>
       </div>
       {meta.submittedAt && (
         <div>
-          <span style={S.label}>Submitted</span>
+          <span style={S.label}>{t("Submitted", lang)}</span>
           <div style={{ fontSize: 13, fontWeight: 600, color: "#27500A" }}>{formatDateTime(meta.submittedAt)}</div>
         </div>
       )}
@@ -751,6 +759,7 @@ function ReportMeta({ meta }) {
    MAIN PAGE COMPONENT
 ════════════════════════════════════════════ */
 export default function BalanceSheetPage() {
+  const { lang } = useLanguage();
   const [view, setView] = useState("form");         // "form" | "cards" | "detail"
   const [rows, setRows] = useState([makeRow(1)]);
   const [nextId, setNextId] = useState(2);
@@ -878,17 +887,17 @@ export default function BalanceSheetPage() {
             }}>
               <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#0891b2" }} />
               <span style={{ fontSize: 11, fontWeight: 600, color: "#0891b2", textTransform: "uppercase", letterSpacing: 1 }}>
-                Balance Sheet
+                {t("Balance Sheet", lang)}
               </span>
             </div>
             <h1 style={{ fontSize: 22, fontWeight: 700, color: "#1e293b", letterSpacing: "-0.4px", marginBottom: 4 }}>
-              Schedule uploads
+              {t("Schedule uploads", lang)}
             </h1>
             <p style={{ color: "#94a3b8", fontSize: 14 }}>
               {savedEntries.length} schedule{savedEntries.length !== 1 ? "s" : ""} saved
             </p>
           </div>
-          <button style={S.btnPrimary} onClick={() => setView("form")}>+ New entry</button>
+          <button style={S.btnPrimary} onClick={() => setView("form")}>+ {t("New entry", lang)}</button>
         </div>
 
         {/* Report metadata */}
@@ -900,7 +909,7 @@ export default function BalanceSheetPage() {
             textAlign: "center", padding: "60px 0",
             color: "#94a3b8", fontSize: 14,
           }}>
-            No entries saved yet. Click "New entry" to begin.
+            {t("No entries saved yet. Click \"New entry\" to begin.", lang)}
           </div>
         ) : (
           <div style={{
@@ -934,19 +943,19 @@ export default function BalanceSheetPage() {
           }}>
             <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#0891b2" }} />
             <span style={{ fontSize: 11, fontWeight: 600, color: "#0891b2", textTransform: "uppercase", letterSpacing: 1 }}>
-              Balance Sheet
+              {t("Balance Sheet", lang)}
             </span>
           </div>
           <h1 style={{ fontSize: 22, fontWeight: 700, color: "#1e293b", letterSpacing: "-0.4px", marginBottom: 4 }}>
-            Schedule upload
+            {t("Schedule upload", lang)}
           </h1>
           <p style={{ color: "#94a3b8", fontSize: 14 }}>
-            Add schedule entries with supporting documents
+            {t("Add schedule entries with supporting documents", lang)}
           </p>
         </div>
         {savedEntries.length > 0 && (
           <button style={S.btnOutline} onClick={() => setView("cards")}>
-            View saved ({savedEntries.length})
+            {t("View saved", lang)} ({savedEntries.length})
           </button>
         )}
       </div>
@@ -981,13 +990,13 @@ export default function BalanceSheetPage() {
           fontFamily: "'Plus Jakarta Sans', sans-serif",
         }}
       >
-        + Add row
+        + {t("Add row", lang)}
       </button>
 
       {/* Actions */}
       <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
-        <button style={S.btnOutline} onClick={handleSave}>Save as draft</button>
-        <button style={S.btnSuccess} onClick={handleSubmit}>Submit for approval</button>
+        <button style={S.btnOutline} onClick={handleSave}>{t("Save as draft", lang)}</button>
+        <button style={S.btnSuccess} onClick={handleSubmit}>{t("Submit for approval", lang)}</button>
       </div>
     </div>
   );

@@ -1,4 +1,6 @@
 import { useState, useMemo } from "react";
+import { useLanguage } from "../../../i18n/LanguageContext";
+import { t } from "../../../i18n/translations";
 
 /* ─── Color tokens (matching screenshot blue theme) ─── */
 const C = {
@@ -115,6 +117,7 @@ function ColTotal({ rows, field, label }) {
 
 /* ─── Saved entry card ─── */
 function SavedCard({ entry, onEdit, onDelete }) {
+  const { lang } = useLanguage();
   const [open, setOpen] = useState(false);
   const total = (f) => entry.rows.reduce((s, r) => s + (parseFloat(r[f]) || 0), 0);
   return (
@@ -135,7 +138,7 @@ function SavedCard({ entry, onEdit, onDelete }) {
           ))}
         </div>
         <div style={{ display: "flex", gap: 6, marginLeft: 10 }}>
-          <button onClick={e => { e.stopPropagation(); onEdit(); }} style={btn("outline", "sm")}>Edit</button>
+          <button onClick={e => { e.stopPropagation(); onEdit(); }} style={btn("outline", "sm")}>{t("Edit", lang)}</button>
           <button onClick={e => { e.stopPropagation(); onDelete(); }} style={btn("danger", "sm")}>✕</button>
         </div>
         <span style={{ fontSize: 11, color: C.textSub, marginLeft: 4 }}>{open ? "▲" : "▼"}</span>
@@ -180,6 +183,7 @@ function SavedCard({ entry, onEdit, onDelete }) {
    MAIN PAGE
 ══════════════════════════════════════════════════════════════ */
 export default function EstimatesPage() {
+  const { lang } = useLanguage();
   const [scheme,      setScheme]      = useState("");
   const [programme,   setProgramme]   = useState("");
   const [rows,        setRows]        = useState([newRow(), newRow(), newRow()]);
@@ -286,19 +290,19 @@ export default function EstimatesPage() {
           <div style={{ display: "inline-flex", alignItems: "center", gap: 6,
             background: C.primaryLt, borderRadius: 6, padding: "3px 11px", marginBottom: 8 }}>
             <span style={{ width: 6, height: 6, borderRadius: "50%", background: C.primary }} />
-            <span style={{ fontSize: 10, fontWeight: 700, color: C.primary, textTransform: "uppercase", letterSpacing: "0.08em" }}>Finance Module</span>
+            <span style={{ fontSize: 10, fontWeight: 700, color: C.primary, textTransform: "uppercase", letterSpacing: "0.08em" }}>{t("Finance Module", lang)}</span>
           </div>
-          <h1 style={{ fontSize: 22, fontWeight: 700, color: C.text, margin: 0, letterSpacing: "-0.4px" }}>Estimates</h1>
+          <h1 style={{ fontSize: 22, fontWeight: 700, color: C.text, margin: 0, letterSpacing: "-0.4px" }}>{t("Estimates", lang)}</h1>
           <p style={{ fontSize: 13, color: C.textSub, margin: "4px 0 0" }}>Budget Estimate (BE) · Revised Estimate (RE) · Actual Expenditure (AE)</p>
         </div>
         <button onClick={() => setManagingSchemes(true)}
-          style={{ ...btn("outline"), fontSize: 11, padding: "8px 14px" }}>⚙ Manage Schemes</button>
+          style={{ ...btn("outline"), fontSize: 11, padding: "8px 14px" }}>⚙ {t("Manage Schemes", lang)}</button>
       </div>
 
       {/* Tabs */}
       <div style={{ display: "flex", gap: 0, background: C.surface, border: `0.5px solid ${C.border}`,
         borderRadius: 10, padding: 4, width: "fit-content" }}>
-        {[["entry", editingId ? "✎ Edit Entry" : "+ New Entry"], ["saved", `Saved Entries (${saved.length})`]].map(([id, label]) => (
+        {[["entry", editingId ? `✎ ${t("Edit Entry", lang)}` : `+ ${t("New Entry", lang)}`], ["saved", `${t("Saved Entries", lang)} (${saved.length})`]].map(([id, label]) => (
           <button key={id} onClick={() => setActiveTab(id)}
             style={{ ...btn(activeTab === id ? "primary" : "ghost", "sm"), borderRadius: 7, padding: "7px 18px", fontSize: 12 }}>
             {label}
@@ -315,22 +319,22 @@ export default function EstimatesPage() {
             padding: "16px 18px", boxShadow: "0 1px 5px rgba(37,99,235,0.06)" }}>
             <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 14, display: "flex", alignItems: "center", gap: 8 }}>
               <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><rect x="1" y="1" width="6" height="6" rx="1.5" stroke={C.primary} strokeWidth="1.5"/><rect x="9" y="1" width="6" height="6" rx="1.5" stroke={C.primary} strokeWidth="1.5"/><rect x="1" y="9" width="6" height="6" rx="1.5" stroke={C.primary} strokeWidth="1.5"/><rect x="9" y="9" width="6" height="6" rx="1.5" stroke={C.primary} strokeWidth="1.5"/></svg>
-              Scheme & Programme Selection
+              {t("Scheme & Programme Selection", lang)}
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
               <div>
                 <label style={{ fontSize: 10, fontWeight: 700, color: C.textSub, textTransform: "uppercase",
-                  letterSpacing: "0.07em", display: "block", marginBottom: 5 }}>Scheme</label>
+                  letterSpacing: "0.07em", display: "block", marginBottom: 5 }}>{t("Scheme", lang)}</label>
                 <select value={scheme} onChange={e => { setScheme(e.target.value); setProgramme(""); }} style={selectSt}>
-                  <option value="">— Select Scheme —</option>
+                  <option value="">{t("— Select Scheme —", lang)}</option>
                   {Object.keys(customSchemes).map(k => <option key={k} value={k}>{k}</option>)}
                 </select>
               </div>
               <div>
                 <label style={{ fontSize: 10, fontWeight: 700, color: C.textSub, textTransform: "uppercase",
-                  letterSpacing: "0.07em", display: "block", marginBottom: 5 }}>Programme</label>
+                  letterSpacing: "0.07em", display: "block", marginBottom: 5 }}>{t("Programme", lang)}</label>
                 <select value={programme} onChange={e => setProgramme(e.target.value)} style={{ ...selectSt, opacity: scheme ? 1 : 0.5 }} disabled={!scheme}>
-                  <option value="">— Select Programme —</option>
+                  <option value="">{t("— Select Programme —", lang)}</option>
                   {programmes.map(p => <option key={p} value={p}>{p}</option>)}
                 </select>
               </div>
@@ -356,10 +360,10 @@ export default function EstimatesPage() {
               display: "flex", alignItems: "center", justifyContent: "space-between",
               background: "linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%)" }}>
               <div>
-                <div style={{ fontSize: 12, fontWeight: 700, color: C.text }}>Estimate Table</div>
-                <div style={{ fontSize: 11, color: C.textSub }}>Enter BE, RE and AE values (in ₹)</div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: C.text }}>{t("Estimate Table", lang)}</div>
+                <div style={{ fontSize: 11, color: C.textSub }}>{t("Enter BE, RE and AE values (in ₹)", lang)}</div>
               </div>
-              <button onClick={addRow} style={btn("outline", "sm")}>+ Add Row</button>
+              <button onClick={addRow} style={btn("outline", "sm")}>+ {t("Add Row", lang)}</button>
             </div>
 
             <div style={{ overflowX: "auto" }}>
@@ -402,7 +406,7 @@ export default function EstimatesPage() {
                 </tbody>
                 <tfoot>
                   <tr style={{ background: "linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%)", borderTop: `1.5px solid ${C.border}` }}>
-                    <td colSpan={2} style={{ padding: "10px 12px", fontSize: 11, fontWeight: 700, color: C.text }}>TOTAL</td>
+                    <td colSpan={2} style={{ padding: "10px 12px", fontSize: 11, fontWeight: 700, color: C.text }}>{t("TOTAL", lang)}</td>
                     {["be","re","ae"].map(f => (
                       <td key={f} style={{ padding: "10px 12px", textAlign: "right", fontWeight: 700, fontSize: 13, color: C.primary }}>
                         {totals[f] > 0 ? fmt(totals[f]) : "—"}
@@ -432,11 +436,11 @@ export default function EstimatesPage() {
               </div>
             </div>
             <div style={{ display: "flex", gap: 9 }}>
-              <button onClick={resetForm} style={{ ...btn("ghost"), padding: "9px 16px" }}>✕ Clear</button>
+              <button onClick={resetForm} style={{ ...btn("ghost"), padding: "9px 16px" }}>✕ {t("Clear", lang)}</button>
               <button onClick={() => handleSave("Draft")}
-                style={{ ...btn("outline"), padding: "9px 18px" }}>💾 Save as Draft</button>
+                style={{ ...btn("outline"), padding: "9px 18px" }}>💾 {t("Save as Draft", lang)}</button>
               <button onClick={() => handleSave("Submitted")}
-                style={{ ...btn("success"), padding: "9px 18px" }}>✓ Submit for Approval</button>
+                style={{ ...btn("success"), padding: "9px 18px" }}>✓ {t("Submit for Approval", lang)}</button>
             </div>
           </div>
         </div>
@@ -449,9 +453,9 @@ export default function EstimatesPage() {
             ? <div style={{ background: C.surface, border: `0.5px solid ${C.border}`, borderRadius: 14,
                 padding: "48px", textAlign: "center" }}>
                 <div style={{ fontSize: 32, marginBottom: 12 }}>📋</div>
-                <div style={{ fontSize: 14, fontWeight: 600, color: C.text, marginBottom: 6 }}>No entries yet</div>
-                <div style={{ fontSize: 12, color: C.textSub, marginBottom: 16 }}>Create your first estimate using the entry form.</div>
-                <button onClick={() => setActiveTab("entry")} style={btn("primary")}>+ New Entry</button>
+                <div style={{ fontSize: 14, fontWeight: 600, color: C.text, marginBottom: 6 }}>{t("No entries yet", lang)}</div>
+                <div style={{ fontSize: 12, color: C.textSub, marginBottom: 16 }}>{t("Create your first estimate using the entry form.", lang)}</div>
+                <button onClick={() => setActiveTab("entry")} style={btn("primary")}>+ {t("New Entry", lang)}</button>
               </div>
             : <>
                 {/* Summary row */}
@@ -460,13 +464,13 @@ export default function EstimatesPage() {
                     { label: "Total Entries",   value: saved.length,                                          color: C.primary  },
                     { label: "Submitted",        value: saved.filter(e=>e.status==="Submitted").length,        color: C.success  },
                     { label: "Drafts",           value: saved.filter(e=>e.status==="Draft").length,            color: C.warn     },
-                    { label: "Total BE",         value: fmt(saved.reduce((s,e)=>s+e.rows.reduce((sr,r)=>sr+(parseFloat(r.be)||0),0),0)), color: C.primary },
+                    { label: "Total BE",         value: fmt(saved.reduce((s,e)=>s+e.rows.reduce((sr,r)=>sr+(parseFloat(r.be)||0),0),0)),  color: C.primary },
                   ].map(c => (
                     <div key={c.label} style={{ background: C.surface, border: `0.5px solid ${C.border}`,
                       borderRadius: 12, padding: "14px 16px", position: "relative", overflow: "hidden",
                       boxShadow: "0 1px 4px rgba(37,99,235,0.06)" }}>
                       <div style={{ fontSize: 10, fontWeight: 700, color: C.textSub, textTransform: "uppercase",
-                        letterSpacing: "0.07em", marginBottom: 8 }}>{c.label}</div>
+                        letterSpacing: "0.07em", marginBottom: 8 }}>{t(c.label, lang)}</div>
                       <div style={{ fontSize: 22, fontWeight: 700, color: c.color }}>{c.value}</div>
                       <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 3, background: c.color, opacity: 0.3 }} />
                     </div>
@@ -492,14 +496,14 @@ export default function EstimatesPage() {
             <div style={{ padding: "16px 20px", borderBottom: `0.5px solid ${C.border}`,
               display: "flex", alignItems: "center", justifyContent: "space-between",
               background: "linear-gradient(135deg,#eff6ff,#dbeafe)" }}>
-              <span style={{ fontSize: 14, fontWeight: 700, color: C.text }}>⚙ Manage Schemes & Programmes</span>
-              <button onClick={() => setManagingSchemes(false)} style={{ ...btn("ghost","sm") }}>✕ Close</button>
+              <span style={{ fontSize: 14, fontWeight: 700, color: C.text }}>⚙ {t("Manage Schemes & Programmes", lang)}</span>
+              <button onClick={() => setManagingSchemes(false)} style={{ ...btn("ghost","sm") }}>✕ {t("Close", lang)}</button>
             </div>
             <div style={{ overflowY: "auto", padding: "16px 20px", display: "flex", flexDirection: "column", gap: 16 }}>
               {/* Add new scheme */}
               <div>
                 <div style={{ fontSize: 11, fontWeight: 700, color: C.textSub, textTransform: "uppercase",
-                  letterSpacing: "0.06em", marginBottom: 8 }}>Add New Scheme</div>
+                  letterSpacing: "0.06em", marginBottom: 8 }}>{t("Add New Scheme", lang)}</div>
                 <div style={{ display: "flex", gap: 8 }}>
                   <input value={newSchemeName} onChange={e => setNewSchemeName(e.target.value)}
                     onKeyDown={e => e.key === "Enter" && addScheme()}
@@ -516,7 +520,7 @@ export default function EstimatesPage() {
                     <span style={{ flex: 1, fontSize: 12, fontWeight: 700, color: C.text }}>{sk}</span>
                     <button onClick={() => setEditSchemeKey(editSchemeKey === sk ? "" : sk)}
                       style={{ ...btn("outline","sm") }}>
-                      {editSchemeKey === sk ? "▲ Hide" : "▼ Programmes"}
+                      {editSchemeKey === sk ? `▲ ${t("Hide", lang)}` : `▼ ${t("Programmes", lang)}`}
                     </button>
                     <button onClick={() => deleteScheme(sk)} style={{ ...btn("danger","sm") }}>✕</button>
                   </div>

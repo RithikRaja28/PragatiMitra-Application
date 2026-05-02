@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback } from "react";
 import { useApi } from "../../../hooks/useApi";
 import { S, Toast } from "../../../components/shared/formUtils";
 import FormScreen from "../../../components/shared/FormScreen";
+import { useLanguage } from "../../../i18n/LanguageContext";
+import { t } from "../../../i18n/translations";
 
 /* ── Constants & pure helpers ──────────────────────────────────── */
 const STATUS_OPTIONS = ["ACTIVE", "INACTIVE", "SUSPENDED"];
@@ -73,6 +75,7 @@ function Spinner() {
 }
 
 function PasswordInput({ value, onChange, hasError }) {
+  const { lang } = useLanguage();
   const [show, setShow] = useState(false);
   return (
     <div style={{ position: "relative" }}>
@@ -92,7 +95,7 @@ function PasswordInput({ value, onChange, hasError }) {
           color: "#94a3b8", fontSize: 12, fontWeight: 600, padding: "2px 4px",
         }}
       >
-        {show ? "Hide" : "Show"}
+        {show ? t("Hide", lang) : t("Show", lang)}
       </button>
     </div>
   );
@@ -120,6 +123,7 @@ function validateForm(form, isEdit) {
 }
 
 function UserForm({ mode, entity, onCreated, onSaved, onBack, apiFetch }) {
+  const { lang } = useLanguage();
   const isEdit = mode === "edit";
 
   const [form, setForm] = useState(
@@ -211,20 +215,20 @@ function UserForm({ mode, entity, onCreated, onSaved, onBack, apiFetch }) {
 
   return (
     <FormScreen
-      pageTitle="Users"
-      formTitle={isEdit ? "Edit User" : "New User"}
+      pageTitle={t("Users", lang)}
+      formTitle={isEdit ? t("Edit User", lang) : t("New User", lang)}
       formSubtitle={isEdit ? entity.full_name : "Add a new user to the platform"}
       icon="👤"
       iconBg="#ede9fe"
       onBack={onBack}
       onSubmit={handleSubmit}
       submitting={saving}
-      submitLabel={isEdit ? "Save Changes" : "Create User"}
+      submitLabel={isEdit ? t("Save Changes", lang) : t("Create User", lang)}
       submitError={serverError}
     >
       {/* Full Name */}
       <div>
-        <label style={S.label}>Full Name *</label>
+        <label style={S.label}>{t("Full Name *", lang)}</label>
         <input
           style={S.input(!!fieldErrs.full_name)}
           placeholder="e.g. Arun Kumar"
@@ -236,7 +240,7 @@ function UserForm({ mode, entity, onCreated, onSaved, onBack, apiFetch }) {
 
       {/* Email */}
       <div>
-        <label style={S.label}>Email Address *</label>
+        <label style={S.label}>{t("Email Address *", lang)}</label>
         <input
           style={S.input(!!fieldErrs.email)}
           type="email"
@@ -250,7 +254,7 @@ function UserForm({ mode, entity, onCreated, onSaved, onBack, apiFetch }) {
       {/* Password — create only */}
       {!isEdit && (
         <div>
-          <label style={S.label}>Temporary Password *</label>
+          <label style={S.label}>{t("Temporary Password *", lang)}</label>
           <PasswordInput
             value={form.password}
             onChange={(v) => set("password", v)}
@@ -267,7 +271,7 @@ function UserForm({ mode, entity, onCreated, onSaved, onBack, apiFetch }) {
 
       {/* Institution */}
       <div>
-        <label style={S.label}>Institution *</label>
+        <label style={S.label}>{t("Institution *", lang)}</label>
         <select
           style={S.select(!!fieldErrs.institution_id)}
           value={form.institution_id}
@@ -277,7 +281,7 @@ function UserForm({ mode, entity, onCreated, onSaved, onBack, apiFetch }) {
             setServerError("");
           }}
         >
-          <option value="">— Select Institution —</option>
+          <option value="">{t("— Select Institution —", lang)}</option>
           {institutions.map((i) => (
             <option key={i.institution_id} value={i.institution_id}>
               {i.institution_name}
@@ -304,8 +308,8 @@ function UserForm({ mode, entity, onCreated, onSaved, onBack, apiFetch }) {
               {loadingDepts
                 ? "Loading…"
                 : !form.institution_id
-                  ? "Select institution first"
-                  : "— Select Department —"}
+                  ? t("Select institution first", lang)
+                  : t("— Select Department —", lang)}
             </option>
             {departments.map((d) => (
               <option key={d.department_id} value={d.department_id}>{d.name}</option>
@@ -315,7 +319,7 @@ function UserForm({ mode, entity, onCreated, onSaved, onBack, apiFetch }) {
 
         {isEdit ? (
           <div>
-            <label style={S.label}>Account Status</label>
+            <label style={S.label}>{t("Account Status", lang)}</label>
             <select
               style={S.select(false)}
               value={form.account_status}
@@ -328,13 +332,13 @@ function UserForm({ mode, entity, onCreated, onSaved, onBack, apiFetch }) {
           </div>
         ) : (
           <div>
-            <label style={S.label}>Role *</label>
+            <label style={S.label}>{t("Role *", lang)}</label>
             <select
               style={S.select(!!fieldErrs.role_name)}
               value={form.role_name}
               onChange={(e) => set("role_name", e.target.value)}
             >
-              <option value="">— Select Role —</option>
+              <option value="">{t("— Select Role —", lang)}</option>
               {roles.map((r) => (
                 <option key={r.id} value={r.name}>{r.display_name}</option>
               ))}
@@ -349,6 +353,7 @@ function UserForm({ mode, entity, onCreated, onSaved, onBack, apiFetch }) {
 
 /* ── User List ───────────────────────────────────────────────────── */
 function UserList({ apiFetch, onEdit }) {
+  const { lang } = useLanguage();
   const [users,        setUsers]        = useState([]);
   const [loading,      setLoading]      = useState(true);
   const [error,        setError]        = useState("");
@@ -445,7 +450,7 @@ function UserList({ apiFetch, onEdit }) {
                   padding: "12px 16px", textAlign: "left", fontSize: 11,
                   fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.8,
                 }}>
-                  {h}
+                  {t(h, lang)}
                 </th>
               ))}
             </tr>
@@ -483,7 +488,7 @@ function UserList({ apiFetch, onEdit }) {
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
                     {(u.roles || []).length > 0
                       ? u.roles.map((r) => <RoleBadge key={r.name} {...r} />)
-                      : <span style={{ fontSize: 12, color: "#cbd5e1" }}>No role</span>
+                      : <span style={{ fontSize: 12, color: "#cbd5e1" }}>{t("No role", lang)}</span>
                     }
                   </div>
                 </td>
@@ -500,7 +505,7 @@ function UserList({ apiFetch, onEdit }) {
                       background: "#fff", fontSize: 12, fontWeight: 600,
                       color: "#2563eb", cursor: "pointer",
                     }}>
-                      Edit
+                      {t("Edit", lang)}
                     </button>
                     <button
                       onClick={() => toggleStatus(u)}
@@ -512,7 +517,7 @@ function UserList({ apiFetch, onEdit }) {
                         opacity: toggling === u.id ? 0.6 : 1,
                       }}
                     >
-                      {toggling === u.id ? "…" : u.account_status === "ACTIVE" ? "Deactivate" : "Activate"}
+                      {toggling === u.id ? "…" : u.account_status === "ACTIVE" ? t("Deactivate", lang) : t("Activate", lang)}
                     </button>
                   </div>
                 </td>
@@ -521,7 +526,7 @@ function UserList({ apiFetch, onEdit }) {
             {filtered.length === 0 && (
               <tr>
                 <td colSpan={7} style={{ padding: 40, textAlign: "center", color: "#94a3b8", fontSize: 13 }}>
-                  No users match your filters.
+                  {t("No users match your filters.", lang)}
                 </td>
               </tr>
             )}
@@ -534,6 +539,7 @@ function UserList({ apiFetch, onEdit }) {
 
 /* ── Main Export ─────────────────────────────────────────────────── */
 export default function UserManagementPage() {
+  const { lang } = useLanguage();
   const { apiFetch } = useApi();
   const [formView,   setFormView]   = useState(null);
   const [toast,      setToast]      = useState(null);
@@ -573,11 +579,11 @@ export default function UserManagementPage() {
           }}>
             <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#7c3aed" }} />
             <span style={{ fontSize: 11, fontWeight: 600, color: "#7c3aed", textTransform: "uppercase", letterSpacing: 1 }}>
-              User Management
+              {t("User Management", lang)}
             </span>
           </div>
           <h1 style={{ fontSize: 24, fontWeight: 700, color: "#1e293b", letterSpacing: "-0.4px", marginBottom: 6 }}>
-            Users
+            {t("Users", lang)}
           </h1>
           <p style={{ color: "#94a3b8", fontSize: 14 }}>
             Create, edit, activate/deactivate, and manage roles for all platform users.
@@ -593,7 +599,7 @@ export default function UserManagementPage() {
             color: "#fff", cursor: "pointer", flexShrink: 0, marginTop: 4,
           }}
         >
-          + New User
+          {t("+ New User", lang)}
         </button>
       </div>
 

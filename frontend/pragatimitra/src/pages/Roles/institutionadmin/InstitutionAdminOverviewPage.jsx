@@ -3,6 +3,8 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell,
 } from "recharts";
+import { useLanguage } from "../../../i18n/LanguageContext";
+import { t } from "../../../i18n/translations";
 
 const C = {
   primary:   "#6366f1",
@@ -76,6 +78,7 @@ function Avatar({ name, size = 28 }) {
 }
 
 export default function InstitutionAdminOverviewPage() {
+  const { lang } = useLanguage();
   return (
     <div style={{ padding: "24px 28px", fontFamily: "'Plus Jakarta Sans', sans-serif",
       display: "flex", flexDirection: "column", gap: 14, background: C.bg, minHeight: "100vh" }}>
@@ -86,20 +89,20 @@ export default function InstitutionAdminOverviewPage() {
           <div style={{ display: "inline-flex", alignItems: "center", gap: 6,
             background: C.primaryLt, borderRadius: 6, padding: "3px 11px", marginBottom: 8 }}>
             <span style={{ width: 6, height: 6, borderRadius: "50%", background: C.primary }} />
-            <span style={{ fontSize: 10, fontWeight: 700, color: C.primary, textTransform: "uppercase", letterSpacing: "0.08em" }}>Dashboard</span>
+            <span style={{ fontSize: 10, fontWeight: 700, color: C.primary, textTransform: "uppercase", letterSpacing: "0.08em" }}>{t("Dashboard", lang)}</span>
           </div>
-          <h1 style={{ fontSize: 22, fontWeight: 700, color: C.text, margin: 0, letterSpacing: "-0.4px" }}>Institute Overview</h1>
+          <h1 style={{ fontSize: 22, fontWeight: 700, color: C.text, margin: 0, letterSpacing: "-0.4px" }}>{t("Institute Overview", lang)}</h1>
           <p style={{ fontSize: 13, color: C.textSub, margin: "4px 0 0" }}>Annual Report 2026 — real-time progress</p>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
           <button style={{ background: C.primaryLt, border: `0.5px solid ${C.border}`, color: C.textMid,
             borderRadius: 8, padding: "8px 14px", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>
-            Export
+            {t("Export", lang)}
           </button>
           <button style={{ background: C.primary, border: "none", color: "#fff",
             borderRadius: 8, padding: "8px 16px", fontSize: 11, fontWeight: 600, cursor: "pointer",
             boxShadow: "0 2px 8px rgba(99,102,241,0.3)" }}>
-            ✦ New Report
+            ✦ {t("New Report", lang)}
           </button>
         </div>
       </div>
@@ -114,9 +117,9 @@ export default function InstitutionAdminOverviewPage() {
         ].map(c => (
           <div key={c.label} style={{ ...card, padding: "16px 18px", position: "relative", overflow: "hidden" }}>
             <div style={{ fontSize: 10, fontWeight: 700, color: C.textSub, textTransform: "uppercase",
-              letterSpacing: "0.07em", marginBottom: 10 }}>{c.label}</div>
+              letterSpacing: "0.07em", marginBottom: 10 }}>{t(c.label, lang)}</div>
             <div style={{ fontSize: 30, fontWeight: 700, color: c.color, lineHeight: 1, marginBottom: 4 }}>{c.value}</div>
-            <div style={{ fontSize: 11, fontWeight: 600, color: c.color, opacity: 0.8 }}>{c.sub}</div>
+            <div style={{ fontSize: 11, fontWeight: 600, color: c.color, opacity: 0.8 }}>{t(c.sub, lang)}</div>
             <div style={{ position: "absolute", bottom: 0, left: 0, height: 3,
               width: `${c.bar}%`, background: c.color, borderRadius: "0 2px 2px 0" }} />
           </div>
@@ -151,7 +154,7 @@ export default function InstitutionAdminOverviewPage() {
             <thead>
               <tr>{["Dept","Completion","Overdue","Status"].map(h => (
                 <th key={h} style={{ fontSize: 10, fontWeight: 700, color: C.textSub, textTransform: "uppercase",
-                  letterSpacing: "0.06em", padding: "0 0 8px", textAlign: h === "Dept" ? "left" : "right" }}>{h}</th>
+                  letterSpacing: "0.06em", padding: "0 0 8px", textAlign: h === "Dept" ? "left" : "right" }}>{t(h, lang)}</th>
               ))}</tr>
             </thead>
             <tbody>
@@ -183,7 +186,7 @@ export default function InstitutionAdminOverviewPage() {
           </table>
 
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12, alignItems: "center" }}>
-            <span style={{ fontSize: 10, fontWeight: 700, color: C.textSub, textTransform: "uppercase", letterSpacing: "0.06em" }}>Bottlenecks</span>
+            <span style={{ fontSize: 10, fontWeight: 700, color: C.textSub, textTransform: "uppercase", letterSpacing: "0.06em" }}>{t("Bottlenecks", lang)}</span>
             {["Dravyaguna — awaiting approval", "Kayachikitsa — overdue"].map(b => (
               <span key={b} style={{ display: "flex", alignItems: "center", gap: 5, background: C.primaryLt,
                 border: `0.5px solid ${C.border}`, borderRadius: 20, padding: "3px 10px", fontSize: 11, color: C.textMid }}>
@@ -198,7 +201,7 @@ export default function InstitutionAdminOverviewPage() {
 
           {/* Pie */}
           <div style={card}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 1 }}>Status distribution</div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 1 }}>{t("Status distribution", lang)}</div>
             <div style={{ fontSize: 11, color: C.textSub, marginBottom: 8 }}>All sections — current cycle</div>
             <ResponsiveContainer width="100%" height={130}>
               <PieChart>
@@ -256,13 +259,13 @@ export default function InstitutionAdminOverviewPage() {
                 <path d="M8 5v3.5" stroke="#dc2626" strokeWidth="1.5" strokeLinecap="round"/>
                 <circle cx="8" cy="11" r="0.75" fill="#dc2626"/>
               </svg>
-              <span style={{ fontSize: 12, fontWeight: 700, color: C.text }}>Overdue tasks (live)</span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: C.text }}>{t("Overdue tasks (live)", lang)}</span>
             </div>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
                 <tr>{["Section","User","Overdue"].map(h => (
                   <th key={h} style={{ fontSize: 10, fontWeight: 700, color: C.textSub, textTransform: "uppercase",
-                    letterSpacing: "0.06em", padding: "0 0 7px", textAlign: h==="Overdue"?"right":"left" }}>{h}</th>
+                    letterSpacing: "0.06em", padding: "0 0 7px", textAlign: h==="Overdue"?"right":"left" }}>{t(h, lang)}</th>
                 ))}</tr>
               </thead>
               <tbody>
