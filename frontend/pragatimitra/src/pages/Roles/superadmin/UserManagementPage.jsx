@@ -543,14 +543,10 @@ function UserList({ apiFetch, onEdit }) {
 /* ── Main Export ─────────────────────────────────────────────────── */
 export default function UserManagementPage() {
   const { lang } = useLanguage();
-  const { apiFetch } = useApi();
   const [formView,   setFormView]   = useState(null);
-  const [toast,      setToast]      = useState(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const { apiFetch }      = useApi();
-  const [formView,        setFormView]        = useState(null);
   const [toast,           setToast]           = useState(null);
-  const [refreshKey,      setRefreshKey]      = useState(0);
   const [showImport,      setShowImport]      = useState(false);
   const [exportingFormat, setExportingFormat] = useState(null);
 
