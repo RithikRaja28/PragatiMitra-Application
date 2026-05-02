@@ -1,5 +1,7 @@
 import React from "react";
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
+import { useLanguage } from "../../../i18n/LanguageContext";
+import { t } from "../../../i18n/translations";
 
 const C = {
   primary:   "#1d4ed8",
@@ -43,6 +45,7 @@ const PIE_DATA = [
 ];
 
 export default function DirectorsDashboardPage() {
+  const { lang } = useLanguage();
   return (
     <div style={{ padding: "24px 28px", fontFamily: "'Plus Jakarta Sans', sans-serif",
       display: "flex", flexDirection: "column", gap: 14, background: C.bg, minHeight: "100vh" }}>
@@ -53,15 +56,15 @@ export default function DirectorsDashboardPage() {
           <div style={{ display: "inline-flex", alignItems: "center", gap: 6,
             background: C.primaryLt, borderRadius: 6, padding: "3px 11px", marginBottom: 8 }}>
             <span style={{ width: 6, height: 6, borderRadius: "50%", background: C.primary }} />
-            <span style={{ fontSize: 10, fontWeight: 700, color: C.primary, textTransform: "uppercase", letterSpacing: "0.08em" }}>Director's Office</span>
+            <span style={{ fontSize: 10, fontWeight: 700, color: C.primary, textTransform: "uppercase", letterSpacing: "0.08em" }}>{t("Director's Office", lang)}</span>
           </div>
-          <h1 style={{ fontSize: 22, fontWeight: 700, color: C.text, margin: 0, letterSpacing: "-0.4px" }}>Report Review Dashboard</h1>
+          <h1 style={{ fontSize: 22, fontWeight: 700, color: C.text, margin: 0, letterSpacing: "-0.4px" }}>{t("Report Review Dashboard", lang)}</h1>
           <p style={{ fontSize: 13, color: C.textSub, margin: "4px 0 0" }}>Annual Report 2026 — section approval pipeline</p>
         </div>
         <button style={{ background: C.primary, border: "none", color: "#fff",
           borderRadius: 8, padding: "9px 18px", fontSize: 12, fontWeight: 600, cursor: "pointer",
           boxShadow: "0 2px 8px rgba(29,78,216,0.3)" }}>
-          Go to Review Queue →
+          {t("Go to Review Queue →", lang)}
         </button>
       </div>
 
@@ -70,9 +73,9 @@ export default function DirectorsDashboardPage() {
         {STATS.map(s => (
           <div key={s.label} style={{ ...card, padding: "16px 18px", position: "relative", overflow: "hidden" }}>
             <div style={{ fontSize: 10, fontWeight: 700, color: C.textSub, textTransform: "uppercase",
-              letterSpacing: "0.07em", marginBottom: 8 }}>{s.label}</div>
+              letterSpacing: "0.07em", marginBottom: 8 }}>{t(s.label, lang)}</div>
             <div style={{ fontSize: 32, fontWeight: 700, color: s.color, lineHeight: 1, marginBottom: 4 }}>{s.value}</div>
-            <div style={{ fontSize: 11, color: C.textSub }}>{s.sub}</div>
+            <div style={{ fontSize: 11, color: C.textSub }}>{t(s.sub, lang)}</div>
             <div style={{ position: "absolute", bottom: 0, left: 0, height: 3,
               width: `${s.bar}%`, background: s.color, borderRadius: "0 2px 2px 0" }} />
           </div>
@@ -84,14 +87,14 @@ export default function DirectorsDashboardPage() {
 
         {/* Section pipeline table */}
         <div style={card}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 2 }}>Sections — Approval Pipeline</div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 2 }}>{t("Sections — Approval Pipeline", lang)}</div>
           <div style={{ fontSize: 11, color: C.textSub, marginBottom: 16 }}>All sections across departments — current report cycle</div>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
               <tr>
                 {["Section", "Department", "Submitted By", "Date", "Status"].map(h => (
                   <th key={h} style={{ fontSize: 10, fontWeight: 700, color: C.textSub, textTransform: "uppercase",
-                    letterSpacing: "0.06em", padding: "0 0 10px", textAlign: "left" }}>{h}</th>
+                    letterSpacing: "0.06em", padding: "0 0 10px", textAlign: "left" }}>{t(h, lang)}</th>
                 ))}
               </tr>
             </thead>
@@ -117,7 +120,7 @@ export default function DirectorsDashboardPage() {
 
           {/* Pie */}
           <div style={card}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 2 }}>Pipeline distribution</div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 2 }}>{t("Pipeline distribution", lang)}</div>
             <div style={{ fontSize: 11, color: C.textSub, marginBottom: 8 }}>24 total sections</div>
             <ResponsiveContainer width="100%" height={130}>
               <PieChart>
@@ -142,7 +145,7 @@ export default function DirectorsDashboardPage() {
 
           {/* Pending decisions */}
           <div style={{ ...card, background: "#fffbeb", border: "0.5px solid #fde68a" }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: "#92400e", marginBottom: 10 }}>⚑ Pending decisions</div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#92400e", marginBottom: 10 }}>⚑ {t("Pending decisions", lang)}</div>
             {SECTIONS.filter(s => s.status === "Pending Review").map((s, i) => (
               <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 8,
                 padding: "6px 0", borderTop: i > 0 ? "0.5px solid #fde68a" : "none" }}>

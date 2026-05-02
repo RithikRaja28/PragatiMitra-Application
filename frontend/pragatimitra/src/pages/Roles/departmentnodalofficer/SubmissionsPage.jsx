@@ -1,4 +1,6 @@
 import React, { useState } from "react";
+import { useLanguage } from "../../../i18n/LanguageContext";
+import { t } from "../../../i18n/translations";
 
 const C = {
   primary:   "#d97706",
@@ -62,13 +64,14 @@ const SUBMISSIONS = [
 ];
 
 function ApprovalTimeline({ submission }) {
+  const { lang } = useLanguage();
   return (
     <div style={{ padding: "14px 16px", background: "#fff",
       borderRadius: 12, border: `1px solid ${C.border}`,
       boxShadow: "0 8px 28px rgba(0,0,0,0.1)", minWidth: 300, maxWidth: 360,
       fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
       <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 12 }}>
-        Approval Timeline — {submission.section}
+        {t("Approval Timeline", lang)} — {submission.section}
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
         {submission.timeline.map((step, i) => {
@@ -96,7 +99,7 @@ function ApprovalTimeline({ submission }) {
                   {step.stage}
                   {step.sentBack && (
                     <span style={{ marginLeft: 7, fontSize: 10, fontWeight: 600, color: "#dc2626",
-                      background: "#fee2e2", padding: "1px 6px", borderRadius: 20 }}>Sent Back</span>
+                      background: "#fee2e2", padding: "1px 6px", borderRadius: 20 }}>{t("Sent Back", lang)}</span>
                   )}
                 </div>
                 <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 1 }}>
@@ -111,7 +114,7 @@ function ApprovalTimeline({ submission }) {
         <div style={{ marginTop: 10, padding: "8px 10px", background: "#fef2f2",
           borderRadius: 8, border: "0.5px solid #fecdd3" }}>
           <div style={{ fontSize: 10, fontWeight: 700, color: "#991b1b",
-            textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 3 }}>Sent Back Reason</div>
+            textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 3 }}>{t("Sent Back Reason", lang)}</div>
           <div style={{ fontSize: 11, color: "#dc2626" }}>{submission.sentBackReason}</div>
         </div>
       )}
@@ -120,6 +123,7 @@ function ApprovalTimeline({ submission }) {
 }
 
 export default function SubmissionsPage() {
+  const { lang } = useLanguage();
   const [hoveredId, setHoveredId] = useState(null);
   const [filters,   setFilters]   = useState({ stage: "", status: "" });
 
@@ -138,9 +142,9 @@ export default function SubmissionsPage() {
         <div style={{ display: "inline-flex", alignItems: "center", gap: 6,
           background: C.primaryLt, borderRadius: 6, padding: "3px 11px", marginBottom: 8 }}>
           <span style={{ width: 6, height: 6, borderRadius: "50%", background: C.primary }} />
-          <span style={{ fontSize: 10, fontWeight: 700, color: C.primary, textTransform: "uppercase", letterSpacing: "0.08em" }}>Submissions</span>
+          <span style={{ fontSize: 10, fontWeight: 700, color: C.primary, textTransform: "uppercase", letterSpacing: "0.08em" }}>{t("Submissions", lang)}</span>
         </div>
-        <h1 style={{ fontSize: 22, fontWeight: 700, color: C.text, margin: 0, letterSpacing: "-0.4px" }}>My Submissions</h1>
+        <h1 style={{ fontSize: 22, fontWeight: 700, color: C.text, margin: 0, letterSpacing: "-0.4px" }}>{t("My Submissions", lang)}</h1>
         <p style={{ fontSize: 13, color: C.textSub, margin: "4px 0 0" }}>
           Track section submissions through the approval pipeline — hover a row to see the full timeline
         </p>
@@ -151,7 +155,7 @@ export default function SubmissionsPage() {
         padding: "10px 16px", background: C.surface, borderRadius: 10, border: `0.5px solid ${C.border}`,
         overflowX: "auto" }}>
         <span style={{ fontSize: 10, fontWeight: 700, color: C.textSub, textTransform: "uppercase",
-          letterSpacing: "0.07em", marginRight: 4, whiteSpace: "nowrap" }}>Pipeline:</span>
+          letterSpacing: "0.07em", marginRight: 4, whiteSpace: "nowrap" }}>{t("Pipeline:", lang)}</span>
         {STAGE_ORDER.map((s, i) => (
           <React.Fragment key={s}>
             <span style={{ fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 20, whiteSpace: "nowrap",
@@ -171,18 +175,18 @@ export default function SubmissionsPage() {
           style={{ padding: "7px 28px 7px 12px", borderRadius: 8, border: `1px solid ${C.border}`,
             outline: "none", fontSize: 13, color: C.text, background: "#fff",
             fontFamily: "'Plus Jakarta Sans', sans-serif", appearance: "none", cursor: "pointer" }}>
-          <option value="">All Stages</option>
+          <option value="">{t("All Stages", lang)}</option>
           {STAGE_ORDER.slice(1).map(s => <option key={s} value={s}>{s}</option>)}
         </select>
         <select value={filters.status} onChange={e => setFilters(f => ({ ...f, status: e.target.value }))}
           style={{ padding: "7px 28px 7px 12px", borderRadius: 8, border: `1px solid ${C.border}`,
             outline: "none", fontSize: 13, color: C.text, background: "#fff",
             fontFamily: "'Plus Jakarta Sans', sans-serif", appearance: "none", cursor: "pointer" }}>
-          <option value="">All Statuses</option>
-          <option value="In Review">In Review</option>
-          <option value="Approved">Approved</option>
-          <option value="Sent Back">Sent Back</option>
-          <option value="Pending">Pending</option>
+          <option value="">{t("All Statuses", lang)}</option>
+          <option value="In Review">{t("In Review", lang)}</option>
+          <option value="Approved">{t("Approved", lang)}</option>
+          <option value="Sent Back">{t("Sent Back", lang)}</option>
+          <option value="Pending">{t("Pending", lang)}</option>
         </select>
       </div>
 
@@ -196,7 +200,7 @@ export default function SubmissionsPage() {
                 <th key={h} style={{ fontSize: 10, fontWeight: 700, color: C.textSub,
                   textTransform: "uppercase", letterSpacing: "0.06em",
                   padding: "12px 16px", textAlign: "left", borderBottom: `0.5px solid ${C.border}` }}>
-                  {h}
+                  {h ? t(h, lang) : h}
                 </th>
               ))}
             </tr>
@@ -204,7 +208,7 @@ export default function SubmissionsPage() {
           <tbody>
             {filtered.length === 0 ? (
               <tr><td colSpan={5} style={{ padding: "32px", textAlign: "center", fontSize: 13, color: C.textSub }}>
-                No submissions match the current filters.
+                {t("No submissions match the current filters.", lang)}
               </td></tr>
             ) : filtered.map((s, i) => (
               <tr key={s.id} style={{ position: "relative", cursor: "default" }}
@@ -228,7 +232,7 @@ export default function SubmissionsPage() {
                 <td style={{ padding: "14px 16px", borderTop: i > 0 ? `0.5px solid ${C.border}` : "none",
                   fontSize: 11, color: C.textSub, position: "relative" }}>
                   <span style={{ cursor: "pointer", textDecoration: "underline dotted" }}>
-                    View timeline ↗
+                    {t("View timeline ↗", lang)}
                   </span>
                   {hoveredId === s.id && (
                     <div style={{ position: "absolute", right: 0, top: "calc(100% + 4px)", zIndex: 100 }}>

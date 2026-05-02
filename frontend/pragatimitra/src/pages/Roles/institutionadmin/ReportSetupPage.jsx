@@ -1,4 +1,6 @@
 import { useState, useRef, useEffect } from "react";
+import { useLanguage } from "../../../i18n/LanguageContext";
+import { t } from "../../../i18n/translations";
 
 let _id = 0;
 const uid = () => `id_${++_id}`;
@@ -153,6 +155,7 @@ function Avatar({ name, size = 32 }) {
 }
 
 function SectionItem({ section, selected, onSelect, onUpdate, onDelete, onSelectSub, selectedSub }) {
+  const { lang } = useLanguage();
   const [editName, setEditName]   = useState(false);
   const [draft, setDraft]         = useState(section.name);
   const [newSub, setNewSub]       = useState("");
@@ -225,12 +228,12 @@ function SectionItem({ section, selected, onSelect, onUpdate, onDelete, onSelect
                   onKeyDown={e => e.key === "Enter" && addSub()}
                   placeholder="Subsection name…"
                   style={{ ...inputSt, flex: 1, padding: "5px 8px", fontSize: 11 }} />
-                <button onClick={addSub} style={btn("primary")}>Add</button>
+                <button onClick={addSub} style={btn("primary")}>{t("Add", lang)}</button>
                 <button onClick={() => setAddingSub(false)} style={btn()}>✕</button>
               </div>
             : <button onClick={e => { e.stopPropagation(); setAddingSub(true); }}
                 style={{ ...btn("outline"), marginTop: 4, fontSize: 10, width: "100%", justifyContent: "flex-start", borderRadius: 7 }}>
-                + Add Subsection
+                + {t("Add Subsection", lang)}
               </button>
           }
         </div>
@@ -240,6 +243,7 @@ function SectionItem({ section, selected, onSelect, onUpdate, onDelete, onSelect
 }
 
 export default function ReportSetupPage() {
+  const { lang } = useLanguage();
   const [sections, setSections]     = useState(SEED);
   const [selected, setSelected]     = useState(SEED[0]);
   const [selectedSub, setSelectedSub] = useState(null);
@@ -298,14 +302,14 @@ export default function ReportSetupPage() {
           <div style={{ display: "inline-flex", alignItems: "center", gap: 6,
             background: C.primaryLt, borderRadius: 6, padding: "3px 11px", marginBottom: 8 }}>
             <span style={{ width: 6, height: 6, borderRadius: "50%", background: C.primary }} />
-            <span style={{ fontSize: 10, fontWeight: 700, color: C.primary, textTransform: "uppercase", letterSpacing: "0.08em" }}>Report Setup</span>
+            <span style={{ fontSize: 10, fontWeight: 700, color: C.primary, textTransform: "uppercase", letterSpacing: "0.08em" }}>{t("Report Setup", lang)}</span>
           </div>
-          <h1 style={{ fontSize: 22, fontWeight: 700, color: C.text, margin: 0, letterSpacing: "-0.4px" }}>Report Configuration</h1>
+          <h1 style={{ fontSize: 22, fontWeight: 700, color: C.text, margin: 0, letterSpacing: "-0.4px" }}>{t("Report Configuration", lang)}</h1>
           <p style={{ fontSize: 13, color: C.textSub, margin: "4px 0 0" }}>Manage sections, subsections, dates and workflow</p>
         </div>
         <button style={{ ...btn("primary"), padding: "10px 20px", fontSize: 12, borderRadius: 9,
           boxShadow: "0 2px 8px rgba(99,102,241,0.3)" }}>
-          ✦ Save Report
+          ✦ {t("Save Report", lang)}
         </button>
       </div>
 
@@ -321,7 +325,7 @@ export default function ReportSetupPage() {
           <div key={p.label} style={{ background: C.surface, border: `0.5px solid ${C.border}`,
             borderRadius: 20, padding: "5px 14px", display: "flex", gap: 7, alignItems: "center",
             boxShadow: "0 1px 3px rgba(99,102,241,0.07)" }}>
-            <span style={{ fontSize: 10, color: C.textSub, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>{p.label}</span>
+            <span style={{ fontSize: 10, color: C.textSub, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>{t(p.label, lang)}</span>
             <span style={{ fontSize: 11, color: C.text, fontWeight: 700 }}>{p.value}</span>
           </div>
         ))}
@@ -334,7 +338,7 @@ export default function ReportSetupPage() {
         <div style={{ ...card, display: "flex", flexDirection: "column" }}>
           <div style={panelHead}>
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><rect x="1" y="1" width="6" height="6" rx="1.5" stroke={C.primary} strokeWidth="1.5"/><rect x="9" y="1" width="6" height="6" rx="1.5" stroke={C.primary} strokeWidth="1.5"/><rect x="1" y="9" width="6" height="6" rx="1.5" stroke={C.primary} strokeWidth="1.5"/><rect x="9" y="9" width="6" height="6" rx="1.5" stroke={C.primary} strokeWidth="1.5"/></svg>
-            <span style={{ fontSize: 12, fontWeight: 700, color: C.text }}>Section Tree</span>
+            <span style={{ fontSize: 12, fontWeight: 700, color: C.text }}>{t("Section Tree", lang)}</span>
             <span style={{ marginLeft: "auto", fontSize: 10, background: C.primaryLt, color: C.primary,
               fontWeight: 700, padding: "2px 8px", borderRadius: 10 }}>{sections.length}</span>
           </div>
@@ -352,13 +356,13 @@ export default function ReportSetupPage() {
                     onKeyDown={e => e.key === "Enter" && addSection()}
                     placeholder="Section name…"
                     style={{ ...inputSt, flex: 1, padding: "6px 9px", fontSize: 12 }} />
-                  <button onClick={addSection} style={btn("primary")}>Add</button>
+                  <button onClick={addSection} style={btn("primary")}>{t("Add", lang)}</button>
                   <button onClick={() => setAddingTop(false)} style={btn()}>✕</button>
                 </div>
               : <button onClick={() => setAddingTop(true)}
                   style={{ ...btn("primary"), marginTop: 10, width: "100%", justifyContent: "center",
                     borderRadius: 8, padding: "8px 10px", boxShadow: "0 2px 6px rgba(99,102,241,0.25)" }}>
-                  + Add Section
+                  + {t("Add Section", lang)}
                 </button>
             }
           </div>
@@ -368,39 +372,39 @@ export default function ReportSetupPage() {
         <div style={{ ...card }}>
           <div style={panelHead}>
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><rect x="2" y="1" width="12" height="14" rx="2" stroke={C.primary} strokeWidth="1.5"/><path d="M5 5h6M5 8h6M5 11h4" stroke={C.primary} strokeWidth="1.5" strokeLinecap="round"/></svg>
-            <span style={{ fontSize: 12, fontWeight: 700, color: C.text }}>Report Settings</span>
+            <span style={{ fontSize: 12, fontWeight: 700, color: C.text }}>{t("Report Settings", lang)}</span>
           </div>
           <div style={panelBody}>
 
-            <Field label="Report Name">
+            <Field label={t("Report Name", lang)}>
               <input value={reportName} onChange={e => setReportName(e.target.value)} style={inputSt} />
             </Field>
 
-            <Field label="Year">
+            <Field label={t("Year", lang)}>
               <YearScroller value={year} onChange={setYear} />
             </Field>
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              <Field label="Start Date">
+              <Field label={t("Start Date", lang)}>
                 <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} style={inputSt} />
               </Field>
-              <Field label="End Date">
+              <Field label={t("End Date", lang)}>
                 <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} style={inputSt} />
               </Field>
             </div>
 
-            <Field label="Submission Deadline">
+            <Field label={t("Submission Deadline", lang)}>
               <input type="date" value={submissionDL} onChange={e => setSubmissionDL(e.target.value)} style={inputSt} />
             </Field>
 
-            <Field label="Review Window">
+            <Field label={t("Review Window", lang)}>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                 <input type="date" value={reviewStart} onChange={e => setReviewStart(e.target.value)} style={inputSt} />
                 <input type="date" value={reviewEnd} onChange={e => setReviewEnd(e.target.value)} style={inputSt} />
               </div>
             </Field>
 
-            <Field label="Workflow">
+            <Field label={t("Workflow", lang)}>
               <select value={workflow} onChange={e => setWorkflow(e.target.value)}
                 style={{ ...inputSt, cursor: "pointer" }}>
                 {WORKFLOWS.map(w => <option key={w}>{w}</option>)}
@@ -411,18 +415,18 @@ export default function ReportSetupPage() {
             <div style={{ marginTop: 4, padding: "12px 14px", background: C.primaryLt,
               borderRadius: 10, border: `0.5px solid ${C.border}` }}>
               <div style={{ fontSize: 10, fontWeight: 700, color: C.textMid, textTransform: "uppercase",
-                letterSpacing: "0.07em", marginBottom: 10 }}>Timeline</div>
+                letterSpacing: "0.07em", marginBottom: 10 }}>{t("Timeline", lang)}</div>
               <div style={{ position: "relative", height: 6, background: "rgba(99,102,241,0.2)", borderRadius: 3 }}>
                 <div style={{ position: "absolute", left: "0%", right: "8%", top: 0, bottom: 0,
                   background: C.primary, borderRadius: 3 }} />
-                {[{ pos: "0%", label: "Start" }, { pos: "76%", label: "Deadline" }, { pos: "92%", label: "Review" }].map(m => (
+                {[{ pos: "0%", label: "Start" }, { pos: "76%", label: "Deadline" }, { pos: "92%", label: "Review" }].map((m) => (
                   <div key={m.label} style={{ position: "absolute", left: m.pos, top: -2, width: 10, height: 10,
                     borderRadius: "50%", background: "#fff", border: `2px solid ${C.primary}`, transform: "translateX(-50%)" }} />
                 ))}
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6 }}>
                 {["Start", "Deadline", "Review End"].map(l => (
-                  <span key={l} style={{ fontSize: 10, color: C.primary, fontWeight: 600 }}>{l}</span>
+                  <span key={l} style={{ fontSize: 10, color: C.primary, fontWeight: 600 }}>{t(l, lang)}</span>
                 ))}
               </div>
             </div>
@@ -435,7 +439,7 @@ export default function ReportSetupPage() {
           <div style={card}>
             <div style={{ ...panelHead }}>
               <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6.5" stroke={C.primary} strokeWidth="1.5"/><path d="M8 5v3l2 2" stroke={C.primary} strokeWidth="1.5" strokeLinecap="round"/></svg>
-              <span style={{ fontSize: 12, fontWeight: 700, color: C.text }}>Section Config</span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: C.text }}>{t("Section Config", lang)}</span>
               {selected && (
                 <span style={{ marginLeft: "auto", fontSize: 10, color: C.textSub, maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {selectedSub ? `${selected.name} › ${selectedSub.name}` : selected.name}
@@ -455,15 +459,15 @@ export default function ReportSetupPage() {
                     </>}
                   </div>
 
-                  <Field label="Name">
+                  <Field label={t("Name", lang)}>
                     <input value={secName} onChange={e => setSecName(e.target.value)} style={inputSt} />
                   </Field>
-                  <Field label="Type">
+                  <Field label={t("Type", lang)}>
                     <select value={secType} onChange={e => setSecType(e.target.value)} style={{ ...inputSt, cursor: "pointer" }}>
                       {["Section", "Subsection", "Chapter", "Annex"].map(t => <option key={t}>{t}</option>)}
                     </select>
                   </Field>
-                  <Field label="Data Source">
+                  <Field label={t("Data Source", lang)}>
                     <select value={secDataSrc} onChange={e => setSecDataSrc(e.target.value)} style={{ ...inputSt, cursor: "pointer" }}>
                       {DATA_SRC.map(s => <option key={s}>{s}</option>)}
                     </select>
@@ -489,13 +493,13 @@ export default function ReportSetupPage() {
                   <button onClick={saveSectionConfig}
                     style={{ ...btn("primary"), width: "100%", justifyContent: "center", padding: "10px",
                       borderRadius: 9, fontSize: 12, boxShadow: "0 2px 8px rgba(99,102,241,0.25)" }}>
-                    ✓ Apply Changes
+                    ✓ {t("Apply Changes", lang)}
                   </button>
                 </>
               ) : (
                 <div style={{ textAlign: "center", padding: "36px 0" }}>
                   <div style={{ fontSize: 28, marginBottom: 10 }}>🗂</div>
-                  <div style={{ fontSize: 13, color: C.textSub }}>Select a section from the tree</div>
+                  <div style={{ fontSize: 13, color: C.textSub }}>{t("Select a section from the tree", lang)}</div>
                 </div>
               )}
             </div>

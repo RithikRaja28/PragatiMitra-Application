@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useAuth } from "../../../store/AuthContext";
+import { useLanguage } from "../../../i18n/LanguageContext";
+import { t } from "../../../i18n/translations";
 
 const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
@@ -188,6 +190,7 @@ function SectionDivider({ icon, label }) {
    3-column flat card grid: IP Address | Browser | User Agent
 ═══════════════════════════════════════════════════════════════ */
 function RequestContextPanel({ log }) {
+  const { lang } = useLanguage();
   const hasAny = log.ip_address || log.browser_name || log.user_agent;
   if (!hasAny) return null;
 
@@ -214,7 +217,7 @@ function RequestContextPanel({ log }) {
   );
 
   const EmptyValue = () => (
-    <span style={{ fontSize: 12, color: "#cbd5e1", fontStyle: "italic" }}>Not available</span>
+    <span style={{ fontSize: 12, color: "#cbd5e1", fontStyle: "italic" }}>{t("Not available", lang)}</span>
   );
 
   return (
@@ -225,7 +228,7 @@ function RequestContextPanel({ log }) {
 
         {/* ── 1. IP Address ─────────────────────────────────── */}
         <Card
-          label="IP Address"
+          label={t("IP Address", lang)}
           accent="#2563eb"
           headerIcon={
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
@@ -246,7 +249,7 @@ function RequestContextPanel({ log }) {
 
         {/* ── 2. Browser ────────────────────────────────────── */}
         <Card
-          label="Browser"
+          label={t("Browser", lang)}
           accent="#7c3aed"
           headerIcon={
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
@@ -268,7 +271,7 @@ function RequestContextPanel({ log }) {
 
         {/* ── 3. User Agent ─────────────────────────────────── */}
         <Card
-          label="User Agent"
+          label={t("User Agent", lang)}
           accent="#475569"
           headerIcon={
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#475569" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
@@ -298,13 +301,14 @@ function RequestContextPanel({ log }) {
    BUSINESS DIFF COMPONENTS
 ═══════════════════════════════════════════════════════════════ */
 function PermissionDiffDetail({ log }) {
+  const { lang } = useLanguage();
   const granted = log.metadata?.granted ?? [];
   const revoked = log.metadata?.revoked ?? [];
   const cf = log.changed_fields ?? [];
   const grantedList = granted.length ? granted : cf.filter((k) => log.new_value?.[k] === true);
   const revokedList = revoked.length  ? revoked  : cf.filter((k) => log.new_value?.[k] === false);
   if (!grantedList.length && !revokedList.length)
-    return <div style={{ fontSize: 12, color: "#94a3b8" }}>No permission details available.</div>;
+    return <div style={{ fontSize: 12, color: "#94a3b8" }}>{t("No permission details available.", lang)}</div>;
 
   const Col = ({ items, isGrant }) => (
     <div style={{ flex: 1, minWidth: 180 }}>
@@ -353,15 +357,16 @@ function RoleAssignmentDetail({ log }) {
 }
 
 function FieldDiffDetail({ log }) {
+  const { lang } = useLanguage();
   const fields = log.changed_fields?.length ? log.changed_fields : Object.keys(log.new_value || {});
   if (!fields.length)
     return <div style={{ fontSize: 12, color: "#94a3b8" }}>{log.message || "No change details available."}</div>;
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
       <div style={{ display: "grid", gridTemplateColumns: "130px 1fr 1fr", gap: 10, padding: "0 2px" }}>
-        <div style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.7 }}>Field</div>
-        <div style={{ fontSize: 10, fontWeight: 700, color: "#b91c1c", textTransform: "uppercase", letterSpacing: 0.7 }}>Before</div>
-        <div style={{ fontSize: 10, fontWeight: 700, color: "#15803d", textTransform: "uppercase", letterSpacing: 0.7 }}>After</div>
+        <div style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.7 }}>{t("Field", lang)}</div>
+        <div style={{ fontSize: 10, fontWeight: 700, color: "#b91c1c", textTransform: "uppercase", letterSpacing: 0.7 }}>{t("Before", lang)}</div>
+        <div style={{ fontSize: 10, fontWeight: 700, color: "#15803d", textTransform: "uppercase", letterSpacing: 0.7 }}>{t("After", lang)}</div>
       </div>
       {fields.map((field) => (
         <div key={field} style={{ display: "grid", gridTemplateColumns: "130px 1fr 1fr", alignItems: "start", gap: 10, background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10, padding: "10px 12px", boxShadow: "0 1px 2px rgba(0,0,0,0.02)" }}>
@@ -382,6 +387,7 @@ function FieldDiffDetail({ log }) {
    FULL EXPANDED DETAIL PANEL
 ═══════════════════════════════════════════════════════════════ */
 function ExpandedDetailPanel({ log }) {
+  const { lang } = useLanguage();
   let changeContent;
   switch (log.action_type) {
     case "ROLE_PERMISSIONS_CHANGED": changeContent = <PermissionDiffDetail log={log} />; break;
@@ -418,7 +424,7 @@ function ExpandedDetailPanel({ log }) {
 
       {/* Changes */}
       <SectionDivider
-        label="Changes"
+        label={t("Changes", lang)}
         icon={<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>}
       />
       {changeContent}
@@ -433,6 +439,7 @@ function ExpandedDetailPanel({ log }) {
    MAIN PAGE
 ═══════════════════════════════════════════════════════════════ */
 export default function AuditLogsPage() {
+  const { lang } = useLanguage();
   const { accessToken } = useAuth();
 
   const [activeCard,      setActiveCard]  = useState(null);
@@ -492,9 +499,9 @@ export default function AuditLogsPage() {
       <div style={{ marginBottom: 28 }}>
         <div style={{ display: "inline-flex", alignItems: "center", gap: 7, background: "#dc262614", borderRadius: 8, padding: "4px 12px", marginBottom: 12 }}>
           <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#dc2626" }} />
-          <span style={{ fontSize: 11, fontWeight: 700, color: "#dc2626", textTransform: "uppercase", letterSpacing: 1 }}>Audit</span>
+          <span style={{ fontSize: 11, fontWeight: 700, color: "#dc2626", textTransform: "uppercase", letterSpacing: 1 }}>{t("Audit", lang)}</span>
         </div>
-        <h1 style={{ fontSize: 24, fontWeight: 700, color: "#1e293b", letterSpacing: "-0.4px", margin: 0 }}>Audit Logs</h1>
+        <h1 style={{ fontSize: 24, fontWeight: 700, color: "#1e293b", letterSpacing: "-0.4px", margin: 0 }}>{t("Audit Logs", lang)}</h1>
         <p style={{ color: "#94a3b8", fontSize: 14, margin: "6px 0 0" }}>Click a card to filter by entity. Full history of system events and user actions.</p>
       </div>
 
@@ -535,7 +542,7 @@ export default function AuditLogsPage() {
         {(activeCard || search) && (
           <button onClick={() => { setActiveCard(null); setSearch(""); }}
             style={{ padding: "10px 16px", border: "1.5px solid #e2e8f0", borderRadius: 10, background: "#fff", cursor: "pointer", fontSize: 13, color: "#64748b", fontFamily: "inherit", whiteSpace: "nowrap" }}>
-            Clear filters
+            {t("Clear filters", lang)}
           </button>
         )}
       </div>
@@ -544,13 +551,13 @@ export default function AuditLogsPage() {
       <div style={{ background: "#fff", border: "1px solid rgba(0,0,0,0.07)", borderRadius: 14, overflow: "hidden", boxShadow: "0 1px 4px rgba(0,0,0,0.05)" }}>
         <div style={{ display: "grid", gridTemplateColumns: "32px 200px 1fr 180px 130px 160px", padding: "11px 20px", background: "#f8fafc", borderBottom: "1px solid rgba(0,0,0,0.06)" }}>
           {["", "Actor", "Message", "Action", "Type", "Timestamp"].map((h) => (
-            <div key={h} style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.8 }}>{h}</div>
+            <div key={h} style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.8 }}>{h ? t(h, lang) : h}</div>
           ))}
         </div>
 
-        {loading  && <div style={{ padding: 40, textAlign: "center", color: "#94a3b8", fontSize: 13 }}>Loading…</div>}
+        {loading  && <div style={{ padding: 40, textAlign: "center", color: "#94a3b8", fontSize: 13 }}>{t("Loading…", lang)}</div>}
         {!loading && error && <div style={{ padding: 40, textAlign: "center", color: "#dc2626", fontSize: 13 }}>{error}</div>}
-        {!loading && !error && logs.length === 0 && <div style={{ padding: 40, textAlign: "center", color: "#94a3b8", fontSize: 13 }}>No audit logs found.</div>}
+        {!loading && !error && logs.length === 0 && <div style={{ padding: 40, textAlign: "center", color: "#94a3b8", fontSize: 13 }}>{t("No audit logs found.", lang)}</div>}
 
         {!loading && !error && logs.map((log, i) => {
           const typeMeta = TYPE_META[log.entity_type] || { label: log.entity_type, bg: "#f1f5f9", color: "#64748b" };
@@ -590,7 +597,7 @@ export default function AuditLogsPage() {
         <div style={{ marginTop: 16, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <span style={{ fontSize: 12, color: "#94a3b8" }}>Showing {(page - 1) * LIMIT + 1}–{Math.min(page * LIMIT, total)} of {total} logs</span>
           <div style={{ display: "flex", gap: 6 }}>
-            <button disabled={page === 1} onClick={() => setPage((p) => p - 1)} style={{ padding: "7px 14px", border: "1.5px solid #e2e8f0", borderRadius: 8, background: "#fff", cursor: page === 1 ? "not-allowed" : "pointer", opacity: page === 1 ? 0.5 : 1, fontSize: 12, fontFamily: "inherit" }}>← Prev</button>
+            <button disabled={page === 1} onClick={() => setPage((p) => p - 1)} style={{ padding: "7px 14px", border: "1.5px solid #e2e8f0", borderRadius: 8, background: "#fff", cursor: page === 1 ? "not-allowed" : "pointer", opacity: page === 1 ? 0.5 : 1, fontSize: 12, fontFamily: "inherit" }}>{t("← Prev", lang)}</button>
             {Array.from({ length: totalPages }, (_, i) => i + 1)
               .filter((p) => p === 1 || p === totalPages || Math.abs(p - page) <= 1)
               .reduce((acc, p, idx, arr) => { if (idx > 0 && arr[idx - 1] !== p - 1) acc.push("…"); acc.push(p); return acc; }, [])
@@ -598,7 +605,7 @@ export default function AuditLogsPage() {
                 p === "…" ? <span key={`e-${i}`} style={{ padding: "7px 4px", fontSize: 12, color: "#94a3b8" }}>…</span>
                 : <button key={p} onClick={() => setPage(p)} style={{ padding: "7px 12px", borderRadius: 8, border: `1.5px solid ${p === page ? "#d97706" : "#e2e8f0"}`, background: p === page ? "#d97706" : "#fff", color: p === page ? "#fff" : "#475569", cursor: "pointer", fontSize: 12, fontWeight: p === page ? 700 : 400, fontFamily: "inherit" }}>{p}</button>
               )}
-            <button disabled={page === totalPages} onClick={() => setPage((p) => p + 1)} style={{ padding: "7px 14px", border: "1.5px solid #e2e8f0", borderRadius: 8, background: "#fff", cursor: page === totalPages ? "not-allowed" : "pointer", opacity: page === totalPages ? 0.5 : 1, fontSize: 12, fontFamily: "inherit" }}>Next →</button>
+            <button disabled={page === totalPages} onClick={() => setPage((p) => p + 1)} style={{ padding: "7px 14px", border: "1.5px solid #e2e8f0", borderRadius: 8, background: "#fff", cursor: page === totalPages ? "not-allowed" : "pointer", opacity: page === totalPages ? 0.5 : 1, fontSize: 12, fontFamily: "inherit" }}>{t("Next →", lang)}</button>
           </div>
         </div>
       )}

@@ -5,13 +5,16 @@ import { Provider } from "react-redux";
 import store from "./store";
 import router from "./router";
 import { AuthProvider } from "./store/AuthContext";
+import { LanguageProvider } from "./i18n/LanguageContext";
 import "./index.css";
 
 createRoot(document.getElementById("root")).render(
   <StrictMode>
     <Provider store={store}>
       <AuthProvider>
-        <RouterProvider router={router} />
+        <LanguageProvider>
+          <RouterProvider router={router} />
+        </LanguageProvider>
       </AuthProvider>
     </Provider>
   </StrictMode>

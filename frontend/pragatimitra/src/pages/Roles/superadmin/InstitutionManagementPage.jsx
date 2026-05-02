@@ -2,6 +2,8 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useApi } from "../../../hooks/useApi";
 import FormScreen from "../../../components/shared/FormScreen";
 import { S, Toast, isAuthError, formatDate } from "../../../components/shared/formUtils";
+import { useLanguage } from "../../../i18n/LanguageContext";
+import { t } from "../../../i18n/translations";
 
 const INDIA_STATES = [
   "Andhra Pradesh","Arunachal Pradesh","Assam","Bihar","Chhattisgarh",
@@ -25,6 +27,7 @@ const EMPTY = {
 };
 
 function InstitutionForm({ mode, entity, onCreated, onSaved, onBack }) {
+  const { lang } = useLanguage();
   const { apiFetch } = useApi();
   const isEdit = mode === "edit";
 
@@ -119,8 +122,8 @@ function InstitutionForm({ mode, entity, onCreated, onSaved, onBack }) {
 
   return (
     <FormScreen
-      pageTitle="Institutions"
-      formTitle={isEdit ? "Edit Institution" : "New Institution"}
+      pageTitle={t("Institutions", lang)}
+      formTitle={isEdit ? t("Edit Institution", lang) : t("New Institution", lang)}
       formSubtitle={
         isEdit
           ? "Update name, code, address or status."
@@ -131,12 +134,12 @@ function InstitutionForm({ mode, entity, onCreated, onSaved, onBack }) {
       onBack={onBack}
       onSubmit={handleSubmit}
       submitting={submitting}
-      submitLabel={isEdit ? "Save Changes" : "Create Institution"}
+      submitLabel={isEdit ? t("Save Changes", lang) : "Create Institution"}
       submitError={submitError}
     >
       {/* Institution Name */}
       <div>
-        <label style={S.label}>Institution Name</label>
+        <label style={S.label}>{t("Institution Name", lang)}</label>
         <input
           ref={nameRef}
           type="text"
@@ -155,7 +158,7 @@ function InstitutionForm({ mode, entity, onCreated, onSaved, onBack }) {
       {/* Code + Email Domain */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
         <div>
-          <label style={S.label}>Institution Code</label>
+          <label style={S.label}>{t("Institution Code", lang)}</label>
           <input
             type="text"
             placeholder="e.g. AIIA"
@@ -168,11 +171,11 @@ function InstitutionForm({ mode, entity, onCreated, onSaved, onBack }) {
           {fieldErrors.code ? (
             <div style={S.errorText}>{fieldErrors.code}</div>
           ) : (
-            <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 4 }}>Auto-uppercased.</div>
+            <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 4 }}>{t("Auto-uppercased.", lang)}</div>
           )}
         </div>
         <div>
-          <label style={S.label}>Email Domain</label>
+          <label style={S.label}>{t("Email Domain", lang)}</label>
           <input
             type="text"
             placeholder="e.g. aiia.edu.in"
@@ -189,7 +192,7 @@ function InstitutionForm({ mode, entity, onCreated, onSaved, onBack }) {
 
       {/* Address Line 1 */}
       <div>
-        <label style={S.label}>Address Line 1</label>
+        <label style={S.label}>{t("Address Line 1", lang)}</label>
         <input
           type="text"
           placeholder="Street / Building name"
@@ -206,7 +209,7 @@ function InstitutionForm({ mode, entity, onCreated, onSaved, onBack }) {
       {/* Address Line 2 */}
       <div>
         <label style={S.label}>
-          Address Line 2{" "}
+          {t("Address Line 2", lang)}{" "}
           <span style={{ color: "#94a3b8", fontWeight: 400, textTransform: "none" }}>
             (optional)
           </span>
@@ -224,7 +227,7 @@ function InstitutionForm({ mode, entity, onCreated, onSaved, onBack }) {
       {/* City + Pincode */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
         <div>
-          <label style={S.label}>City</label>
+          <label style={S.label}>{t("City", lang)}</label>
           <input
             type="text"
             placeholder="e.g. Delhi"
@@ -236,7 +239,7 @@ function InstitutionForm({ mode, entity, onCreated, onSaved, onBack }) {
           {fieldErrors.city && <div style={S.errorText}>{fieldErrors.city}</div>}
         </div>
         <div>
-          <label style={S.label}>Pincode</label>
+          <label style={S.label}>{t("Pincode", lang)}</label>
           <input
             type="text"
             placeholder="6-digit pincode"
@@ -253,14 +256,14 @@ function InstitutionForm({ mode, entity, onCreated, onSaved, onBack }) {
       {/* State + Country */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
         <div>
-          <label style={S.label}>State</label>
+          <label style={S.label}>{t("State", lang)}</label>
           <select
             value={form.state}
             onChange={(e) => set("state", e.target.value)}
             disabled={submitting}
             style={S.select(!!fieldErrors.state)}
           >
-            <option value="">— Select State —</option>
+            <option value="">{t("— Select State —", lang)}</option>
             {INDIA_STATES.map((s) => (
               <option key={s} value={s}>{s}</option>
             ))}
@@ -268,7 +271,7 @@ function InstitutionForm({ mode, entity, onCreated, onSaved, onBack }) {
           {fieldErrors.state && <div style={S.errorText}>{fieldErrors.state}</div>}
         </div>
         <div>
-          <label style={S.label}>Country</label>
+          <label style={S.label}>{t("Country", lang)}</label>
           <input
             type="text"
             value={form.country}
@@ -282,15 +285,15 @@ function InstitutionForm({ mode, entity, onCreated, onSaved, onBack }) {
       {/* Status (edit only) */}
       {isEdit && (
         <div>
-          <label style={S.label}>Status</label>
+          <label style={S.label}>{t("Status", lang)}</label>
           <select
             value={form.status}
             onChange={(e) => set("status", e.target.value)}
             disabled={submitting}
             style={S.select(!!fieldErrors.status)}
           >
-            <option value="ACTIVE">Active</option>
-            <option value="INACTIVE">Inactive</option>
+            <option value="ACTIVE">{t("Active", lang)}</option>
+            <option value="INACTIVE">{t("Inactive", lang)}</option>
           </select>
           {fieldErrors.status && <div style={S.errorText}>{fieldErrors.status}</div>}
           {goingInactive && (
@@ -317,6 +320,7 @@ function InstitutionForm({ mode, entity, onCreated, onSaved, onBack }) {
 
 /* ─── Institution Card ───────────────────────────────────────── */
 function InstitutionCard({ inst, onEdit, onToggleStatus, isToggling }) {
+  const { lang } = useLanguage();
   const isActive = inst.status === "ACTIVE";
   return (
     <div
@@ -380,7 +384,7 @@ function InstitutionCard({ inst, onEdit, onToggleStatus, isToggling }) {
             marginLeft: 8,
           }}
         >
-          {isActive ? "Active" : "Inactive"}
+          {isActive ? t("Active", lang) : t("Inactive", lang)}
         </span>
       </div>
 
@@ -403,21 +407,21 @@ function InstitutionCard({ inst, onEdit, onToggleStatus, isToggling }) {
         }}
       >
         <div>
-          <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 2 }}>Departments</div>
+          <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 2 }}>{t("Departments", lang)}</div>
           <div style={{ fontSize: 20, fontWeight: 700, color: "#1e293b" }}>
             {Number(inst.department_count || 0)}
           </div>
         </div>
         <div style={{ width: 1, background: "#e2e8f0" }} />
         <div>
-          <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 2 }}>Users</div>
+          <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 2 }}>{t("Users", lang)}</div>
           <div style={{ fontSize: 20, fontWeight: 700, color: "#1e293b" }}>
             {Number(inst.user_count || 0)}
           </div>
         </div>
         <div style={{ width: 1, background: "#e2e8f0" }} />
         <div>
-          <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 2 }}>Code</div>
+          <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 2 }}>{t("Code", lang)}</div>
           <div
             style={{
               fontSize: 13,
@@ -446,7 +450,7 @@ function InstitutionCard({ inst, onEdit, onToggleStatus, isToggling }) {
             cursor: "pointer",
           }}
         >
-          Edit
+          {t("Edit", lang)}
         </button>
         <button
           onClick={() => onToggleStatus(inst)}
@@ -465,7 +469,7 @@ function InstitutionCard({ inst, onEdit, onToggleStatus, isToggling }) {
             opacity: isToggling ? 0.6 : 1,
           }}
         >
-          {isToggling ? "…" : isActive ? "Deactivate" : "Activate"}
+          {isToggling ? "…" : isActive ? t("Deactivate", lang) : t("Activate", lang)}
         </button>
       </div>
     </div>
@@ -525,6 +529,7 @@ function StyledSelect({ value, onChange, children, minWidth = 180 }) {
 
 /* ─── Main Page ──────────────────────────────────────────────── */
 export default function InstitutionManagementPage() {
+  const { lang } = useLanguage();
   const { apiFetch } = useApi();
   const [institutions, setInstitutions] = useState([]);
   const [statusFilter, setStatusFilter] = useState("ALL");
@@ -658,7 +663,7 @@ export default function InstitutionManagementPage() {
                 letterSpacing: 1,
               }}
             >
-              Institution Management
+              {t("Institution Management", lang)}
             </span>
           </div>
           <h1
@@ -670,7 +675,7 @@ export default function InstitutionManagementPage() {
               marginBottom: 6,
             }}
           >
-            Institutions
+            {t("Institutions", lang)}
           </h1>
           <p style={{ color: "#94a3b8", fontSize: 14 }}>
             Create and manage institutions on the platform.
@@ -693,7 +698,7 @@ export default function InstitutionManagementPage() {
             whiteSpace: "nowrap",
           }}
         >
-          <span style={{ fontSize: 18, lineHeight: 1 }}>+</span> New Institution
+          <span style={{ fontSize: 18, lineHeight: 1 }}>+</span> {t("+ New Institution", lang)}
         </button>
       </div>
 
@@ -726,7 +731,7 @@ export default function InstitutionManagementPage() {
         >
           <div style={{ fontSize: 13, color: "#64748b" }}>
             {loading ? (
-              "Loading institutions…"
+              t("Loading institutions…", lang)
             ) : (
               <>
                 <strong style={{ color: "#1e293b" }}>{filtered.length}</strong>{" "}
@@ -737,9 +742,9 @@ export default function InstitutionManagementPage() {
             )}
           </div>
           <StyledSelect value={statusFilter} onChange={setStatusFilter} minWidth={150}>
-            <option value="ALL">All Statuses</option>
-            <option value="ACTIVE">Active</option>
-            <option value="INACTIVE">Inactive</option>
+            <option value="ALL">{t("All Statuses", lang)}</option>
+            <option value="ACTIVE">{t("Active", lang)}</option>
+            <option value="INACTIVE">{t("Inactive", lang)}</option>
           </StyledSelect>
         </div>
       )}

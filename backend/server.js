@@ -96,7 +96,7 @@ app.locals.pool = pool;
 app.get("/", (req, res) => {
   res.json({ success: true, message: "Pragatimitra API running." });
 });
-
+const uploadRoutes = require("./routes/upload");
 app.use("/api/auth",         authRoutes);
 app.use("/api/users",        require("./routes/users"));
 app.use("/api/lookup",       require("./routes/lookup"));
@@ -108,6 +108,7 @@ app.use("/api/institutions", require("./routes/institutions"));
 app.use("/api/committees",   require("./routes/committees"));
 app.use("/api/institutions", institutionRoutes);
 app.use("/api/audit-logs",   auditLogRoutes);
+app.use("/api/upload",       uploadRoutes);
 
 /* ─── Global error handler (must be last) ───────────────────── */
 app.use(errorHandler);
