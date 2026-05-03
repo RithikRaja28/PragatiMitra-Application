@@ -297,7 +297,7 @@ function Step2MapFields({ systemFields, fileColumns, mapping, onMappingChange, o
 }
 
 /* ─── STEP 3: Preview & Import ───────────────────────────────────── */
-function Step3Preview({ entityLabel, systemFields, mapping, parsedData, validationResult, onBack, onImport, importing, importResult }) {
+function Step3Preview({ entityLabel, systemFields, mapping, parsedData, validationResult, onBack, onImport, importing, importProgress, importResult }) {
   const [showErrors, setShowErrors] = useState(false);
 
   if (importResult) {
@@ -416,10 +416,43 @@ function Step3Preview({ entityLabel, systemFields, mapping, parsedData, validati
         </div>
       )}
 
-      <div style={{ display: "flex", justifyContent: "space-between", marginTop: 24 }}>
+      {/* Real-time progress bar — visible only while the SSE stream is active */}
+      {importing && (
+        <div style={{ marginBottom: 8, marginTop: 8 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "#475569", marginBottom: 6 }}>
+            <span style={{ fontWeight: 600 }}>
+              {importProgress.total > 0 ? "Importing records…" : "Preparing…"}
+            </span>
+            {importProgress.total > 0 && (
+              <span style={{ fontWeight: 700, color: "#2563eb" }}>
+                {importProgress.done.toLocaleString()} / {importProgress.total.toLocaleString()}
+                {" "}({Math.round((importProgress.done / importProgress.total) * 100)}%)
+              </span>
+            )}
+          </div>
+          <div style={{ background: "#e2e8f0", borderRadius: 999, height: 8, overflow: "hidden" }}>
+            <div style={{
+              background: "linear-gradient(90deg,#2563eb,#3b82f6)",
+              height: "100%",
+              borderRadius: 999,
+              width: importProgress.total > 0
+                ? `${Math.round((importProgress.done / importProgress.total) * 100)}%`
+                : "0%",
+              transition: "width 0.35s ease",
+            }} />
+          </div>
+        </div>
+      )}
+
+      <div style={{ display: "flex", justifyContent: "space-between", marginTop: 20 }}>
         <button style={S.btnGhost} onClick={onBack} disabled={importing}>← Previous</button>
         <button style={S.btnPrimary(importing || stats.ready === 0)} disabled={importing || stats.ready === 0} onClick={onImport}>
-          {importing ? "Importing…" : `Import ${stats.ready} ${entityLabel}`}
+          {importing
+            ? importProgress.total > 0
+              ? `Importing… ${Math.round((importProgress.done / importProgress.total) * 100)}%`
+              : "Preparing…"
+            : `Import ${stats.ready} ${entityLabel}`
+          }
         </button>
       </div>
     </div>
@@ -462,6 +495,7 @@ export default function ImportWizard({
   const [validationResult, setValidationResult] = useState(null);
   const [validateError,    setValidateError]    = useState("");
   const [importing,        setImporting]        = useState(false);
+  const [importProgress,   setImportProgress]   = useState({ done: 0, total: 0 });
   const [importResult,     setImportResult]     = useState(null);
   const [importError,      setImportError]      = useState("");
 
@@ -524,24 +558,65 @@ export default function ImportWizard({
     } catch {}
   };
 
-  /* Execute import */
+  /* Execute import — streams SSE progress from the server */
   const handleImport = async () => {
     if (!parsedData?.rows) return;
-    setImporting(true); setImportError("");
+    setImporting(true);
+    setImportError("");
+    setImportProgress({ done: 0, total: 0 });
+
     try {
-      const res  = await apiFetch(`${apiPath}/import/execute`, {
-        method: "POST",
-        body: JSON.stringify({
-          mapping, data: parsedData.rows,
+      const res = await fetch(`${API_BASE}${apiPath}/import/execute`, {
+        method:  "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
+        body:    JSON.stringify({
+          mapping,
+          data:              parsedData.rows,
           duplicateHandling: settings.duplicateHandling,
           ...extraImportBody,
         }),
       });
-      const data = await res.json();
-      if (!data.success) setImportError(data.message || "Import failed.");
-      else { setImportResult(data); if (data.imported > 0 && onSuccess) onSuccess(data); }
-    } catch { setImportError("Network error during import. Please try again."); }
-    finally   { setImporting(false); }
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        setImportError(errData.message || "Import failed.");
+        return;
+      }
+
+      const reader  = res.body.getReader();
+      const decoder = new TextDecoder();
+      let   buffer  = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        /* SSE messages are separated by \n\n */
+        const chunks = buffer.split("\n\n");
+        buffer = chunks.pop(); // keep incomplete trailing chunk
+
+        for (const chunk of chunks) {
+          const match = chunk.match(/^data: (.+)/m);
+          if (!match) continue;
+          try {
+            const event = JSON.parse(match[1]);
+            if (event.complete) {
+              setImportResult(event);
+              if (event.imported > 0 && onSuccess) onSuccess(event);
+            } else if (event.error) {
+              setImportError(event.message || "Import failed.");
+            } else if (event.phase === "importing") {
+              setImportProgress({ done: event.done, total: event.total });
+            }
+          } catch (_) {}
+        }
+      }
+    } catch {
+      setImportError("Network error during import. Please try again.");
+    } finally {
+      setImporting(false);
+    }
   };
 
   /* ── Page layout (same structure as FormScreen) ───────────────── */
@@ -624,6 +699,7 @@ export default function ImportWizard({
                 onBack={() => setStep(2)}
                 onImport={handleImport}
                 importing={importing}
+                importProgress={importProgress}
                 importResult={importResult}
               />
               {importResult && (
