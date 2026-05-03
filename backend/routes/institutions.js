@@ -1,8 +1,9 @@
 "use strict";
 
-const express = require("express");
-const multer  = require("multer");
-const XLSX    = require("xlsx");
+const express      = require("express");
+const multer       = require("multer");
+const XLSX         = require("xlsx");
+const { randomUUID } = require("crypto");
 const { verifyToken, requireRole } = require("../middleware/auth");
 const { writeAuditLog } = require("../utils/audit");
 
@@ -202,9 +203,11 @@ router.post("/import/parse", requireRole(["super_admin"]), handleUpload, async (
     if (!rows.length)   return res.status(400).json({ success: false, message: "File is empty or has no data rows." });
     if (rows.length > 10000) return res.status(400).json({ success: false, message: "File exceeds 10,000 rows." });
 
-    const columns = Object.keys(rows[0]);
+    const columns   = Object.keys(rows[0]);
+    const sessionId = randomUUID();
+    req.app.locals.importSessions.set(sessionId, { rows, expiresAt: Date.now() + 3_600_000 });
     return res.json({
-      success: true, columns, totalRows: rows.length, rows,
+      success: true, sessionId, columns, totalRows: rows.length,
       preview: rows.slice(0, 5), autoMapping: buildAutoMapping(fields, columns),
     });
   } catch (err) {
@@ -216,9 +219,13 @@ router.post("/import/parse", requireRole(["super_admin"]), handleUpload, async (
 /* ── POST /api/institutions/import/validate ───────────────────── */
 router.post("/import/validate", requireRole(["super_admin"]), async (req, res) => {
   const pool = req.app.locals.pool;
-  const { mapping, data } = req.body;
-  if (!mapping || !Array.isArray(data))
-    return res.status(400).json({ success: false, message: "mapping and data are required." });
+  const { mapping, sessionId } = req.body;
+  if (!mapping || !sessionId)
+    return res.status(400).json({ success: false, message: "mapping and sessionId are required." });
+  const session = req.app.locals.importSessions.get(sessionId);
+  if (!session)
+    return res.status(400).json({ success: false, message: "Import session expired. Please re-upload your file." });
+  const data = session.rows;
 
   try {
     const { rows: existing } = await pool.query(
@@ -278,10 +285,14 @@ router.post("/import/validate", requireRole(["super_admin"]), async (req, res) =
 /* ── POST /api/institutions/import/execute  (streaming SSE + batch INSERT) ── */
 router.post("/import/execute", requireRole(["super_admin"]), async (req, res) => {
   const pool = req.app.locals.pool;
-  const { mapping, data, duplicateHandling = "skip" } = req.body;
+  const { mapping, sessionId, duplicateHandling = "skip" } = req.body;
 
-  if (!mapping || !Array.isArray(data) || !data.length)
-    return res.status(400).json({ success: false, message: "mapping and data are required." });
+  if (!mapping || !sessionId)
+    return res.status(400).json({ success: false, message: "mapping and sessionId are required." });
+  const session = req.app.locals.importSessions.get(sessionId);
+  if (!session || !session.rows.length)
+    return res.status(400).json({ success: false, message: "Import session expired. Please re-upload your file." });
+  const data = session.rows;
 
   /* ── SSE headers — keeps the connection alive so the client can read progress ── */
   res.setHeader("Content-Type",      "text/event-stream");

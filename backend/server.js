@@ -53,7 +53,7 @@ app.use(
   })
 );
 
-app.use(express.json({ limit: "10mb" }));
+app.use(express.json({ limit: "50mb" }));
 app.use(cookies());
 
 /* ─── Request ID + logging (order matters) ──────────────────── */
@@ -91,6 +91,16 @@ pool.connect((err, client, release) => {
 });
 
 app.locals.pool = pool;
+
+/* ── Import session cache: rows stored server-side after parse ───── */
+app.locals.importSessions = new Map();
+// Purge sessions older than 1 hour every 30 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, val] of app.locals.importSessions) {
+    if (val.expiresAt < now) app.locals.importSessions.delete(key);
+  }
+}, 30 * 60 * 1000).unref();
 
 /* ─── Routes ────────────────────────────────────────────────── */
 app.get("/", (req, res) => {
