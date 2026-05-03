@@ -554,6 +554,37 @@ function ExportMenu({ loading, onExport }) {
   );
 }
 
+function InstPagination({ page, pageSize, total, onPageChange, onPageSizeChange }) {
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const from = total === 0 ? 0 : (page - 1) * pageSize + 1;
+  const to   = Math.min(page * pageSize, total);
+  const btnStyle = (disabled) => ({
+    padding: "5px 13px", borderRadius: 7, border: "1.5px solid #e2e8f0",
+    background: disabled ? "#f8fafc" : "#fff", fontSize: 13, fontWeight: 600,
+    color: disabled ? "#cbd5e1" : "#1e293b", cursor: disabled ? "not-allowed" : "pointer",
+  });
+  return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 18, flexWrap: "wrap", gap: 10 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#64748b" }}>
+        <span>Cards per page:</span>
+        <select
+          value={pageSize}
+          onChange={(e) => onPageSizeChange(Number(e.target.value))}
+          style={{ padding: "4px 8px", border: "1.5px solid #e2e8f0", borderRadius: 7, fontSize: 13, color: "#1e293b", background: "#fff", cursor: "pointer" }}
+        >
+          {[10, 25, 100, 500].map((s) => <option key={s} value={s}>{s}</option>)}
+        </select>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <span style={{ fontSize: 13, color: "#64748b" }}>{from}–{to} of {total}</span>
+        <button onClick={() => onPageChange(page - 1)} disabled={page <= 1} style={btnStyle(page <= 1)}>← Prev</button>
+        <span style={{ fontSize: 13, color: "#475569" }}>{page} / {totalPages}</span>
+        <button onClick={() => onPageChange(page + 1)} disabled={page >= totalPages} style={btnStyle(page >= totalPages)}>Next →</button>
+      </div>
+    </div>
+  );
+}
+
 function StyledSelect({ value, onChange, children, minWidth = 180 }) {
   return (
     <select
@@ -592,6 +623,8 @@ export default function InstitutionManagementPage() {
   const [toast,           setToast]           = useState(null);
   const [showImport,      setShowImport]      = useState(false);
   const [exportingFormat, setExportingFormat] = useState(null);
+  const [page,            setPage]            = useState(1);
+  const [pageSize,        setPageSize]        = useState(25);
   const toastTimer = useRef(null);
 
   const showToast = useCallback((message, type = "success") => {
@@ -639,6 +672,9 @@ export default function InstitutionManagementPage() {
   useEffect(() => {
     fetchInstitutions();
   }, [fetchInstitutions]);
+
+  // Must be before any early returns — React Rules of Hooks
+  useEffect(() => { setPage(1); }, [statusFilter]);
 
   async function handleToggleStatus(inst) {
     const nextStatus = inst.status === "ACTIVE" ? "INACTIVE" : "ACTIVE";
@@ -715,6 +751,9 @@ export default function InstitutionManagementPage() {
     statusFilter === "ALL"
       ? institutions
       : institutions.filter((i) => i.status === statusFilter);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const paginated  = filtered.slice((page - 1) * pageSize, page * pageSize);
 
   return (
     <div style={{ padding: "32px 36px", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
@@ -857,7 +896,7 @@ export default function InstitutionManagementPage() {
         {loading ? (
           Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} />)
         ) : filtered.length > 0 ? (
-          filtered.map((inst) => (
+          paginated.map((inst) => (
             <InstitutionCard
               key={inst.institution_id}
               inst={inst}
@@ -891,6 +930,16 @@ export default function InstitutionManagementPage() {
           </div>
         )}
       </div>
+
+      {!loading && filtered.length > 0 && (
+        <InstPagination
+          page={page}
+          pageSize={pageSize}
+          total={filtered.length}
+          onPageChange={setPage}
+          onPageSizeChange={(s) => { setPageSize(s); setPage(1); }}
+        />
+      )}
     </div>
   );
 }

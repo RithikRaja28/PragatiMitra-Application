@@ -494,6 +494,7 @@ export default function ImportWizard({
   const [validating,       setValidating]       = useState(false);
   const [validationResult, setValidationResult] = useState(null);
   const [validateError,    setValidateError]    = useState("");
+  const [sessionId,        setSessionId]        = useState(null);
   const [importing,        setImporting]        = useState(false);
   const [importProgress,   setImportProgress]   = useState({ done: 0, total: 0 });
   const [importResult,     setImportResult]     = useState(null);
@@ -525,6 +526,7 @@ export default function ImportWizard({
       if (!data.success) { setParseError(data.message || "Failed to parse file."); return; }
       setParsedData(data); setFileColumns(data.columns);
       setMapping(data.autoMapping || {}); setValidationResult(null);
+      setSessionId(data.sessionId || null);
       setStep(2);
     } catch { setParseError("Network error while parsing file. Please try again."); }
     finally   { setParseLoading(false); }
@@ -532,12 +534,12 @@ export default function ImportWizard({
 
   /* Step 2 → 3: server-side validation */
   const handleStep2Next = async () => {
-    if (!parsedData?.rows) return;
+    if (!parsedData || !sessionId) return;
     setValidating(true); setValidateError("");
     try {
       const res  = await apiFetch(`${apiPath}/import/validate`, {
         method: "POST",
-        body: JSON.stringify({ mapping, data: parsedData.rows, ...extraImportBody }),
+        body: JSON.stringify({ mapping, sessionId, ...extraImportBody }),
       });
       const data = await res.json();
       if (data.success) { setValidationResult(data); setStep(3); }
@@ -560,7 +562,7 @@ export default function ImportWizard({
 
   /* Execute import — streams SSE progress from the server */
   const handleImport = async () => {
-    if (!parsedData?.rows) return;
+    if (!parsedData || !sessionId) return;
     setImporting(true);
     setImportError("");
     setImportProgress({ done: 0, total: 0 });
@@ -571,7 +573,7 @@ export default function ImportWizard({
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
         body:    JSON.stringify({
           mapping,
-          data:              parsedData.rows,
+          sessionId,
           duplicateHandling: settings.duplicateHandling,
           ...extraImportBody,
         }),
@@ -662,7 +664,7 @@ export default function ImportWizard({
               file={file}
               settings={settings}
               extraSettingsSlot={extraSettingsSlot}
-              onFileChange={(f) => { setFile(f); setParsedData(null); setParseError(""); setValidationResult(null); }}
+              onFileChange={(f) => { setFile(f); setParsedData(null); setParseError(""); setValidationResult(null); setSessionId(null); }}
               onSettingsChange={handleSettingsChange}
               onNext={handleStep1Next}
               onDownloadSample={handleDownloadSample}

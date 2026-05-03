@@ -1,9 +1,10 @@
 "use strict";
 
-const express = require("express");
-const multer  = require("multer");
-const XLSX    = require("xlsx");
-const bcrypt  = require("bcrypt");
+const express        = require("express");
+const multer         = require("multer");
+const XLSX           = require("xlsx");
+const bcrypt         = require("bcrypt");
+const { randomUUID } = require("crypto");
 const { verifyToken, requireRole } = require("../middleware/auth");
 const { writeAuditLog } = require("../utils/audit");
 
@@ -176,15 +177,17 @@ router.post(
 
       if (!rows.length)
         return res.status(400).json({ success: false, message: "File is empty or has no data rows." });
-      if (rows.length > 5000)
-        return res.status(400).json({ success: false, message: "File exceeds 5,000 rows. Split into smaller batches." });
+      if (rows.length > 10000)
+        return res.status(400).json({ success: false, message: "File exceeds 10,000 rows. Split into smaller batches." });
 
-      const columns = Object.keys(rows[0]);
+      const columns   = Object.keys(rows[0]);
+      const sessionId = randomUUID();
+      req.app.locals.importSessions.set(sessionId, { rows, expiresAt: Date.now() + 3_600_000 });
       return res.json({
         success:     true,
+        sessionId,
         columns,
         totalRows:   rows.length,
-        rows,
         preview:     rows.slice(0, 5),
         autoMapping: buildAutoMapping(fields, columns),
       });
@@ -202,10 +205,14 @@ router.post(
   requireRole(["super_admin", "institute_admin"]),
   async (req, res) => {
     const pool = req.app.locals.pool;
-    const { mapping, data, defaultInstitutionId = null } = req.body;
+    const { mapping, sessionId, defaultInstitutionId = null } = req.body;
 
-    if (!mapping || !Array.isArray(data))
-      return res.status(400).json({ success: false, message: "mapping and data are required." });
+    if (!mapping || !sessionId)
+      return res.status(400).json({ success: false, message: "mapping and sessionId are required." });
+    const session = req.app.locals.importSessions.get(sessionId);
+    if (!session)
+      return res.status(400).json({ success: false, message: "Import session expired. Please re-upload your file." });
+    const data = session.rows;
 
     try {
       const [{ rows: institutions }, { rows: departments }, { rows: roles }] = await Promise.all([
@@ -304,38 +311,50 @@ router.post(
     const pool = req.app.locals.pool;
     const {
       mapping,
-      data,
+      sessionId,
       duplicateHandling    = "skip",
       defaultInstitutionId = null,
       defaultRoleName      = "",
     } = req.body;
 
-    if (!mapping || !Array.isArray(data) || !data.length)
-      return res.status(400).json({ success: false, message: "mapping and data are required." });
+    if (!mapping || !sessionId)
+      return res.status(400).json({ success: false, message: "mapping and sessionId are required." });
+    const session = req.app.locals.importSessions.get(sessionId);
+    if (!session || !session.rows.length)
+      return res.status(400).json({ success: false, message: "Import session expired. Please re-upload your file." });
+    const data = session.rows;
+
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.setHeader("X-Accel-Buffering", "no");
+    res.flushHeaders();
+    const send = (payload) => { try { res.write(`data: ${JSON.stringify(payload)}\n\n`); } catch (_) {} };
 
     try {
-      const [{ rows: institutions }, { rows: departments }, { rows: roles }] = await Promise.all([
+      const [{ rows: insts }, { rows: depts }, { rows: roles }] = await Promise.all([
         pool.query("SELECT institution_id, LOWER(institution_name) AS name_lower FROM institutions WHERE status = 'ACTIVE'"),
         pool.query("SELECT department_id, LOWER(name) AS name_lower, institution_id FROM departments WHERE status = 'ACTIVE'"),
         pool.query("SELECT id, LOWER(name) AS name_lower FROM roles"),
       ]);
 
-      const instMap = new Map(institutions.map((i) => [i.name_lower, i.institution_id]));
-      const deptMap = new Map(departments.map((d) => [`${d.institution_id}::${d.name_lower}`, d.department_id]));
+      const instMap = new Map(insts.map((i) => [i.name_lower, i.institution_id]));
+      const deptMap = new Map(depts.map((d) => [`${d.institution_id}::${d.name_lower}`, d.department_id]));
       const roleMap = new Map(roles.map((r) => [r.name_lower, r.id]));
 
       const fieldToCol = {};
-      for (const [dbField, fileCol] of Object.entries(mapping)) {
-        if (fileCol) fieldToCol[dbField] = fileCol;
-      }
-
+      for (const [f, c] of Object.entries(mapping)) if (c) fieldToCol[f] = c;
       const get = (row, field) => {
         const col = fieldToCol[field];
         return col !== undefined ? String(row[col] ?? "").trim() : "";
       };
 
-      const errors   = [];
-      const prepared = [];
+      // Hash default password once — covers the vast majority of bulk-import rows
+      const DEFAULT_PASS = "Welcome@123";
+      const defaultHash  = await bcrypt.hash(DEFAULT_PASS, 10);
+
+      const errorRows = [];
+      const prepared  = [];
 
       for (let i = 0; i < data.length; i++) {
         const row    = data[i];
@@ -350,116 +369,180 @@ router.post(
         const status_str = get(row, "account_status");
 
         if (!full_name)
-          { errors.push({ row: rowNum, error: "Full name is required" }); continue; }
+          { errorRows.push({ row: rowNum, error: "Full name is required" }); continue; }
         if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
-          { errors.push({ row: rowNum, error: "Valid email is required" }); continue; }
+          { errorRows.push({ row: rowNum, error: "Valid email is required" }); continue; }
 
         let institution_id = defaultInstitutionId || null;
         if (inst_name) {
-          const resolved = instMap.get(inst_name.toLowerCase());
-          if (!resolved)
-            { errors.push({ row: rowNum, error: `Institution "${inst_name}" not found` }); continue; }
-          institution_id = resolved;
+          const r = instMap.get(inst_name.toLowerCase());
+          if (!r) { errorRows.push({ row: rowNum, error: `Institution "${inst_name}" not found` }); continue; }
+          institution_id = r;
         }
         if (!institution_id)
-          { errors.push({ row: rowNum, error: "Institution is required — map the column or set a default" }); continue; }
+          { errorRows.push({ row: rowNum, error: "Institution is required — map the column or set a default" }); continue; }
 
         let department_id = null;
         if (dept_name)
           department_id = deptMap.get(`${institution_id}::${dept_name.toLowerCase()}`) || null;
 
-        const role_lookup = role_str || defaultRoleName || "";
-        const role_id     = role_lookup ? (roleMap.get(role_lookup.toLowerCase()) || null) : null;
-
+        const role_lookup    = role_str || defaultRoleName || "";
+        const role_id        = role_lookup ? (roleMap.get(role_lookup.toLowerCase()) || null) : null;
         const VALID_STATUSES = ["ACTIVE", "INACTIVE", "SUSPENDED"];
-        const account_status = VALID_STATUSES.includes(status_str?.toUpperCase())
-          ? status_str.toUpperCase() : "ACTIVE";
+        const account_status = VALID_STATUSES.includes(status_str?.toUpperCase()) ? status_str.toUpperCase() : "ACTIVE";
+        const rawPassword    = password || DEFAULT_PASS;
 
-        prepared.push({
-          full_name,
-          email: email.toLowerCase(),
-          rawPassword: password || "Welcome@123",
-          institution_id,
-          department_id,
-          role_id,
-          account_status,
-        });
+        prepared.push({ full_name, email: email.toLowerCase(), rawPassword, institution_id, department_id, role_id, account_status });
       }
 
-      await Promise.all(prepared.map(async (u) => {
-        u.password_hash = await bcrypt.hash(u.rawPassword, 10);
-      }));
+      // Reuse default hash for most rows; hash custom passwords in concurrent batches of 20
+      const HASH_CONCURRENCY = 20;
+      for (let i = 0; i < prepared.length; i += HASH_CONCURRENCY) {
+        await Promise.all(prepared.slice(i, i + HASH_CONCURRENCY).map(async (u) => {
+          u.password_hash = (u.rawPassword === DEFAULT_PASS)
+            ? defaultHash
+            : await bcrypt.hash(u.rawPassword, 10);
+        }));
+      }
 
-      const allEmails = prepared.map((p) => p.email);
+      // Pre-fetch existing emails in one query
       const { rows: existing } = await pool.query(
         `SELECT email, id FROM users WHERE email = ANY($1::text[]) AND account_status != 'DELETED'`,
-        [allEmails]
+        [prepared.map((p) => p.email)]
       );
       const existingMap = new Map(existing.map((r) => [r.email, r.id]));
 
-      const client = await pool.connect();
-      let success  = 0;
-      let skipped  = 0;
+      const toInsert = [];
+      const toUpdate = [];
+      let   skipped  = 0;
 
-      try {
-        await client.query("BEGIN");
+      for (const u of prepared) {
+        const existingId = existingMap.get(u.email);
+        if (existingId) {
+          if (duplicateHandling === "skip") { skipped++; continue; }
+          toUpdate.push({ ...u, id: existingId });
+        } else {
+          toInsert.push(u);
+        }
+      }
 
-        for (const user of prepared) {
-          const existingId = existingMap.get(user.email);
+      const CHUNK = 500;
+      const total  = toInsert.length + toUpdate.length;
+      let   done   = 0;
 
-          if (existingId && duplicateHandling === "skip") {
-            skipped++; continue;
-          }
+      // ── Batch INSERT new users ────────────────────────────────────
+      for (let i = 0; i < toInsert.length; i += CHUNK) {
+        const chunk  = toInsert.slice(i, i + CHUNK);
+        const vals   = [];
+        const tuples = chunk.map((u, idx) => {
+          const b = idx * 7;
+          vals.push(u.full_name, u.email, u.password_hash, u.institution_id, u.department_id, u.account_status, req.user.userId);
+          return `($${b+1},$${b+2},$${b+3},$${b+4}::uuid,$${b+5}::uuid,$${b+6},true,true,$${b+7}::uuid)`;
+        });
 
-          if (existingId && duplicateHandling === "overwrite") {
-            await client.query(
-              `UPDATE users SET full_name=$1, institution_id=$2, department_id=$3, account_status=$4 WHERE id=$5`,
-              [user.full_name, user.institution_id, user.department_id, user.account_status, existingId]
-            );
-            if (user.role_id) {
-              await client.query(`UPDATE user_roles SET revoked_at=now() WHERE user_id=$1 AND revoked_at IS NULL`, [existingId]);
-              await client.query(
-                `INSERT INTO user_roles (user_id, role_id, assigned_by) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING`,
-                [existingId, user.role_id, req.user.userId]
-              );
-            }
-            success++; continue;
-          }
+        const { rows: ins } = await pool.query(
+          `INSERT INTO users
+             (full_name,email,password_hash,institution_id,department_id,account_status,
+              must_change_password,is_temporary_password,created_by)
+           VALUES ${tuples.join(",")}
+           RETURNING id, email`,
+          vals
+        );
 
-          const { rows: ins } = await client.query(
-            `INSERT INTO users (full_name, email, password_hash, institution_id, department_id, account_status, must_change_password, is_temporary_password, created_by)
-             VALUES ($1,$2,$3,$4,$5,$6,true,true,$7) RETURNING id`,
-            [user.full_name, user.email, user.password_hash, user.institution_id, user.department_id, user.account_status, req.user.userId]
+        const idByEmail = new Map(ins.map((r) => [r.email, r.id]));
+
+        // Batch insert user_roles for this chunk
+        const roleInserts = chunk
+          .filter((u) => u.role_id)
+          .map((u) => ({ userId: idByEmail.get(u.email), roleId: u.role_id }))
+          .filter((r) => r.userId);
+
+        if (roleInserts.length) {
+          const rv = [];
+          const rt = roleInserts.map((r, idx) => {
+            const b = idx * 3;
+            rv.push(r.userId, r.roleId, req.user.userId);
+            return `($${b+1}::uuid,$${b+2}::uuid,$${b+3}::uuid)`;
+          });
+          await pool.query(
+            `INSERT INTO user_roles (user_id,role_id,assigned_by) VALUES ${rt.join(",")} ON CONFLICT DO NOTHING`,
+            rv
           );
-          if (user.role_id)
-            await client.query(
-              `INSERT INTO user_roles (user_id, role_id, assigned_by) VALUES ($1,$2,$3)`,
-              [ins[0].id, user.role_id, req.user.userId]
-            );
-          success++;
         }
 
-        await client.query("COMMIT");
-      } catch (err) {
-        await client.query("ROLLBACK");
-        throw err;
-      } finally {
-        client.release();
+        done += ins.length;
+        send({ phase: "importing", done, total });
+      }
+
+      // ── Batch UPDATE existing users ───────────────────────────────
+      for (let i = 0; i < toUpdate.length; i += CHUNK) {
+        const chunk = toUpdate.slice(i, i + CHUNK);
+
+        await pool.query(
+          `UPDATE users SET
+             full_name      = v.full_name,
+             institution_id = v.institution_id::uuid,
+             department_id  = v.department_id::uuid,
+             account_status = v.account_status,
+             updated_at     = now()
+           FROM unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::text[])
+             AS v(id_match, full_name, institution_id, department_id, account_status)
+           WHERE users.id = v.id_match::uuid`,
+          [
+            chunk.map((u) => u.id),
+            chunk.map((u) => u.full_name),
+            chunk.map((u) => u.institution_id),
+            chunk.map((u) => u.department_id),
+            chunk.map((u) => u.account_status),
+          ]
+        );
+
+        // Revoke old roles then batch-insert new ones
+        const usersWithRoles = chunk.filter((u) => u.role_id);
+        if (usersWithRoles.length) {
+          await pool.query(
+            `UPDATE user_roles SET revoked_at = now()
+             WHERE user_id = ANY($1::uuid[]) AND revoked_at IS NULL`,
+            [usersWithRoles.map((u) => u.id)]
+          );
+          const rv = [];
+          const rt = usersWithRoles.map((u, idx) => {
+            const b = idx * 3;
+            rv.push(u.id, u.role_id, req.user.userId);
+            return `($${b+1}::uuid,$${b+2}::uuid,$${b+3}::uuid)`;
+          });
+          await pool.query(
+            `INSERT INTO user_roles (user_id,role_id,assigned_by) VALUES ${rt.join(",")} ON CONFLICT DO NOTHING`,
+            rv
+          );
+        }
+
+        done += chunk.length;
+        send({ phase: "importing", done, total });
       }
 
       await writeAuditLog(req, {
         actionType: "USERS_BULK_IMPORTED",
         entityType: "USER",
         entityId:   null,
-        newValue:   { total: data.length, success, skipped, failed: errors.length },
+        newValue:   { total: data.length, imported: done, skipped, failed: errorRows.length },
         status:     "SUCCESS",
-        message:    `Bulk import: ${success} created/updated, ${skipped} skipped, ${errors.length} failed`,
+        message:    `Bulk import: ${done} created/updated, ${skipped} skipped, ${errorRows.length} failed`,
       });
 
-      return res.json({ success: true, total: data.length, imported: success, skipped, failed: errors.length, errors });
+      send({
+        complete: true,
+        imported: done,
+        skipped,
+        total:    data.length,
+        failed:   errorRows.length,
+        errors:   errorRows.slice(0, 50),
+      });
+      res.end();
     } catch (err) {
       logger.error("Import execute failed", { ...getLogContext(req), stack: err.stack });
-      return res.status(500).json({ success: false, message: `Import failed: ${err.message}` });
+      send({ error: true, message: `Import failed: ${err.message}` });
+      res.end();
     }
   }
 );
