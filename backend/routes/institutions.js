@@ -200,7 +200,7 @@ router.post("/import/parse", requireRole(["super_admin"]), handleUpload, async (
     const rows = XLSX.utils.sheet_to_json(ws, { defval: "" });
 
     if (!rows.length)   return res.status(400).json({ success: false, message: "File is empty or has no data rows." });
-    if (rows.length > 5000) return res.status(400).json({ success: false, message: "File exceeds 5,000 rows." });
+    if (rows.length > 10000) return res.status(400).json({ success: false, message: "File exceeds 10,000 rows." });
 
     const columns = Object.keys(rows[0]);
     return res.json({
@@ -222,30 +222,45 @@ router.post("/import/validate", requireRole(["super_admin"]), async (req, res) =
 
   try {
     const { rows: existing } = await pool.query(
-      "SELECT LOWER(code) AS code_lower FROM institutions"
+      "SELECT LOWER(code) AS code_lower, LOWER(email_domain) AS domain_lower FROM institutions"
     );
-    const existingCodes = new Set(existing.map((r) => r.code_lower));
+    const existingCodes   = new Set(existing.map((r) => r.code_lower));
+    const existingDomains = new Set(existing.map((r) => r.domain_lower));
 
     const fieldToCol = {};
     for (const [f, c] of Object.entries(mapping)) { if (c) fieldToCol[f] = c; }
 
     let ready = 0; let skipped = 0;
-    const errors    = [];
-    const seenCodes = new Set();
+    const errors      = [];
+    const seenCodes   = new Set();
+    const seenDomains = new Set();
 
     for (let i = 0; i < data.length; i++) {
-      const rowNum   = i + 1;
-      const result   = validateRow(data[i], fieldToCol);
+      const rowNum    = i + 1;
+      const result    = validateRow(data[i], fieldToCol);
       const rowErrors = [...result.errors];
 
-      if (result.values.code) {
-        const codeLower = result.values.code.toLowerCase();
+      const codeLower = result.values.code ? result.values.code.toLowerCase() : "";
+      const isNewCode = codeLower && !existingCodes.has(codeLower);
+
+      if (codeLower) {
         if (existingCodes.has(codeLower))
           rowErrors.push({ field: "code", reason: `Code "${result.values.code}" already exists in DB` });
         else if (seenCodes.has(codeLower))
           rowErrors.push({ field: "code", reason: `Code "${result.values.code}" appears multiple times in file` });
         else
           seenCodes.add(codeLower);
+      }
+
+      /* For new institutions only — also validate email_domain uniqueness */
+      if (isNewCode && result.values.email_domain) {
+        const domainLower = result.values.email_domain.toLowerCase();
+        if (existingDomains.has(domainLower))
+          rowErrors.push({ field: "email_domain", reason: `Email domain "${result.values.email_domain}" is already registered to another institution` });
+        else if (seenDomains.has(domainLower))
+          rowErrors.push({ field: "email_domain", reason: `Email domain "${result.values.email_domain}" appears multiple times in file` });
+        else
+          seenDomains.add(domainLower);
       }
 
       if (rowErrors.length) { skipped++; errors.push({ row: rowNum, errors: rowErrors }); }
@@ -260,102 +275,149 @@ router.post("/import/validate", requireRole(["super_admin"]), async (req, res) =
   }
 });
 
-/* ── POST /api/institutions/import/execute ────────────────────── */
+/* ── POST /api/institutions/import/execute  (streaming SSE + batch INSERT) ── */
 router.post("/import/execute", requireRole(["super_admin"]), async (req, res) => {
   const pool = req.app.locals.pool;
   const { mapping, data, duplicateHandling = "skip" } = req.body;
+
   if (!mapping || !Array.isArray(data) || !data.length)
     return res.status(400).json({ success: false, message: "mapping and data are required." });
 
-  try {
-    const { rows: existing } = await pool.query(
-      "SELECT institution_id, LOWER(code) AS code_lower FROM institutions"
-    );
-    const existingMap = new Map(existing.map((r) => [r.code_lower, r.institution_id]));
+  /* ── SSE headers — keeps the connection alive so the client can read progress ── */
+  res.setHeader("Content-Type",      "text/event-stream");
+  res.setHeader("Cache-Control",     "no-cache");
+  res.setHeader("Connection",        "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");   // disable nginx proxy buffering
+  res.flushHeaders();
 
+  const send = (payload) => { try { res.write(`data: ${JSON.stringify(payload)}\n\n`); } catch (_) {} };
+
+  try {
+    /* ── Build field → column lookup ── */
     const fieldToCol = {};
     for (const [f, c] of Object.entries(mapping)) { if (c) fieldToCol[f] = c; }
 
-    const errors    = [];
-    const prepared  = [];
-    const seenCodes = new Set();
+    /* ── Pre-fetch codes + email_domains (one query) ── */
+    const { rows: existing } = await pool.query(
+      "SELECT LOWER(code) AS code_lower, LOWER(email_domain) AS domain_lower FROM institutions"
+    );
+    const existingCodes   = new Set(existing.map((r) => r.code_lower));
+    const existingDomains = new Set(existing.map((r) => r.domain_lower));
+
+    /* ── Validate + split into toInsert / toUpdate ── */
+    const toInsert    = [];
+    const toUpdate    = [];
+    let   skipped     = 0;
+    const seenCodes   = new Set();
+    const seenDomains = new Set();
+    const errorRows   = [];
 
     for (let i = 0; i < data.length; i++) {
-      const rowNum = i + 1;
       const result = validateRow(data[i], fieldToCol);
-
       if (!result.valid) {
-        errors.push({ row: rowNum, error: result.errors.map((e) => e.reason).join("; ") });
+        skipped++;
+        errorRows.push({ row: i + 2, errors: result.errors });
         continue;
       }
-
       const codeLower = result.values.code.toLowerCase();
       if (seenCodes.has(codeLower)) {
-        errors.push({ row: rowNum, error: `Duplicate code "${result.values.code}" in file` });
+        skipped++;
+        errorRows.push({ row: i + 2, errors: [{ field: "code", reason: `Duplicate code "${result.values.code}" in file` }] });
         continue;
       }
       seenCodes.add(codeLower);
-      prepared.push({ ...result.values, existingId: existingMap.get(codeLower) || null });
+
+      if (existingCodes.has(codeLower)) {
+        if (duplicateHandling === "overwrite") toUpdate.push(result.values);
+        else skipped++;
+      } else {
+        /* New institution — guard against email_domain conflicts before queueing INSERT */
+        const domainLower = result.values.email_domain.toLowerCase();
+        if (existingDomains.has(domainLower) || seenDomains.has(domainLower)) {
+          skipped++;
+          errorRows.push({ row: i + 2, errors: [{ field: "email_domain", reason: `Email domain "${result.values.email_domain}" is already registered to another institution` }] });
+        } else {
+          seenDomains.add(domainLower);
+          toInsert.push(result.values);
+        }
+      }
     }
 
-    const client = await pool.connect();
-    let success = 0; let skipped = 0;
+    const BATCH       = 500;
+    const total       = toInsert.length + toUpdate.length;
+    let   processed   = 0;
+    const userId      = req.user.userId;
 
-    try {
-      await client.query("BEGIN");
+    const INS_COLS = ["institution_name", "code", "email_domain", "address_line1",
+                      "address_line2", "city", "state", "country", "pincode", "status"];
+    /* email_domain is excluded from updates — it has its own unique constraint and
+       changing it via bulk import risks conflicts; use the edit form for that. */
+    const UPD_COLS = INS_COLS.filter((c) => c !== "code" && c !== "email_domain");
 
-      for (const inst of prepared) {
-        const { existingId, ...v } = inst;
+    send({ phase: "importing", done: 0, total });
 
-        if (existingId && duplicateHandling === "skip") {
-          skipped++; continue;
-        }
+    /* ── INSERT new records in batches of 500 ── */
+    /* toInsert is pre-filtered to codes not in DB — plain INSERT, no ON CONFLICT needed */
+    for (let i = 0; i < toInsert.length; i += BATCH) {
+      const chunk  = toInsert.slice(i, i + BATCH);
+      const vals   = [];
+      const tuples = [];
+      let   p      = 1;
 
-        if (existingId && duplicateHandling === "overwrite") {
-          await client.query(
-            `UPDATE institutions
-             SET institution_name=$1, email_domain=$2, address_line1=$3, address_line2=$4,
-                 city=$5, state=$6, country=$7, pincode=$8, status=$9,
-                 updated_at=now(), updated_by=$10
-             WHERE institution_id=$11`,
-            [v.institution_name, v.email_domain, v.address_line1, v.address_line2,
-             v.city, v.state, v.country, v.pincode, v.status, req.user.userId, existingId]
-          );
-          success++; continue;
-        }
-
-        await client.query(
-          `INSERT INTO institutions
-             (institution_name, code, email_domain, address_line1, address_line2,
-              city, state, country, pincode, status, created_by, updated_by)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$11)`,
-          [v.institution_name, v.code, v.email_domain, v.address_line1, v.address_line2,
-           v.city, v.state, v.country, v.pincode, v.status, req.user.userId]
-        );
-        success++;
+      for (const v of chunk) {
+        const t = INS_COLS.map((col) => { vals.push(v[col] ?? null); return `$${p++}`; });
+        vals.push(userId, userId);
+        t.push(`$${p++}`, `$${p++}`);
+        tuples.push(`(${t.join(",")})`);
       }
 
-      await client.query("COMMIT");
-    } catch (err) {
-      await client.query("ROLLBACK");
-      throw err;
-    } finally {
-      client.release();
+      await pool.query(
+        `INSERT INTO institutions (${INS_COLS.join(",")},created_by,updated_by) VALUES ${tuples.join(",")}`,
+        vals
+      );
+
+      processed += chunk.length;
+      send({ phase: "importing", done: processed, total });
     }
+
+    /* ── UPDATE existing records in batches of 500 (overwrite mode) ── */
+    /* Uses UPDATE … FROM unnest(…) — one round-trip, no unique constraint required */
+    for (let i = 0; i < toUpdate.length; i += BATCH) {
+      const chunk      = toUpdate.slice(i, i + BATCH);
+      const setClause  = UPD_COLS.map((c) => `${c} = v.${c}`).join(", ");
+      // $1=userId, $2…$(N+1)=one text[] per UPD_COL, $(N+2)=code_match[]
+      const unnestExpr = UPD_COLS.map((_, idx) => `$${idx + 2}::text[]`)
+        .concat(`$${UPD_COLS.length + 2}::text[]`).join(", ");
+      const vCols = UPD_COLS.concat("code_match").join(", ");
+
+      await pool.query(
+        `UPDATE institutions
+         SET ${setClause}, updated_at = now(), updated_by = $1::uuid
+         FROM unnest(${unnestExpr}) AS v(${vCols})
+         WHERE LOWER(institutions.code) = LOWER(v.code_match)`,
+        [userId, ...UPD_COLS.map((col) => chunk.map((v) => v[col] ?? null)), chunk.map((v) => v.code)]
+      );
+
+      processed += chunk.length;
+      send({ phase: "importing", done: processed, total });
+    }
+
+    const imported = toInsert.length + toUpdate.length;
 
     await writeAuditLog(req, {
       actionType: "INSTITUTIONS_BULK_IMPORTED",
       entityType: "INSTITUTION",
       entityId:   null,
-      newValue:   { total: data.length, success, skipped, failed: errors.length },
+      newValue:   { total: data.length, imported, skipped },
       status:     "SUCCESS",
-      message:    `Bulk import: ${success} created/updated, ${skipped} skipped, ${errors.length} failed`,
+      message:    `Bulk import: ${imported} imported, ${skipped} skipped`,
     });
 
-    return res.json({ success: true, total: data.length, imported: success, skipped, failed: errors.length, errors });
+    send({ complete: true, imported, skipped, total: data.length, failed: errorRows.length, errors: errorRows.slice(0, 50) });
+    res.end();
   } catch (err) {
     logger.error("institutions import/execute failed", { ...getLogContext(req), stack: err.stack });
-    return res.status(500).json({ success: false, message: `Import failed: ${err.message}` });
+    try { send({ error: true, message: `Import failed: ${err.message}` }); res.end(); } catch (_) {}
   }
 });
 
