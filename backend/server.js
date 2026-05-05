@@ -60,7 +60,7 @@ app.use((req, res, next) => {
   if (req.path.startsWith("/api/radiology")) {
     express.json({ limit: "10mb" })(req, res, next);
   } else {
-    express.json({ limit: "10kb" })(req, res, next);
+    express.json({ limit: "50mb" })(req, res, next);
   }
 });
 
@@ -99,21 +99,30 @@ pool.connect((err, client, release) => {
 // Make pool available to all route handlers via req.app.locals.pool
 app.locals.pool = pool;
 
+/* ── Import session cache: rows stored server-side after parse ───── */
+app.locals.importSessions = new Map();
+// Purge sessions older than 1 hour every 30 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, val] of app.locals.importSessions) {
+    if (val.expiresAt < now) app.locals.importSessions.delete(key);
+  }
+}, 30 * 60 * 1000).unref();
+
 /* ─── Routes ────────────────────────────────────────────────── */
 app.get("/", (_req, res) => {
   res.json({ success: true, message: "Pragatimitra API running." });
 });
-
-app.use("/api/auth",                   authRoutes);
-app.use("/api/users",                  userRoutes);
-app.use("/api/lookup",                 lookupRoutes);
-app.use("/api/roles",                  require("./routes/roles"));
-app.use("/api/departments",            departmentRoutes);
-app.use("/api/institutions",           institutionRoutes);
-app.use("/api/committees",             require("./routes/committees"));
-app.use("/api/audit-logs",             auditLogRoutes);
-app.use("/api/notification-templates", notificationTemplatesRouter);
-app.use("/api/radiology",              radiologyRoutes);   // ← radiology mounted
+const uploadRoutes = require("./routes/upload");
+app.use("/api/auth",         authRoutes);
+app.use("/api/users",        userRoutes);
+app.use("/api/lookup",       lookupRoutes);
+app.use("/api/roles",        require("./routes/roles"));
+app.use("/api/departments",  departmentRoutes);
+app.use("/api/institutions", institutionRoutes);
+app.use("/api/committees",   require("./routes/committees"));
+app.use("/api/audit-logs",   auditLogRoutes);
+app.use("/api/upload",       uploadRoutes);
 
 /* ─── Global error handler (must be last) ───────────────────── */
 app.use(errorHandler);

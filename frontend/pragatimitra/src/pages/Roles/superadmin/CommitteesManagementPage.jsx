@@ -2,6 +2,8 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useApi } from "../../../hooks/useApi";
 import FormScreen from "../../../components/shared/FormScreen";
 import { S, Toast, isAuthError, formatDate } from "../../../components/shared/formUtils";
+import { useLanguage } from "../../../i18n/LanguageContext";
+import { t } from "../../../i18n/translations";
 
 const TYPE_COLORS = {
   GB:     { bg: "#eff6ff", text: "#2563eb" },
@@ -34,6 +36,7 @@ function Overlay({ children }) {
 
 /* ─── Member Editor ──────────────────────────────────────────── */
 function MemberEditor({ members, onChange, disabled, error }) {
+  const { lang } = useLanguage();
   function update(idx, field, value) {
     onChange(members.map((m, i) => (i === idx ? { ...m, [field]: value } : m)));
   }
@@ -46,7 +49,7 @@ function MemberEditor({ members, onChange, disabled, error }) {
 
   return (
     <div>
-      <label style={S.label}>Members</label>
+      <label style={S.label}>{t("Members", lang)}</label>
       {members.map((m, i) => (
         <div
           key={i}
@@ -94,7 +97,7 @@ function MemberEditor({ members, onChange, disabled, error }) {
               flexShrink: 0,
               opacity: members.length === 1 ? 0.4 : 1,
             }}
-            title="Remove member"
+            title={t("Remove member", lang)}
           >
             ×
           </button>
@@ -119,7 +122,7 @@ function MemberEditor({ members, onChange, disabled, error }) {
           gap: 6,
         }}
       >
-        <span style={{ fontSize: 16, lineHeight: 1 }}>+</span> Add Member
+        <span style={{ fontSize: 16, lineHeight: 1 }}>+</span> {t("Add Member", lang)}
       </button>
       {error && <div style={S.errorText}>{error}</div>}
     </div>
@@ -143,6 +146,7 @@ function CommitteeForm({
   onSaved,
   onBack,
 }) {
+  const { lang } = useLanguage();
   const { apiFetch } = useApi();
   const isEdit = mode === "edit";
 
@@ -209,21 +213,21 @@ function CommitteeForm({
 
   return (
     <FormScreen
-      pageTitle="Committees"
-      formTitle={isEdit ? "Edit Committee" : "New Committee"}
+      pageTitle={t("Committees", lang)}
+      formTitle={isEdit ? t("Edit Committee", lang) : t("New Committee", lang)}
       formSubtitle="Fill in the details below."
       icon={isEdit ? "✏️" : "🏛️"}
       iconBg={isEdit ? "#fef3c7" : "#eff6ff"}
       onBack={onBack}
       onSubmit={handleSubmit}
       submitting={submitting}
-      submitLabel={isEdit ? "Save Changes" : "Create Committee"}
+      submitLabel={isEdit ? t("Save Changes", lang) : "Create Committee"}
       submitError={submitError}
     >
       {/* Institution — create only */}
       {!isEdit && institutions?.length > 0 && (
         <div>
-          <label style={S.label}>Institution</label>
+          <label style={S.label}>{t("Institution", lang)}</label>
           <select
             ref={firstRef}
             value={form.institute_id}
@@ -246,7 +250,7 @@ function CommitteeForm({
       {/* Finance Year + Committee Type */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
         <div>
-          <label style={S.label}>Finance Year</label>
+          <label style={S.label}>{t("Finance Year", lang)}</label>
           <select
             ref={isEdit ? firstRef : undefined}
             value={form.finance_year}
@@ -265,7 +269,7 @@ function CommitteeForm({
         </div>
 
         <div>
-          <label style={S.label}>Committee Type</label>
+          <label style={S.label}>{t("Committee Type", lang)}</label>
           <select
             value={form.committee_type}
             onChange={(e) => set("committee_type", e.target.value)}
@@ -286,7 +290,7 @@ function CommitteeForm({
       {/* Position + Contact */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
         <div>
-          <label style={S.label}>Position</label>
+          <label style={S.label}>{t("Position", lang)}</label>
           <select
             value={form.position}
             onChange={(e) => set("position", e.target.value)}
@@ -303,7 +307,7 @@ function CommitteeForm({
 
         <div>
           <label style={S.label}>
-            Contact{" "}
+            {t("Contact", lang)}{" "}
             <span style={{ fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>
               (optional)
             </span>
@@ -337,6 +341,7 @@ function CommitteeForm({
 
 /* ─── Delete Confirm Modal ───────────────────────────────────── */
 function DeleteModal({ committee, onClose, onConfirm, deleting, getTypeLabel }) {
+  const { lang } = useLanguage();
   return (
     <Overlay>
       <div
@@ -368,7 +373,7 @@ function DeleteModal({ committee, onClose, onConfirm, deleting, getTypeLabel }) 
           <div
             style={{ fontSize: 17, fontWeight: 700, color: "#1e293b", marginBottom: 8 }}
           >
-            Delete Committee?
+            {t("Delete Committee?", lang)}
           </div>
           <div style={{ fontSize: 13, color: "#64748b", lineHeight: 1.6 }}>
             <strong>{getTypeLabel(committee.committee_type)}</strong> (
@@ -384,7 +389,7 @@ function DeleteModal({ committee, onClose, onConfirm, deleting, getTypeLabel }) 
           }}
         >
           <button onClick={onClose} disabled={deleting} style={S.btnGhost}>
-            Cancel
+            {t("Cancel", lang)}
           </button>
           <button
             onClick={onConfirm}
@@ -394,7 +399,7 @@ function DeleteModal({ committee, onClose, onConfirm, deleting, getTypeLabel }) 
               background: deleting ? "#fca5a5" : "#dc2626",
             }}
           >
-            {deleting ? "Deleting…" : "Yes, Delete"}
+            {deleting ? t("Deleting…", lang) : t("Yes, Delete", lang)}
           </button>
         </div>
       </div>
@@ -412,6 +417,7 @@ function CommitteeCard({
   getTypeLabel,
   getPosLabel,
 }) {
+  const { lang } = useLanguage();
   const isActive = committee.status === "ACTIVE";
   const colors = TYPE_COLORS[committee.committee_type] ?? DEFAULT_COLOR;
   const members = Array.isArray(committee.members) ? committee.members : [];
@@ -485,7 +491,7 @@ function CommitteeCard({
             marginLeft: 8,
           }}
         >
-          {isActive ? "Active" : "Inactive"}
+          {isActive ? t("Active", lang) : t("Inactive", lang)}
         </span>
       </div>
 
@@ -502,7 +508,7 @@ function CommitteeCard({
         }}
       >
         <div>
-          <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 2 }}>Members</div>
+          <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 2 }}>{t("Members", lang)}</div>
           <div style={{ fontSize: 20, fontWeight: 700, color: "#1e293b" }}>
             {members.length}
           </div>
@@ -511,7 +517,7 @@ function CommitteeCard({
           <>
             <div style={{ width: 1, background: "#e2e8f0" }} />
             <div>
-              <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 2 }}>Contact</div>
+              <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 2 }}>{t("Contact", lang)}</div>
               <div style={{ fontSize: 12, fontWeight: 600, color: "#1e293b" }}>
                 {committee.contact}
               </div>
@@ -519,7 +525,7 @@ function CommitteeCard({
           </>
         )}
         <div style={{ marginLeft: "auto" }}>
-          <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 2 }}>Added</div>
+          <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 2 }}>{t("Added", lang)}</div>
           <div style={{ fontSize: 12, fontWeight: 500, color: "#64748b" }}>
             {formatDate(committee.created_at)}
           </div>
@@ -604,7 +610,7 @@ function CommitteeCard({
             cursor: "pointer",
           }}
         >
-          Edit
+          {t("Edit", lang)}
         </button>
         <button
           onClick={() => onToggleStatus(committee)}
@@ -622,7 +628,7 @@ function CommitteeCard({
             opacity: isToggling ? 0.6 : 1,
           }}
         >
-          {isToggling ? "…" : isActive ? "Deactivate" : "Activate"}
+          {isToggling ? "…" : isActive ? t("Deactivate", lang) : t("Activate", lang)}
         </button>
         <button
           onClick={() => onDelete(committee)}
@@ -703,6 +709,7 @@ function FilterSelect({ value, onChange, children, minWidth = 160 }) {
    MAIN PAGE
 ═══════════════════════════════════════════════════════════════ */
 export default function CommitteeManagementPage() {
+  const { lang } = useLanguage();
   const { apiFetch } = useApi();
 
   const [committeeTypes, setCommitteeTypes] = useState([]);
@@ -1019,7 +1026,7 @@ export default function CommitteeManagementPage() {
                 letterSpacing: 1,
               }}
             >
-              Committee Management
+              {t("Committee Management", lang)}
             </span>
           </div>
           <h1
@@ -1031,7 +1038,7 @@ export default function CommitteeManagementPage() {
               marginBottom: 6,
             }}
           >
-            Management Committees
+            {t("Management Committees", lang)}
           </h1>
           <p style={{ color: "#94a3b8", fontSize: 14 }}>
             Configure governing bodies, councils, and committees for each finance year.
@@ -1041,7 +1048,7 @@ export default function CommitteeManagementPage() {
         <div style={{ display: "flex", alignItems: "flex-end", gap: 12, flexWrap: "wrap" }}>
           {isReady && !institutionsError && institutions.length > 0 && (
             <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              <span style={{ ...S.label, marginBottom: 4 }}>Institution</span>
+              <span style={{ ...S.label, marginBottom: 4 }}>{t("Institution", lang)}</span>
               <FilterSelect
                 value={selectedInstituteId ?? ""}
                 onChange={(v) => setSelectedInstituteId(v)}
@@ -1073,7 +1080,7 @@ export default function CommitteeManagementPage() {
                 whiteSpace: "nowrap",
               }}
             >
-              <span style={{ fontSize: 18, lineHeight: 1 }}>+</span> New Committee
+              <span style={{ fontSize: 18, lineHeight: 1 }}>+</span> {t("+ New Committee", lang)}
             </button>
           )}
         </div>
@@ -1109,7 +1116,7 @@ export default function CommitteeManagementPage() {
         >
           <div style={{ fontSize: 13, color: "#64748b" }}>
             {loadingCommittees ? (
-              "Loading committees…"
+              t("Loading committees…", lang)
             ) : (
               <>
                 <strong style={{ color: "#1e293b" }}>{filteredCommittees.length}</strong>{" "}
@@ -1127,7 +1134,7 @@ export default function CommitteeManagementPage() {
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <input
               type="text"
-              placeholder="Search committees…"
+              placeholder={t("Search committees…", lang)}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               style={{
@@ -1143,23 +1150,23 @@ export default function CommitteeManagementPage() {
             />
 
             <FilterSelect value={yearFilter} onChange={setYearFilter} minWidth={130}>
-              <option value="ALL">All Years</option>
+              <option value="ALL">{t("All Years", lang)}</option>
               {availableYears.map((y) => (
                 <option key={y} value={y}>{y}</option>
               ))}
             </FilterSelect>
 
             <FilterSelect value={typeFilter} onChange={setTypeFilter} minWidth={170}>
-              <option value="ALL">All Types</option>
+              <option value="ALL">{t("All Types", lang)}</option>
               {committeeTypes.map((t) => (
                 <option key={t.value} value={t.value}>{t.label}</option>
               ))}
             </FilterSelect>
 
             <FilterSelect value={statusFilter} onChange={setStatusFilter} minWidth={140}>
-              <option value="ALL">All Statuses</option>
-              <option value="ACTIVE">Active</option>
-              <option value="INACTIVE">Inactive</option>
+              <option value="ALL">{t("All Statuses", lang)}</option>
+              <option value="ACTIVE">{t("Active", lang)}</option>
+              <option value="INACTIVE">{t("Inactive", lang)}</option>
             </FilterSelect>
           </div>
         </div>

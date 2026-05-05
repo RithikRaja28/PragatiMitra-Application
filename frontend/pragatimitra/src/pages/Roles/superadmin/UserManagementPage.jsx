@@ -2,6 +2,11 @@ import { useState, useEffect, useCallback } from "react";
 import { useApi } from "../../../hooks/useApi";
 import { S, Toast } from "../../../components/shared/formUtils";
 import FormScreen from "../../../components/shared/FormScreen";
+import { useLanguage } from "../../../i18n/LanguageContext";
+import { t } from "../../../i18n/translations";
+import ImportWizard from "../../../components/shared/ImportWizard";
+
+const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
 /* ── Constants & pure helpers ──────────────────────────────────── */
 const STATUS_OPTIONS = ["ACTIVE", "INACTIVE", "SUSPENDED"];
@@ -73,6 +78,7 @@ function Spinner() {
 }
 
 function PasswordInput({ value, onChange, hasError }) {
+  const { lang } = useLanguage();
   const [show, setShow] = useState(false);
   return (
     <div style={{ position: "relative" }}>
@@ -92,7 +98,7 @@ function PasswordInput({ value, onChange, hasError }) {
           color: "#94a3b8", fontSize: 12, fontWeight: 600, padding: "2px 4px",
         }}
       >
-        {show ? "Hide" : "Show"}
+        {show ? t("Hide", lang) : t("Show", lang)}
       </button>
     </div>
   );
@@ -120,6 +126,7 @@ function validateForm(form, isEdit) {
 }
 
 function UserForm({ mode, entity, onCreated, onSaved, onBack, apiFetch }) {
+  const { lang } = useLanguage();
   const isEdit = mode === "edit";
 
   const [form, setForm] = useState(
@@ -211,20 +218,20 @@ function UserForm({ mode, entity, onCreated, onSaved, onBack, apiFetch }) {
 
   return (
     <FormScreen
-      pageTitle="Users"
-      formTitle={isEdit ? "Edit User" : "New User"}
+      pageTitle={t("Users", lang)}
+      formTitle={isEdit ? t("Edit User", lang) : t("New User", lang)}
       formSubtitle={isEdit ? entity.full_name : "Add a new user to the platform"}
       icon="👤"
       iconBg="#ede9fe"
       onBack={onBack}
       onSubmit={handleSubmit}
       submitting={saving}
-      submitLabel={isEdit ? "Save Changes" : "Create User"}
+      submitLabel={isEdit ? t("Save Changes", lang) : t("Create User", lang)}
       submitError={serverError}
     >
       {/* Full Name */}
       <div>
-        <label style={S.label}>Full Name *</label>
+        <label style={S.label}>{t("Full Name *", lang)}</label>
         <input
           style={S.input(!!fieldErrs.full_name)}
           placeholder="e.g. Arun Kumar"
@@ -236,7 +243,7 @@ function UserForm({ mode, entity, onCreated, onSaved, onBack, apiFetch }) {
 
       {/* Email */}
       <div>
-        <label style={S.label}>Email Address *</label>
+        <label style={S.label}>{t("Email Address *", lang)}</label>
         <input
           style={S.input(!!fieldErrs.email)}
           type="email"
@@ -250,7 +257,7 @@ function UserForm({ mode, entity, onCreated, onSaved, onBack, apiFetch }) {
       {/* Password — create only */}
       {!isEdit && (
         <div>
-          <label style={S.label}>Temporary Password *</label>
+          <label style={S.label}>{t("Temporary Password *", lang)}</label>
           <PasswordInput
             value={form.password}
             onChange={(v) => set("password", v)}
@@ -267,7 +274,7 @@ function UserForm({ mode, entity, onCreated, onSaved, onBack, apiFetch }) {
 
       {/* Institution */}
       <div>
-        <label style={S.label}>Institution *</label>
+        <label style={S.label}>{t("Institution *", lang)}</label>
         <select
           style={S.select(!!fieldErrs.institution_id)}
           value={form.institution_id}
@@ -277,7 +284,7 @@ function UserForm({ mode, entity, onCreated, onSaved, onBack, apiFetch }) {
             setServerError("");
           }}
         >
-          <option value="">— Select Institution —</option>
+          <option value="">{t("— Select Institution —", lang)}</option>
           {institutions.map((i) => (
             <option key={i.institution_id} value={i.institution_id}>
               {i.institution_name}
@@ -304,8 +311,8 @@ function UserForm({ mode, entity, onCreated, onSaved, onBack, apiFetch }) {
               {loadingDepts
                 ? "Loading…"
                 : !form.institution_id
-                  ? "Select institution first"
-                  : "— Select Department —"}
+                  ? t("Select institution first", lang)
+                  : t("— Select Department —", lang)}
             </option>
             {departments.map((d) => (
               <option key={d.department_id} value={d.department_id}>{d.name}</option>
@@ -315,7 +322,7 @@ function UserForm({ mode, entity, onCreated, onSaved, onBack, apiFetch }) {
 
         {isEdit ? (
           <div>
-            <label style={S.label}>Account Status</label>
+            <label style={S.label}>{t("Account Status", lang)}</label>
             <select
               style={S.select(false)}
               value={form.account_status}
@@ -328,13 +335,13 @@ function UserForm({ mode, entity, onCreated, onSaved, onBack, apiFetch }) {
           </div>
         ) : (
           <div>
-            <label style={S.label}>Role *</label>
+            <label style={S.label}>{t("Role *", lang)}</label>
             <select
               style={S.select(!!fieldErrs.role_name)}
               value={form.role_name}
               onChange={(e) => set("role_name", e.target.value)}
             >
-              <option value="">— Select Role —</option>
+              <option value="">{t("— Select Role —", lang)}</option>
               {roles.map((r) => (
                 <option key={r.id} value={r.name}>{r.display_name}</option>
               ))}
@@ -347,14 +354,49 @@ function UserForm({ mode, entity, onCreated, onSaved, onBack, apiFetch }) {
   );
 }
 
+/* ── Pagination controls ─────────────────────────────────────────── */
+function Pagination({ page, pageSize, total, onPageChange, onPageSizeChange }) {
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const from = total === 0 ? 0 : (page - 1) * pageSize + 1;
+  const to   = Math.min(page * pageSize, total);
+  const btnStyle = (disabled) => ({
+    padding: "5px 13px", borderRadius: 7, border: "1.5px solid #e2e8f0",
+    background: disabled ? "#f8fafc" : "#fff", fontSize: 13, fontWeight: 600,
+    color: disabled ? "#cbd5e1" : "#1e293b", cursor: disabled ? "not-allowed" : "pointer",
+  });
+  return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 14, flexWrap: "wrap", gap: 10 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#64748b" }}>
+        <span>Rows per page:</span>
+        <select
+          value={pageSize}
+          onChange={(e) => { onPageSizeChange(Number(e.target.value)); onPageChange(1); }}
+          style={{ padding: "4px 8px", border: "1.5px solid #e2e8f0", borderRadius: 7, fontSize: 13, color: "#1e293b", background: "#fff", cursor: "pointer" }}
+        >
+          {[10, 25, 100, 500].map((s) => <option key={s} value={s}>{s}</option>)}
+        </select>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <span style={{ fontSize: 13, color: "#64748b" }}>{from}–{to} of {total}</span>
+        <button onClick={() => onPageChange(page - 1)} disabled={page <= 1} style={btnStyle(page <= 1)}>← Prev</button>
+        <span style={{ fontSize: 13, color: "#475569" }}>{page} / {totalPages}</span>
+        <button onClick={() => onPageChange(page + 1)} disabled={page >= totalPages} style={btnStyle(page >= totalPages)}>Next →</button>
+      </div>
+    </div>
+  );
+}
+
 /* ── User List ───────────────────────────────────────────────────── */
 function UserList({ apiFetch, onEdit }) {
+  const { lang } = useLanguage();
   const [users,        setUsers]        = useState([]);
   const [loading,      setLoading]      = useState(true);
   const [error,        setError]        = useState("");
   const [search,       setSearch]       = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
   const [toggling,     setToggling]     = useState(null);
+  const [page,         setPage]         = useState(1);
+  const [pageSize,     setPageSize]     = useState(25);
 
   const loadUsers = useCallback(async () => {
     setLoading(true);
@@ -403,6 +445,11 @@ function UserList({ apiFetch, onEdit }) {
     return matchSearch && matchStatus;
   });
 
+  // Reset to page 1 whenever filters change
+  useEffect(() => { setPage(1); }, [search, filterStatus]);
+
+  const paginated = filtered.slice((page - 1) * pageSize, page * pageSize);
+
   if (loading) return <Spinner />;
   if (error)   return (
     <div style={{ padding: 24, background: "#fef2f2", borderRadius: 10, color: "#dc2626", fontSize: 13 }}>
@@ -445,15 +492,15 @@ function UserList({ apiFetch, onEdit }) {
                   padding: "12px 16px", textAlign: "left", fontSize: 11,
                   fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.8,
                 }}>
-                  {h}
+                  {t(h, lang)}
                 </th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {filtered.map((u, i) => (
+            {paginated.map((u, i) => (
               <tr key={u.id} style={{
-                borderBottom: i < filtered.length - 1 ? "1px solid rgba(0,0,0,0.04)" : "none",
+                borderBottom: i < paginated.length - 1 ? "1px solid rgba(0,0,0,0.04)" : "none",
               }}>
                 <td style={{ padding: "14px 16px" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -483,7 +530,7 @@ function UserList({ apiFetch, onEdit }) {
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
                     {(u.roles || []).length > 0
                       ? u.roles.map((r) => <RoleBadge key={r.name} {...r} />)
-                      : <span style={{ fontSize: 12, color: "#cbd5e1" }}>No role</span>
+                      : <span style={{ fontSize: 12, color: "#cbd5e1" }}>{t("No role", lang)}</span>
                     }
                   </div>
                 </td>
@@ -500,7 +547,7 @@ function UserList({ apiFetch, onEdit }) {
                       background: "#fff", fontSize: 12, fontWeight: 600,
                       color: "#2563eb", cursor: "pointer",
                     }}>
-                      Edit
+                      {t("Edit", lang)}
                     </button>
                     <button
                       onClick={() => toggleStatus(u)}
@@ -512,7 +559,7 @@ function UserList({ apiFetch, onEdit }) {
                         opacity: toggling === u.id ? 0.6 : 1,
                       }}
                     >
-                      {toggling === u.id ? "…" : u.account_status === "ACTIVE" ? "Deactivate" : "Activate"}
+                      {toggling === u.id ? "…" : u.account_status === "ACTIVE" ? t("Deactivate", lang) : t("Activate", lang)}
                     </button>
                   </div>
                 </td>
@@ -521,7 +568,7 @@ function UserList({ apiFetch, onEdit }) {
             {filtered.length === 0 && (
               <tr>
                 <td colSpan={7} style={{ padding: 40, textAlign: "center", color: "#94a3b8", fontSize: 13 }}>
-                  No users match your filters.
+                  {t("No users match your filters.", lang)}
                 </td>
               </tr>
             )}
@@ -532,16 +579,110 @@ function UserList({ apiFetch, onEdit }) {
   );
 }
 
+/* ── UserImportWizard — loads institution/role lookups, passes as extras ── */
+function UserImportWizard({ onBack, onSuccess }) {
+  const { apiFetch } = useApi();
+  const [institutions, setInstitutions] = useState([]);
+  const [roles,        setRoles]        = useState([]);
+  const [defaults, setDefaults] = useState({ defaultInstitutionId: "", defaultRoleName: "" });
+
+  useEffect(() => {
+    apiFetch("/api/lookup/institutions")
+      .then((r) => r.json())
+      .then((d) => { if (d.success) setInstitutions(d.institutions); })
+      .catch(() => {});
+    apiFetch("/api/lookup/roles")
+      .then((r) => r.json())
+      .then((d) => { if (d.success) setRoles(d.roles); })
+      .catch(() => {});
+  }, [apiFetch]);
+
+  const extraSettingsSlot = (
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+      <div>
+        <label style={S.label}>Default Institution</label>
+        <select
+          style={S.select(false)}
+          value={defaults.defaultInstitutionId}
+          onChange={(e) => setDefaults((d) => ({ ...d, defaultInstitutionId: e.target.value }))}
+        >
+          <option value="">— Use value from file —</option>
+          {institutions.map((i) => (
+            <option key={i.institution_id} value={i.institution_id}>
+              {i.institution_name}
+            </option>
+          ))}
+        </select>
+        <span style={{ fontSize: 11, color: "#94a3b8", marginTop: 4, display: "block" }}>
+          Applied when the row has no institution.
+        </span>
+      </div>
+      <div>
+        <label style={S.label}>Default Role</label>
+        <select
+          style={S.select(false)}
+          value={defaults.defaultRoleName}
+          onChange={(e) => setDefaults((d) => ({ ...d, defaultRoleName: e.target.value }))}
+        >
+          <option value="">— Use value from file —</option>
+          {roles.map((r) => (
+            <option key={r.id} value={r.name}>{r.display_name}</option>
+          ))}
+        </select>
+        <span style={{ fontSize: 11, color: "#94a3b8", marginTop: 4, display: "block" }}>
+          Applied when the row has no role.
+        </span>
+      </div>
+    </div>
+  );
+
+  return (
+    <ImportWizard
+      apiPath="/api/users"
+      entityLabel="Users"
+      entityIcon="👥"
+      extraSettingsSlot={extraSettingsSlot}
+      extraImportBody={{
+        defaultInstitutionId: defaults.defaultInstitutionId || null,
+        defaultRoleName:      defaults.defaultRoleName || "",
+      }}
+      onBack={onBack}
+      onSuccess={onSuccess}
+    />
+  );
+}
+
 /* ── Main Export ─────────────────────────────────────────────────── */
 export default function UserManagementPage() {
-  const { apiFetch } = useApi();
+  const { lang } = useLanguage();
   const [formView,   setFormView]   = useState(null);
-  const [toast,      setToast]      = useState(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const { apiFetch }      = useApi();
+  const [toast,           setToast]           = useState(null);
+  const [showImport,      setShowImport]      = useState(false);
+  const [exportingFormat, setExportingFormat] = useState(null);
 
   const showToast = (message, type = "success") => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3500);
+  };
+
+  const handleExport = async (format) => {
+    setExportingFormat(format);
+    try {
+      const res  = await apiFetch(`/api/users/export?format=${format}`);
+      const blob = await res.blob();
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement("a");
+      a.href     = url;
+      a.download = `users_export.${format}`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      showToast("Export failed. Please try again.", "error");
+    } finally {
+      setExportingFormat(null);
+    }
   };
 
   if (formView) {
@@ -560,41 +701,147 @@ export default function UserManagementPage() {
     );
   }
 
+  if (showImport) {
+    return (
+      <>
+        {toast && <Toast message={toast.message} type={toast.type} />}
+        <UserImportWizard
+          onBack={() => setShowImport(false)}
+          onSuccess={(result) => {
+            setShowImport(false);
+            setRefreshKey((k) => k + 1);
+            showToast(`Import complete: ${result.imported} user${result.imported !== 1 ? "s" : ""} imported.`);
+          }}
+        />
+      </>
+    );
+  }
+
   return (
-    <div style={{ padding: "32px 36px", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+    <div
+      style={{
+        padding: "32px 36px",
+        fontFamily: "'Plus Jakarta Sans', sans-serif",
+      }}
+    >
       {toast && <Toast message={toast.message} type={toast.type} />}
 
       {/* Header */}
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 28 }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "flex-start",
+          justifyContent: "space-between",
+          marginBottom: 28,
+          flexWrap: "wrap",
+          gap: 12,
+        }}
+      >
         <div>
-          <div style={{
-            display: "inline-flex", alignItems: "center", gap: 8,
-            background: "#7c3aed14", borderRadius: 8, padding: "4px 12px", marginBottom: 12,
-          }}>
-            <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#7c3aed" }} />
-            <span style={{ fontSize: 11, fontWeight: 600, color: "#7c3aed", textTransform: "uppercase", letterSpacing: 1 }}>
-              User Management
+          <div
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 8,
+              background: "#7c3aed14",
+              borderRadius: 8,
+              padding: "4px 12px",
+              marginBottom: 12,
+            }}
+          >
+            <div
+              style={{
+                width: 7,
+                height: 7,
+                borderRadius: "50%",
+                background: "#7c3aed",
+              }}
+            />
+            <span
+              style={{
+                fontSize: 11,
+                fontWeight: 600,
+                color: "#7c3aed",
+                textTransform: "uppercase",
+                letterSpacing: 1,
+              }}
+            >
+              {t("User Management", lang)}
             </span>
           </div>
-          <h1 style={{ fontSize: 24, fontWeight: 700, color: "#1e293b", letterSpacing: "-0.4px", marginBottom: 6 }}>
-            Users
+          <h1
+            style={{
+              fontSize: 24,
+              fontWeight: 700,
+              color: "#1e293b",
+              letterSpacing: "-0.4px",
+              marginBottom: 6,
+            }}
+          >
+            {t("Users", lang)}
           </h1>
           <p style={{ color: "#94a3b8", fontSize: 14 }}>
-            Create, edit, activate/deactivate, and manage roles for all platform users.
+            Create, edit, activate/deactivate, and manage roles for all platform
+            users.
           </p>
         </div>
 
-        <button
-          onClick={() => setFormView({ mode: "create", entity: null })}
+        <div
           style={{
-            display: "inline-flex", alignItems: "center", gap: 8,
-            padding: "10px 20px", borderRadius: 10, border: "none",
-            background: "#2563eb", fontSize: 13, fontWeight: 700,
-            color: "#fff", cursor: "pointer", flexShrink: 0, marginTop: 4,
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            flexShrink: 0,
+            marginTop: 4,
           }}
         >
-          + New User
-        </button>
+          {/* Export dropdown */}
+          <div style={{ position: "relative" }}>
+            <ExportMenu loading={exportingFormat} onExport={handleExport} />
+          </div>
+
+          {/* Import button */}
+          <button
+            onClick={() => setShowImport(true)}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              padding: "10px 18px",
+              borderRadius: 10,
+              border: "1.5px solid #2563eb",
+              background: "#eff6ff",
+              fontSize: 13,
+              fontWeight: 700,
+              color: "#2563eb",
+              cursor: "pointer",
+            }}
+          >
+            ↑ Import
+          </button>
+
+          {/* New user button */}
+          <button
+            onClick={() => setFormView({ mode: "create", entity: null })}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "10px 20px",
+              borderRadius: 10,
+              border: "none",
+              background: "#2563eb",
+              fontSize: 13,
+              fontWeight: 700,
+              color: "#fff",
+              cursor: "pointer",
+              flexShrink: 0,
+              marginTop: 4,
+            }}
+          >
+            {t("+ New User", lang)}
+          </button>
+        </div>
       </div>
 
       <UserList
@@ -602,6 +849,58 @@ export default function UserManagementPage() {
         apiFetch={apiFetch}
         onEdit={(u) => setFormView({ mode: "edit", entity: u })}
       />
+    </div>
+  );
+}
+
+/* ── Export dropdown menu ────────────────────────────────────────── */
+function ExportMenu({ loading, onExport }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div style={{ position: "relative" }}>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        disabled={!!loading}
+        style={{
+          display: "inline-flex", alignItems: "center", gap: 6,
+          padding: "10px 18px", borderRadius: 10,
+          border: "1.5px solid #e2e8f0", background: "#fff",
+          fontSize: 13, fontWeight: 700, color: "#475569", cursor: "pointer",
+          opacity: loading ? 0.6 : 1,
+        }}
+      >
+        {loading ? "Exporting…" : "↓ Export"} ▾
+      </button>
+      {open && (
+        <>
+          {/* click-away overlay */}
+          <div style={{ position: "fixed", inset: 0, zIndex: 99 }} onClick={() => setOpen(false)} />
+          <div style={{
+            position: "absolute", top: "calc(100% + 6px)", right: 0, zIndex: 100,
+            background: "#fff", border: "1.5px solid #e2e8f0", borderRadius: 10,
+            boxShadow: "0 8px 24px rgba(0,0,0,0.12)", minWidth: 160, overflow: "hidden",
+          }}>
+            {[
+              { fmt: "csv",  label: "Export as CSV" },
+              { fmt: "xlsx", label: "Export as Excel" },
+            ].map(({ fmt, label }) => (
+              <button key={fmt}
+                onClick={() => { setOpen(false); onExport(fmt); }}
+                style={{
+                  display: "block", width: "100%", padding: "10px 16px",
+                  background: "none", border: "none", textAlign: "left",
+                  fontSize: 13, color: "#1e293b", cursor: "pointer",
+                  fontWeight: 500,
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.background = "#f8fafc"}
+                onMouseLeave={(e) => e.currentTarget.style.background = "none"}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }

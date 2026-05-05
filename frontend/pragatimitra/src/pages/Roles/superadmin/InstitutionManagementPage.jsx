@@ -1,7 +1,10 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useApi } from "../../../hooks/useApi";
 import FormScreen from "../../../components/shared/FormScreen";
+import ImportWizard from "../../../components/shared/ImportWizard";
 import { S, Toast, isAuthError, formatDate } from "../../../components/shared/formUtils";
+import { useLanguage } from "../../../i18n/LanguageContext";
+import { t } from "../../../i18n/translations";
 
 const INDIA_STATES = [
   "Andhra Pradesh","Arunachal Pradesh","Assam","Bihar","Chhattisgarh",
@@ -25,6 +28,7 @@ const EMPTY = {
 };
 
 function InstitutionForm({ mode, entity, onCreated, onSaved, onBack }) {
+  const { lang } = useLanguage();
   const { apiFetch } = useApi();
   const isEdit = mode === "edit";
 
@@ -119,8 +123,8 @@ function InstitutionForm({ mode, entity, onCreated, onSaved, onBack }) {
 
   return (
     <FormScreen
-      pageTitle="Institutions"
-      formTitle={isEdit ? "Edit Institution" : "New Institution"}
+      pageTitle={t("Institutions", lang)}
+      formTitle={isEdit ? t("Edit Institution", lang) : t("New Institution", lang)}
       formSubtitle={
         isEdit
           ? "Update name, code, address or status."
@@ -131,12 +135,12 @@ function InstitutionForm({ mode, entity, onCreated, onSaved, onBack }) {
       onBack={onBack}
       onSubmit={handleSubmit}
       submitting={submitting}
-      submitLabel={isEdit ? "Save Changes" : "Create Institution"}
+      submitLabel={isEdit ? t("Save Changes", lang) : "Create Institution"}
       submitError={submitError}
     >
       {/* Institution Name */}
       <div>
-        <label style={S.label}>Institution Name</label>
+        <label style={S.label}>{t("Institution Name", lang)}</label>
         <input
           ref={nameRef}
           type="text"
@@ -155,7 +159,7 @@ function InstitutionForm({ mode, entity, onCreated, onSaved, onBack }) {
       {/* Code + Email Domain */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
         <div>
-          <label style={S.label}>Institution Code</label>
+          <label style={S.label}>{t("Institution Code", lang)}</label>
           <input
             type="text"
             placeholder="e.g. AIIA"
@@ -168,11 +172,11 @@ function InstitutionForm({ mode, entity, onCreated, onSaved, onBack }) {
           {fieldErrors.code ? (
             <div style={S.errorText}>{fieldErrors.code}</div>
           ) : (
-            <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 4 }}>Auto-uppercased.</div>
+            <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 4 }}>{t("Auto-uppercased.", lang)}</div>
           )}
         </div>
         <div>
-          <label style={S.label}>Email Domain</label>
+          <label style={S.label}>{t("Email Domain", lang)}</label>
           <input
             type="text"
             placeholder="e.g. aiia.edu.in"
@@ -189,7 +193,7 @@ function InstitutionForm({ mode, entity, onCreated, onSaved, onBack }) {
 
       {/* Address Line 1 */}
       <div>
-        <label style={S.label}>Address Line 1</label>
+        <label style={S.label}>{t("Address Line 1", lang)}</label>
         <input
           type="text"
           placeholder="Street / Building name"
@@ -206,7 +210,7 @@ function InstitutionForm({ mode, entity, onCreated, onSaved, onBack }) {
       {/* Address Line 2 */}
       <div>
         <label style={S.label}>
-          Address Line 2{" "}
+          {t("Address Line 2", lang)}{" "}
           <span style={{ color: "#94a3b8", fontWeight: 400, textTransform: "none" }}>
             (optional)
           </span>
@@ -224,7 +228,7 @@ function InstitutionForm({ mode, entity, onCreated, onSaved, onBack }) {
       {/* City + Pincode */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
         <div>
-          <label style={S.label}>City</label>
+          <label style={S.label}>{t("City", lang)}</label>
           <input
             type="text"
             placeholder="e.g. Delhi"
@@ -236,7 +240,7 @@ function InstitutionForm({ mode, entity, onCreated, onSaved, onBack }) {
           {fieldErrors.city && <div style={S.errorText}>{fieldErrors.city}</div>}
         </div>
         <div>
-          <label style={S.label}>Pincode</label>
+          <label style={S.label}>{t("Pincode", lang)}</label>
           <input
             type="text"
             placeholder="6-digit pincode"
@@ -253,14 +257,14 @@ function InstitutionForm({ mode, entity, onCreated, onSaved, onBack }) {
       {/* State + Country */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
         <div>
-          <label style={S.label}>State</label>
+          <label style={S.label}>{t("State", lang)}</label>
           <select
             value={form.state}
             onChange={(e) => set("state", e.target.value)}
             disabled={submitting}
             style={S.select(!!fieldErrors.state)}
           >
-            <option value="">— Select State —</option>
+            <option value="">{t("— Select State —", lang)}</option>
             {INDIA_STATES.map((s) => (
               <option key={s} value={s}>{s}</option>
             ))}
@@ -268,7 +272,7 @@ function InstitutionForm({ mode, entity, onCreated, onSaved, onBack }) {
           {fieldErrors.state && <div style={S.errorText}>{fieldErrors.state}</div>}
         </div>
         <div>
-          <label style={S.label}>Country</label>
+          <label style={S.label}>{t("Country", lang)}</label>
           <input
             type="text"
             value={form.country}
@@ -282,15 +286,15 @@ function InstitutionForm({ mode, entity, onCreated, onSaved, onBack }) {
       {/* Status (edit only) */}
       {isEdit && (
         <div>
-          <label style={S.label}>Status</label>
+          <label style={S.label}>{t("Status", lang)}</label>
           <select
             value={form.status}
             onChange={(e) => set("status", e.target.value)}
             disabled={submitting}
             style={S.select(!!fieldErrors.status)}
           >
-            <option value="ACTIVE">Active</option>
-            <option value="INACTIVE">Inactive</option>
+            <option value="ACTIVE">{t("Active", lang)}</option>
+            <option value="INACTIVE">{t("Inactive", lang)}</option>
           </select>
           {fieldErrors.status && <div style={S.errorText}>{fieldErrors.status}</div>}
           {goingInactive && (
@@ -317,6 +321,7 @@ function InstitutionForm({ mode, entity, onCreated, onSaved, onBack }) {
 
 /* ─── Institution Card ───────────────────────────────────────── */
 function InstitutionCard({ inst, onEdit, onToggleStatus, isToggling }) {
+  const { lang } = useLanguage();
   const isActive = inst.status === "ACTIVE";
   return (
     <div
@@ -380,7 +385,7 @@ function InstitutionCard({ inst, onEdit, onToggleStatus, isToggling }) {
             marginLeft: 8,
           }}
         >
-          {isActive ? "Active" : "Inactive"}
+          {isActive ? t("Active", lang) : t("Inactive", lang)}
         </span>
       </div>
 
@@ -403,21 +408,21 @@ function InstitutionCard({ inst, onEdit, onToggleStatus, isToggling }) {
         }}
       >
         <div>
-          <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 2 }}>Departments</div>
+          <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 2 }}>{t("Departments", lang)}</div>
           <div style={{ fontSize: 20, fontWeight: 700, color: "#1e293b" }}>
             {Number(inst.department_count || 0)}
           </div>
         </div>
         <div style={{ width: 1, background: "#e2e8f0" }} />
         <div>
-          <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 2 }}>Users</div>
+          <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 2 }}>{t("Users", lang)}</div>
           <div style={{ fontSize: 20, fontWeight: 700, color: "#1e293b" }}>
             {Number(inst.user_count || 0)}
           </div>
         </div>
         <div style={{ width: 1, background: "#e2e8f0" }} />
         <div>
-          <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 2 }}>Code</div>
+          <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 2 }}>{t("Code", lang)}</div>
           <div
             style={{
               fontSize: 13,
@@ -446,7 +451,7 @@ function InstitutionCard({ inst, onEdit, onToggleStatus, isToggling }) {
             cursor: "pointer",
           }}
         >
-          Edit
+          {t("Edit", lang)}
         </button>
         <button
           onClick={() => onToggleStatus(inst)}
@@ -465,7 +470,7 @@ function InstitutionCard({ inst, onEdit, onToggleStatus, isToggling }) {
             opacity: isToggling ? 0.6 : 1,
           }}
         >
-          {isToggling ? "…" : isActive ? "Deactivate" : "Activate"}
+          {isToggling ? "…" : isActive ? t("Deactivate", lang) : t("Activate", lang)}
         </button>
       </div>
     </div>
@@ -500,6 +505,86 @@ function SkeletonCard() {
   );
 }
 
+function ExportMenu({ loading, onExport }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div style={{ position: "relative" }}>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        disabled={!!loading}
+        style={{
+          display: "inline-flex", alignItems: "center", gap: 6,
+          padding: "10px 18px", borderRadius: 10,
+          border: "1.5px solid #e2e8f0", background: "#fff",
+          fontSize: 13, fontWeight: 700, color: "#475569", cursor: "pointer",
+          opacity: loading ? 0.6 : 1,
+        }}
+      >
+        {loading ? "Exporting…" : "↓ Export"} ▾
+      </button>
+      {open && (
+        <>
+          <div style={{ position: "fixed", inset: 0, zIndex: 99 }} onClick={() => setOpen(false)} />
+          <div style={{
+            position: "absolute", top: "calc(100% + 6px)", right: 0, zIndex: 100,
+            background: "#fff", border: "1.5px solid #e2e8f0", borderRadius: 10,
+            boxShadow: "0 8px 24px rgba(0,0,0,0.12)", minWidth: 180, overflow: "hidden",
+          }}>
+            {[
+              { fmt: "csv",  label: "Export as CSV"   },
+              { fmt: "xlsx", label: "Export as Excel"  },
+            ].map(({ fmt, label }) => (
+              <button key={fmt}
+                onClick={() => { setOpen(false); onExport(fmt); }}
+                style={{
+                  display: "block", width: "100%", padding: "10px 16px",
+                  background: "none", border: "none", textAlign: "left",
+                  fontSize: 13, color: "#1e293b", cursor: "pointer", fontWeight: 500,
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.background = "#f8fafc"}
+                onMouseLeave={(e) => e.currentTarget.style.background = "none"}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function InstPagination({ page, pageSize, total, onPageChange, onPageSizeChange }) {
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const from = total === 0 ? 0 : (page - 1) * pageSize + 1;
+  const to   = Math.min(page * pageSize, total);
+  const btnStyle = (disabled) => ({
+    padding: "5px 13px", borderRadius: 7, border: "1.5px solid #e2e8f0",
+    background: disabled ? "#f8fafc" : "#fff", fontSize: 13, fontWeight: 600,
+    color: disabled ? "#cbd5e1" : "#1e293b", cursor: disabled ? "not-allowed" : "pointer",
+  });
+  return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 18, flexWrap: "wrap", gap: 10 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#64748b" }}>
+        <span>Cards per page:</span>
+        <select
+          value={pageSize}
+          onChange={(e) => onPageSizeChange(Number(e.target.value))}
+          style={{ padding: "4px 8px", border: "1.5px solid #e2e8f0", borderRadius: 7, fontSize: 13, color: "#1e293b", background: "#fff", cursor: "pointer" }}
+        >
+          {[10, 25, 100, 500].map((s) => <option key={s} value={s}>{s}</option>)}
+        </select>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <span style={{ fontSize: 13, color: "#64748b" }}>{from}–{to} of {total}</span>
+        <button onClick={() => onPageChange(page - 1)} disabled={page <= 1} style={btnStyle(page <= 1)}>← Prev</button>
+        <span style={{ fontSize: 13, color: "#475569" }}>{page} / {totalPages}</span>
+        <button onClick={() => onPageChange(page + 1)} disabled={page >= totalPages} style={btnStyle(page >= totalPages)}>Next →</button>
+      </div>
+    </div>
+  );
+}
+
 function StyledSelect({ value, onChange, children, minWidth = 180 }) {
   return (
     <select
@@ -525,6 +610,7 @@ function StyledSelect({ value, onChange, children, minWidth = 180 }) {
 
 /* ─── Main Page ──────────────────────────────────────────────── */
 export default function InstitutionManagementPage() {
+  const { lang } = useLanguage();
   const { apiFetch } = useApi();
   const [institutions, setInstitutions] = useState([]);
   const [statusFilter, setStatusFilter] = useState("ALL");
@@ -533,8 +619,12 @@ export default function InstitutionManagementPage() {
 
   /* formView: null = list, { mode: 'create'|'edit', entity } = form screen */
   const [formView, setFormView] = useState(null);
-  const [togglingId, setTogglingId] = useState(null);
-  const [toast, setToast] = useState(null);
+  const [togglingId,      setTogglingId]      = useState(null);
+  const [toast,           setToast]           = useState(null);
+  const [showImport,      setShowImport]      = useState(false);
+  const [exportingFormat, setExportingFormat] = useState(null);
+  const [page,            setPage]            = useState(1);
+  const [pageSize,        setPageSize]        = useState(25);
   const toastTimer = useRef(null);
 
   const showToast = useCallback((message, type = "success") => {
@@ -545,6 +635,24 @@ export default function InstitutionManagementPage() {
       type === "error" ? 5500 : 3000
     );
   }, []);
+
+  const handleExport = async (format) => {
+    setExportingFormat(format);
+    try {
+      const res  = await apiFetch(`/api/institutions/export?format=${format}`);
+      const blob = await res.blob();
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement("a");
+      a.href     = url;
+      a.download = `institutions_export.${format}`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      showToast("Export failed. Please try again.", "error");
+    } finally {
+      setExportingFormat(null);
+    }
+  };
 
   const fetchInstitutions = useCallback(async () => {
     setLoading(true);
@@ -564,6 +672,9 @@ export default function InstitutionManagementPage() {
   useEffect(() => {
     fetchInstitutions();
   }, [fetchInstitutions]);
+
+  // Must be before any early returns — React Rules of Hooks
+  useEffect(() => { setPage(1); }, [statusFilter]);
 
   async function handleToggleStatus(inst) {
     const nextStatus = inst.status === "ACTIVE" ? "INACTIVE" : "ACTIVE";
@@ -613,11 +724,36 @@ export default function InstitutionManagementPage() {
     );
   }
 
+  if (showImport) {
+    return (
+      <>
+        {toast && <Toast message={toast.message} type={toast.type} />}
+        <ImportWizard
+          apiPath="/api/institutions"
+          entityLabel="Institutions"
+          entityIcon="🏛️"
+          onBack={() => setShowImport(false)}
+          onSuccess={(result) => {
+            setShowImport(false);
+            fetchInstitutions();
+            showToast(
+              `Import complete: ${result.imported} institution${result.imported !== 1 ? "s" : ""} imported.`,
+              "success"
+            );
+          }}
+        />
+      </>
+    );
+  }
+
   /* ── List view ── */
   const filtered =
     statusFilter === "ALL"
       ? institutions
       : institutions.filter((i) => i.status === statusFilter);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const paginated  = filtered.slice((page - 1) * pageSize, page * pageSize);
 
   return (
     <div style={{ padding: "32px 36px", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
@@ -658,7 +794,7 @@ export default function InstitutionManagementPage() {
                 letterSpacing: 1,
               }}
             >
-              Institution Management
+              {t("Institution Management", lang)}
             </span>
           </div>
           <h1
@@ -670,31 +806,37 @@ export default function InstitutionManagementPage() {
               marginBottom: 6,
             }}
           >
-            Institutions
+            {t("Institutions", lang)}
           </h1>
           <p style={{ color: "#94a3b8", fontSize: 14 }}>
             Create and manage institutions on the platform.
           </p>
         </div>
-        <button
-          onClick={() => setFormView({ mode: "create", entity: null })}
-          style={{
-            padding: "10px 20px",
-            borderRadius: 10,
-            border: "none",
-            background: "#2563eb",
-            fontSize: 13,
-            fontWeight: 700,
-            color: "#fff",
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            gap: 7,
-            whiteSpace: "nowrap",
-          }}
-        >
-          <span style={{ fontSize: 18, lineHeight: 1 }}>+</span> New Institution
-        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+          <ExportMenu loading={exportingFormat} onExport={handleExport} />
+          <button
+            onClick={() => setShowImport(true)}
+            style={{
+              display: "inline-flex", alignItems: "center", gap: 6,
+              padding: "10px 18px", borderRadius: 10,
+              border: "1.5px solid #2563eb", background: "#eff6ff",
+              fontSize: 13, fontWeight: 700, color: "#2563eb", cursor: "pointer",
+            }}
+          >
+            ↑ Import
+          </button>
+          <button
+            onClick={() => setFormView({ mode: "create", entity: null })}
+            style={{
+              padding: "10px 20px", borderRadius: 10, border: "none",
+              background: "#2563eb", fontSize: 13, fontWeight: 700,
+              color: "#fff", cursor: "pointer", display: "flex",
+              alignItems: "center", gap: 7, whiteSpace: "nowrap",
+            }}
+          >
+            <span style={{ fontSize: 18, lineHeight: 1 }}>+</span> {t("New Institution", lang)}
+          </button>
+        </div>
       </div>
 
       {error && (
@@ -726,7 +868,7 @@ export default function InstitutionManagementPage() {
         >
           <div style={{ fontSize: 13, color: "#64748b" }}>
             {loading ? (
-              "Loading institutions…"
+              t("Loading institutions…", lang)
             ) : (
               <>
                 <strong style={{ color: "#1e293b" }}>{filtered.length}</strong>{" "}
@@ -737,9 +879,9 @@ export default function InstitutionManagementPage() {
             )}
           </div>
           <StyledSelect value={statusFilter} onChange={setStatusFilter} minWidth={150}>
-            <option value="ALL">All Statuses</option>
-            <option value="ACTIVE">Active</option>
-            <option value="INACTIVE">Inactive</option>
+            <option value="ALL">{t("All Statuses", lang)}</option>
+            <option value="ACTIVE">{t("Active", lang)}</option>
+            <option value="INACTIVE">{t("Inactive", lang)}</option>
           </StyledSelect>
         </div>
       )}
@@ -754,7 +896,7 @@ export default function InstitutionManagementPage() {
         {loading ? (
           Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} />)
         ) : filtered.length > 0 ? (
-          filtered.map((inst) => (
+          paginated.map((inst) => (
             <InstitutionCard
               key={inst.institution_id}
               inst={inst}
@@ -788,6 +930,16 @@ export default function InstitutionManagementPage() {
           </div>
         )}
       </div>
+
+      {!loading && filtered.length > 0 && (
+        <InstPagination
+          page={page}
+          pageSize={pageSize}
+          total={filtered.length}
+          onPageChange={setPage}
+          onPageSizeChange={(s) => { setPageSize(s); setPage(1); }}
+        />
+      )}
     </div>
   );
 }

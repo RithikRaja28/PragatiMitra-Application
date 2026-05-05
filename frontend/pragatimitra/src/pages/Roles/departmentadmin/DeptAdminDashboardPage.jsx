@@ -3,6 +3,8 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell,
 } from "recharts";
+import { useLanguage } from "../../../i18n/LanguageContext";
+import { t } from "../../../i18n/translations";
 
 const C = {
   primary:   "#059669",
@@ -55,6 +57,7 @@ const CustomBar = ({ x, y, width, height, value }) => (
 );
 
 export default function DeptAdminDashboardPage() {
+  const { lang } = useLanguage();
   return (
     <div style={{ padding: "24px 28px", fontFamily: "'Plus Jakarta Sans', sans-serif",
       display: "flex", flexDirection: "column", gap: 14, background: C.bg, minHeight: "100vh" }}>
@@ -65,15 +68,15 @@ export default function DeptAdminDashboardPage() {
           <div style={{ display: "inline-flex", alignItems: "center", gap: 6,
             background: C.primaryLt, borderRadius: 6, padding: "3px 11px", marginBottom: 8 }}>
             <span style={{ width: 6, height: 6, borderRadius: "50%", background: C.primary }} />
-            <span style={{ fontSize: 10, fontWeight: 700, color: C.primary, textTransform: "uppercase", letterSpacing: "0.08em" }}>Department Admin</span>
+            <span style={{ fontSize: 10, fontWeight: 700, color: C.primary, textTransform: "uppercase", letterSpacing: "0.08em" }}>{t("Department Admin", lang)}</span>
           </div>
-          <h1 style={{ fontSize: 22, fontWeight: 700, color: C.text, margin: 0, letterSpacing: "-0.4px" }}>Department Dashboard</h1>
+          <h1 style={{ fontSize: 22, fontWeight: 700, color: C.text, margin: 0, letterSpacing: "-0.4px" }}>{t("Department Dashboard", lang)}</h1>
           <p style={{ fontSize: 13, color: C.textSub, margin: "4px 0 0" }}>Annual Report 2026 — Samhita Siddhanta Dept.</p>
         </div>
         <button style={{ background: C.primary, border: "none", color: "#fff",
           borderRadius: 8, padding: "9px 18px", fontSize: 12, fontWeight: 600, cursor: "pointer",
           boxShadow: "0 2px 8px rgba(5,150,105,0.28)" }}>
-          Export Report
+          {t("Export Report", lang)}
         </button>
       </div>
 
@@ -87,9 +90,9 @@ export default function DeptAdminDashboardPage() {
         ].map(s => (
           <div key={s.label} style={{ ...card, padding: "16px 18px", position: "relative", overflow: "hidden" }}>
             <div style={{ fontSize: 10, fontWeight: 700, color: C.textSub, textTransform: "uppercase",
-              letterSpacing: "0.07em", marginBottom: 8 }}>{s.label}</div>
+              letterSpacing: "0.07em", marginBottom: 8 }}>{t(s.label, lang)}</div>
             <div style={{ fontSize: 32, fontWeight: 700, color: s.color, lineHeight: 1, marginBottom: 4 }}>{s.value}</div>
-            <div style={{ fontSize: 11, color: C.textSub }}>{s.sub}</div>
+            <div style={{ fontSize: 11, color: C.textSub }}>{t(s.sub, lang)}</div>
             <div style={{ position: "absolute", bottom: 0, left: 0, height: 3,
               width: `${s.bar}%`, background: s.color, borderRadius: "0 2px 2px 0" }} />
           </div>
@@ -101,7 +104,7 @@ export default function DeptAdminDashboardPage() {
 
         {/* Chart + table */}
         <div style={card}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 2 }}>Section-wise Completion</div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 2 }}>{t("Section-wise Completion", lang)}</div>
           <div style={{ fontSize: 11, color: C.textSub, marginBottom: 14 }}>Progress per section — Annual Report 2026</div>
 
           <ResponsiveContainer width="100%" height={155}>
@@ -118,13 +121,13 @@ export default function DeptAdminDashboardPage() {
 
           <div style={{ marginTop: 16 }}>
             <div style={{ fontSize: 10, fontWeight: 700, color: C.textSub, textTransform: "uppercase",
-              letterSpacing: "0.07em", marginBottom: 10 }}>Section status — last update</div>
+              letterSpacing: "0.07em", marginBottom: 10 }}>{t("Section status — last update", lang)}</div>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
                 <tr>
                   {["Section", "Assigned To", "Completion", "Status", "Last Update"].map(h => (
                     <th key={h} style={{ fontSize: 10, fontWeight: 700, color: C.textSub, textTransform: "uppercase",
-                      letterSpacing: "0.06em", padding: "0 0 8px", textAlign: "left" }}>{h}</th>
+                      letterSpacing: "0.06em", padding: "0 0 8px", textAlign: "left" }}>{t(h, lang)}</th>
                   ))}
                 </tr>
               </thead>
@@ -160,7 +163,7 @@ export default function DeptAdminDashboardPage() {
 
           {/* Pie */}
           <div style={card}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 2 }}>Status distribution</div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 2 }}>{t("Status distribution", lang)}</div>
             <div style={{ fontSize: 11, color: C.textSub, marginBottom: 8 }}>6 sections total</div>
             <ResponsiveContainer width="100%" height={120}>
               <PieChart>
@@ -191,7 +194,7 @@ export default function DeptAdminDashboardPage() {
                 <path d="M8 5v3.5" stroke="#c2410c" strokeWidth="1.5" strokeLinecap="round"/>
                 <circle cx="8" cy="11" r="0.75" fill="#c2410c"/>
               </svg>
-              <span style={{ fontSize: 12, fontWeight: 700, color: "#7c2d12" }}>Bottleneck Alerts</span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: "#7c2d12" }}>{t("Bottleneck Alerts", lang)}</span>
             </div>
             {SECTIONS.filter(s => s.overdue || s.status === "Under Review").map((s, i) => (
               <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 8,

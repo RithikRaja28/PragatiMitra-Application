@@ -1,4 +1,6 @@
 import React, { useState } from "react";
+import { useLanguage } from "../../../i18n/LanguageContext";
+import { t } from "../../../i18n/translations";
 
 const C = {
   primary:   "#1d4ed8",
@@ -40,6 +42,7 @@ const MOCK_CONTENT = [
 ];
 
 export default function ReviewQueuePage() {
+  const { lang } = useLanguage();
   const [filters,      setFilters]      = useState({ section: "", status: "" });
   const [selected,     setSelected]     = useState(null);
   const [comments,     setComments]     = useState({});
@@ -93,7 +96,7 @@ export default function ReviewQueuePage() {
             <button onClick={() => { setSelected(null); setDecision(null); setDecisionNote(""); setComments({}); setSigned(false); }}
               style={{ background: "none", border: "none", cursor: "pointer", color: C.textSub,
                 fontSize: 13, display: "flex", alignItems: "center", gap: 4, padding: 0 }}>
-              ← Back to Queue
+              {t("← Back to Queue", lang)}
             </button>
             <span style={{ color: C.textSub }}>·</span>
             <span style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{selected.section}</span>
@@ -116,9 +119,9 @@ export default function ReviewQueuePage() {
 
             <div style={{ borderTop: `0.5px solid ${C.border}`, paddingTop: 16 }}>
               <div style={{ fontSize: 10, fontWeight: 700, color: C.textSub, textTransform: "uppercase",
-                letterSpacing: "0.07em", marginBottom: 4 }}>Section Content</div>
+                letterSpacing: "0.07em", marginBottom: 4 }}>{t("Section Content", lang)}</div>
               <p style={{ fontSize: 11, color: C.textSub, marginBottom: 14 }}>
-                Click any block to add an inline comment
+                {t("Click any block to add an inline comment", lang)}
               </p>
 
               {MOCK_CONTENT.map(block => (
@@ -190,7 +193,7 @@ export default function ReviewQueuePage() {
                         <button onClick={() => addComment(block.id)}
                           style={{ background: C.primary, color: "#fff", border: "none",
                             borderRadius: 7, padding: "8px 14px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
-                          Add
+                          {t("Add", lang)}
                         </button>
                       </div>
                     </div>
@@ -210,12 +213,12 @@ export default function ReviewQueuePage() {
             <div style={{ textAlign: "center", padding: "48px 0" }}>
               <div style={{ fontSize: 32, marginBottom: 12 }}>{decision === "approve" ? "✅" : "↩️"}</div>
               <div style={{ fontSize: 14, fontWeight: 700, color: decision === "approve" ? "#166534" : "#991b1b" }}>
-                {decision === "approve" ? "Section Approved" : "Sent Back for Revision"}
+                {decision === "approve" ? t("Section Approved", lang) : t("Sent Back for Revision", lang)}
               </div>
               <div style={{ fontSize: 12, color: C.textSub, marginTop: 6, lineHeight: 1.5 }}>
                 {decision === "approve"
-                  ? "Report compilation initiated at Publication Cell."
-                  : "Revision request sent to the submitting team."}
+                  ? t("Report compilation initiated at Publication Cell.", lang)
+                  : t("Revision request sent to the submitting team.", lang)}
               </div>
             </div>
           ) : (
@@ -223,7 +226,7 @@ export default function ReviewQueuePage() {
               {/* Decision */}
               <div>
                 <div style={{ fontSize: 11, fontWeight: 700, color: C.textSub, textTransform: "uppercase",
-                  letterSpacing: "0.07em", marginBottom: 10 }}>Decision</div>
+                  letterSpacing: "0.07em", marginBottom: 10 }}>{t("Decision", lang)}</div>
                 <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "8px 12px",
                   background: C.primaryLt, borderRadius: 8, marginBottom: 12 }}>
                   <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#3b82f6" }} />
@@ -231,8 +234,8 @@ export default function ReviewQueuePage() {
                 </div>
                 <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
                   {[
-                    { id: "approve",  label: "✓ Approve",   active: { bg: "#dcfce7", border: "#059669", color: "#166534" } },
-                    { id: "sendback", label: "↩ Send Back",  active: { bg: "#fee2e2", border: "#dc2626", color: "#991b1b" } },
+                    { id: "approve",  label: `✓ ${t("Approve", lang)}`,    active: { bg: "#dcfce7", border: "#059669", color: "#166534" } },
+                    { id: "sendback", label: `↩ ${t("Send Back", lang)}`,  active: { bg: "#fee2e2", border: "#dc2626", color: "#991b1b" } },
                   ].map(btn => (
                     <button key={btn.id} onClick={() => setDecision(btn.id)}
                       style={{ flex: 1, padding: "9px 0", borderRadius: 8,
@@ -257,7 +260,7 @@ export default function ReviewQueuePage() {
               {/* Digital signature */}
               <div>
                 <div style={{ fontSize: 11, fontWeight: 700, color: C.textSub, textTransform: "uppercase",
-                  letterSpacing: "0.07em", marginBottom: 10 }}>Digital Signature</div>
+                  letterSpacing: "0.07em", marginBottom: 10 }}>{t("Digital Signature", lang)}</div>
                 <div style={{ background: "#f8fafc", border: `0.5px solid ${C.border}`, borderRadius: 10, padding: "12px 14px", marginBottom: 10 }}>
                   <div style={{ fontSize: 12, color: C.textSub, marginBottom: 4 }}>
                     <b style={{ color: C.text }}>Director</b> — PragatiMitra Institute
@@ -268,7 +271,7 @@ export default function ReviewQueuePage() {
                   <input type="checkbox" checked={signed} onChange={e => setSigned(e.target.checked)}
                     style={{ width: 14, height: 14, cursor: "pointer", marginTop: 2, flexShrink: 0 }} />
                   <span style={{ fontSize: 12, color: C.text, lineHeight: 1.5 }}>
-                    I confirm this decision with my digital signature
+                    {t("I confirm this decision with my digital signature", lang)}
                   </span>
                 </label>
               </div>
@@ -280,9 +283,9 @@ export default function ReviewQueuePage() {
                   color: "#fff", fontSize: 13, fontWeight: 700,
                   cursor: !decision || !signed ? "not-allowed" : "pointer",
                   boxShadow: !decision || !signed ? "none" : "0 2px 8px rgba(29,78,216,0.28)" }}>
-                {decision === "approve"   ? "Approve & Initiate Compilation"
-                  : decision === "sendback" ? "Send Back for Revision"
-                  : "Submit Decision"}
+                {decision === "approve"   ? t("Approve & Initiate Compilation", lang)
+                  : decision === "sendback" ? t("Send Back for Revision", lang)
+                  : t("Submit Decision", lang)}
               </button>
 
               {/* Comments summary */}
@@ -290,7 +293,7 @@ export default function ReviewQueuePage() {
                 <div>
                   <div style={{ fontSize: 11, fontWeight: 700, color: C.textSub, textTransform: "uppercase",
                     letterSpacing: "0.07em", marginBottom: 8 }}>
-                    Inline Comments ({totalComments})
+                    {t("Inline Comments", lang)} ({totalComments})
                   </div>
                   {Object.entries(comments).map(([blockId, cList]) =>
                     cList.map((c, ci) => (
@@ -320,9 +323,9 @@ export default function ReviewQueuePage() {
         <div style={{ display: "inline-flex", alignItems: "center", gap: 6,
           background: C.primaryLt, borderRadius: 6, padding: "3px 11px", marginBottom: 8 }}>
           <span style={{ width: 6, height: 6, borderRadius: "50%", background: C.primary }} />
-          <span style={{ fontSize: 10, fontWeight: 700, color: C.primary, textTransform: "uppercase", letterSpacing: "0.08em" }}>Review Queue</span>
+          <span style={{ fontSize: 10, fontWeight: 700, color: C.primary, textTransform: "uppercase", letterSpacing: "0.08em" }}>{t("Review Queue", lang)}</span>
         </div>
-        <h1 style={{ fontSize: 22, fontWeight: 700, color: C.text, margin: 0, letterSpacing: "-0.4px" }}>Section Review Queue</h1>
+        <h1 style={{ fontSize: 22, fontWeight: 700, color: C.text, margin: 0, letterSpacing: "-0.4px" }}>{t("Section Review Queue", lang)}</h1>
         <p style={{ fontSize: 13, color: C.textSub, margin: "4px 0 0" }}>Sections awaiting Director review — click a row to begin</p>
       </div>
 
@@ -330,18 +333,18 @@ export default function ReviewQueuePage() {
       <div style={{ display: "flex", gap: 10, marginBottom: 16, background: C.surface,
         padding: "12px 16px", borderRadius: 10, border: `0.5px solid ${C.border}` }}>
         <input value={filters.section} onChange={e => setFilters(f => ({ ...f, section: e.target.value }))}
-          placeholder="Search by section name…"
+          placeholder={t("Search by section name…", lang)}
           style={{ flex: 1, padding: "7px 12px", borderRadius: 8, border: `1px solid ${C.border}`,
             outline: "none", fontSize: 13, color: C.text, fontFamily: "'Plus Jakarta Sans', sans-serif" }} />
         <select value={filters.status} onChange={e => setFilters(f => ({ ...f, status: e.target.value }))}
           style={{ padding: "7px 28px 7px 12px", borderRadius: 8, border: `1px solid ${C.border}`,
             outline: "none", fontSize: 13, color: C.text, background: "#fff", cursor: "pointer",
             fontFamily: "'Plus Jakarta Sans', sans-serif", appearance: "none" }}>
-          <option value="">All Statuses</option>
-          <option value="Pending Review">Pending Review</option>
-          <option value="Under Review">Under Review</option>
-          <option value="Approved">Approved</option>
-          <option value="Sent Back">Sent Back</option>
+          <option value="">{t("All Statuses", lang)}</option>
+          <option value="Pending Review">{t("Pending Review", lang)}</option>
+          <option value="Under Review">{t("Under Review", lang)}</option>
+          <option value="Approved">{t("Approved", lang)}</option>
+          <option value="Sent Back">{t("Sent Back", lang)}</option>
         </select>
       </div>
 
@@ -354,14 +357,14 @@ export default function ReviewQueuePage() {
               {["Section Name", "Submitted By", "Date", "Deadline", "Stage", "Status", ""].map(h => (
                 <th key={h} style={{ fontSize: 10, fontWeight: 700, color: C.textSub, textTransform: "uppercase",
                   letterSpacing: "0.06em", padding: "12px 16px", textAlign: "left",
-                  borderBottom: `0.5px solid ${C.border}` }}>{h}</th>
+                  borderBottom: `0.5px solid ${C.border}` }}>{h ? t(h, lang) : h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {filtered.length === 0 ? (
               <tr><td colSpan={7} style={{ padding: "32px", textAlign: "center", fontSize: 13, color: C.textSub }}>
-                No sections match the current filters.
+                {t("No sections match the current filters.", lang)}
               </td></tr>
             ) : filtered.map((q, i) => (
               <tr key={q.id} style={{ cursor: "pointer" }}
@@ -384,7 +387,7 @@ export default function ReviewQueuePage() {
                     background: STATUS_STYLE[q.status]?.bg, color: STATUS_STYLE[q.status]?.color }}>{q.status}</span>
                 </td>
                 <td style={{ padding: "13px 16px", borderTop: i > 0 ? `0.5px solid ${C.border}` : "none",
-                  fontSize: 12, color: C.primary, fontWeight: 600 }}>Review →</td>
+                  fontSize: 12, color: C.primary, fontWeight: 600 }}>{t("Review →", lang)}</td>
               </tr>
             ))}
           </tbody>

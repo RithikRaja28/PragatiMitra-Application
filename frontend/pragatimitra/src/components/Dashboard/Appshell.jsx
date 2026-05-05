@@ -5,9 +5,13 @@ import {
   useEffect,
   useCallback,
   useRef,
+  useMemo,
+  Fragment,
 } from "react";
 import * as Icons from "lucide-react";
 import { useAuth } from "../../store/AuthContext";
+import { useLanguage } from "../../i18n/LanguageContext";
+import { t } from "../../i18n/translations";
 import SettingsSidebar, { flatSettingsItems } from "./SettingsSidebar"; // ← NEW
 import NotificationBell from "./NotificationBell";
 
@@ -104,12 +108,19 @@ const CSS = `
   }
   @media (max-width: 640px) { .sh-topbar-div { display: none; } }
 
+  /* Search wrapper — owns flex sizing + dropdown anchor */
+  .sh-search-wrap {
+    position: relative;
+    flex: 1;
+    max-width: 400px;
+  }
+
+  /* Search bar */
   .sh-search {
     display: flex;
     align-items: center;
     gap: 8px;
-    flex: 1;
-    max-width: 400px;
+    width: 100%;
     background: rgba(255,255,255,0.07);
     border: 1px solid rgba(255,255,255,0.10);
     border-radius: 8px;
@@ -134,6 +145,69 @@ const CSS = `
     color: rgba(255,255,255,0.35); white-space: nowrap;
   }
   @media (max-width: 480px) { .sh-search-kbd { display: none; } }
+
+  /* Search dropdown */
+  .sh-search-dropdown {
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 0;
+    width: 100%;
+    min-width: 340px;
+    background: #fff;
+    border-radius: 14px;
+    border: 1px solid rgba(0,0,0,0.08);
+    box-shadow: 0 16px 48px rgba(0,0,0,0.18);
+    z-index: 9999;
+    overflow: hidden;
+    animation: shMenuIn .13s ease both;
+  }
+  .sh-search-group-hdr {
+    padding: 10px 14px 4px;
+    font-size: 10px; font-weight: 700;
+    letter-spacing: 0.8px; text-transform: uppercase;
+    color: #94a3b8;
+  }
+  .sh-search-result {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 14px; cursor: pointer; width: 100%;
+    border: none; background: transparent; text-align: left;
+    font-family: var(--sh-font);
+    transition: background .1s;
+  }
+  .sh-search-result:hover { background: #f8fafc; }
+  .sh-search-result.sel { background: rgba(37,99,235,0.07); }
+  .sh-search-result-icon {
+    width: 30px; height: 30px; border-radius: 8px;
+    background: rgba(37,99,235,0.08);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--sh-accent); flex-shrink: 0;
+  }
+  .sh-search-result-label {
+    flex: 1; font-size: 13px; font-weight: 500; color: #1e293b;
+  }
+  .sh-search-result-group {
+    font-size: 10px; font-weight: 600; color: #94a3b8;
+    background: #f1f5f9; border-radius: 4px;
+    padding: 2px 7px; white-space: nowrap;
+  }
+  .sh-search-empty {
+    padding: 24px 14px; text-align: center;
+    font-size: 13px; color: #94a3b8;
+  }
+  .sh-search-footer {
+    padding: 8px 14px;
+    border-top: 1px solid #f1f5f9;
+    display: flex; gap: 14px; align-items: center;
+  }
+  .sh-search-hint {
+    display: flex; align-items: center; gap: 4px;
+    font-size: 10px; color: #94a3b8; font-family: var(--sh-font);
+  }
+  .sh-search-hint kbd {
+    font-family: var(--sh-mono); font-size: 9px;
+    background: #f1f5f9; border: 1px solid #e2e8f0;
+    border-radius: 3px; padding: 1px 5px; color: #64748b;
+  }
 
   .sh-spacer { flex: 1; }
 
@@ -357,6 +431,32 @@ const CSS = `
   .sh-menu-btn:hover { background: #f1f5f9; color: #1e293b; }
   .sh-menu-btn.danger { color: #dc2626; }
   .sh-menu-btn.danger:hover { background: #fef2f2; color: #dc2626; }
+
+  /* ── Language toggle pill ── */
+  .sh-lang-toggle {
+    display: flex; align-items: center;
+    border-radius: 20px;
+    border: 1px solid rgba(255,255,255,0.12);
+    background: rgba(255,255,255,0.06);
+    overflow: hidden; flex-shrink: 0;
+    height: 30px;
+  }
+  .sh-lang-opt {
+    display: flex; align-items: center; justify-content: center;
+    padding: 0 10px; height: 100%;
+    font-family: var(--sh-font); font-size: 11px; font-weight: 700;
+    color: rgba(255,255,255,0.35); letter-spacing: 0.3px;
+    cursor: pointer; border: none; background: transparent;
+    transition: background var(--sh-ease), color var(--sh-ease);
+  }
+  .sh-lang-opt.on {
+    background: var(--sh-accent);
+    color: #fff;
+  }
+  .sh-lang-opt:not(.on):hover {
+    color: rgba(255,255,255,0.75);
+    background: rgba(255,255,255,0.06);
+  }
 `;
 
 function injectCSS(id, css) {
@@ -370,17 +470,21 @@ function injectCSS(id, css) {
 /* ─── Topbar ────────────────────────────────────────────────── */
 function Topbar({
   appName, logo, user, onHamburger, onSearch,
-  searchPlaceholder, headerActions, notificationCount,
+  searchPlaceholder, headerActions, notificationCount, navItems, onNavClick,
   settingsMode, onSettingsToggle, // ← NEW props
 }) {
-  const [query,    setQuery]    = useState("");
-  const [menuOpen, setMenuOpen] = useState(false);
-  const menuRef = useRef(null);
+  const [query,       setQuery]       = useState("");
+  const [menuOpen,    setMenuOpen]    = useState(false);
+  const [searchOpen,  setSearchOpen]  = useState(false);
+  const [selectedIdx, setSelectedIdx] = useState(-1);
+  const menuRef   = useRef(null);
+  const searchRef = useRef(null);
+  const inputRef  = useRef(null);
 
   const { user: authUser, logout } = useAuth();
 
-  const displayName  = authUser?.full_name || user?.name || "User";
-  const displayOrg   = user?.org || "";
+  const displayName = authUser?.full_name || user?.name || "User";
+  const displayOrg  = user?.org || "";
   const displayEmail = authUser?.email || "";
   const initials =
     user?.initials ||
@@ -416,23 +520,80 @@ function Topbar({
               ? appName.slice(0, 2).toUpperCase()
               : "PM"}
         </div>
-        <span className="sh-logo-name">{appName || "PragatiMitra"}</span>
+        <span className="sh-logo-name">{t(appName || "PragatiMitra", lang)}</span>
       </div>
 
       <div className="sh-topbar-div" />
 
-      <div className="sh-search">
-        <Icons.Search size={14} color="rgba(255,255,255,0.35)" />
-        <input
-          type="text"
-          value={query}
-          onChange={(e) => {
-            setQuery(e.target.value);
-            onSearch?.(e.target.value);
-          }}
-          placeholder={searchPlaceholder || "Search…"}
-        />
-        <span className="sh-search-kbd">/</span>
+      {/* Search */}
+      <div className="sh-search-wrap" ref={searchRef}>
+        <div className="sh-search">
+          <Icons.Search size={14} color="rgba(255,255,255,0.35)" />
+          <input
+            ref={inputRef}
+            type="text"
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setSearchOpen(true);
+              onSearch?.(e.target.value);
+            }}
+            onFocus={() => setSearchOpen(true)}
+            onKeyDown={handleSearchKeyDown}
+            placeholder={t(searchPlaceholder || "Search…", lang)}
+          />
+          <span className="sh-search-kbd">/</span>
+        </div>
+
+        {/* Dropdown */}
+        {searchOpen && query.trim() !== "" && (
+          <div className="sh-search-dropdown" role="listbox">
+            {flatResults.length === 0 ? (
+              <div className="sh-search-empty">
+                No results for &ldquo;{query}&rdquo;
+              </div>
+            ) : (
+              flatResults.map((item, idx) => {
+                const showHeader =
+                  item.groupLabel &&
+                  (idx === 0 || flatResults[idx - 1].groupLabel !== item.groupLabel);
+                return (
+                  <Fragment key={item.id}>
+                    {showHeader && (
+                      <div className="sh-search-group-hdr">
+                        {t(item.groupLabel, lang)}
+                      </div>
+                    )}
+                    <button
+                      className={`sh-search-result${selectedIdx === idx ? " sel" : ""}`}
+                      role="option"
+                      aria-selected={selectedIdx === idx}
+                      onMouseEnter={() => setSelectedIdx(idx)}
+                      onClick={() => navigateTo(item)}
+                    >
+                      <span className="sh-search-result-icon">
+                        <DynIcon name={item.icon} size={15} />
+                      </span>
+                      <span className="sh-search-result-label">
+                        {t(item.label, lang)}
+                      </span>
+                      {item.groupLabel && (
+                        <span className="sh-search-result-group">
+                          {t(item.groupLabel, lang) || "General"}
+                        </span>
+                      )}
+                    </button>
+                  </Fragment>
+                );
+              })
+            )}
+            <div className="sh-search-footer">
+              <span className="sh-search-hint"><kbd>↑↓</kbd> navigate</span>
+              <span className="sh-search-hint"><kbd>↵</kbd> go</span>
+              <span className="sh-search-hint"><kbd>esc</kbd> close</span>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="sh-spacer" />
@@ -444,6 +605,24 @@ function Topbar({
 
         {/* ← CHANGED: gear icon now toggles settings mode */}
         <button
+        {/* Language toggle */}
+        <div className="sh-lang-toggle" role="group" aria-label="Select language">
+          <button
+            className={`sh-lang-opt${lang === "en" ? " on" : ""}`}
+            onClick={() => lang !== "en" && toggleLang()}
+            aria-pressed={lang === "en"}
+          >
+            EN
+          </button>
+          <button
+            className={`sh-lang-opt${lang === "hi" ? " on" : ""}`}
+            onClick={() => lang !== "hi" && toggleLang()}
+            aria-pressed={lang === "hi"}
+          >
+            हि
+          </button>
+        </div>
+
           className={`sh-icon-btn${settingsMode ? " sh-active" : ""}`}
           aria-label="Settings"
           title={settingsMode ? "Exit Settings" : "Settings"}
@@ -508,6 +687,8 @@ function Topbar({
 
 /* ─── Sidebar (unchanged) ───────────────────────────────────── */
 function Sidebar({ navItems, collapsed, mobileOpen, onCollapse, onNavClick, activeId }) {
+  const { lang } = useLanguage();
+
   const cls = [
     "sh-sidebar",
     collapsed  ? "col" : "",
@@ -520,20 +701,20 @@ function Sidebar({ navItems, collapsed, mobileOpen, onCollapse, onNavClick, acti
         {(navItems || []).map((group, gi) => (
           <div key={gi} className="sh-nav-group">
             {group.group && (
-              <div className="sh-nav-group-label">{group.group}</div>
+              <div className="sh-nav-group-label">{t(group.group, lang)}</div>
             )}
             {(group.items || []).map((item) => (
               <button
                 key={item.id}
                 className={`sh-nav-item${activeId === item.id ? " on" : ""}`}
                 onClick={() => onNavClick(item.id)}
-                data-tip={collapsed ? item.label : undefined}
-                aria-label={item.label}
+                data-tip={collapsed ? t(item.label, lang) : undefined}
+                aria-label={t(item.label, lang)}
               >
                 <span style={{ flexShrink: 0 }}>
                   <DynIcon name={item.icon} size={17} />
                 </span>
-                <span className="sh-nav-label">{item.label}</span>
+                <span className="sh-nav-label">{t(item.label, lang)}</span>
                 {item.badge != null && (
                   <span className="sh-item-badge">{item.badge}</span>
                 )}
@@ -555,7 +736,7 @@ function Sidebar({ navItems, collapsed, mobileOpen, onCollapse, onNavClick, acti
             <>
               <Icons.PanelLeftClose size={16} />
               <span style={{ fontSize: 12, marginLeft: 6, fontFamily: "var(--sh-font)" }}>
-                Collapse
+                {t("Collapse", lang)}
               </span>
             </>
           )}
@@ -627,6 +808,8 @@ export default function AppShell({
           searchPlaceholder={searchPlaceholder}
           headerActions={headerActions}
           notificationCount={notificationCount}
+          navItems={navItems}
+          onNavClick={handleNavClick}
           settingsMode={settingsMode}
           onSettingsToggle={() => setSettingsMode(m => !m)}
         />
