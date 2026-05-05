@@ -1,12 +1,12 @@
 const express = require("express");
 const { verifyToken, requireRole } = require("../middleware/auth");
-const { writeAuditLog } = require("../utils/audit"); // ← only addition to imports
+const { writeAuditLog }            = require("../utils/audit");
+const { sendRoleUpdatedEmail }     = require("../services/mailService"); // ← NEW
 
 const logger            = require("../utils/logger");
 const { getLogContext } = logger;
 
 const router = express.Router();
-
 const SUPER_ADMIN = ["super_admin"];
 
 /* ── GET /api/roles ── list all roles ── */
@@ -30,13 +30,11 @@ router.post("/", verifyToken, requireRole(SUPER_ADMIN), async (req, res) => {
   const pool = req.app.locals.pool;
   const { name, display_name, description = null, permissions = {} } = req.body;
 
-  if (!name || !display_name) {
+  if (!name || !display_name)
     return res.status(400).json({ success: false, message: "name and display_name are required." });
-  }
 
-  if (!/^[a-z][a-z0-9_]*$/.test(name)) {
+  if (!/^[a-z][a-z0-9_]*$/.test(name))
     return res.status(400).json({ success: false, message: "name must be lowercase snake_case (e.g. dept_viewer)." });
-  }
 
   try {
     const { rows } = await pool.query(
@@ -46,26 +44,19 @@ router.post("/", verifyToken, requireRole(SUPER_ADMIN), async (req, res) => {
       [name, display_name, description, JSON.stringify(permissions)]
     );
 
-    // ── Audit ──────────────────────────────────────────────────
     await writeAuditLog(req, {
       actionType: "ROLE_CREATED",
       entityType: "ROLE",
       entityId:   rows[0].id,
-      newValue: {
-        name:         rows[0].name,
-        display_name: rows[0].display_name,
-        description:  rows[0].description,
-        permissions,
-      },
-      status:  "SUCCESS",
-      message: `Role "${rows[0].display_name}" (${rows[0].name}) created`,
+      newValue:   { name: rows[0].name, display_name: rows[0].display_name, description: rows[0].description, permissions },
+      status:     "SUCCESS",
+      message:    `Role "${rows[0].display_name}" (${rows[0].name}) created`,
     });
 
     res.status(201).json({ success: true, data: rows[0] });
   } catch (err) {
-    if (err.code === "23505") {
+    if (err.code === "23505")
       return res.status(409).json({ success: false, message: "A role with that name already exists." });
-    }
     logger.error("POST /api/roles failed", { ...getLogContext(req), stack: err.stack });
     res.status(500).json({ success: false, message: "Failed to create role." });
   }
@@ -77,30 +68,27 @@ router.put("/:id", verifyToken, requireRole(SUPER_ADMIN), async (req, res) => {
   const { id } = req.params;
   const { display_name, description, permissions } = req.body;
 
-  if (!display_name && description === undefined && !permissions) {
+  if (!display_name && description === undefined && !permissions)
     return res.status(400).json({ success: false, message: "Nothing to update." });
-  }
 
   try {
-    // ── Snapshot before update (for audit diff) ────────────────
+    // Snapshot before update
     const { rows: existingRows } = await pool.query(
       "SELECT name, display_name, description, permissions FROM roles WHERE id = $1",
       [id]
     );
-    if (existingRows.length === 0) {
+    if (!existingRows.length)
       return res.status(404).json({ success: false, message: "Role not found." });
-    }
+
     const existing = existingRows[0];
 
-    // Build dynamic SET clause (your original logic unchanged)
+    // Build dynamic SET clause
     const fields = [];
     const values = [];
     let idx = 1;
-
-    if (display_name)          { fields.push(`display_name = $${idx++}`); values.push(display_name); }
-    if (description !== undefined) { fields.push(`description = $${idx++}`); values.push(description); }
-    if (permissions)           { fields.push(`permissions = $${idx++}`); values.push(JSON.stringify(permissions)); }
-
+    if (display_name)              { fields.push(`display_name = $${idx++}`); values.push(display_name); }
+    if (description !== undefined) { fields.push(`description = $${idx++}`);  values.push(description); }
+    if (permissions)               { fields.push(`permissions = $${idx++}`);  values.push(JSON.stringify(permissions)); }
     values.push(id);
 
     const { rows } = await pool.query(
@@ -110,13 +98,12 @@ router.put("/:id", verifyToken, requireRole(SUPER_ADMIN), async (req, res) => {
       values
     );
 
-    if (rows.length === 0) {
+    if (!rows.length)
       return res.status(404).json({ success: false, message: "Role not found." });
-    }
 
     const updated = rows[0];
 
-    // ── Audit: metadata changes ────────────────────────────────
+    // Audit: metadata changes
     const metaChanged = ["display_name", "description"].filter(
       (f) => String(existing[f] ?? "") !== String(updated[f] ?? "")
     );
@@ -128,16 +115,16 @@ router.put("/:id", verifyToken, requireRole(SUPER_ADMIN), async (req, res) => {
         oldValue:      { display_name: existing.display_name, description: existing.description },
         newValue:      { display_name: updated.display_name,  description: updated.description  },
         changedFields: metaChanged,
-        status:  "SUCCESS",
-        message: `Role "${updated.display_name}" metadata updated`,
+        status:        "SUCCESS",
+        message:       `Role "${updated.display_name}" metadata updated`,
       });
     }
 
-    // ── Audit: permission changes ──────────────────────────────
+    // Audit: permission changes
     if (permissions) {
-      const oldPerms = existing.permissions  || {};
-      const newPerms = permissions;
-      const allKeys  = new Set([...Object.keys(oldPerms), ...Object.keys(newPerms)]);
+      const oldPerms    = existing.permissions || {};
+      const newPerms    = permissions;
+      const allKeys     = new Set([...Object.keys(oldPerms), ...Object.keys(newPerms)]);
       const permChanged = [...allKeys].filter((k) => Boolean(oldPerms[k]) !== Boolean(newPerms[k]));
 
       if (permChanged.length) {
@@ -148,16 +135,77 @@ router.put("/:id", verifyToken, requireRole(SUPER_ADMIN), async (req, res) => {
           oldValue:      Object.fromEntries(permChanged.map((k) => [k, oldPerms[k]])),
           newValue:      Object.fromEntries(permChanged.map((k) => [k, newPerms[k]])),
           changedFields: permChanged,
-          status:  "SUCCESS",
-          message: `Role "${updated.display_name}" permissions updated — ${permChanged.length} permission(s) changed`,
+          status:        "SUCCESS",
+          message:       `Role "${updated.display_name}" permissions updated — ${permChanged.length} permission(s) changed`,
           metadata: {
             role_name: updated.name,
-            granted:   permChanged.filter((k) => newPerms[k]),
+            granted:   permChanged.filter((k) =>  newPerms[k]),
             revoked:   permChanged.filter((k) => !newPerms[k]),
           },
         });
       }
     }
+
+    // ── Fire-and-forget: notify all users who have this role ──
+    // Only fires when permissions changed — not for label/description edits
+    if (permissions) {
+      setImmediate(async () => {
+        try {
+          // Fetch all active users currently assigned this role
+          const { rows: affectedUsers } = await pool.query(
+            `SELECT u.id, u.full_name, u.email
+             FROM users u
+             JOIN user_roles ur ON ur.user_id = u.id
+             WHERE ur.role_id    = $1
+               AND ur.revoked_at IS NULL
+               AND (ur.expires_at IS NULL OR ur.expires_at > now())
+               AND u.account_status = 'ACTIVE'`,
+            [id]
+          );
+
+          if (!affectedUsers.length) {
+            logger.info(`Role "${updated.display_name}" updated — no active users to notify`);
+            return;
+          }
+
+          logger.info(`Notifying ${affectedUsers.length} user(s) of role change: "${updated.display_name}"`);
+
+          // Send email + in-app notification to every affected user
+          const results = await Promise.allSettled(
+            affectedUsers.map((u) =>
+              sendRoleUpdatedEmail(pool, {
+                full_name: u.full_name,
+                email:     u.email,
+                new_role:  updated.display_name,
+                login_url: process.env.APP_LOGIN_URL || "http://localhost:5173/login",
+                userId:    u.id,
+              })
+            )
+          );
+
+          // Log each result so we can see exactly what failed
+          results.forEach((r, i) => {
+            if (r.status === "rejected") {
+              logger.error(`[ROLE NOTIFY] FAILED for ${affectedUsers[i].email}: ${r.reason?.message}`, {
+                stack: r.reason?.stack,
+              });
+            } else {
+              logger.info(`[ROLE NOTIFY] OK for ${affectedUsers[i].email}`);
+            }
+          });
+
+          logger.info(`Role-update notifications complete for role "${updated.display_name}"`);
+        } catch (err) {
+          logger.error("Role-update notification FAILED (role was still updated)", {
+            roleId:   id,
+            roleName: updated.display_name,
+            error:    err.message,
+            stack:    err.stack,
+          });
+        }
+      });
+    }
+    // ─────────────────────────────────────────────────────────
 
     res.json({ success: true, data: updated });
   } catch (err) {
@@ -176,16 +224,13 @@ router.delete("/:id", verifyToken, requireRole(SUPER_ADMIN), async (req, res) =>
       "SELECT id, name, display_name, description, permissions, is_system FROM roles WHERE id = $1",
       [id]
     );
-    if (check.rows.length === 0) {
+    if (!check.rows.length)
       return res.status(404).json({ success: false, message: "Role not found." });
-    }
-    if (check.rows[0].is_system) {
+    if (check.rows[0].is_system)
       return res.status(403).json({ success: false, message: "System roles cannot be deleted." });
-    }
 
     await pool.query("DELETE FROM roles WHERE id = $1", [id]);
 
-    // ── Audit ──────────────────────────────────────────────────
     await writeAuditLog(req, {
       actionType: "ROLE_DELETED",
       entityType: "ROLE",
