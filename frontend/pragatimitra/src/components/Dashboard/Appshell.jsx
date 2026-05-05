@@ -12,9 +12,6 @@ import * as Icons from "lucide-react";
 import { useAuth } from "../../store/AuthContext";
 import { useLanguage } from "../../i18n/LanguageContext";
 import { t } from "../../i18n/translations";
-import SettingsSidebar, { flatSettingsItems } from "./SettingsSidebar"; // ← NEW
-import NotificationBell from "./NotificationBell";
-
 /* ─── Context ───────────────────────────────────────────────── */
 const ShellContext = createContext(null);
 export const useShell = () => useContext(ShellContext);
@@ -53,6 +50,7 @@ const CSS = `
 
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+  /* ── Root: column layout so topbar spans full width ── */
   .sh-root {
     display: flex;
     flex-direction: column;
@@ -64,6 +62,7 @@ const CSS = `
     background: var(--sh-bg);
   }
 
+  /* ── TOPBAR ── */
   .sh-topbar {
     display: flex;
     align-items: center;
@@ -78,6 +77,7 @@ const CSS = `
     z-index: 60;
   }
 
+  /* Logo mark + name */
   .sh-logo {
     display: flex;
     align-items: center;
@@ -100,6 +100,7 @@ const CSS = `
   }
   @media (max-width: 640px) { .sh-logo-name { display: none; } }
 
+  /* Divider */
   .sh-topbar-div {
     width: 1px; height: 20px;
     background: rgba(255,255,255,0.1);
@@ -211,6 +212,7 @@ const CSS = `
 
   .sh-spacer { flex: 1; }
 
+  /* Action buttons */
   .sh-actions { display: flex; align-items: center; gap: 4px; }
 
   .sh-icon-btn {
@@ -223,19 +225,13 @@ const CSS = `
   }
   .sh-icon-btn:hover { background: rgba(255,255,255,0.09); color: #fff; }
 
-  /* ← NEW: active state for gear icon when settings is open */
-  .sh-icon-btn.sh-active {
-    background: rgba(37,99,235,0.3);
-    color: #93c5fd;
-    border-color: rgba(37,99,235,0.5);
-  }
-
   .sh-badge {
     position: absolute; top: 5px; right: 5px;
     width: 7px; height: 7px; border-radius: 50%;
     background: #3b82f6; border: 2px solid var(--sh-topbar);
   }
 
+  /* Avatar pill */
   .sh-avatar {
     display: flex; align-items: center; gap: 8px;
     padding: 4px 10px 4px 4px; border-radius: 8px;
@@ -254,6 +250,7 @@ const CSS = `
   .sh-avatar-org  { font-size: 10px; color: rgba(255,255,255,0.4); white-space: nowrap; }
   @media (max-width: 520px) { .sh-avatar-info { display: none; } }
 
+  /* Hamburger (mobile) */
   .sh-hamburger {
     display: none; align-items: center; justify-content: center;
     width: 34px; height: 34px; border-radius: 8px;
@@ -265,6 +262,7 @@ const CSS = `
   .sh-hamburger:hover { background: rgba(255,255,255,0.09); color: #fff; }
   @media (max-width: 768px) { .sh-hamburger { display: flex; } }
 
+  /* ── BODY (sidebar + content) ── */
   .sh-body {
     display: flex;
     flex: 1;
@@ -272,6 +270,7 @@ const CSS = `
     overflow: hidden;
   }
 
+  /* ── MOBILE OVERLAY ── */
   .sh-overlay {
     display: none; position: fixed; inset: 0;
     background: rgba(15,23,42,.35); backdrop-filter: blur(4px);
@@ -280,6 +279,7 @@ const CSS = `
   .sh-overlay.open { display: block; }
   @keyframes shFadeIn { from { opacity:0 } to { opacity:1 } }
 
+  /* ── SIDEBAR ── */
   .sh-sidebar {
     display: flex; flex-direction: column;
     width: var(--sh-side-open);
@@ -302,6 +302,7 @@ const CSS = `
     .sh-sidebar.mob { transform: translateX(0); }
   }
 
+  /* ── NAV SCROLL ── */
   .sh-nav {
     flex: 1; overflow-y: auto; overflow-x: hidden; padding: 10px 0;
     scrollbar-width: thin; scrollbar-color: var(--sh-border) transparent;
@@ -309,6 +310,7 @@ const CSS = `
   .sh-nav::-webkit-scrollbar { width: 4px; }
   .sh-nav::-webkit-scrollbar-thumb { background: var(--sh-border); border-radius: 4px; }
 
+  /* ── NAV GROUP ── */
   .sh-nav-group { margin-bottom: 4px; }
   .sh-nav-group-label {
     padding: 6px 16px 4px; font-size: 10px; font-weight: 700;
@@ -317,6 +319,7 @@ const CSS = `
   }
   .sh-sidebar.col .sh-nav-group-label { opacity: 0; height: 0; padding: 0; }
 
+  /* ── NAV ITEM ── */
   .sh-nav-item {
     display: flex; align-items: center; gap: 10px;
     padding: 0 12px; height: 40px; margin: 1px 8px; border-radius: 8px;
@@ -328,7 +331,9 @@ const CSS = `
     transition: background var(--sh-ease), color var(--sh-ease);
   }
   .sh-nav-item:hover { background: var(--sh-hover); color: var(--sh-text); }
-  .sh-nav-item.on { background: var(--sh-active); color: var(--sh-accent); }
+  .sh-nav-item.on {
+    background: var(--sh-active); color: var(--sh-accent);
+  }
   .sh-nav-item.on::before {
     content: '';
     position: absolute; left: 0; top: 8px; bottom: 8px;
@@ -339,6 +344,7 @@ const CSS = `
   }
   .sh-sidebar.col .sh-nav-label { opacity: 0; width: 0; }
 
+  /* Collapsed tooltip */
   .sh-sidebar.col .sh-nav-item[data-tip]:hover::after {
     content: attr(data-tip);
     position: absolute; left: calc(var(--sh-side-col) - 4px); top: 50%;
@@ -351,12 +357,14 @@ const CSS = `
   }
   @keyframes shTip { to { opacity:1; left: calc(var(--sh-side-col) + 6px); } }
 
+  /* Badge */
   .sh-item-badge {
     margin-left: auto; background: var(--sh-accent); color: #fff;
     font-size: 10px; font-weight: 700; border-radius: 20px;
     padding: 1px 6px; flex-shrink: 0;
   }
 
+  /* ── SIDEBAR FOOTER ── */
   .sh-sidebar-footer {
     border-top: 1px solid var(--sh-border);
     padding: 10px 8px; flex-shrink: 0;
@@ -370,6 +378,7 @@ const CSS = `
   }
   .sh-collapse-btn:hover { background: var(--sh-hover); color: var(--sh-text); }
 
+  /* ── CONTENT ── */
   .sh-content {
     flex: 1; overflow-y: auto; overflow-x: hidden;
     background: var(--sh-bg);
@@ -384,6 +393,7 @@ const CSS = `
     to   { opacity:1; transform:translateY(0); }
   }
 
+  /* ── USER DROPDOWN ── */
   .sh-user-wrap { position: relative; }
 
   .sh-user-menu {
@@ -468,11 +478,7 @@ function injectCSS(id, css) {
 }
 
 /* ─── Topbar ────────────────────────────────────────────────── */
-function Topbar({
-  appName, logo, user, onHamburger, onSearch,
-  searchPlaceholder, headerActions, notificationCount, navItems, onNavClick,
-  settingsMode, onSettingsToggle, // ← NEW props
-}) {
+function Topbar({ appName, logo, user, onHamburger, onSearch, searchPlaceholder, headerActions, notificationCount, navItems, onNavClick }) {
   const [query,       setQuery]       = useState("");
   const [menuOpen,    setMenuOpen]    = useState(false);
   const [searchOpen,  setSearchOpen]  = useState(false);
@@ -482,6 +488,72 @@ function Topbar({
   const inputRef  = useRef(null);
 
   const { user: authUser, logout } = useAuth();
+  const { lang, toggle: toggleLang } = useLanguage();
+
+  /* Flatten + filter nav items against the current query */
+  const flatResults = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return [];
+    return (navItems || [])
+      .flatMap((group) =>
+        (group.items || [])
+          .filter((item) => t(item.label, lang).toLowerCase().includes(q))
+          .map((item) => ({ ...item, groupLabel: group.group }))
+      )
+      .slice(0, 8);
+  }, [query, navItems, lang]);
+
+  /* Reset keyboard selection when results change */
+  useEffect(() => setSelectedIdx(-1), [flatResults]);
+
+  /* Close dropdown on outside click */
+  useEffect(() => {
+    if (!searchOpen) return;
+    const handler = (e) => {
+      if (searchRef.current && !searchRef.current.contains(e.target))
+        setSearchOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [searchOpen]);
+
+  /* '/' shortcut to focus search */
+  useEffect(() => {
+    const handler = (e) => {
+      const tag = document.activeElement?.tagName;
+      if (e.key === "/" && tag !== "INPUT" && tag !== "TEXTAREA") {
+        e.preventDefault();
+        inputRef.current?.focus();
+        setSearchOpen(true);
+      }
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, []);
+
+  const navigateTo = useCallback((item) => {
+    onNavClick?.(item.id);
+    setQuery("");
+    setSearchOpen(false);
+    inputRef.current?.blur();
+  }, [onNavClick]);
+
+  const handleSearchKeyDown = (e) => {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setSelectedIdx((i) => Math.min(i + 1, flatResults.length - 1));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setSelectedIdx((i) => Math.max(i - 1, 0));
+    } else if (e.key === "Enter" && selectedIdx >= 0) {
+      e.preventDefault();
+      navigateTo(flatResults[selectedIdx]);
+    } else if (e.key === "Escape") {
+      setQuery("");
+      setSearchOpen(false);
+      inputRef.current?.blur();
+    }
+  };
 
   const displayName = authUser?.full_name || user?.name || "User";
   const displayOrg  = user?.org || "";
@@ -492,6 +564,7 @@ function Topbar({
       ? displayName.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase()
       : "U");
 
+  /* Close menu on outside click */
   useEffect(() => {
     if (!menuOpen) return;
     const handler = (e) => {
@@ -508,10 +581,16 @@ function Topbar({
 
   return (
     <header className="sh-topbar">
-      <button className="sh-hamburger" onClick={onHamburger} aria-label="Open menu">
+      {/* Hamburger — mobile only */}
+      <button
+        className="sh-hamburger"
+        onClick={onHamburger}
+        aria-label="Open menu"
+      >
         <Icons.Menu size={18} />
       </button>
 
+      {/* Logo + App name */}
       <div className="sh-logo">
         <div className="sh-logo-mark">
           {typeof logo === "string"
@@ -523,6 +602,7 @@ function Topbar({
         <span className="sh-logo-name">{t(appName || "PragatiMitra", lang)}</span>
       </div>
 
+      {/* Divider */}
       <div className="sh-topbar-div" />
 
       {/* Search */}
@@ -598,13 +678,15 @@ function Topbar({
 
       <div className="sh-spacer" />
 
+      {/* Actions */}
       <div className="sh-actions">
         {headerActions}
 
-        <NotificationBell />
+        <button className="sh-icon-btn" aria-label="Notifications">
+          <Icons.Bell size={16} />
+          {notificationCount > 0 && <span className="sh-badge" />}
+        </button>
 
-        {/* ← CHANGED: gear icon now toggles settings mode */}
-        <button
         {/* Language toggle */}
         <div className="sh-lang-toggle" role="group" aria-label="Select language">
           <button
@@ -623,14 +705,11 @@ function Topbar({
           </button>
         </div>
 
-          className={`sh-icon-btn${settingsMode ? " sh-active" : ""}`}
-          aria-label="Settings"
-          title={settingsMode ? "Exit Settings" : "Settings"}
-          onClick={onSettingsToggle}
-        >
+        <button className="sh-icon-btn" aria-label="Settings">
           <Icons.Settings size={16} />
         </button>
 
+        {/* Avatar + dropdown */}
         <div className="sh-user-wrap" ref={menuRef}>
           <button
             className="sh-avatar"
@@ -655,37 +734,37 @@ function Topbar({
           </button>
 
           {menuOpen && (
-            <div className="sh-user-menu" role="menu">
-              <div className="sh-menu-header">
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <div className="sh-menu-avatar">{initials}</div>
-                  <div>
-                    <div className="sh-menu-name">{displayName}</div>
-                    {displayEmail && (
-                      <div className="sh-menu-email">{displayEmail}</div>
-                    )}
+              <div className="sh-user-menu" role="menu">
+                <div className="sh-menu-header">
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <div className="sh-menu-avatar">{initials}</div>
+                    <div>
+                      <div className="sh-menu-name">{displayName}</div>
+                      {displayEmail && (
+                        <div className="sh-menu-email">{displayEmail}</div>
+                      )}
+                    </div>
                   </div>
                 </div>
+                <div className="sh-menu-body">
+                  <button
+                    className="sh-menu-btn danger"
+                    role="menuitem"
+                    onClick={handleLogout}
+                  >
+                    <Icons.LogOut size={15} />
+                    Sign out
+                  </button>
+                </div>
               </div>
-              <div className="sh-menu-body">
-                <button
-                  className="sh-menu-btn danger"
-                  role="menuitem"
-                  onClick={handleLogout}
-                >
-                  <Icons.LogOut size={15} />
-                  Sign out
-                </button>
-              </div>
-            </div>
-          )}
+            )}
         </div>
       </div>
     </header>
   );
 }
 
-/* ─── Sidebar (unchanged) ───────────────────────────────────── */
+/* ─── Sidebar ───────────────────────────────────────────────── */
 function Sidebar({ navItems, collapsed, mobileOpen, onCollapse, onNavClick, activeId }) {
   const { lang } = useLanguage();
 
@@ -764,12 +843,10 @@ export default function AppShell({
   injectCSS("app-shell-v2", CSS);
 
   const firstId = defaultPage || navItems[0]?.items?.[0]?.id || Object.keys(pages)[0] || "";
-  const [activeId,     setActiveId]     = useState(firstId);
-  const [collapsed,    setCollapsed]    = useState(defaultCollapsed);
-  const [mobileOpen,   setMobileOpen]   = useState(false);
-  const [pageKey,      setPageKey]      = useState(0);
-  const [settingsMode, setSettingsMode] = useState(false);          // ← NEW
-  const [settingsId,   setSettingsId]   = useState("notif-email");  // ← NEW
+  const [activeId,   setActiveId]   = useState(firstId);
+  const [collapsed,  setCollapsed]  = useState(defaultCollapsed);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [pageKey,    setPageKey]    = useState(0);
 
   useEffect(() => {
     const fn = () => { if (window.innerWidth > 768) setMobileOpen(false); };
@@ -784,10 +861,6 @@ export default function AppShell({
     onNavigate?.(id);
   }, [onNavigate]);
 
-  // ← NEW: resolve settings page via SettingsSidebar's exported helper
-  const settingsItem   = flatSettingsItems().find(i => i.id === settingsId);
-  const settingsPage   = settingsItem?.renderPage ? settingsItem.renderPage() : null;
-
   const currentPage = pages[activeId] ?? (
     <div style={{ padding: 40, color: "var(--sh-muted)", fontFamily: "var(--sh-font)" }}>
       No page registered for <code style={{ fontFamily: "var(--sh-mono)" }}>"{activeId}"</code>.
@@ -798,7 +871,7 @@ export default function AppShell({
     <ShellContext.Provider value={{ activeId, setActiveId: handleNavClick, collapsed, setCollapsed }}>
       <div className="sh-root">
 
-        {/* Full-width top bar — unchanged except two new props */}
+        {/* Full-width top bar */}
         <Topbar
           appName={appName}
           logo={logo}
@@ -810,50 +883,32 @@ export default function AppShell({
           notificationCount={notificationCount}
           navItems={navItems}
           onNavClick={handleNavClick}
-          settingsMode={settingsMode}
-          onSettingsToggle={() => setSettingsMode(m => !m)}
         />
 
+        {/* Body: sidebar + content */}
         <div className="sh-body">
 
-          {settingsMode ? (
-            /* ── SETTINGS MODE: swap sidebar + content ── */
-            <>
-              <SettingsSidebar
-                activeId={settingsId}
-                onSelect={setSettingsId}
-                onBack={() => setSettingsMode(false)}
-              />
-              <main className="sh-content">
-                <div key={settingsId} className="sh-page-enter">
-                  {settingsPage}
-                </div>
-              </main>
-            </>
-          ) : (
-            /* ── DASHBOARD MODE: original layout untouched ── */
-            <>
-              <div
-                className={`sh-overlay${mobileOpen ? " open" : ""}`}
-                onClick={() => setMobileOpen(false)}
-                aria-hidden="true"
-              />
-              <Sidebar
-                navItems={navItems}
-                collapsed={collapsed}
-                mobileOpen={mobileOpen}
-                onCollapse={() => setCollapsed((c) => !c)}
-                onNavClick={handleNavClick}
-                activeId={activeId}
-              />
-              <main className="sh-content">
-                <div key={pageKey} className="sh-page-enter">
-                  {currentPage}
-                </div>
-              </main>
-            </>
-          )}
+          {/* Mobile overlay */}
+          <div
+            className={`sh-overlay${mobileOpen ? " open" : ""}`}
+            onClick={() => setMobileOpen(false)}
+            aria-hidden="true"
+          />
 
+          <Sidebar
+            navItems={navItems}
+            collapsed={collapsed}
+            mobileOpen={mobileOpen}
+            onCollapse={() => setCollapsed((c) => !c)}
+            onNavClick={handleNavClick}
+            activeId={activeId}
+          />
+
+          <main className="sh-content">
+            <div key={pageKey} className="sh-page-enter">
+              {currentPage}
+            </div>
+          </main>
         </div>
       </div>
     </ShellContext.Provider>
