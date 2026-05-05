@@ -3,7 +3,8 @@
 const express = require("express");
 const bcrypt  = require("bcrypt");
 const { verifyToken, requireRole } = require("../middleware/auth");
-const { writeAuditLog } = require("../utils/audit");
+const { writeAuditLog }            = require("../utils/audit");
+const { sendWelcomeEmail }         = require("../services/mailService");
 
 const logger            = require("../utils/logger");
 const { getLogContext } = logger;
@@ -65,7 +66,6 @@ router.put("/:id", verifyToken, requireRole(["super_admin", "institute_admin"]),
     return res.status(400).json({ success: false, message: "Invalid account status." });
 
   try {
-    // ── Fetch existing user before update (needed for audit diff) ──
     const { rows: existingRows } = await pool.query(
       `SELECT full_name, email, account_status, institution_id, department_id
        FROM users WHERE id = $1 AND account_status != 'DELETED'`,
@@ -100,7 +100,6 @@ router.put("/:id", verifyToken, requireRole(["super_admin", "institute_admin"]),
 
     const updated = rows[0];
 
-    // ── Audit log — only record fields that actually changed ──
     const changedFields = [
       "full_name", "email", "account_status", "institution_id", "department_id",
     ].filter((f) => String(existing[f] ?? "") !== String(updated[f] ?? ""));
@@ -178,7 +177,6 @@ router.post("/", verifyToken, requireRole(["super_admin", "institute_admin"]), a
       [rows[0].id, roleRows[0].id, req.user.userId]
     );
 
-    // ── Audit log ──
     await writeAuditLog(req, {
       actionType: "USER_CREATED",
       entityType: "USER",
@@ -194,6 +192,35 @@ router.post("/", verifyToken, requireRole(["super_admin", "institute_admin"]), a
       status:  "SUCCESS",
       message: `User "${rows[0].full_name}" created`,
     });
+
+    // ── Fire-and-forget welcome email ──────────────────────────────────
+    const newUser = rows[0];
+    setImmediate(() => {
+      sendWelcomeEmail(pool, {                              // ← pool added
+        full_name: newUser.full_name,
+        email:     newUser.email,
+        password,
+        login_url: process.env.APP_LOGIN_URL || "http://localhost:5173/login",
+        userId:    newUser.id,
+      })
+        .then((info) => {
+          if (!info) return;                                // email_enabled = false, skipped
+          logger.info("Welcome email sent", {
+            userId:    newUser.id,
+            recipient: newUser.email,
+            messageId: info.messageId,
+          });
+        })
+        .catch((err) => {
+          logger.error("Welcome email FAILED (user still created)", {
+            userId:    newUser.id,
+            recipient: newUser.email,
+            error:     err.message,
+            stack:     err.stack,
+          });
+        });
+    });
+    // ──────────────────────────────────────────────────────────────────
 
     return res.status(201).json({ success: true, user: rows[0] });
   } catch (err) {

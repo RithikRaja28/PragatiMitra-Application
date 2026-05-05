@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Welcome to {{APP_NAME}}</title>
+</head>
+<body style="margin:0;padding:0;background-color:#eef2f7;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;">
+
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#eef2f7;padding:32px 16px;">
+    <tr>
+      <td align="center">
+
+        <p style="font-size:12px;font-weight:700;color:#64748b;letter-spacing:2px;text-transform:uppercase;margin-bottom:12px;">
+          {{APP_NAME}}
+        </p>
+
+        <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:20px;overflow:hidden;box-shadow:0 8px 40px rgba(0,0,0,0.10);">
+
+          <!-- ── HEADER ── -->
+          <tr>
+            <td style="background:linear-gradient(135deg,#1e3a8a 0%,#2563eb 60%,#3b82f6 100%);padding:48px 40px 40px;text-align:center;">
+              <span style="display:inline-block;background:rgba(255,255,255,0.18);color:#ffffff;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;padding:4px 16px;border-radius:20px;border:1px solid rgba(255,255,255,0.25);margin-bottom:20px;">
+                Account Created
+              </span>
+              <br/>
+              <span style="font-size:26px;font-weight:800;color:#ffffff;letter-spacing:-0.5px;display:block;margin-bottom:8px;">
+                Your account is ready
+              </span>
+              <span style="font-size:14px;color:rgba(255,255,255,0.78);">
+                Welcome aboard &mdash; here are your login credentials
+              </span>
+            </td>
+          </tr>
+
+          <!-- ── BODY ── -->
+          <tr>
+            <td style="padding:40px 40px 32px;">
+
+              <p style="font-size:18px;font-weight:700;color:#1e293b;margin:0 0 10px;">
+                Hi {{FULL_NAME}},
+              </p>
+
+              <!-- INTRO_TEXT — injected from DB email_body, admin can customise -->
+              <div style="font-size:14px;color:#64748b;line-height:1.75;margin:0 0 28px;white-space:pre-line;">{{INTRO_TEXT}}</div>
+
+              <!-- ── Credentials Box ── -->
+              <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:14px;overflow:hidden;margin-bottom:28px;">
+
+                <!-- Title row -->
+                <tr>
+                  <td style="padding:14px 24px;border-bottom:1px solid #e2e8f0;">
+                    <span style="font-size:11px;font-weight:700;color:#94a3b8;letter-spacing:1.2px;text-transform:uppercase;">
+                      Your Login Details
+                    </span>
+                  </td>
+                </tr>
+
+                <!-- Full Name row -->
+                <tr>
+                  <td style="padding:16px 24px;border-bottom:1px solid #f1f5f9;">
+                    <table cellpadding="0" cellspacing="0" width="100%">
+                      <tr>
+                        <td width="54" style="vertical-align:middle;padding-right:16px;">
+                          <div style="width:38px;height:38px;background:#dbeafe;border-radius:10px;text-align:center;line-height:38px;font-size:18px;">
+                            &#128100;
+                          </div>
+                        </td>
+                        <td style="vertical-align:middle;">
+                          <div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Full Name</div>
+                          <div style="font-size:14px;font-weight:600;color:#1e293b;">{{FULL_NAME}}</div>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+
+                <!-- Email row -->
+                <tr>
+                  <td style="padding:16px 24px;border-bottom:1px solid #f1f5f9;">
+                    <table cellpadding="0" cellspacing="0" width="100%">
+                      <tr>
+                        <td width="54" style="vertical-align:middle;padding-right:16px;">
+                          <div style="width:38px;height:38px;background:#ede9fe;border-radius:10px;text-align:center;line-height:38px;font-size:18px;">
+                            &#9993;
+                          </div>
+                        </td>
+                        <td style="vertical-align:middle;">
+                          <div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Email Address</div>
+                          <div style="font-size:14px;font-weight:600;color:#1e293b;">{{EMAIL}}</div>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+
+                <!-- Password row -->
+                <tr>
+                  <td style="padding:16px 24px;">
+                    <table cellpadding="0" cellspacing="0" width="100%">
+                      <tr>
+                        <td width="54" style="vertical-align:middle;padding-right:16px;">
+                          <div style="width:38px;height:38px;background:#fef3c7;border-radius:10px;text-align:center;line-height:38px;font-size:18px;">
+                            &#128273;
+                          </div>
+                        </td>
+                        <td style="vertical-align:middle;">
+                          <div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Temporary Password</div>
+                          <div style="font-family:'Courier New',Courier,monospace;font-size:15px;font-weight:700;color:#1d4ed8;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:5px 12px;display:inline-block;letter-spacing:2px;">
+                            {{TEMPORARY_PASSWORD}}
+                          </div>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+
+              </table>
+              <!-- end credentials -->
+
+              <!-- ── Security Notice ── -->
+              <table width="100%" cellpadding="0" cellspacing="0" style="background:#fffbeb;border:1px solid #fde68a;border-left:4px solid #f59e0b;border-radius:10px;margin-bottom:32px;">
+                <tr>
+                  <td style="padding:16px 18px;">
+                    <table cellpadding="0" cellspacing="0" width="100%">
+                      <tr>
+                        <td width="34" style="vertical-align:top;padding-right:12px;font-size:22px;line-height:1;color:#f59e0b;">
+                          &#9888;
+                        </td>
+                        <td style="vertical-align:top;">
+                          <div style="font-size:13px;font-weight:700;color:#92400e;margin-bottom:5px;">Important Security Notice</div>
+                          <div style="font-size:13px;color:#78350f;line-height:1.55;">
+                            This is a one-time temporary password. You will be required to set a new password immediately after your first login. Do not share these credentials with anyone.
+                          </div>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+
+              <!-- ── CTA Button ── -->
+              <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:32px;">
+                <tr>
+                  <td align="center">
+                    <a href="{{LOGIN_URL}}"
+                       style="display:inline-block;background:#2563eb;color:#ffffff;text-decoration:none;font-size:15px;font-weight:700;padding:15px 40px;border-radius:50px;letter-spacing:0.3px;">
+                      Log In to Your Account &rarr;
+                    </a>
+                  </td>
+                </tr>
+              </table>
+
+              <!-- Divider -->
+              <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">
+                <tr>
+                  <td style="border-top:1px solid #e2e8f0;font-size:0;">&nbsp;</td>
+                </tr>
+              </table>
+
+              <!-- Help text -->
+              <p style="font-size:13px;color:#64748b;line-height:1.7;text-align:center;margin:0;">
+                Having trouble logging in? Contact us at
+                <a href="mailto:{{SUPPORT_EMAIL}}" style="color:#2563eb;text-decoration:none;font-weight:600;">{{SUPPORT_EMAIL}}</a><br/>
+                If you did not expect this email, please ignore it or contact support.
+              </p>
+
+            </td>
+          </tr>
+
+          <!-- ── FOOTER ── -->
+          <tr>
+            <td style="background:#f8fafc;border-top:1px solid #e2e8f0;padding:24px 40px;text-align:center;">
+              <p style="font-size:12px;color:#94a3b8;line-height:1.8;margin:0;">
+                <strong style="color:#475569;">{{APP_NAME}}</strong><br/>
+                This is an automated message &mdash; please do not reply directly to this email.<br/>
+                &copy; 2025 {{APP_NAME}}. All rights reserved.
+              </p>
+            </td>
+          </tr>
+
+        </table>
+        <!-- end card -->
+
+      </td>
+    </tr>
+  </table>
+
+</body>
+</html>
