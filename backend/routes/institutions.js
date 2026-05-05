@@ -589,20 +589,15 @@ router.get("/", async (req, res) => {
          i.pincode,
          i.status,
          i.created_at,
-         (
-           SELECT COUNT(*)
-           FROM departments d
-           WHERE d.institution_id = i.institution_id
-             AND d.status = 'ACTIVE'
-         ) AS department_count,
-         (
-           SELECT COUNT(*)
-           FROM users u
-           WHERE u.institution_id = i.institution_id
-             AND u.account_status = 'ACTIVE'
-         ) AS user_count
-       FROM institutions i
-       ORDER BY i.institution_name ASC`
+         COUNT(DISTINCT d.department_id) FILTER (WHERE d.status = 'ACTIVE')        AS department_count,
+         COUNT(DISTINCT u.id)            FILTER (WHERE u.account_status = 'ACTIVE') AS user_count
+       FROM       institutions i
+       LEFT JOIN  departments  d ON d.institution_id = i.institution_id
+       LEFT JOIN  users        u ON u.institution_id = i.institution_id
+       GROUP BY   i.institution_id, i.institution_name, i.code, i.email_domain,
+                  i.address_line1, i.address_line2, i.city, i.state, i.country,
+                  i.pincode, i.status, i.created_at
+       ORDER BY   i.institution_name ASC`
     );
     return res.json({ success: true, data: rows });
   } catch (err) {

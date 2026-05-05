@@ -596,6 +596,14 @@ function UserList({ apiFetch, onEdit }) {
           </tbody>
         </table>
       </div>
+
+      <Pagination
+        page={page}
+        pageSize={pageSize}
+        total={filtered.length}
+        onPageChange={setPage}
+        onPageSizeChange={setPageSize}
+      />
     </>
   );
 }
@@ -731,7 +739,7 @@ export default function UserManagementPage() {
           onSuccess={(result) => {
             setShowImport(false);
             setRefreshKey((k) => k + 1);
-            showToast(`Import complete: ${result.imported} user${result.imported !== 1 ? "s" : ""} imported.`);
+            showToast(`${result.imported} user${result.imported !== 1 ? "s" : ""} imported successfully.`);
           }}
         />
       </>
