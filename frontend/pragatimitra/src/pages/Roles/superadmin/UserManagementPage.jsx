@@ -8,6 +8,27 @@ import ImportWizard from "../../../components/shared/ImportWizard";
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
+/* ── SVG icons ───────────────────────────────────────────────────── */
+const IconDownload = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+    <polyline points="7 10 12 15 17 10"/>
+    <line x1="12" y1="15" x2="12" y2="3"/>
+  </svg>
+);
+const IconUpload = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+    <polyline points="17 8 12 3 7 8"/>
+    <line x1="12" y1="3" x2="12" y2="15"/>
+  </svg>
+);
+const IconChevron = () => (
+  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="6 9 12 15 18 9"/>
+  </svg>
+);
+
 /* ── Constants & pure helpers ──────────────────────────────────── */
 const STATUS_OPTIONS = ["ACTIVE", "INACTIVE", "SUSPENDED"];
 
@@ -804,20 +825,13 @@ export default function UserManagementPage() {
           <button
             onClick={() => setShowImport(true)}
             style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-              padding: "10px 18px",
-              borderRadius: 10,
-              border: "1.5px solid #2563eb",
-              background: "#eff6ff",
-              fontSize: 13,
-              fontWeight: 700,
-              color: "#2563eb",
-              cursor: "pointer",
+              display: "inline-flex", alignItems: "center", gap: 6,
+              padding: "10px 18px", borderRadius: 10,
+              border: "1.5px solid #2563eb", background: "#eff6ff",
+              fontSize: 13, fontWeight: 600, color: "#2563eb", cursor: "pointer",
             }}
           >
-            ↑ Import
+            <IconUpload /> Import
           </button>
 
           {/* New user button */}
@@ -865,32 +879,31 @@ function ExportMenu({ loading, onExport }) {
           display: "inline-flex", alignItems: "center", gap: 6,
           padding: "10px 18px", borderRadius: 10,
           border: "1.5px solid #e2e8f0", background: "#fff",
-          fontSize: 13, fontWeight: 700, color: "#475569", cursor: "pointer",
+          fontSize: 13, fontWeight: 600, color: "#475569",
+          cursor: loading ? "not-allowed" : "pointer",
           opacity: loading ? 0.6 : 1,
         }}
       >
-        {loading ? "Exporting…" : "↓ Export"} ▾
+        <IconDownload /> {loading ? "Exporting…" : "Export"} <IconChevron />
       </button>
       {open && (
         <>
-          {/* click-away overlay */}
           <div style={{ position: "fixed", inset: 0, zIndex: 99 }} onClick={() => setOpen(false)} />
           <div style={{
             position: "absolute", top: "calc(100% + 6px)", right: 0, zIndex: 100,
             background: "#fff", border: "1.5px solid #e2e8f0", borderRadius: 10,
-            boxShadow: "0 8px 24px rgba(0,0,0,0.12)", minWidth: 160, overflow: "hidden",
+            boxShadow: "0 8px 24px rgba(0,0,0,0.12)", minWidth: 190, overflow: "hidden",
           }}>
             {[
-              { fmt: "csv",  label: "Export as CSV" },
-              { fmt: "xlsx", label: "Export as Excel" },
+              { fmt: "csv",  label: "Export as CSV"   },
+              { fmt: "xlsx", label: "Export as Excel"  },
             ].map(({ fmt, label }) => (
               <button key={fmt}
                 onClick={() => { setOpen(false); onExport(fmt); }}
                 style={{
                   display: "block", width: "100%", padding: "10px 16px",
                   background: "none", border: "none", textAlign: "left",
-                  fontSize: 13, color: "#1e293b", cursor: "pointer",
-                  fontWeight: 500,
+                  fontSize: 13, color: "#1e293b", cursor: "pointer", fontWeight: 500,
                 }}
                 onMouseEnter={(e) => e.currentTarget.style.background = "#f8fafc"}
                 onMouseLeave={(e) => e.currentTarget.style.background = "none"}
