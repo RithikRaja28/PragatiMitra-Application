@@ -1,9 +1,12 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useApi } from "../../../hooks/useApi";
 import FormScreen from "../../../components/shared/FormScreen";
+import ImportWizard from "../../../components/shared/ImportWizard";
 import { S, Toast, isAuthError, formatDate } from "../../../components/shared/formUtils";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { t } from "../../../i18n/translations";
+
+const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
 /* ─── Department Form (create + edit) ───────────────────────────
    Rendered as a full screen instead of an overlay modal.
@@ -409,6 +412,171 @@ function StyledSelect({ value, onChange, children, minWidth = 180 }) {
   );
 }
 
+/* ─── SVG icons ──────────────────────────────────────────────── */
+const IconDownload = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+    <polyline points="7 10 12 15 17 10"/>
+    <line x1="12" y1="15" x2="12" y2="3"/>
+  </svg>
+);
+const IconUpload = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+    <polyline points="17 8 12 3 7 8"/>
+    <line x1="12" y1="3" x2="12" y2="15"/>
+  </svg>
+);
+const IconChevron = () => (
+  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="6 9 12 15 18 9"/>
+  </svg>
+);
+
+/* ─── Export dropdown menu ───────────────────────────────────── */
+function ExportMenu({ selectedInstitutionId }) {
+  const [open, setOpen] = useState(false);
+
+  function triggerDownload(url) {
+    const a = document.createElement("a");
+    a.href = url;
+    a.target = "_blank";
+    a.rel = "noopener noreferrer";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setOpen(false);
+  }
+
+  const exportUrl = selectedInstitutionId
+    ? `${API_BASE}/api/departments/export?institution_id=${selectedInstitutionId}`
+    : `${API_BASE}/api/departments/export`;
+
+  return (
+    <div style={{ position: "relative" }}>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        style={{
+          display: "inline-flex", alignItems: "center", gap: 6,
+          padding: "10px 18px", borderRadius: 10,
+          border: "1.5px solid #e2e8f0", background: "#fff",
+          fontSize: 13, fontWeight: 600, color: "#475569", cursor: "pointer",
+        }}
+      >
+        <IconDownload /> Export <IconChevron />
+      </button>
+      {open && (
+        <>
+          <div style={{ position: "fixed", inset: 0, zIndex: 99 }} onClick={() => setOpen(false)} />
+          <div style={{
+            position: "absolute", top: "calc(100% + 6px)", right: 0, zIndex: 100,
+            background: "#fff", border: "1.5px solid #e2e8f0", borderRadius: 10,
+            boxShadow: "0 8px 24px rgba(0,0,0,0.12)", minWidth: 220, overflow: "hidden",
+          }}>
+            {[
+              { label: "Export Departments (.xlsx)", onClick: () => triggerDownload(exportUrl) },
+              { label: "Download Import Template",   onClick: () => triggerDownload(`${API_BASE}/api/departments/export/sample`) },
+            ].map(({ label, onClick }) => (
+              <button key={label}
+                onClick={onClick}
+                style={{
+                  display: "block", width: "100%", padding: "10px 16px",
+                  background: "none", border: "none", textAlign: "left",
+                  fontSize: 13, color: "#1e293b", cursor: "pointer", fontWeight: 500,
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.background = "#f8fafc"}
+                onMouseLeave={(e) => e.currentTarget.style.background = "none"}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/* ─── Pagination ─────────────────────────────────────────────── */
+function Pagination({ page, pageSize, total, onPage, onPageSize }) {
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const from = total === 0 ? 0 : (page - 1) * pageSize + 1;
+  const to   = Math.min(page * pageSize, total);
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        marginTop: 20,
+        flexWrap: "wrap",
+        gap: 12,
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span style={{ fontSize: 13, color: "#64748b" }}>Rows per page:</span>
+        <select
+          value={pageSize}
+          onChange={(e) => onPageSize(Number(e.target.value))}
+          style={{
+            padding: "4px 8px",
+            borderRadius: 7,
+            border: "1.5px solid #e2e8f0",
+            fontSize: 13,
+            color: "#1e293b",
+            background: "#fff",
+            cursor: "pointer",
+          }}
+        >
+          {[10, 25, 100, 500].map((n) => (
+            <option key={n} value={n}>{n}</option>
+          ))}
+        </select>
+      </div>
+
+      <div style={{ fontSize: 13, color: "#64748b" }}>
+        {total === 0 ? "No results" : `${from}–${to} of ${total}`}
+      </div>
+
+      <div style={{ display: "flex", gap: 6 }}>
+        <button
+          onClick={() => onPage(page - 1)}
+          disabled={page <= 1}
+          style={{
+            padding: "6px 14px",
+            borderRadius: 8,
+            border: "1.5px solid #e2e8f0",
+            background: "#fff",
+            fontSize: 13,
+            fontWeight: 600,
+            color: page <= 1 ? "#cbd5e1" : "#1e293b",
+            cursor: page <= 1 ? "not-allowed" : "pointer",
+          }}
+        >
+          ← Prev
+        </button>
+        <button
+          onClick={() => onPage(page + 1)}
+          disabled={page >= totalPages}
+          style={{
+            padding: "6px 14px",
+            borderRadius: 8,
+            border: "1.5px solid #e2e8f0",
+            background: "#fff",
+            fontSize: 13,
+            fontWeight: 600,
+            color: page >= totalPages ? "#cbd5e1" : "#1e293b",
+            cursor: page >= totalPages ? "not-allowed" : "pointer",
+          }}
+        >
+          Next →
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /* ─── Main page ──────────────────────────────────────────────── */
 export default function DepartmentManagementPage() {
   const { lang } = useLanguage();
@@ -425,7 +593,12 @@ export default function DepartmentManagementPage() {
 
   /* formView: null = list, { mode: 'create'|'edit', entity } = form screen */
   const [formView, setFormView] = useState(null);
+  const [showImport, setShowImport] = useState(false);
   const [togglingId, setTogglingId] = useState(null);
+
+  /* Pagination */
+  const [page, setPage]         = useState(1);
+  const [pageSize, setPageSize] = useState(25);
 
   const [toast, setToast] = useState(null);
   const toastTimer = useRef(null);
@@ -438,6 +611,9 @@ export default function DepartmentManagementPage() {
       type === "error" ? 5500 : 3000
     );
   }, []);
+
+  /* Reset to page 1 when filter changes — MUST be before any early return */
+  useEffect(() => { setPage(1); }, [statusFilter, selectedInstitutionId]);
 
   /* ── Load institutions once ── */
   useEffect(() => {
@@ -469,9 +645,7 @@ export default function DepartmentManagementPage() {
     }
 
     load();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [apiFetch]);
 
   /* ── Load departments when institution changes ── */
@@ -566,11 +740,62 @@ export default function DepartmentManagementPage() {
     );
   }
 
+  /* ── Render import wizard ── */
+  if (showImport) {
+    const selectedInstitutionName =
+      institutions.find((i) => i.institution_id === selectedInstitutionId)?.institution_name || "";
+
+    return (
+      <>
+        {toast && <Toast message={toast.message} type={toast.type} />}
+        <ImportWizard
+          apiPath="/api/departments"
+          entityLabel="Departments"
+          entityIcon="🏛️"
+          onBack={() => setShowImport(false)}
+          onSuccess={(result) => {
+            setShowImport(false);
+            fetchDepartments(selectedInstitutionId);
+            showToast(
+              `Import complete: ${result.imported} department${result.imported !== 1 ? "s" : ""} added${result.updated ? `, ${result.updated} updated` : ""}.`,
+              "success"
+            );
+          }}
+          extraImportBody={{ defaultInstitutionId: selectedInstitutionId }}
+          extraSettingsSlot={
+            selectedInstitutionName ? (
+              <div
+                style={{
+                  marginTop: 12,
+                  padding: "10px 14px",
+                  background: "#eff6ff",
+                  border: "1.5px solid #bfdbfe",
+                  borderRadius: 9,
+                  fontSize: 12,
+                  color: "#1d4ed8",
+                  lineHeight: 1.55,
+                }}
+              >
+                <strong>Default institution:</strong> {selectedInstitutionName}
+                <br />
+                Rows without an <code>institution_name</code> column will use this institution.
+              </div>
+            ) : null
+          }
+        />
+      </>
+    );
+  }
+
   /* ── List view ── */
   const filteredDepts =
     statusFilter === "ALL"
       ? departments
       : departments.filter((d) => d.status === statusFilter);
+
+  const totalPages  = Math.max(1, Math.ceil(filteredDepts.length / pageSize));
+  const safePage    = Math.min(page, totalPages);
+  const paginated   = filteredDepts.slice((safePage - 1) * pageSize, safePage * pageSize);
 
   const selectedInstitutionName =
     institutions.find((i) => i.institution_id === selectedInstitutionId)?.institution_name || "";
@@ -652,28 +877,37 @@ export default function DepartmentManagementPage() {
             </div>
           )}
 
-          {/* New Department button */}
           {!loadingInstitutions && !institutionsError && institutions.length > 0 && (
-            <button
-              onClick={() => setFormView({ mode: "create", entity: null })}
-              style={{
-                padding: "10px 20px",
-                borderRadius: 10,
-                border: "none",
-                background: "#2563eb",
-                fontSize: 13,
-                fontWeight: 700,
-                color: "#fff",
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                gap: 7,
-                whiteSpace: "nowrap",
-              }}
-            >
-              <span style={{ fontSize: 18, lineHeight: 1 }}>+</span>
-              {t("New Department", lang)}
-            </button>
+            <>
+              {/* Export dropdown — self-contained */}
+              <ExportMenu selectedInstitutionId={selectedInstitutionId} />
+
+              {/* Import button */}
+              <button
+                onClick={() => setShowImport(true)}
+                style={{
+                  display: "inline-flex", alignItems: "center", gap: 6,
+                  padding: "10px 18px", borderRadius: 10,
+                  border: "1.5px solid #2563eb", background: "#eff6ff",
+                  fontSize: 13, fontWeight: 600, color: "#2563eb", cursor: "pointer",
+                }}
+              >
+                <IconUpload /> Import
+              </button>
+
+              {/* New Department button */}
+              <button
+                onClick={() => setFormView({ mode: "create", entity: null })}
+                style={{
+                  display: "inline-flex", alignItems: "center", gap: 8,
+                  padding: "10px 20px", borderRadius: 10,
+                  border: "none", background: "#2563eb",
+                  fontSize: 13, fontWeight: 700, color: "#fff", cursor: "pointer",
+                }}
+              >
+                + {t("New Department", lang)}
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -744,8 +978,8 @@ export default function DepartmentManagementPage() {
       >
         {loadingDepts ? (
           Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)
-        ) : filteredDepts.length > 0 ? (
-          filteredDepts.map((dept) => (
+        ) : paginated.length > 0 ? (
+          paginated.map((dept) => (
             <DepartmentCard
               key={dept.department_id}
               dept={dept}
@@ -781,6 +1015,17 @@ export default function DepartmentManagementPage() {
           )
         )}
       </div>
+
+      {/* ── Pagination ── */}
+      {!loadingDepts && filteredDepts.length > pageSize && (
+        <Pagination
+          page={safePage}
+          pageSize={pageSize}
+          total={filteredDepts.length}
+          onPage={setPage}
+          onPageSize={(n) => { setPageSize(n); setPage(1); }}
+        />
+      )}
     </div>
   );
 }
