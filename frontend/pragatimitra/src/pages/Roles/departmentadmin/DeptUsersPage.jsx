@@ -1,6 +1,8 @@
 import React, { useState, useCallback } from "react";
 import FormScreen from "../../../components/shared/FormScreen";
 import { S, Toast } from "../../../components/shared/formUtils";
+import { useLanguage } from "../../../i18n/LanguageContext";
+import { t } from "../../../i18n/translations";
 
 const C = {
   primary:   "#059669",
@@ -45,6 +47,7 @@ function validate(form, isEdit) {
 }
 
 function UserForm({ mode, entity, onSaved, onBack }) {
+  const { lang } = useLanguage();
   const isEdit = mode === "edit";
   const [form, setForm] = useState({
     full_name: entity?.full_name  || "",
@@ -82,19 +85,19 @@ function UserForm({ mode, entity, onSaved, onBack }) {
 
   return (
     <FormScreen
-      pageTitle="Department Users"
-      formTitle={isEdit ? "Edit User" : "Add New User"}
+      pageTitle={t("Department Users", lang)}
+      formTitle={isEdit ? t("Edit User", lang) : t("Add New User", lang)}
       formSubtitle={isEdit ? `Updating profile for ${entity?.full_name}` : "Create a department user account"}
       icon="Users"
       iconBg={C.primaryLt}
       onBack={onBack}
       onSubmit={handleSubmit}
       submitting={submitting}
-      submitLabel={isEdit ? "Save Changes" : "Create User"}
+      submitLabel={isEdit ? t("Save Changes", lang) : "Create User"}
     >
       {/* Full Name */}
       <div>
-        <label style={S.label}>Full Name</label>
+        <label style={S.label}>{t("Full Name", lang)}</label>
         <input value={form.full_name} onChange={e => set("full_name", e.target.value)}
           placeholder="e.g. Dr. Anand Rao"
           style={S.input(!!errors.full_name)} />
@@ -103,7 +106,7 @@ function UserForm({ mode, entity, onSaved, onBack }) {
 
       {/* Email */}
       <div>
-        <label style={S.label}>Email</label>
+        <label style={S.label}>{t("Email", lang)}</label>
         <input value={form.email} onChange={e => set("email", e.target.value)}
           type="email" placeholder="user@institution.edu"
           style={S.input(!!errors.email)} />
@@ -113,7 +116,7 @@ function UserForm({ mode, entity, onSaved, onBack }) {
       {/* Password (create only) */}
       {!isEdit && (
         <div>
-          <label style={S.label}>Password</label>
+          <label style={S.label}>{t("Password", lang)}</label>
           <input value={form.password} onChange={e => set("password", e.target.value)}
             type="password" placeholder="Temporary password"
             style={S.input(!!errors.password)} />
@@ -123,10 +126,10 @@ function UserForm({ mode, entity, onSaved, onBack }) {
 
       {/* Role */}
       <div>
-        <label style={S.label}>Role</label>
+        <label style={S.label}>{t("Role", lang)}</label>
         <select value={form.role} onChange={e => set("role", e.target.value)}
           style={S.select(!!errors.role)}>
-          <option value="">Select role…</option>
+          <option value="">{t("Select role…", lang)}</option>
           {DEPT_ROLES.map(r => (
             <option key={r} value={r}>{ROLE_LABELS[r]}</option>
           ))}
@@ -136,7 +139,7 @@ function UserForm({ mode, entity, onSaved, onBack }) {
 
       {/* Assign Sections */}
       <div>
-        <label style={S.label}>Assign Sections</label>
+        <label style={S.label}>{t("Assign Sections", lang)}</label>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 4 }}>
           {DEPT_SECTIONS.map(sec => (
             <label key={sec} style={{ display: "flex", alignItems: "center", gap: 8,
@@ -157,11 +160,11 @@ function UserForm({ mode, entity, onSaved, onBack }) {
       {/* Account Status (edit only) */}
       {isEdit && (
         <div>
-          <label style={S.label}>Account Status</label>
+          <label style={S.label}>{t("Account Status", lang)}</label>
           <select value={form.status} onChange={e => set("status", e.target.value)}
             style={S.select(false)}>
-            <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
+            <option value="active">{t("Active", lang)}</option>
+            <option value="inactive">{t("Inactive", lang)}</option>
           </select>
         </div>
       )}
@@ -170,25 +173,26 @@ function UserForm({ mode, entity, onSaved, onBack }) {
 }
 
 function UserList({ users, onEdit, onDeactivate, filters, setFilters }) {
+  const { lang } = useLanguage();
   return (
     <div>
       {/* Filters */}
       <div style={{ display: "flex", gap: 10, marginBottom: 16, background: C.surface,
         padding: "12px 16px", borderRadius: 10, border: `0.5px solid ${C.border}` }}>
         <input value={filters.search} onChange={e => setFilters(f => ({ ...f, search: e.target.value }))}
-          placeholder="Search by name or email…"
+          placeholder={t("Search by name or email…", lang)}
           style={{ flex: 1, padding: "7px 12px", borderRadius: 8, border: `1px solid ${C.border}`,
             outline: "none", fontSize: 13, color: C.text, fontFamily: "'Plus Jakarta Sans', sans-serif" }} />
         <select value={filters.role} onChange={e => setFilters(f => ({ ...f, role: e.target.value }))}
           style={S.select(false)}>
-          <option value="">All Roles</option>
+          <option value="">{t("All Roles", lang)}</option>
           {DEPT_ROLES.map(r => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
         </select>
         <select value={filters.status} onChange={e => setFilters(f => ({ ...f, status: e.target.value }))}
           style={S.select(false)}>
-          <option value="">All Statuses</option>
-          <option value="active">Active</option>
-          <option value="inactive">Inactive</option>
+          <option value="">{t("All Statuses", lang)}</option>
+          <option value="active">{t("Active", lang)}</option>
+          <option value="inactive">{t("Inactive", lang)}</option>
         </select>
       </div>
 
@@ -202,7 +206,7 @@ function UserList({ users, onEdit, onDeactivate, filters, setFilters }) {
                 <th key={h} style={{ fontSize: 10, fontWeight: 700, color: C.textSub,
                   textTransform: "uppercase", letterSpacing: "0.06em",
                   padding: "12px 16px", textAlign: "left", borderBottom: `0.5px solid ${C.border}` }}>
-                  {h}
+                  {t(h, lang)}
                 </th>
               ))}
             </tr>
@@ -210,7 +214,7 @@ function UserList({ users, onEdit, onDeactivate, filters, setFilters }) {
           <tbody>
             {users.length === 0 ? (
               <tr><td colSpan={6} style={{ padding: "32px", textAlign: "center", fontSize: 13, color: C.textSub }}>
-                No users match the current filters.
+                {t("No users match the current filters.", lang)}
               </td></tr>
             ) : users.map((u, i) => (
               <tr key={u.id}
@@ -246,7 +250,7 @@ function UserList({ users, onEdit, onDeactivate, filters, setFilters }) {
                 <td style={{ padding: "12px 16px", borderTop: i > 0 ? `0.5px solid ${C.border}` : "none" }}>
                   <span style={{ fontSize: 10, fontWeight: 600, padding: "3px 9px", borderRadius: 20,
                     background: STATUS_STYLE[u.status]?.bg, color: STATUS_STYLE[u.status]?.color }}>
-                    {u.status === "active" ? "Active" : "Inactive"}
+                    {u.status === "active" ? t("Active", lang) : t("Inactive", lang)}
                   </span>
                 </td>
                 <td style={{ padding: "12px 16px", borderTop: i > 0 ? `0.5px solid ${C.border}` : "none" }}>
@@ -255,13 +259,13 @@ function UserList({ users, onEdit, onDeactivate, filters, setFilters }) {
                       style={{ padding: "5px 12px", borderRadius: 7, border: `1px solid ${C.border}`,
                         background: "#fff", color: C.primary, fontSize: 11, fontWeight: 600,
                         cursor: "pointer" }}>
-                      Edit
+                      {t("Edit", lang)}
                     </button>
                     <button onClick={() => onDeactivate(u.id)}
                       style={{ padding: "5px 12px", borderRadius: 7, border: "1px solid #fee2e2",
                         background: "#fff", color: "#dc2626", fontSize: 11, fontWeight: 600,
                         cursor: "pointer" }}>
-                      {u.status === "active" ? "Deactivate" : "Activate"}
+                      {u.status === "active" ? t("Deactivate", lang) : t("Activate", lang)}
                     </button>
                   </div>
                 </td>
@@ -275,6 +279,7 @@ function UserList({ users, onEdit, onDeactivate, filters, setFilters }) {
 }
 
 export default function DeptUsersPage() {
+  const { lang } = useLanguage();
   const [users,     setUsers]     = useState(INIT_USERS);
   const [formView,  setFormView]  = useState(null);
   const [toast,     setToast]     = useState(null);
@@ -336,11 +341,11 @@ export default function DeptUsersPage() {
             background: C.primaryLt, borderRadius: 8, padding: "4px 12px", marginBottom: 12 }}>
             <div style={{ width: 7, height: 7, borderRadius: "50%", background: C.primary }} />
             <span style={{ fontSize: 11, fontWeight: 600, color: C.primary, textTransform: "uppercase", letterSpacing: 1 }}>
-              Department Admin
+              {t("Department Admin", lang)}
             </span>
           </div>
           <h1 style={{ fontSize: 24, fontWeight: 700, color: "#1e293b", letterSpacing: "-0.4px", marginBottom: 6 }}>
-            Department Users
+            {t("Department Users", lang)}
           </h1>
           <p style={{ color: "#94a3b8", fontSize: 14 }}>
             Manage user accounts, roles, and section assignments for Samhita Siddhanta.
@@ -350,7 +355,7 @@ export default function DeptUsersPage() {
           style={{ padding: "10px 20px", borderRadius: 10, border: "none", background: C.primary,
             color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer",
             boxShadow: "0 2px 8px rgba(5,150,105,0.3)", whiteSpace: "nowrap" }}>
-          + New User
+          {t("+ New User", lang)}
         </button>
       </div>
 

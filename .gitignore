@@ -10,6 +10,7 @@ node_modules/
 # ── Log files (generated at runtime, not source code) ────────
 backend/logs/
 *.log
+backend/.env
 
 # ── Build output ─────────────────────────────────────────────
 frontend/pragatimitra/dist/

@@ -1,4 +1,6 @@
 import React from "react";
+import { useLanguage } from "../../../i18n/LanguageContext";
+import { t } from "../../../i18n/translations";
 
 const C = {
   primary:   "#d97706",
@@ -43,6 +45,7 @@ const STATS = [
 ];
 
 export default function NodalDashboardPage() {
+  const { lang } = useLanguage();
   return (
     <div style={{ padding: "24px 28px", fontFamily: "'Plus Jakarta Sans', sans-serif",
       display: "flex", flexDirection: "column", gap: 14, background: C.bg, minHeight: "100vh" }}>
@@ -52,9 +55,9 @@ export default function NodalDashboardPage() {
         <div style={{ display: "inline-flex", alignItems: "center", gap: 6,
           background: C.primaryLt, borderRadius: 6, padding: "3px 11px", marginBottom: 8 }}>
           <span style={{ width: 6, height: 6, borderRadius: "50%", background: C.primary }} />
-          <span style={{ fontSize: 10, fontWeight: 700, color: C.primary, textTransform: "uppercase", letterSpacing: "0.08em" }}>Dept. Nodal Officer</span>
+          <span style={{ fontSize: 10, fontWeight: 700, color: C.primary, textTransform: "uppercase", letterSpacing: "0.08em" }}>{t("Dept. Nodal Officer", lang)}</span>
         </div>
-        <h1 style={{ fontSize: 22, fontWeight: 700, color: C.text, margin: 0, letterSpacing: "-0.4px" }}>My Dashboard</h1>
+        <h1 style={{ fontSize: 22, fontWeight: 700, color: C.text, margin: 0, letterSpacing: "-0.4px" }}>{t("My Dashboard", lang)}</h1>
         <p style={{ fontSize: 13, color: C.textSub, margin: "4px 0 0" }}>Annual Report 2026 — Samhita Siddhanta</p>
       </div>
 
@@ -63,9 +66,9 @@ export default function NodalDashboardPage() {
         {STATS.map(s => (
           <div key={s.label} style={{ ...card, padding: "16px 18px", position: "relative", overflow: "hidden" }}>
             <div style={{ fontSize: 10, fontWeight: 700, color: C.textSub, textTransform: "uppercase",
-              letterSpacing: "0.07em", marginBottom: 8 }}>{s.label}</div>
+              letterSpacing: "0.07em", marginBottom: 8 }}>{t(s.label, lang)}</div>
             <div style={{ fontSize: 32, fontWeight: 700, color: s.color, lineHeight: 1, marginBottom: 4 }}>{s.value}</div>
-            <div style={{ fontSize: 11, color: C.textSub }}>{s.sub}</div>
+            <div style={{ fontSize: 11, color: C.textSub }}>{t(s.sub, lang)}</div>
             <div style={{ position: "absolute", bottom: 0, left: 0, height: 3,
               width: `${s.bar}%`, background: s.color, borderRadius: "0 2px 2px 0" }} />
           </div>
@@ -77,7 +80,7 @@ export default function NodalDashboardPage() {
 
         {/* Section status list */}
         <div style={card}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 2 }}>My Sections — Status Overview</div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 2 }}>{t("My Sections — Status Overview", lang)}</div>
           <div style={{ fontSize: 11, color: C.textSub, marginBottom: 16 }}>Click a section in Assigned Sections to edit</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {SECTIONS.map((s, i) => (
@@ -92,7 +95,7 @@ export default function NodalDashboardPage() {
                   </div>
                   <div style={{ display: "flex", gap: 16 }}>
                     <div style={{ fontSize: 11, color: C.textSub }}>
-                      Deadline: <span style={{ fontWeight: 600,
+                      {t("Deadline", lang)}: <span style={{ fontWeight: 600,
                         color: new Date(s.deadline) < new Date() ? "#dc2626" : C.text }}>{s.deadline}</span>
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -103,7 +106,7 @@ export default function NodalDashboardPage() {
                       </div>
                       <span style={{ fontSize: 10, color: C.textSub }}>{s.completion}%</span>
                     </div>
-                    <div style={{ fontSize: 11, color: C.textSub }}>Updated {s.lastUpdate}</div>
+                    <div style={{ fontSize: 11, color: C.textSub }}>{t("Updated", lang)} {s.lastUpdate}</div>
                   </div>
                 </div>
               </div>
@@ -116,7 +119,7 @@ export default function NodalDashboardPage() {
 
           {/* Overall progress */}
           <div style={card}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 12 }}>Overall progress</div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 12 }}>{t("Overall progress", lang)}</div>
             <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10 }}>
               <div style={{ position: "relative", width: 70, height: 70, flexShrink: 0 }}>
                 <svg viewBox="0 0 36 36" style={{ width: 70, height: 70, transform: "rotate(-90deg)" }}>
@@ -128,9 +131,9 @@ export default function NodalDashboardPage() {
                   justifyContent: "center", fontSize: 14, fontWeight: 700, color: C.primary }}>57%</div>
               </div>
               <div>
-                <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>57% complete</div>
-                <div style={{ fontSize: 11, color: C.textSub, marginTop: 2 }}>Across 4 sections</div>
-                <div style={{ fontSize: 11, color: "#dc2626", marginTop: 4, fontWeight: 600 }}>1 overdue</div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{t("57% complete", lang)}</div>
+                <div style={{ fontSize: 11, color: C.textSub, marginTop: 2 }}>{t("Across 4 sections", lang)}</div>
+                <div style={{ fontSize: 11, color: "#dc2626", marginTop: 4, fontWeight: 600 }}>{t("1 overdue", lang)}</div>
               </div>
             </div>
           </div>
@@ -143,7 +146,7 @@ export default function NodalDashboardPage() {
                 <path d="M8 5v3.5" stroke="#dc2626" strokeWidth="1.5" strokeLinecap="round"/>
                 <circle cx="8" cy="11" r="0.75" fill="#dc2626"/>
               </svg>
-              <span style={{ fontSize: 12, fontWeight: 700, color: "#991b1b" }}>Overdue sections</span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: "#991b1b" }}>{t("Overdue sections", lang)}</span>
             </div>
             {SECTIONS.filter(s => s.status === "Overdue").map((s, i) => (
               <div key={i} style={{ padding: "7px 0", borderTop: i > 0 ? "0.5px solid #fecdd3" : "none" }}>
@@ -156,14 +159,14 @@ export default function NodalDashboardPage() {
             {SECTIONS.filter(s => s.status === "Sent Back").map((s, i) => (
               <div key={i} style={{ padding: "7px 0", borderTop: "0.5px solid #fecdd3" }}>
                 <div style={{ fontSize: 11, fontWeight: 600, color: "#b45309" }}>{s.name}</div>
-                <div style={{ fontSize: 10, color: "#d97706", marginTop: 2 }}>Sent back — needs revision</div>
+                <div style={{ fontSize: 10, color: "#d97706", marginTop: 2 }}>{t("Sent back — needs revision", lang)}</div>
               </div>
             ))}
           </div>
 
           {/* Quick actions */}
           <div style={card}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 10 }}>Quick Actions</div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 10 }}>{t("Quick Actions", lang)}</div>
             {[
               { label: "Edit a section",       icon: "✏️" },
               { label: "View submissions",      icon: "📤" },
@@ -177,7 +180,7 @@ export default function NodalDashboardPage() {
                 onMouseEnter={e => e.currentTarget.style.background = C.primaryLt}
                 onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
                 <span>{a.icon}</span>
-                {a.label}
+                {t(a.label, lang)}
               </button>
             ))}
           </div>

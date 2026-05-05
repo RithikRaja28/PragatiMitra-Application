@@ -2,6 +2,8 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useApi } from "../../../hooks/useApi";
 import FormScreen from "../../../components/shared/FormScreen";
 import { S, Toast, isAuthError, formatDate } from "../../../components/shared/formUtils";
+import { useLanguage } from "../../../i18n/LanguageContext";
+import { t } from "../../../i18n/translations";
 
 /* ─── Department Form (create + edit) ───────────────────────────
    Rendered as a full screen instead of an overlay modal.
@@ -17,6 +19,7 @@ function DepartmentForm({
   onSaved,
   onBack,
 }) {
+  const { lang } = useLanguage();
   const { apiFetch } = useApi();
   const isEdit = mode === "edit";
 
@@ -100,8 +103,8 @@ function DepartmentForm({
 
   return (
     <FormScreen
-      pageTitle="Departments"
-      formTitle={isEdit ? "Edit Department" : "New Department"}
+      pageTitle={t("Departments", lang)}
+      formTitle={isEdit ? t("Edit Department", lang) : t("New Department", lang)}
       formSubtitle={
         isEdit
           ? "Update name, code, or status."
@@ -112,13 +115,13 @@ function DepartmentForm({
       onBack={onBack}
       onSubmit={handleSubmit}
       submitting={submitting}
-      submitLabel={isEdit ? "Save Changes" : "Create Department"}
+      submitLabel={isEdit ? t("Save Changes", lang) : "Create Department"}
       submitError={submitError}
     >
       {/* Institution (create only) */}
       {!isEdit && (
         <div>
-          <label style={S.label}>Institution</label>
+          <label style={S.label}>{t("Institution", lang)}</label>
           <select
             value={form.institution_id}
             onChange={(e) => set("institution_id", e.target.value)}
@@ -139,7 +142,7 @@ function DepartmentForm({
 
       {/* Name */}
       <div>
-        <label style={S.label}>Department Name</label>
+        <label style={S.label}>{t("Department Name", lang)}</label>
         <input
           ref={nameRef}
           type="text"
@@ -155,7 +158,7 @@ function DepartmentForm({
 
       {/* Code */}
       <div>
-        <label style={S.label}>Department Code</label>
+        <label style={S.label}>{t("Department Code", lang)}</label>
         <input
           type="text"
           placeholder="e.g. CS or COMP_SCI"
@@ -169,7 +172,7 @@ function DepartmentForm({
           <div style={S.errorText}>{fieldErrors.code}</div>
         ) : (
           <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 4 }}>
-            Auto-uppercased. Letters, digits, hyphens, underscores only.
+            {t("Auto-uppercased.", lang)} Letters, digits, hyphens, underscores only.
           </div>
         )}
       </div>
@@ -177,15 +180,15 @@ function DepartmentForm({
       {/* Status (edit only) */}
       {isEdit && (
         <div>
-          <label style={S.label}>Status</label>
+          <label style={S.label}>{t("Status", lang)}</label>
           <select
             value={form.status}
             onChange={(e) => set("status", e.target.value)}
             disabled={submitting}
             style={S.select(!!fieldErrors.status)}
           >
-            <option value="ACTIVE">Active</option>
-            <option value="INACTIVE">Inactive</option>
+            <option value="ACTIVE">{t("Active", lang)}</option>
+            <option value="INACTIVE">{t("Inactive", lang)}</option>
           </select>
           {fieldErrors.status && <div style={S.errorText}>{fieldErrors.status}</div>}
           {goingInactive && (
@@ -212,6 +215,7 @@ function DepartmentForm({
 
 /* ─── Department Card ────────────────────────────────────────── */
 function DepartmentCard({ dept, onEdit, onToggleStatus, isToggling }) {
+  const { lang } = useLanguage();
   const isActive = dept.status === "ACTIVE";
 
   return (
@@ -258,7 +262,7 @@ function DepartmentCard({ dept, onEdit, onToggleStatus, isToggling }) {
           <div>
             <div style={{ fontSize: 14, fontWeight: 700, color: "#1e293b" }}>{dept.name}</div>
             <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>
-              Since {formatDate(dept.created_at)}
+              {t("Since", lang)} {formatDate(dept.created_at)}
             </div>
           </div>
         </div>
@@ -276,7 +280,7 @@ function DepartmentCard({ dept, onEdit, onToggleStatus, isToggling }) {
             marginLeft: 8,
           }}
         >
-          {isActive ? "Active" : "Inactive"}
+          {isActive ? t("Active", lang) : t("Inactive", lang)}
         </span>
       </div>
 
@@ -293,14 +297,14 @@ function DepartmentCard({ dept, onEdit, onToggleStatus, isToggling }) {
         }}
       >
         <div>
-          <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 2 }}>Members</div>
+          <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 2 }}>{t("Members", lang)}</div>
           <div style={{ fontSize: 20, fontWeight: 700, color: "#1e293b" }}>
             {Number(dept.member_count)}
           </div>
         </div>
         <div style={{ width: 1, background: "#e2e8f0" }} />
         <div>
-          <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 2 }}>Code</div>
+          <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 2 }}>{t("Code", lang)}</div>
           <div
             style={{ fontSize: 13, fontWeight: 600, color: "#1e293b", fontFamily: "monospace" }}
           >
@@ -324,9 +328,9 @@ function DepartmentCard({ dept, onEdit, onToggleStatus, isToggling }) {
             color: "#2563eb",
             cursor: "pointer",
           }}
-          title="Edit department"
+          title={t("Edit department", lang)}
         >
-          Edit
+          {t("Edit", lang)}
         </button>
         <button
           onClick={() => onToggleStatus(dept)}
@@ -344,9 +348,9 @@ function DepartmentCard({ dept, onEdit, onToggleStatus, isToggling }) {
             cursor: isToggling ? "not-allowed" : "pointer",
             opacity: isToggling ? 0.6 : 1,
           }}
-          title={isActive ? "Deactivate department" : "Activate department"}
+          title={isActive ? t("Deactivate department", lang) : t("Activate department", lang)}
         >
-          {isToggling ? "…" : isActive ? "Deactivate" : "Activate"}
+          {isToggling ? "…" : isActive ? t("Deactivate", lang) : t("Activate", lang)}
         </button>
       </div>
     </div>
@@ -407,6 +411,7 @@ function StyledSelect({ value, onChange, children, minWidth = 180 }) {
 
 /* ─── Main page ──────────────────────────────────────────────── */
 export default function DepartmentManagementPage() {
+  const { lang } = useLanguage();
   const { apiFetch } = useApi();
 
   const [institutions, setInstitutions] = useState([]);
@@ -609,7 +614,7 @@ export default function DepartmentManagementPage() {
                 letterSpacing: 1,
               }}
             >
-              Dept Management
+              {t("Dept Management", lang)}
             </span>
           </div>
           <h1
@@ -621,7 +626,7 @@ export default function DepartmentManagementPage() {
               marginBottom: 6,
             }}
           >
-            Departments
+            {t("Departments", lang)}
           </h1>
           <p style={{ color: "#94a3b8", fontSize: 14 }}>
             Create and manage departments across institutions.
@@ -632,7 +637,7 @@ export default function DepartmentManagementPage() {
           {/* Institution selector */}
           {!loadingInstitutions && !institutionsError && institutions.length > 0 && (
             <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              <span style={{ ...S.label, marginBottom: 4 }}>Institution</span>
+              <span style={{ ...S.label, marginBottom: 4 }}>{t("Institution", lang)}</span>
               <StyledSelect
                 value={selectedInstitutionId ?? ""}
                 onChange={(v) => setSelectedInstitutionId(v)}
@@ -667,7 +672,7 @@ export default function DepartmentManagementPage() {
               }}
             >
               <span style={{ fontSize: 18, lineHeight: 1 }}>+</span>
-              New Department
+              {t("New Department", lang)}
             </button>
           )}
         </div>
@@ -704,7 +709,7 @@ export default function DepartmentManagementPage() {
         >
           <div style={{ fontSize: 13, color: "#64748b" }}>
             {loadingDepts ? (
-              "Loading departments…"
+              t("Loading departments…", lang)
             ) : (
               <>
                 <strong style={{ color: "#1e293b" }}>{filteredDepts.length}</strong>{" "}
@@ -722,9 +727,9 @@ export default function DepartmentManagementPage() {
           </div>
 
           <StyledSelect value={statusFilter} onChange={setStatusFilter} minWidth={150}>
-            <option value="ALL">All Statuses</option>
-            <option value="ACTIVE">Active</option>
-            <option value="INACTIVE">Inactive</option>
+            <option value="ALL">{t("All Statuses", lang)}</option>
+            <option value="ACTIVE">{t("Active", lang)}</option>
+            <option value="INACTIVE">{t("Inactive", lang)}</option>
           </StyledSelect>
         </div>
       )}

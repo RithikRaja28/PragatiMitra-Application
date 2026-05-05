@@ -1,4 +1,6 @@
 import React, { useState } from "react";
+import { useLanguage } from "../../../i18n/LanguageContext";
+import { t } from "../../../i18n/translations";
 
 const C = {
   primary:   "#d97706",
@@ -66,6 +68,7 @@ const SECTIONS = [
 ];
 
 export default function AssignedSectionsPage() {
+  const { lang } = useLanguage();
   const [filters,        setFilters]        = useState({ search: "", status: "" });
   const [selectedSection, setSelectedSection] = useState(null);
   const [activeTab,      setActiveTab]      = useState("content");
@@ -121,7 +124,7 @@ export default function AssignedSectionsPage() {
           <button onClick={() => setSelectedSection(null)}
             style={{ background: "none", border: "none", cursor: "pointer", color: C.textSub,
               fontSize: 13, display: "flex", alignItems: "center", gap: 4, padding: 0 }}>
-            ← Assigned Sections
+            {t("← Assigned Sections", lang)}
           </button>
           <span style={{ color: C.textSub }}>·</span>
           <span style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{selectedSection.name}</span>
@@ -133,7 +136,7 @@ export default function AssignedSectionsPage() {
           {saveFlash && (
             <span style={{ marginLeft: "auto", fontSize: 11, fontWeight: 600, color: "#059669",
               background: "#dcfce7", padding: "3px 10px", borderRadius: 20 }}>
-              ✓ Saved
+              ✓ {t("Saved", lang)}
             </span>
           )}
         </div>
@@ -143,15 +146,15 @@ export default function AssignedSectionsPage() {
           borderRadius: 10, border: `0.5px solid ${C.border}`, width: "fit-content" }}>
           {[
             { id: "content",  label: "Edit Content" },
-            { id: "comments", label: `Comments${unresolvedCount > 0 ? ` (${unresolvedCount})` : ""}` },
+            { id: "comments", label: `${t("Comments", lang)}${unresolvedCount > 0 ? ` (${unresolvedCount})` : ""}` },
             { id: "versions", label: "Version History" },
-          ].map(t => (
-            <button key={t.id} onClick={() => setActiveTab(t.id)}
+          ].map(tab => (
+            <button key={tab.id} onClick={() => setActiveTab(tab.id)}
               style={{ padding: "7px 18px", borderRadius: 8, border: "none",
-                background: activeTab === t.id ? C.primary : "transparent",
-                color: activeTab === t.id ? "#fff" : C.textSub,
+                background: activeTab === tab.id ? C.primary : "transparent",
+                color: activeTab === tab.id ? "#fff" : C.textSub,
                 fontSize: 12, fontWeight: 600, cursor: "pointer", transition: "all .12s" }}>
-              {t.label}
+              {tab.id === "content" ? t("Edit Content", lang) : tab.id === "versions" ? t("Version History", lang) : tab.label}
             </button>
           ))}
         </div>
@@ -163,7 +166,7 @@ export default function AssignedSectionsPage() {
             <div style={{ background: C.surface, borderRadius: 12, border: `0.5px solid ${C.border}`,
               padding: "10px 8px", height: "fit-content" }}>
               <div style={{ fontSize: 10, fontWeight: 700, color: C.textSub, textTransform: "uppercase",
-                letterSpacing: "0.07em", padding: "4px 8px 8px" }}>Subsections</div>
+                letterSpacing: "0.07em", padding: "4px 8px 8px" }}>{t("Subsections", lang)}</div>
               {selectedSection.subsections.map((ss, i) => (
                 <button key={ss.id} onClick={() => { setActiveSubIdx(i); setEditContent(ss.content); setEditing(false); }}
                   style={{ display: "block", width: "100%", padding: "8px 10px", borderRadius: 8, border: "none",
@@ -185,7 +188,7 @@ export default function AssignedSectionsPage() {
                 <div>
                   <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>{sub?.title}</div>
                   <div style={{ fontSize: 11, color: C.textSub, marginTop: 2 }}>
-                    Status: <span style={{ fontWeight: 600, color: STATUS_STYLE[sub?.status]?.color }}>{sub?.status}</span>
+                    {t("Status", lang)}: <span style={{ fontWeight: 600, color: STATUS_STYLE[sub?.status]?.color }}>{sub?.status ? t(sub.status, lang) : ""}</span>
                   </div>
                 </div>
                 <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
@@ -193,28 +196,28 @@ export default function AssignedSectionsPage() {
                   <select style={{ padding: "6px 28px 6px 10px", borderRadius: 8, border: `1px solid ${C.border}`,
                     fontSize: 12, color: C.text, background: "#fff", cursor: "pointer", outline: "none",
                     fontFamily: "'Plus Jakarta Sans', sans-serif", appearance: "none" }}>
-                    <option value="Draft">Draft</option>
-                    <option value="In Progress">In Progress</option>
-                    <option value="In Review">In Review</option>
-                    <option value="Completed">Completed</option>
+                    <option value="Draft">{t("Draft", lang)}</option>
+                    <option value="In Progress">{t("In Progress", lang)}</option>
+                    <option value="In Review">{t("In Review", lang)}</option>
+                    <option value="Completed">{t("Completed", lang)}</option>
                   </select>
                   {!editing ? (
                     <button onClick={() => setEditing(true)}
                       style={{ padding: "7px 16px", borderRadius: 8, border: `1px solid ${C.border}`,
                         background: C.primaryLt, color: C.primary, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
-                      Edit
+                      {t("Edit", lang)}
                     </button>
                   ) : (
                     <>
                       <button onClick={() => setEditing(false)}
                         style={{ padding: "7px 14px", borderRadius: 8, border: `1px solid ${C.border}`,
                           background: "#fff", color: C.textSub, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
-                        Cancel
+                        {t("Cancel", lang)}
                       </button>
                       <button onClick={handleSave}
                         style={{ padding: "7px 16px", borderRadius: 8, border: "none",
                           background: C.primary, color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
-                        Save
+                        {t("Save", lang)}
                       </button>
                     </>
                   )}
@@ -238,7 +241,7 @@ export default function AssignedSectionsPage() {
               {/* Attachments */}
               <div style={{ marginTop: 20, borderTop: `0.5px solid ${C.border}`, paddingTop: 14 }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: C.textSub, textTransform: "uppercase",
-                  letterSpacing: "0.07em", marginBottom: 10 }}>Attachments</div>
+                  letterSpacing: "0.07em", marginBottom: 10 }}>{t("Attachments", lang)}</div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   {selectedSection.files.map((f, i) => (
                     <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 12px",
@@ -253,7 +256,7 @@ export default function AssignedSectionsPage() {
                   <button style={{ padding: "6px 14px", borderRadius: 8, border: `1px dashed ${C.border}`,
                     background: "transparent", color: C.textSub, fontSize: 11, cursor: "pointer",
                     fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
-                    + Upload file
+                    {t("+ Upload file", lang)}
                   </button>
                 </div>
               </div>
@@ -266,11 +269,11 @@ export default function AssignedSectionsPage() {
           <div style={{ background: C.surface, borderRadius: 12, border: `0.5px solid ${C.border}`,
             padding: "20px 24px", maxWidth: 680 }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 16 }}>
-              Threaded Comments ({selectedSection.comments.length})
+              {t("Threaded Comments", lang)} ({selectedSection.comments.length})
             </div>
 
             {selectedSection.comments.length === 0 && (
-              <div style={{ color: C.textSub, fontSize: 13, padding: "16px 0" }}>No comments yet.</div>
+              <div style={{ color: C.textSub, fontSize: 13, padding: "16px 0" }}>{t("No comments yet.", lang)}</div>
             )}
 
             <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 20 }}>
@@ -286,7 +289,7 @@ export default function AssignedSectionsPage() {
                     </div>
                     {c.resolved && (
                       <span style={{ fontSize: 10, fontWeight: 600, color: "#166534",
-                        background: "#dcfce7", padding: "2px 8px", borderRadius: 20 }}>Resolved</span>
+                        background: "#dcfce7", padding: "2px 8px", borderRadius: 20 }}>{t("Resolved", lang)}</span>
                     )}
                   </div>
                   <div style={{ fontSize: 13, color: C.text, marginTop: 4, lineHeight: 1.55 }}>{c.text}</div>
@@ -296,10 +299,10 @@ export default function AssignedSectionsPage() {
 
             <div>
               <div style={{ fontSize: 11, fontWeight: 700, color: C.textSub, textTransform: "uppercase",
-                letterSpacing: "0.07em", marginBottom: 8 }}>Add Comment</div>
+                letterSpacing: "0.07em", marginBottom: 8 }}>{t("Add Comment", lang)}</div>
               <div style={{ display: "flex", gap: 8 }}>
                 <textarea value={newComment} onChange={e => setNewComment(e.target.value)}
-                  placeholder="Write a comment…" rows={3}
+                  placeholder={t("Write a comment…", lang)} rows={3}
                   style={{ flex: 1, fontSize: 12, padding: "10px 12px", borderRadius: 9,
                     border: `1.5px solid ${C.border}`, outline: "none", resize: "none",
                     fontFamily: "'Plus Jakarta Sans', sans-serif", color: C.text }} />
@@ -307,7 +310,7 @@ export default function AssignedSectionsPage() {
                   style={{ alignSelf: "flex-end", padding: "9px 18px", borderRadius: 9,
                     border: "none", background: C.primary, color: "#fff",
                     fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
-                  Post
+                  {t("Post", lang)}
                 </button>
               </div>
             </div>
@@ -318,8 +321,8 @@ export default function AssignedSectionsPage() {
         {activeTab === "versions" && (
           <div style={{ background: C.surface, borderRadius: 12, border: `0.5px solid ${C.border}`,
             padding: "20px 24px" }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 4 }}>Version History</div>
-            <div style={{ fontSize: 11, color: C.textSub, marginBottom: 16 }}>Read only — select two versions to compare</div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 4 }}>{t("Version History", lang)}</div>
+            <div style={{ fontSize: 11, color: C.textSub, marginBottom: 16 }}>{t("Read only — select two versions to compare", lang)}</div>
 
             <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 20 }}>
               <thead>
@@ -327,7 +330,7 @@ export default function AssignedSectionsPage() {
                   {["Version", "Date", "Edited By", "Note", "Compare"].map(h => (
                     <th key={h} style={{ fontSize: 10, fontWeight: 700, color: C.textSub,
                       textTransform: "uppercase", letterSpacing: "0.07em",
-                      padding: "0 0 10px", textAlign: "left" }}>{h}</th>
+                      padding: "0 0 10px", textAlign: "left" }}>{t(h, lang)}</th>
                   ))}
                 </tr>
               </thead>
@@ -349,7 +352,7 @@ export default function AssignedSectionsPage() {
                           disabled={!compareVers.includes(v.version) && compareVers[0] !== null && compareVers[1] !== null}
                           onChange={e => toggleCompare(v.version, e.target.checked)}
                           style={{ width: 13, height: 13, cursor: "pointer", accentColor: C.primary }} />
-                        <span style={{ fontSize: 11, color: C.textSub }}>Select</span>
+                        <span style={{ fontSize: 11, color: C.textSub }}>{t("Select", lang)}</span>
                       </label>
                     </td>
                   </tr>
@@ -367,7 +370,7 @@ export default function AssignedSectionsPage() {
                   <button onClick={() => setCompareVers([null, null])}
                     style={{ padding: "4px 12px", borderRadius: 7, border: "none",
                       background: C.primary, color: "#fff", fontSize: 11, cursor: "pointer" }}>
-                    Clear
+                    {t("Clear", lang)}
                   </button>
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
@@ -380,7 +383,7 @@ export default function AssignedSectionsPage() {
                           {ver} — {v?.date}
                         </div>
                         <div style={{ fontSize: 12, color: C.text }}>{v?.note}</div>
-                        <div style={{ fontSize: 11, color: C.textSub, marginTop: 4 }}>Edited by {v?.editedBy}</div>
+                        <div style={{ fontSize: 11, color: C.textSub, marginTop: 4 }}>{t("Edited by", lang)} {v?.editedBy}</div>
                       </div>
                     );
                   })}
@@ -402,9 +405,9 @@ export default function AssignedSectionsPage() {
         <div style={{ display: "inline-flex", alignItems: "center", gap: 6,
           background: C.primaryLt, borderRadius: 6, padding: "3px 11px", marginBottom: 8 }}>
           <span style={{ width: 6, height: 6, borderRadius: "50%", background: C.primary }} />
-          <span style={{ fontSize: 10, fontWeight: 700, color: C.primary, textTransform: "uppercase", letterSpacing: "0.08em" }}>Assigned Sections</span>
+          <span style={{ fontSize: 10, fontWeight: 700, color: C.primary, textTransform: "uppercase", letterSpacing: "0.08em" }}>{t("Assigned Sections", lang)}</span>
         </div>
-        <h1 style={{ fontSize: 22, fontWeight: 700, color: C.text, margin: 0, letterSpacing: "-0.4px" }}>My Assigned Sections</h1>
+        <h1 style={{ fontSize: 22, fontWeight: 700, color: C.text, margin: 0, letterSpacing: "-0.4px" }}>{t("My Assigned Sections", lang)}</h1>
         <p style={{ fontSize: 13, color: C.textSub, margin: "4px 0 0" }}>Click any section to edit content, view comments, or compare versions</p>
       </div>
 
@@ -412,18 +415,18 @@ export default function AssignedSectionsPage() {
       <div style={{ display: "flex", gap: 10, marginBottom: 16, background: C.surface,
         padding: "12px 16px", borderRadius: 10, border: `0.5px solid ${C.border}` }}>
         <input value={filters.search} onChange={e => setFilters(f => ({ ...f, search: e.target.value }))}
-          placeholder="Search sections…"
+          placeholder={t("Search sections…", lang)}
           style={{ flex: 1, padding: "7px 12px", borderRadius: 8, border: `1px solid ${C.border}`,
             outline: "none", fontSize: 13, color: C.text, fontFamily: "'Plus Jakarta Sans', sans-serif" }} />
         <select value={filters.status} onChange={e => setFilters(f => ({ ...f, status: e.target.value }))}
           style={{ padding: "7px 28px 7px 12px", borderRadius: 8, border: `1px solid ${C.border}`,
             outline: "none", fontSize: 13, color: C.text, background: "#fff",
             fontFamily: "'Plus Jakarta Sans', sans-serif", appearance: "none", cursor: "pointer" }}>
-          <option value="">All Statuses</option>
-          <option value="In Progress">In Progress</option>
-          <option value="Sent Back">Sent Back</option>
-          <option value="Overdue">Overdue</option>
-          <option value="Submitted">Submitted</option>
+          <option value="">{t("All Statuses", lang)}</option>
+          <option value="In Progress">{t("In Progress", lang)}</option>
+          <option value="Sent Back">{t("Sent Back", lang)}</option>
+          <option value="Overdue">{t("Overdue", lang)}</option>
+          <option value="Submitted">{t("Submitted", lang)}</option>
         </select>
       </div>
 
@@ -432,7 +435,7 @@ export default function AssignedSectionsPage() {
         {filteredSections.length === 0 ? (
           <div style={{ padding: "32px", textAlign: "center", fontSize: 13, color: C.textSub,
             background: C.surface, borderRadius: 12, border: `0.5px solid ${C.border}` }}>
-            No sections match the current filters.
+            {t("No sections match the current filters.", lang)}
           </div>
         ) : filteredSections.map(sec => (
           <div key={sec.id} onClick={() => openSection(sec)}
@@ -454,13 +457,13 @@ export default function AssignedSectionsPage() {
                 <div style={{ display: "flex", gap: 24, flexWrap: "wrap" }}>
                   <div>
                     <div style={{ fontSize: 10, fontWeight: 700, color: C.textSub,
-                      textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 2 }}>Deadline</div>
+                      textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 2 }}>{t("Deadline", lang)}</div>
                     <div style={{ fontSize: 12, fontWeight: 600,
                       color: new Date(sec.deadline) < new Date() ? "#dc2626" : C.text }}>{sec.deadline}</div>
                   </div>
                   <div>
                     <div style={{ fontSize: 10, fontWeight: 700, color: C.textSub,
-                      textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 2 }}>Completion</div>
+                      textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 2 }}>{t("Completion", lang)}</div>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                       <div style={{ width: 88, height: 6, background: "#e0e7ff", borderRadius: 3, overflow: "hidden" }}>
                         <div style={{ height: "100%", width: `${sec.completion}%`, borderRadius: 3,
@@ -471,7 +474,7 @@ export default function AssignedSectionsPage() {
                   </div>
                   <div>
                     <div style={{ fontSize: 10, fontWeight: 700, color: C.textSub,
-                      textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 2 }}>Subsections</div>
+                      textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 2 }}>{t("Subsections", lang)}</div>
                     <div style={{ fontSize: 12, color: C.text }}>{sec.subsections.length}</div>
                   </div>
                 </div>

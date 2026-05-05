@@ -1,5 +1,7 @@
 import React from "react";
 import { S } from "./formUtils";
+import { useLanguage } from "../../i18n/LanguageContext";
+import { t } from "../../i18n/translations";
 
 /**
  * FormScreen — full-page create/edit form that replaces the content area.
@@ -35,6 +37,7 @@ export default function FormScreen({
   submitError,
   children,
 }) {
+  const { lang } = useLanguage();
   return (
     <div
       style={{
@@ -63,7 +66,7 @@ export default function FormScreen({
           opacity: submitting ? 0.5 : 1,
         }}
       >
-        ← Back to {pageTitle}
+        {t("← Back to", lang)} {pageTitle}
       </button>
 
       {/* ── Form card ── */}
@@ -162,14 +165,14 @@ export default function FormScreen({
               disabled={submitting}
               style={S.btnGhost}
             >
-              Cancel
+              {t("Cancel", lang)}
             </button>
             <button
               type="submit"
               disabled={submitting}
               style={S.btnPrimary(submitting)}
             >
-              {submitting ? "Saving…" : submitLabel}
+              {submitting ? t("Saving…", lang) : submitLabel}
             </button>
           </div>
         </form>
