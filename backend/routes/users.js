@@ -217,14 +217,15 @@ router.post(
 
     try {
       const [{ rows: institutions }, { rows: departments }, { rows: roles }] = await Promise.all([
-        pool.query("SELECT institution_id, LOWER(institution_name) AS name_lower FROM institutions WHERE status = 'ACTIVE'"),
+        pool.query("SELECT institution_id, LOWER(institution_name) AS name_lower, LOWER(COALESCE(email_domain,'')) AS email_domain FROM institutions WHERE status = 'ACTIVE'"),
         pool.query("SELECT department_id, LOWER(name) AS name_lower, institution_id FROM departments WHERE status = 'ACTIVE'"),
         pool.query("SELECT id, LOWER(name) AS name_lower FROM roles"),
       ]);
 
-      const instMap = new Map(institutions.map((i) => [i.name_lower, i.institution_id]));
-      const deptMap = new Map(departments.map((d) => [`${d.institution_id}::${d.name_lower}`, d.department_id]));
-      const roleMap = new Map(roles.map((r) => [r.name_lower, r.id]));
+      const instByName = new Map(institutions.map((i) => [i.name_lower, { id: i.institution_id, domain: i.email_domain.trim() }]));
+      const instById   = new Map(institutions.map((i) => [i.institution_id, i.email_domain.trim()]));
+      const deptMap    = new Map(departments.map((d) => [`${d.institution_id}::${d.name_lower}`, d.department_id]));
+      const roleMap    = new Map(roles.map((r) => [r.name_lower, r.id]));
 
       const fieldToCol = {};
       for (const [dbField, fileCol] of Object.entries(mapping)) {
@@ -260,14 +261,22 @@ router.post(
 
         let institution_id = defaultInstitutionId || null;
         if (inst_name) {
-          const resolved = instMap.get(inst_name.toLowerCase());
+          const resolved = instByName.get(inst_name.toLowerCase());
           if (!resolved)
             rowErrors.push({ field: "institution_name", reason: `Institution "${inst_name}" not found` });
           else
-            institution_id = resolved;
+            institution_id = resolved.id;
         }
         if (!institution_id && !rowErrors.some((e) => e.field === "institution_name"))
           rowErrors.push({ field: "institution_name", reason: "Institution is required" });
+
+        /* Email domain must match institution's configured domain */
+        if (institution_id && email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+          const instDomain  = instById.get(institution_id) || "";
+          const emailDomain = email.split("@")[1]?.toLowerCase() || "";
+          if (instDomain && emailDomain !== instDomain)
+            rowErrors.push({ field: "email", reason: `Email must use @${instDomain} for this institution` });
+        }
 
         if (dept_name && institution_id) {
           if (!deptMap.has(`${institution_id}::${dept_name.toLowerCase()}`))
@@ -334,14 +343,15 @@ router.post(
 
     try {
       const [{ rows: insts }, { rows: depts }, { rows: roles }] = await Promise.all([
-        pool.query("SELECT institution_id, LOWER(institution_name) AS name_lower FROM institutions WHERE status = 'ACTIVE'"),
+        pool.query("SELECT institution_id, LOWER(institution_name) AS name_lower, LOWER(COALESCE(email_domain,'')) AS email_domain FROM institutions WHERE status = 'ACTIVE'"),
         pool.query("SELECT department_id, LOWER(name) AS name_lower, institution_id FROM departments WHERE status = 'ACTIVE'"),
         pool.query("SELECT id, LOWER(name) AS name_lower FROM roles"),
       ]);
 
-      const instMap = new Map(insts.map((i) => [i.name_lower, i.institution_id]));
-      const deptMap = new Map(depts.map((d) => [`${d.institution_id}::${d.name_lower}`, d.department_id]));
-      const roleMap = new Map(roles.map((r) => [r.name_lower, r.id]));
+      const instByName = new Map(insts.map((i) => [i.name_lower, { id: i.institution_id, domain: i.email_domain.trim() }]));
+      const instById   = new Map(insts.map((i) => [i.institution_id, i.email_domain.trim()]));
+      const deptMap    = new Map(depts.map((d) => [`${d.institution_id}::${d.name_lower}`, d.department_id]));
+      const roleMap    = new Map(roles.map((r) => [r.name_lower, r.id]));
 
       const fieldToCol = {};
       for (const [f, c] of Object.entries(mapping)) if (c) fieldToCol[f] = c;
@@ -376,12 +386,18 @@ router.post(
 
         let institution_id = defaultInstitutionId || null;
         if (inst_name) {
-          const r = instMap.get(inst_name.toLowerCase());
+          const r = instByName.get(inst_name.toLowerCase());
           if (!r) { errorRows.push({ row: rowNum, error: `Institution "${inst_name}" not found` }); continue; }
-          institution_id = r;
+          institution_id = r.id;
         }
         if (!institution_id)
           { errorRows.push({ row: rowNum, error: "Institution is required — map the column or set a default" }); continue; }
+
+        /* Email domain must match institution's configured domain */
+        const instDomain  = instById.get(institution_id) || "";
+        const emailDomain = email.split("@")[1]?.toLowerCase() || "";
+        if (instDomain && emailDomain !== instDomain)
+          { errorRows.push({ row: rowNum, error: `Email must use @${instDomain} for this institution` }); continue; }
 
         let department_id = null;
         if (dept_name)
