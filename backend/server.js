@@ -123,7 +123,8 @@ app.use("/api/institutions", institutionRoutes);
 app.use("/api/committees",   require("./routes/committees"));
 app.use("/api/audit-logs",   auditLogRoutes);
 app.use("/api/upload",       uploadRoutes);
-
+app.use("/api/notification-templates", notificationTemplatesRouter);
+app.use("/api/radiology",              radiologyRoutes);   // ← radiology mounted
 /* ─── Global error handler (must be last) ───────────────────── */
 app.use(errorHandler);
 
