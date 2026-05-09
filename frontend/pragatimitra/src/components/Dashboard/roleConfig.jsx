@@ -26,8 +26,9 @@ import CommitteeManagementPage   from "../../pages/Roles/superadmin/CommitteesMa
 import RoleAccessPage            from "../../pages/Roles/superadmin/RoleAccessPage";
 
 /* ── Institute Admin page imports ───────────────────────────── */
-import InstitutionAdminOverviewPage from "../../pages/Roles/institutionadmin/InstitutionAdminOverviewPage";
-import ReportSetupPage              from "../../pages/Roles/institutionadmin/ReportSetupPage";
+import InstitutionAdminOverviewPage  from "../../pages/Roles/institutionadmin/InstitutionAdminOverviewPage";
+import ReportSetupPage               from "../../pages/Roles/institutionadmin/ReportSetupPage";
+import InstituteFormManagementPage   from "../../pages/Forms/InstituteFormManagementPage";
 
 /* ── Director's Office page imports ─────────────────────────── */
 import DirectorsDashboardPage from "../../pages/Roles/directorsoffice/DirectorsDashboardPage";
@@ -37,6 +38,7 @@ import ReviewQueuePage        from "../../pages/Roles/directorsoffice/ReviewQueu
 import DeptAdminDashboardPage from "../../pages/Roles/departmentadmin/DeptAdminDashboardPage";
 import DeptUsersPage          from "../../pages/Roles/departmentadmin/DeptUsersPage";
 import TaskOverviewPage       from "../../pages/Roles/departmentadmin/TaskOverviewPage";
+import FormDataPage           from "../../pages/Forms/FormDataPage";
 
 /* ── Dept Nodal Officer page imports ─────────────────────────── */
 import NodalDashboardPage    from "../../pages/Roles/departmentnodalofficer/NodalDashboardPage";
@@ -250,6 +252,17 @@ export const ROLE_CONFIG = {
         ],
       },
       {
+        group: "Forms",
+        items: [
+          {
+            id: "ia-form-management",
+            label: "Form Management",
+            icon: "ClipboardList",
+            permission: null,
+          },
+        ],
+      },
+      {
         group: "Reports",
         items: [
           {
@@ -308,6 +321,7 @@ export const ROLE_CONFIG = {
     ],
     pages: {
       "ia-overview": <InstitutionAdminOverviewPage />,
+      "ia-form-management": <InstituteFormManagementPage />,
       "ia-report-setup": <ReportSetupPage />,
       "ia-sections": <SectionsPage />,
       "ia-workflow": <WorkflowPage />,
@@ -444,11 +458,23 @@ export const ROLE_CONFIG = {
           },
         ],
       },
+      {
+        group: "Data Entry",
+        items: [
+          {
+            id: "da-form-data",
+            label: "Form Data",
+            icon: "ClipboardList",
+            permission: null,
+          },
+        ],
+      },
     ],
     pages: {
       "da-dashboard": <DeptAdminDashboardPage />,
       "da-users": <DeptUsersPage />,
       "da-tasks": <TaskOverviewPage />,
+      "da-form-data": <FormDataPage />,
     },
     defaultPage: "da-dashboard",
     user: {

@@ -109,6 +109,10 @@ setInterval(() => {
   }
 }, 30 * 60 * 1000).unref();
 
+/* ─── Static: serve uploaded documents ─────────────────────── */
+const path = require("path");
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+
 /* ─── Routes ────────────────────────────────────────────────── */
 app.get("/", (_req, res) => {
   res.json({ success: true, message: "Pragatimitra API running." });
@@ -125,6 +129,8 @@ app.use("/api/audit-logs",   auditLogRoutes);
 app.use("/api/upload",       uploadRoutes);
 app.use("/api/notification-templates", notificationTemplatesRouter);
 app.use("/api/radiology",              radiologyRoutes);   // ← radiology mounted
+app.use("/api/forms",                  require("./routes/forms"));
+app.use("/api/form-data",              require("./routes/formData"));
 /* ─── Global error handler (must be last) ───────────────────── */
 app.use(errorHandler);
 
