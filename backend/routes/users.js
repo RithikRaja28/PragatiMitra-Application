@@ -10,40 +10,203 @@ const { getLogContext } = logger;
 
 const router = express.Router();
 
+/* ── Role helpers ── */
+function isOnlyInstAdmin(req) {
+  const roles = req.user.roles || [];
+  return roles.includes("institute_admin") && !roles.includes("super_admin");
+}
+
+function isDeptAdmin(req) {
+  const roles = req.user.roles || [];
+  return roles.includes("department_admin")
+    && !roles.includes("super_admin")
+    && !roles.includes("institute_admin");
+}
+
+const ALLOWED_ROLES = ["super_admin", "institute_admin", "department_admin"];
+
 /* ── GET /api/users ── */
-router.get("/", verifyToken, requireRole(["super_admin", "institute_admin"]), async (req, res) => {
+router.get("/", verifyToken, requireRole(ALLOWED_ROLES), async (req, res) => {
   const pool = req.app.locals.pool;
   try {
-    const { rows } = await pool.query(`
-      SELECT
-        u.id,
-        u.full_name,
-        u.email,
-        u.account_status,
-        u.last_login_at,
-        u.created_at,
-        u.institution_id,
-        u.department_id,
-        i.institution_name,
-        d.name AS department_name,
-        COALESCE(
-          (SELECT json_agg(json_build_object(
-              'name',         r.name,
-              'display_name', r.display_name
-            ))
-           FROM user_roles ur
-           JOIN roles r ON r.id = ur.role_id
-           WHERE ur.user_id = u.id
-             AND ur.revoked_at IS NULL
-             AND (ur.expires_at IS NULL OR ur.expires_at > now())
-          ), '[]'::json
-        ) AS roles
-      FROM users u
-      LEFT JOIN institutions i ON i.institution_id = u.institution_id
-      LEFT JOIN departments  d ON d.department_id  = u.department_id
-      WHERE u.account_status != 'DELETED'
-      ORDER BY u.created_at DESC
-    `);
+    let rows;
+
+    if (isDeptAdmin(req)) {
+      // Department admin: only users in their own institution + department, with optional role filter
+      const { role } = req.query;
+
+      const conditions = [
+        "u.account_status != 'DELETED'",
+        `u.institution_id = $1`,
+        `u.department_id  = $2`,
+      ];
+      const params = [req.user.institutionId, req.user.departmentId];
+
+      if (role) {
+        params.push(role);
+        conditions.push(`EXISTS (
+          SELECT 1 FROM user_roles ur2
+          JOIN roles r2 ON r2.id = ur2.role_id
+          WHERE ur2.user_id = u.id
+            AND r2.name = $${params.length}
+            AND ur2.revoked_at IS NULL
+            AND (ur2.expires_at IS NULL OR ur2.expires_at > now())
+        )`);
+      }
+
+      const whereClause = conditions.join(" AND ");
+
+      ({ rows } = await pool.query(`
+        SELECT
+          u.id,
+          u.full_name,
+          u.email,
+          u.account_status,
+          u.last_login_at,
+          u.created_at,
+          u.institution_id,
+          u.department_id,
+          i.institution_name,
+          d.name AS department_name,
+          COALESCE(
+            (SELECT json_agg(json_build_object(
+                'name',         r.name,
+                'display_name', r.display_name
+              ))
+             FROM user_roles ur
+             JOIN roles r ON r.id = ur.role_id
+             WHERE ur.user_id = u.id
+               AND ur.revoked_at IS NULL
+               AND (ur.expires_at IS NULL OR ur.expires_at > now())
+            ), '[]'::json
+          ) AS roles
+        FROM users u
+        LEFT JOIN institutions i ON i.institution_id = u.institution_id
+        LEFT JOIN departments  d ON d.department_id  = u.department_id
+        WHERE ${whereClause}
+        ORDER BY u.created_at DESC
+      `, params));
+
+    } else if (isOnlyInstAdmin(req)) {
+      // Institute admin: users in their institution, with optional role + department filters
+      const { role, department_id } = req.query;
+
+      const conditions = [
+        "u.account_status != 'DELETED'",
+        `u.institution_id = $1`,
+      ];
+      const params = [req.user.institutionId];
+
+      if (department_id) {
+        params.push(department_id);
+        conditions.push(`u.department_id = $${params.length}`);
+      }
+      if (role) {
+        params.push(role);
+        conditions.push(`EXISTS (
+          SELECT 1 FROM user_roles ur2
+          JOIN roles r2 ON r2.id = ur2.role_id
+          WHERE ur2.user_id = u.id
+            AND r2.name = $${params.length}
+            AND ur2.revoked_at IS NULL
+            AND (ur2.expires_at IS NULL OR ur2.expires_at > now())
+        )`);
+      }
+
+      const whereClause = conditions.join(" AND ");
+
+      ({ rows } = await pool.query(`
+        SELECT
+          u.id,
+          u.full_name,
+          u.email,
+          u.account_status,
+          u.last_login_at,
+          u.created_at,
+          u.institution_id,
+          u.department_id,
+          i.institution_name,
+          d.name AS department_name,
+          COALESCE(
+            (SELECT json_agg(json_build_object(
+                'name',         r.name,
+                'display_name', r.display_name
+              ))
+             FROM user_roles ur
+             JOIN roles r ON r.id = ur.role_id
+             WHERE ur.user_id = u.id
+               AND ur.revoked_at IS NULL
+               AND (ur.expires_at IS NULL OR ur.expires_at > now())
+            ), '[]'::json
+          ) AS roles
+        FROM users u
+        LEFT JOIN institutions i ON i.institution_id = u.institution_id
+        LEFT JOIN departments  d ON d.department_id  = u.department_id
+        WHERE ${whereClause}
+        ORDER BY u.created_at DESC
+      `, params));
+
+    } else {
+      // Super admin: all users, with optional filters
+      const { institution_id, role, department_id } = req.query;
+
+      const conditions = ["u.account_status != 'DELETED'"];
+      const params     = [];
+
+      if (institution_id) {
+        params.push(institution_id);
+        conditions.push(`u.institution_id = $${params.length}`);
+      }
+      if (department_id) {
+        params.push(department_id);
+        conditions.push(`u.department_id = $${params.length}`);
+      }
+      if (role) {
+        params.push(role);
+        conditions.push(`EXISTS (
+          SELECT 1 FROM user_roles ur2
+          JOIN roles r2 ON r2.id = ur2.role_id
+          WHERE ur2.user_id = u.id
+            AND r2.name = $${params.length}
+            AND ur2.revoked_at IS NULL
+            AND (ur2.expires_at IS NULL OR ur2.expires_at > now())
+        )`);
+      }
+
+      const whereClause = conditions.join(" AND ");
+
+      ({ rows } = await pool.query(`
+        SELECT
+          u.id,
+          u.full_name,
+          u.email,
+          u.account_status,
+          u.last_login_at,
+          u.created_at,
+          u.institution_id,
+          u.department_id,
+          i.institution_name,
+          d.name AS department_name,
+          COALESCE(
+            (SELECT json_agg(json_build_object(
+                'name',         r.name,
+                'display_name', r.display_name
+              ))
+             FROM user_roles ur
+             JOIN roles r ON r.id = ur.role_id
+             WHERE ur.user_id = u.id
+               AND ur.revoked_at IS NULL
+               AND (ur.expires_at IS NULL OR ur.expires_at > now())
+            ), '[]'::json
+          ) AS roles
+        FROM users u
+        LEFT JOIN institutions i ON i.institution_id = u.institution_id
+        LEFT JOIN departments  d ON d.department_id  = u.department_id
+        WHERE ${whereClause}
+        ORDER BY u.created_at DESC
+      `, params));
+    }
+
     return res.json({ success: true, users: rows });
   } catch (err) {
     logger.error("GET /api/users failed", { ...getLogContext(req), stack: err.stack });
@@ -52,10 +215,10 @@ router.get("/", verifyToken, requireRole(["super_admin", "institute_admin"]), as
 });
 
 /* ── PUT /api/users/:id ── */
-router.put("/:id", verifyToken, requireRole(["super_admin", "institute_admin"]), async (req, res) => {
+router.put("/:id", verifyToken, requireRole(ALLOWED_ROLES), async (req, res) => {
   const pool = req.app.locals.pool;
   const { id } = req.params;
-  const { full_name, email, institution_id, department_id, account_status } = req.body;
+  let { full_name, email, institution_id, department_id, account_status } = req.body;
 
   if (!full_name?.trim() || !email?.trim())
     return res.status(400).json({ success: false, message: "Name and email are required." });
@@ -65,7 +228,7 @@ router.put("/:id", verifyToken, requireRole(["super_admin", "institute_admin"]),
     return res.status(400).json({ success: false, message: "Invalid account status." });
 
   try {
-    // ── Fetch existing user before update (needed for audit diff) ──
+    // ── Fetch existing user before update (needed for audit diff and RBAC check) ──
     const { rows: existingRows } = await pool.query(
       `SELECT full_name, email, account_status, institution_id, department_id
        FROM users WHERE id = $1 AND account_status != 'DELETED'`,
@@ -75,6 +238,27 @@ router.put("/:id", verifyToken, requireRole(["super_admin", "institute_admin"]),
       return res.status(404).json({ success: false, message: "User not found." });
 
     const existing = existingRows[0];
+
+    // ── Department admin: verify target user belongs to their institution + department ──
+    if (isDeptAdmin(req)) {
+      if (
+        existing.institution_id !== req.user.institutionId ||
+        existing.department_id  !== req.user.departmentId
+      ) {
+        return res.status(403).json({
+          success: false,
+          message: "You can only manage users from your own department.",
+        });
+      }
+      institution_id = req.user.institutionId;
+      department_id  = req.user.departmentId;
+
+    // ── Institute admin: verify target user belongs to their institution ──
+    } else if (isOnlyInstAdmin(req)) {
+      if (existing.institution_id !== req.user.institutionId)
+        return res.status(403).json({ success: false, message: "You can only manage users from your own institution." });
+      institution_id = req.user.institutionId;
+    }
 
     const { rows } = await pool.query(
       `UPDATE users
@@ -138,9 +322,17 @@ router.put("/:id", verifyToken, requireRole(["super_admin", "institute_admin"]),
 });
 
 /* ── POST /api/users ── */
-router.post("/", verifyToken, requireRole(["super_admin", "institute_admin"]), async (req, res) => {
+router.post("/", verifyToken, requireRole(ALLOWED_ROLES), async (req, res) => {
   const pool = req.app.locals.pool;
-  const { full_name, email, password, institution_id, department_id, role_name } = req.body;
+  let { full_name, email, password, institution_id, department_id, role_name } = req.body;
+
+  // ── Scope institution / department to what the admin owns ──
+  if (isDeptAdmin(req)) {
+    institution_id = req.user.institutionId;
+    department_id  = req.user.departmentId;
+  } else if (isOnlyInstAdmin(req)) {
+    institution_id = req.user.institutionId;
+  }
 
   if (!full_name?.trim() || !email?.trim() || !password || !institution_id || !role_name)
     return res.status(400).json({ success: false, message: "Name, email, password, institution, and role are required." });

@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback } from "react";
 import { useApi } from "../../../hooks/useApi";
+import { useAuth } from "../../../store/AuthContext";
 import { S, Toast } from "../../../components/shared/formUtils";
 import FormScreen from "../../../components/shared/FormScreen";
 
-/* ── Constants & pure helpers ──────────────────────────────────── */
+/* ── Constants ──────────────────────────────────────────────────── */
 const STATUS_OPTIONS = ["ACTIVE", "INACTIVE", "SUSPENDED"];
 
 const STATUS_STYLE = {
@@ -24,6 +25,8 @@ const ROLE_COLORS = {
   finance_officer:    { bg: "#fff7ed", color: "#9a3412" },
   directors_office:   { bg: "#fdf4ff", color: "#7e22ce" },
 };
+
+const ACCENT = "#059669";
 
 function formatDate(ts) {
   if (!ts) return "Never";
@@ -64,7 +67,7 @@ function Spinner() {
     <div style={{ display: "flex", justifyContent: "center", padding: 60 }}>
       <div style={{
         width: 32, height: 32, border: "3px solid #e2e8f0",
-        borderTopColor: "#2563eb", borderRadius: "50%",
+        borderTopColor: ACCENT, borderRadius: "50%",
         animation: "spin 0.7s linear infinite",
       }} />
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
@@ -98,28 +101,53 @@ function PasswordInput({ value, onChange, hasError }) {
   );
 }
 
-/* ── UserForm (create + edit) ────────────────────────────────────── */
+/* ── Locked field chip (non-editable institution / department) ───── */
+function LockedField({ label, value, accentColor = ACCENT }) {
+  return (
+    <div>
+      <label style={S.label}>{label}</label>
+      <div style={{
+        ...S.input(false),
+        display: "flex", alignItems: "center", gap: 8,
+        background: "#f8fafc", color: "#475569",
+        cursor: "not-allowed", userSelect: "none",
+      }}>
+        <span style={{ width: 8, height: 8, borderRadius: "50%", background: accentColor, flexShrink: 0 }} />
+        {value || "—"}
+        <span style={{
+          marginLeft: "auto", fontSize: 10, fontWeight: 600,
+          color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.5,
+        }}>
+          Auto-assigned
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/* ── UserForm ────────────────────────────────────────────────────── */
 const EMPTY_FORM = {
-  full_name: "", email: "", password: "",
-  institution_id: "", department_id: "", role_name: "",
+  full_name: "", email: "", password: "", role_name: "",
 };
 
 function validateForm(form, isEdit) {
   const errs = {};
-  if (!form.full_name.trim())          errs.full_name      = "Full name is required.";
-  if (!form.email.trim())              errs.email          = "Email is required.";
+  if (!form.full_name.trim())          errs.full_name = "Full name is required.";
+  if (!form.email.trim())              errs.email     = "Email is required.";
   else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim()))
-                                       errs.email          = "Enter a valid email address.";
+                                       errs.email     = "Enter a valid email address.";
   if (!isEdit) {
-    if (!form.password)                errs.password       = "Password is required.";
-    else if (form.password.length < 8) errs.password       = "Password must be at least 8 characters.";
-    if (!form.role_name)               errs.role_name      = "Please select a role.";
+    if (!form.password)                errs.password  = "Password is required.";
+    else if (form.password.length < 8) errs.password  = "Password must be at least 8 characters.";
+    if (!form.role_name)               errs.role_name = "Please select a role.";
   }
-  if (!form.institution_id)            errs.institution_id = "Please select an institution.";
   return errs;
 }
 
-function UserForm({ mode, entity, onCreated, onSaved, onBack, apiFetch }) {
+function UserForm({
+  mode, entity, onCreated, onSaved, onBack, apiFetch,
+  institutionId, institutionName, departmentId, departmentName,
+}) {
   const isEdit = mode === "edit";
 
   const [form, setForm] = useState(
@@ -127,26 +155,16 @@ function UserForm({ mode, entity, onCreated, onSaved, onBack, apiFetch }) {
       ? {
           full_name:      entity.full_name,
           email:          entity.email,
-          institution_id: entity.institution_id || "",
-          department_id:  entity.department_id  || "",
           account_status: entity.account_status,
         }
       : { ...EMPTY_FORM }
   );
-  const [fieldErrs,    setFieldErrs]    = useState({});
-  const [institutions, setInstitutions] = useState([]);
-  const [departments,  setDepartments]  = useState([]);
-  const [roles,        setRoles]        = useState([]);
-  const [loadingDepts, setLoadingDepts] = useState(false);
-  const [saving,       setSaving]       = useState(false);
-  const [serverError,  setServerError]  = useState("");
+  const [fieldErrs,   setFieldErrs]   = useState({});
+  const [roles,       setRoles]       = useState([]);
+  const [saving,      setSaving]      = useState(false);
+  const [serverError, setServerError] = useState("");
 
   useEffect(() => {
-    apiFetch("/api/lookup/institutions")
-      .then((r) => r.json())
-      .then((d) => { if (d.success) setInstitutions(d.institutions); })
-      .catch(() => {});
-
     if (!isEdit) {
       apiFetch("/api/lookup/roles")
         .then((r) => r.json())
@@ -154,16 +172,6 @@ function UserForm({ mode, entity, onCreated, onSaved, onBack, apiFetch }) {
         .catch(() => {});
     }
   }, [apiFetch, isEdit]);
-
-  useEffect(() => {
-    if (!form.institution_id) { setDepartments([]); return; }
-    setLoadingDepts(true);
-    apiFetch(`/api/lookup/departments?institution_id=${form.institution_id}`)
-      .then((r) => r.json())
-      .then((d) => { if (d.success) setDepartments(d.departments); })
-      .catch(() => {})
-      .finally(() => setLoadingDepts(false));
-  }, [form.institution_id, apiFetch]);
 
   const set = (key, value) => {
     setForm((f) => ({ ...f, [key]: value }));
@@ -186,8 +194,8 @@ function UserForm({ mode, entity, onCreated, onSaved, onBack, apiFetch }) {
           body: JSON.stringify({
             full_name:      form.full_name,
             email:          form.email,
-            institution_id: form.institution_id,
-            department_id:  form.department_id || null,
+            institution_id: institutionId,
+            department_id:  departmentId,
             account_status: form.account_status,
           }),
         });
@@ -197,7 +205,14 @@ function UserForm({ mode, entity, onCreated, onSaved, onBack, apiFetch }) {
       } else {
         const res = await apiFetch("/api/users", {
           method: "POST",
-          body: JSON.stringify({ ...form, department_id: form.department_id || null }),
+          body: JSON.stringify({
+            full_name:      form.full_name,
+            email:          form.email,
+            password:       form.password,
+            institution_id: institutionId,
+            department_id:  departmentId,
+            role_name:      form.role_name,
+          }),
         });
         const data = await res.json();
         if (!res.ok) { setServerError(data.message || "Failed to create user."); setSaving(false); return; }
@@ -211,11 +226,11 @@ function UserForm({ mode, entity, onCreated, onSaved, onBack, apiFetch }) {
 
   return (
     <FormScreen
-      pageTitle="Users"
+      pageTitle="User Management"
       formTitle={isEdit ? "Edit User" : "New User"}
-      formSubtitle={isEdit ? entity.full_name : "Add a new user to the platform"}
+      formSubtitle={isEdit ? entity.full_name : "Add a new user to your department"}
       icon="👤"
-      iconBg="#ede9fe"
+      iconBg="#d1fae5"
       onBack={onBack}
       onSubmit={handleSubmit}
       submitting={saving}
@@ -265,56 +280,16 @@ function UserForm({ mode, entity, onCreated, onSaved, onBack, apiFetch }) {
         </div>
       )}
 
-      {/* Institution */}
+      {/* Institution — locked */}
+      <LockedField label="Institution" value={institutionName} />
+
+      {/* Department — locked */}
+      <LockedField label="Department" value={departmentName} />
+
+      {/* Role (create) or Account Status (edit) */}
       <div>
-        <label style={S.label}>Institution *</label>
-        <select
-          style={S.select(!!fieldErrs.institution_id)}
-          value={form.institution_id}
-          onChange={(e) => {
-            setForm((f) => ({ ...f, institution_id: e.target.value, department_id: "" }));
-            setFieldErrs((errs) => ({ ...errs, institution_id: undefined }));
-            setServerError("");
-          }}
-        >
-          <option value="">— Select Institution —</option>
-          {institutions.map((i) => (
-            <option key={i.institution_id} value={i.institution_id}>
-              {i.institution_name}
-            </option>
-          ))}
-        </select>
-        {fieldErrs.institution_id && <span style={S.errorText}>{fieldErrs.institution_id}</span>}
-      </div>
-
-      {/* Department + Role/Status grid */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-        <div>
-          <label style={S.label}>
-            Department{" "}
-            <span style={{ color: "#94a3b8", fontWeight: 400, textTransform: "none" }}>(optional)</span>
-          </label>
-          <select
-            style={S.select(false)}
-            value={form.department_id}
-            onChange={(e) => set("department_id", e.target.value)}
-            disabled={!form.institution_id || loadingDepts}
-          >
-            <option value="">
-              {loadingDepts
-                ? "Loading…"
-                : !form.institution_id
-                  ? "Select institution first"
-                  : "— Select Department —"}
-            </option>
-            {departments.map((d) => (
-              <option key={d.department_id} value={d.department_id}>{d.name}</option>
-            ))}
-          </select>
-        </div>
-
         {isEdit ? (
-          <div>
+          <>
             <label style={S.label}>Account Status</label>
             <select
               style={S.select(false)}
@@ -325,9 +300,9 @@ function UserForm({ mode, entity, onCreated, onSaved, onBack, apiFetch }) {
                 <option key={s} value={s}>{s.charAt(0) + s.slice(1).toLowerCase()}</option>
               ))}
             </select>
-          </div>
+          </>
         ) : (
-          <div>
+          <>
             <label style={S.label}>Role *</label>
             <select
               style={S.select(!!fieldErrs.role_name)}
@@ -335,12 +310,14 @@ function UserForm({ mode, entity, onCreated, onSaved, onBack, apiFetch }) {
               onChange={(e) => set("role_name", e.target.value)}
             >
               <option value="">— Select Role —</option>
-              {roles.map((r) => (
-                <option key={r.id} value={r.name}>{r.display_name}</option>
-              ))}
+              {roles
+                .filter((r) => !["super_admin", "institute_admin", "finance_officer", "directors_office", "publication_cell"].includes(r.name))
+                .map((r) => (
+                  <option key={r.id} value={r.name}>{r.display_name}</option>
+                ))}
             </select>
             {fieldErrs.role_name && <span style={S.errorText}>{fieldErrs.role_name}</span>}
-          </div>
+          </>
         )}
       </div>
     </FormScreen>
@@ -349,69 +326,31 @@ function UserForm({ mode, entity, onCreated, onSaved, onBack, apiFetch }) {
 
 /* ── User List ───────────────────────────────────────────────────── */
 function UserList({ apiFetch, onEdit }) {
-  /* existing state ── unchanged */
   const [users,        setUsers]        = useState([]);
   const [loading,      setLoading]      = useState(true);
   const [error,        setError]        = useState("");
   const [search,       setSearch]       = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
+  const [filterRole,   setFilterRole]   = useState("");
   const [toggling,     setToggling]     = useState(null);
-
-  /* server-side filter state */
-  const [filterInstitution, setFilterInstitution] = useState("");
-  const [filterRole,        setFilterRole]        = useState("");
-  const [filterDepartment,  setFilterDepartment]  = useState("");
-
-  /* lookup data for filter dropdowns */
-  const [institutions, setInstitutions] = useState([]);
   const [roles,        setRoles]        = useState([]);
-  const [deptOptions,  setDeptOptions]  = useState([]);
-  const [allDepts,     setAllDepts]     = useState([]);
 
-  /* load lookup data once on mount */
+  /* load role options once */
   useEffect(() => {
-    apiFetch("/api/lookup/institutions")
-      .then((r) => r.json())
-      .then((d) => { if (d.success) setInstitutions(d.institutions); })
-      .catch(() => {});
-
     apiFetch("/api/lookup/roles")
       .then((r) => r.json())
       .then((d) => { if (d.success) setRoles(d.roles); })
       .catch(() => {});
-
-    apiFetch("/api/lookup/departments")
-      .then((r) => r.json())
-      .then((d) => {
-        if (d.success) { setAllDepts(d.departments); setDeptOptions(d.departments); }
-      })
-      .catch(() => {});
   }, [apiFetch]);
 
-  /* when institution filter changes, narrow the department dropdown */
-  const handleInstitutionChange = useCallback((value) => {
-    setFilterInstitution(value);
-    setFilterDepartment("");
-    if (!value) {
-      setDeptOptions(allDepts);
-      return;
-    }
-    apiFetch(`/api/lookup/departments?institution_id=${value}`)
-      .then((r) => r.json())
-      .then((d) => { if (d.success) setDeptOptions(d.departments); })
-      .catch(() => {});
-  }, [apiFetch, allDepts]);
-
-  /* fetch users whenever any server-side filter changes */
+  /* fetch users whenever role filter changes */
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setError("");
 
     const p = new URLSearchParams();
-    if (filterInstitution) p.set("institution_id", filterInstitution);
-    if (filterRole)        p.set("role",           filterRole);
-    if (filterDepartment)  p.set("department_id",  filterDepartment);
+    if (filterRole) p.set("role", filterRole);
     const qs = p.toString();
 
     apiFetch(`/api/users${qs ? `?${qs}` : ""}`)
@@ -421,17 +360,12 @@ function UserList({ apiFetch, onEdit }) {
         if (data.success) setUsers(data.users);
         else setError(data.message || "Failed to load users.");
       })
-      .catch(() => {
-        if (!cancelled) setError("Network error. Could not load users.");
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+      .catch(() => { if (!cancelled) setError("Network error. Could not load users."); })
+      .finally(() => { if (!cancelled) setLoading(false); });
 
     return () => { cancelled = true; };
-  }, [apiFetch, filterInstitution, filterRole, filterDepartment]);
+  }, [apiFetch, filterRole]);
 
-  /* ── unchanged: toggle active/inactive ── */
   const toggleStatus = async (user) => {
     const next = user.account_status === "ACTIVE" ? "INACTIVE" : "ACTIVE";
     setToggling(user.id);
@@ -454,7 +388,6 @@ function UserList({ apiFetch, onEdit }) {
     setToggling(null);
   };
 
-  /* client-side: text search + status filter on the already-fetched set */
   const filtered = users.filter((u) => {
     const matchSearch =
       u.full_name.toLowerCase().includes(search.toLowerCase()) ||
@@ -463,17 +396,8 @@ function UserList({ apiFetch, onEdit }) {
     return matchSearch && matchStatus;
   });
 
-  const hasActiveFilters = !!(filterInstitution || filterRole || filterDepartment);
-
-  const clearFilters = () => {
-    setFilterInstitution("");
-    setFilterRole("");
-    setFilterDepartment("");
-    setDeptOptions(allDepts);
-  };
-
   if (loading) return <Spinner />;
-  if (error)   return (
+  if (error) return (
     <div style={{ padding: 24, background: "#fef2f2", borderRadius: 10, color: "#dc2626", fontSize: 13 }}>
       {error}
     </div>
@@ -481,44 +405,30 @@ function UserList({ apiFetch, onEdit }) {
 
   return (
     <>
-      {/* ── Server-side filter row ── */}
+      {/* Role filter row */}
       <div style={{ display: "flex", gap: 10, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
-        <select
-          value={filterInstitution}
-          onChange={(e) => handleInstitutionChange(e.target.value)}
-          style={{ ...S.select(false), width: "auto", minWidth: 190 }}
-        >
-          <option value="">All Institutions</option>
-          {institutions.map((i) => (
-            <option key={i.institution_id} value={i.institution_id}>{i.institution_name}</option>
-          ))}
-        </select>
-
         <select
           value={filterRole}
           onChange={(e) => setFilterRole(e.target.value)}
-          style={{ ...S.select(false), width: "auto", minWidth: 160 }}
+          style={{ ...S.select(false), width: "auto", minWidth: 180 }}
         >
-          <option value="">All Roles</option>
-          {roles.map((r) => (
-            <option key={r.id} value={r.name}>{r.display_name}</option>
+        <option value="">All Roles</option>
+        {roles
+          .filter(
+            (r) =>
+              !["super_admin","institute_admin","finance_officer",
+                "directors_office", "publication_cell",].includes(r.name)
+          )
+          .map((r) => (
+            <option key={r.id} value={r.name}>
+              {r.display_name}
+            </option>
           ))}
         </select>
 
-        <select
-          value={filterDepartment}
-          onChange={(e) => setFilterDepartment(e.target.value)}
-          style={{ ...S.select(false), width: "auto", minWidth: 190 }}
-        >
-          <option value="">All Departments</option>
-          {deptOptions.map((d) => (
-            <option key={d.department_id} value={d.department_id}>{d.name}</option>
-          ))}
-        </select>
-
-        {hasActiveFilters && (
+        {filterRole && (
           <button
-            onClick={clearFilters}
+            onClick={() => setFilterRole("")}
             style={{
               padding: "8px 14px", borderRadius: 8,
               border: "1.5px solid #e2e8f0", background: "#fff",
@@ -526,12 +436,12 @@ function UserList({ apiFetch, onEdit }) {
               cursor: "pointer", whiteSpace: "nowrap",
             }}
           >
-            Clear Filters
+            Clear Filter
           </button>
         )}
       </div>
 
-      {/* ── Existing search + status filter row — unchanged ── */}
+      {/* Search + status filter */}
       <div style={{ display: "flex", gap: 10, marginBottom: 20, flexWrap: "wrap" }}>
         <input
           placeholder="Search name or email…"
@@ -559,7 +469,7 @@ function UserList({ apiFetch, onEdit }) {
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
             <tr style={{ background: "#f8fafc", borderBottom: "1px solid rgba(0,0,0,0.06)" }}>
-              {["User", "Institution", "Department", "Role(s)", "Status", "Last Login", "Actions"].map((h) => (
+              {["User", "Role(s)", "Status", "Last Login", "Actions"].map((h) => (
                 <th key={h} style={{
                   padding: "12px 16px", textAlign: "left", fontSize: 11,
                   fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.8,
@@ -574,6 +484,7 @@ function UserList({ apiFetch, onEdit }) {
               <tr key={u.id} style={{
                 borderBottom: i < filtered.length - 1 ? "1px solid rgba(0,0,0,0.04)" : "none",
               }}>
+                {/* User */}
                 <td style={{ padding: "14px 16px" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                     <div style={{
@@ -592,12 +503,7 @@ function UserList({ apiFetch, onEdit }) {
                     </div>
                   </div>
                 </td>
-                <td style={{ padding: "14px 16px", fontSize: 13, color: "#475569" }}>
-                  {u.institution_name || "—"}
-                </td>
-                <td style={{ padding: "14px 16px", fontSize: 13, color: "#475569" }}>
-                  {u.department_name || "—"}
-                </td>
+                {/* Roles */}
                 <td style={{ padding: "14px 16px" }}>
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
                     {(u.roles || []).length > 0
@@ -606,18 +512,21 @@ function UserList({ apiFetch, onEdit }) {
                     }
                   </div>
                 </td>
+                {/* Status */}
                 <td style={{ padding: "14px 16px" }}>
                   <StatusDot status={u.account_status} />
                 </td>
+                {/* Last Login */}
                 <td style={{ padding: "14px 16px", fontSize: 12, color: "#94a3b8" }}>
                   {formatDate(u.last_login_at)}
                 </td>
+                {/* Actions */}
                 <td style={{ padding: "14px 16px" }}>
                   <div style={{ display: "flex", gap: 6 }}>
                     <button onClick={() => onEdit(u)} style={{
                       padding: "5px 12px", borderRadius: 7, border: "1.5px solid #e2e8f0",
                       background: "#fff", fontSize: 12, fontWeight: 600,
-                      color: "#2563eb", cursor: "pointer",
+                      color: ACCENT, cursor: "pointer",
                     }}>
                       Edit
                     </button>
@@ -639,7 +548,7 @@ function UserList({ apiFetch, onEdit }) {
             ))}
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={7} style={{ padding: 40, textAlign: "center", color: "#94a3b8", fontSize: 13 }}>
+                <td colSpan={5} style={{ padding: 40, textAlign: "center", color: "#94a3b8", fontSize: 13 }}>
                   No users match your filters.
                 </td>
               </tr>
@@ -652,11 +561,17 @@ function UserList({ apiFetch, onEdit }) {
 }
 
 /* ── Main Export ─────────────────────────────────────────────────── */
-export default function UserManagementPage() {
+export default function DepartmentAdminUserManagementPage() {
   const { apiFetch } = useApi();
+  const { user }     = useAuth();
   const [formView,   setFormView]   = useState(null);
   const [toast,      setToast]      = useState(null);
   const [refreshKey, setRefreshKey] = useState(0);
+
+  const institutionId   = user?.institutionId   || "";
+  const institutionName = user?.institutionName || "Your Institution";
+  const departmentId    = user?.departmentId    || "";
+  const departmentName  = user?.departmentName  || "Your Department";
 
   const showToast = (message, type = "success") => {
     setToast({ message, type });
@@ -671,6 +586,10 @@ export default function UserManagementPage() {
           mode={formView.mode}
           entity={formView.entity}
           apiFetch={apiFetch}
+          institutionId={institutionId}
+          institutionName={institutionName}
+          departmentId={departmentId}
+          departmentName={departmentName}
           onCreated={(msg) => { setFormView(null); showToast(msg); setRefreshKey((k) => k + 1); }}
           onSaved={(msg)   => { setFormView(null); showToast(msg); setRefreshKey((k) => k + 1); }}
           onBack={() => setFormView(null)}
@@ -688,10 +607,10 @@ export default function UserManagementPage() {
         <div>
           <div style={{
             display: "inline-flex", alignItems: "center", gap: 8,
-            background: "#7c3aed14", borderRadius: 8, padding: "4px 12px", marginBottom: 12,
+            background: `${ACCENT}14`, borderRadius: 8, padding: "4px 12px", marginBottom: 12,
           }}>
-            <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#7c3aed" }} />
-            <span style={{ fontSize: 11, fontWeight: 600, color: "#7c3aed", textTransform: "uppercase", letterSpacing: 1 }}>
+            <div style={{ width: 7, height: 7, borderRadius: "50%", background: ACCENT }} />
+            <span style={{ fontSize: 11, fontWeight: 600, color: ACCENT, textTransform: "uppercase", letterSpacing: 1 }}>
               User Management
             </span>
           </div>
@@ -699,7 +618,14 @@ export default function UserManagementPage() {
             Users
           </h1>
           <p style={{ color: "#94a3b8", fontSize: 14 }}>
-            Create, edit, activate/deactivate, and manage roles for all platform users.
+            Manage users in{" "}
+            <span style={{ color: ACCENT, fontWeight: 600 }}>{departmentName}</span>
+            {institutionName ? (
+              <>
+                {" "}·{" "}
+                <span style={{ color: "#64748b", fontWeight: 500 }}>{institutionName}</span>
+              </>
+            ) : null}
           </p>
         </div>
 
@@ -708,7 +634,7 @@ export default function UserManagementPage() {
           style={{
             display: "inline-flex", alignItems: "center", gap: 8,
             padding: "10px 20px", borderRadius: 10, border: "none",
-            background: "#2563eb", fontSize: 13, fontWeight: 700,
+            background: ACCENT, fontSize: 13, fontWeight: 700,
             color: "#fff", cursor: "pointer", flexShrink: 0, marginTop: 4,
           }}
         >
