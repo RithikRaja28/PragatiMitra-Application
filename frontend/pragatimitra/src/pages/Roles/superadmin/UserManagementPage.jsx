@@ -409,7 +409,11 @@ function Pagination({ page, pageSize, total, onPageChange, onPageSizeChange }) {
 
 /* ── User List ───────────────────────────────────────────────────── */
 function UserList({ apiFetch, onEdit }) {
+<<<<<<< HEAD
   const { lang } = useLanguage();
+=======
+  /* existing state ── unchanged */
+>>>>>>> insAdmin
   const [users,        setUsers]        = useState([]);
   const [loading,      setLoading]      = useState(true);
   const [error,        setError]        = useState("");
@@ -419,23 +423,81 @@ function UserList({ apiFetch, onEdit }) {
   const [page,         setPage]         = useState(1);
   const [pageSize,     setPageSize]     = useState(25);
 
-  const loadUsers = useCallback(async () => {
-    setLoading(true);
-    setError("");
-    try {
-      const res  = await apiFetch("/api/users");
-      const data = await res.json();
-      if (data.success) setUsers(data.users);
-      else setError(data.message || "Failed to load users.");
-    } catch {
-      setError("Network error. Could not load users.");
-    } finally {
-      setLoading(false);
-    }
+  /* server-side filter state */
+  const [filterInstitution, setFilterInstitution] = useState("");
+  const [filterRole,        setFilterRole]        = useState("");
+  const [filterDepartment,  setFilterDepartment]  = useState("");
+
+  /* lookup data for filter dropdowns */
+  const [institutions, setInstitutions] = useState([]);
+  const [roles,        setRoles]        = useState([]);
+  const [deptOptions,  setDeptOptions]  = useState([]);
+  const [allDepts,     setAllDepts]     = useState([]);
+
+  /* load lookup data once on mount */
+  useEffect(() => {
+    apiFetch("/api/lookup/institutions")
+      .then((r) => r.json())
+      .then((d) => { if (d.success) setInstitutions(d.institutions); })
+      .catch(() => {});
+
+    apiFetch("/api/lookup/roles")
+      .then((r) => r.json())
+      .then((d) => { if (d.success) setRoles(d.roles); })
+      .catch(() => {});
+
+    apiFetch("/api/lookup/departments")
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.success) { setAllDepts(d.departments); setDeptOptions(d.departments); }
+      })
+      .catch(() => {});
   }, [apiFetch]);
 
-  useEffect(() => { loadUsers(); }, [loadUsers]);
+  /* when institution filter changes, narrow the department dropdown */
+  const handleInstitutionChange = useCallback((value) => {
+    setFilterInstitution(value);
+    setFilterDepartment("");
+    if (!value) {
+      setDeptOptions(allDepts);
+      return;
+    }
+    apiFetch(`/api/lookup/departments?institution_id=${value}`)
+      .then((r) => r.json())
+      .then((d) => { if (d.success) setDeptOptions(d.departments); })
+      .catch(() => {});
+  }, [apiFetch, allDepts]);
 
+  /* fetch users whenever any server-side filter changes */
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError("");
+
+    const p = new URLSearchParams();
+    if (filterInstitution) p.set("institution_id", filterInstitution);
+    if (filterRole)        p.set("role",           filterRole);
+    if (filterDepartment)  p.set("department_id",  filterDepartment);
+    const qs = p.toString();
+
+    apiFetch(`/api/users${qs ? `?${qs}` : ""}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (cancelled) return;
+        if (data.success) setUsers(data.users);
+        else setError(data.message || "Failed to load users.");
+      })
+      .catch(() => {
+        if (!cancelled) setError("Network error. Could not load users.");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [apiFetch, filterInstitution, filterRole, filterDepartment]);
+
+  /* ── unchanged: toggle active/inactive ── */
   const toggleStatus = async (user) => {
     const next = user.account_status === "ACTIVE" ? "INACTIVE" : "ACTIVE";
     setToggling(user.id);
@@ -458,6 +520,7 @@ function UserList({ apiFetch, onEdit }) {
     setToggling(null);
   };
 
+  /* client-side: text search + status filter on the already-fetched set */
   const filtered = users.filter((u) => {
     const matchSearch =
       u.full_name.toLowerCase().includes(search.toLowerCase()) ||
@@ -466,10 +529,21 @@ function UserList({ apiFetch, onEdit }) {
     return matchSearch && matchStatus;
   });
 
+<<<<<<< HEAD
   // Reset to page 1 whenever filters change
   useEffect(() => { setPage(1); }, [search, filterStatus]);
 
   const paginated = filtered.slice((page - 1) * pageSize, page * pageSize);
+=======
+  const hasActiveFilters = !!(filterInstitution || filterRole || filterDepartment);
+
+  const clearFilters = () => {
+    setFilterInstitution("");
+    setFilterRole("");
+    setFilterDepartment("");
+    setDeptOptions(allDepts);
+  };
+>>>>>>> insAdmin
 
   if (loading) return <Spinner />;
   if (error)   return (
@@ -480,7 +554,57 @@ function UserList({ apiFetch, onEdit }) {
 
   return (
     <>
-      {/* Filters */}
+      {/* ── Server-side filter row ── */}
+      <div style={{ display: "flex", gap: 10, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
+        <select
+          value={filterInstitution}
+          onChange={(e) => handleInstitutionChange(e.target.value)}
+          style={{ ...S.select(false), width: "auto", minWidth: 190 }}
+        >
+          <option value="">All Institutions</option>
+          {institutions.map((i) => (
+            <option key={i.institution_id} value={i.institution_id}>{i.institution_name}</option>
+          ))}
+        </select>
+
+        <select
+          value={filterRole}
+          onChange={(e) => setFilterRole(e.target.value)}
+          style={{ ...S.select(false), width: "auto", minWidth: 160 }}
+        >
+          <option value="">All Roles</option>
+          {roles.map((r) => (
+            <option key={r.id} value={r.name}>{r.display_name}</option>
+          ))}
+        </select>
+
+        <select
+          value={filterDepartment}
+          onChange={(e) => setFilterDepartment(e.target.value)}
+          style={{ ...S.select(false), width: "auto", minWidth: 190 }}
+        >
+          <option value="">All Departments</option>
+          {deptOptions.map((d) => (
+            <option key={d.department_id} value={d.department_id}>{d.name}</option>
+          ))}
+        </select>
+
+        {hasActiveFilters && (
+          <button
+            onClick={clearFilters}
+            style={{
+              padding: "8px 14px", borderRadius: 8,
+              border: "1.5px solid #e2e8f0", background: "#fff",
+              fontSize: 12, fontWeight: 600, color: "#64748b",
+              cursor: "pointer", whiteSpace: "nowrap",
+            }}
+          >
+            Clear Filters
+          </button>
+        )}
+      </div>
+
+      {/* ── Existing search + status filter row — unchanged ── */}
       <div style={{ display: "flex", gap: 10, marginBottom: 20, flexWrap: "wrap" }}>
         <input
           placeholder="Search name or email…"
