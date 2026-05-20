@@ -6,9 +6,8 @@ const multer         = require("multer");
 const XLSX           = require("xlsx");
 const ExcelJS        = require("exceljs");
 const { randomUUID } = require("crypto");
-const { verifyToken } = require("../middleware/auth");
 
-
+const { verifyToken, requireRole } = require("../middleware/auth");
 const { writeAuditLog } = require("../utils/audit");
 
 const logger            = require("../utils/logger");
@@ -812,36 +811,6 @@ router.post(
       logger.error("POST /api/departments failed", { ...getLogContext(req), stack: err.stack });
       return res.status(500).json({ success: false, message: "Failed to create department." });
     }
-<<<<<<< HEAD
-
-    const { rows: [newDept] } = await pool.query(
-      `INSERT INTO departments (institution_id, name, code, created_by, updated_by)
-       VALUES ($1, $2, $3, $4, $4)
-       RETURNING department_id, name, code, status, created_at`,
-      [institution_id, rawName, rawCode, createdBy]
-    );
-
-    await writeAuditLog(req, {
-      actionType: "DEPT_CREATED",
-      entityType: "DEPARTMENT",
-      entityId:   newDept.department_id,
-      newValue:   { name: newDept.name, code: newDept.code, status: newDept.status },
-      status:     "SUCCESS",
-      message:    `Department "${newDept.name}" created`,
-    });
-
-    return res.status(201).json({
-      success: true,
-      message: `Department "${newDept.name}" created successfully.`,
-      data: newDept,
-    });
-  } catch (err) {
-    logger.error("POST /api/departments failed", { ...getLogContext(req), stack: err.stack });
-    return res
-      .status(500)
-      .json({ success: false, message: "Failed to create department." });
-=======
->>>>>>> insAdmin
   }
 );
 
@@ -1051,91 +1020,6 @@ router.patch(
         [departmentId, updatedBy]
       );
 
-<<<<<<< HEAD
-    const changedFields = ["name", "code", "status"].filter(
-      (f) => existing[f] !== updated[f]
-    );
-
-    await writeAuditLog(req, {
-      actionType:    "DEPT_UPDATED",
-      entityType:    "DEPARTMENT",
-      entityId:      updated.department_id,
-      oldValue:      { name: existing.name, code: existing.code, status: existing.status },
-      newValue:      { name: updated.name,  code: updated.code,  status: updated.status  },
-      changedFields,
-      status:        "SUCCESS",
-      message:       `Department "${updated.name}" updated`,
-    });
-
-    return res.json({
-      success: true,
-      message: `Department "${updated.name}" updated successfully.`,
-      data: updated,
-    });
-  } catch (err) {
-    logger.error("PUT /api/departments/:id failed", { ...getLogContext(req), stack: err.stack });
-    return res
-      .status(500)
-      .json({ success: false, message: "Failed to update department." });
-  }
-});
-
-/* ── PATCH /api/departments/:id/deactivate ──────────────────────
-   Soft-deletes a department (status → INACTIVE).
-──────────────────────────────────────────────────────────────── */
-router.patch("/:id/deactivate", async (req, res) => {
-  const pool = req.app.locals.pool;
-  const updatedBy = req.user?.userId;
-  const departmentId = req.params.id;
-  const { institution_id } = req.body;
-
-  if (!isUUID(departmentId)) {
-    return res
-      .status(400)
-      .json({ success: false, message: "Invalid department ID." });
-  }
-  if (!isUUID(institution_id)) {
-    return res
-      .status(400)
-      .json({ success: false, message: "A valid institution_id is required." });
-  }
-
-  try {
-    const { rows: deptRows } = await pool.query(
-      `SELECT department_id, name, status
-       FROM   departments
-       WHERE  department_id = $1 AND institution_id = $2`,
-      [departmentId, institution_id]
-    );
-
-    if (!deptRows.length) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Department not found." });
-    }
-
-    const dept = deptRows[0];
-
-    if (dept.status === "INACTIVE") {
-      return res
-        .status(409)
-        .json({ success: false, message: "Department is already inactive." });
-    }
-
-    const { rows: [{ active_count }] } = await pool.query(
-      `SELECT COUNT(*) AS active_count
-       FROM   users
-       WHERE  department_id  = $1
-         AND  institution_id = $2
-         AND  account_status = 'ACTIVE'`,
-      [departmentId, institution_id]
-    );
-
-    if (Number(active_count) > 0) {
-      return res.status(409).json({
-        success: false,
-        message: `Cannot deactivate "${dept.name}": ${active_count} user(s) are still active. Deactivate all members first.`,
-=======
       await writeAuditLog(req, {
         actionType:    "DEPT_DEACTIVATED",
         entityType:    "DEPARTMENT",
@@ -1145,7 +1029,6 @@ router.patch("/:id/deactivate", async (req, res) => {
         changedFields: ["status"],
         status:        "SUCCESS",
         message:       `Department "${dept.name}" deactivated`,
->>>>>>> insAdmin
       });
 
       return res.json({ success: true, message: `"${dept.name}" has been deactivated.` });
@@ -1153,39 +1036,6 @@ router.patch("/:id/deactivate", async (req, res) => {
       logger.error("PATCH /api/departments/:id/status failed", { ...getLogContext(req), stack: err.stack });
       return res.status(500).json({ success: false, message: "Failed to deactivate department." });
     }
-<<<<<<< HEAD
-
-    await pool.query(
-      `UPDATE departments
-       SET    status     = 'INACTIVE',
-              updated_at = now(),
-              updated_by = $2
-       WHERE  department_id = $1`,
-      [departmentId, updatedBy]
-    );
-
-    await writeAuditLog(req, {
-      actionType:    "DEPT_DEACTIVATED",
-      entityType:    "DEPARTMENT",
-      entityId:      departmentId,
-      oldValue:      { status: "ACTIVE" },
-      newValue:      { status: "INACTIVE" },
-      changedFields: ["status"],
-      status:        "SUCCESS",
-      message:       `Department "${dept.name}" deactivated`,
-    });
-
-    return res.json({
-      success: true,
-      message: `"${dept.name}" has been deactivated.`,
-    });
-  } catch (err) {
-    logger.error("PATCH /api/departments/:id/status failed", { ...getLogContext(req), stack: err.stack });
-    return res
-      .status(500)
-      .json({ success: false, message: "Failed to deactivate department." });
-=======
->>>>>>> insAdmin
   }
 );
 

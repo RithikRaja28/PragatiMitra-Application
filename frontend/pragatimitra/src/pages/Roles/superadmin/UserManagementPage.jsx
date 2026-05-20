@@ -409,11 +409,9 @@ function Pagination({ page, pageSize, total, onPageChange, onPageSizeChange }) {
 
 /* ── User List ───────────────────────────────────────────────────── */
 function UserList({ apiFetch, onEdit }) {
-<<<<<<< HEAD
+
   const { lang } = useLanguage();
-=======
-  /* existing state ── unchanged */
->>>>>>> insAdmin
+
   const [users,        setUsers]        = useState([]);
   const [loading,      setLoading]      = useState(true);
   const [error,        setError]        = useState("");
@@ -529,12 +527,11 @@ function UserList({ apiFetch, onEdit }) {
     return matchSearch && matchStatus;
   });
 
-<<<<<<< HEAD
+
   // Reset to page 1 whenever filters change
   useEffect(() => { setPage(1); }, [search, filterStatus]);
 
   const paginated = filtered.slice((page - 1) * pageSize, page * pageSize);
-=======
   const hasActiveFilters = !!(filterInstitution || filterRole || filterDepartment);
 
   const clearFilters = () => {
@@ -543,7 +540,7 @@ function UserList({ apiFetch, onEdit }) {
     setFilterDepartment("");
     setDeptOptions(allDepts);
   };
->>>>>>> insAdmin
+
 
   if (loading) return <Spinner />;
   if (error)   return (

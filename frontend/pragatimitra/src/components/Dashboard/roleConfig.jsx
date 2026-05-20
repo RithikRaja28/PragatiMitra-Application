@@ -356,6 +356,7 @@ export const ROLE_CONFIG = {
           { id: "da-users",    label: "User Management", icon: "Users",           permission: null },
         ],
       },
+      
     ],
     pages: {
       "da-overview": <DepartmentAdminDashboardPage />,
