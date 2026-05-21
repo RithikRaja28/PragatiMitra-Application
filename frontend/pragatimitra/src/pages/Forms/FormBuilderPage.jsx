@@ -107,7 +107,7 @@ function StepBar({ step }) {
 }
 
 /* ── Field row — uses stable _key so expanded state survives typing ── */
-function FieldRow({ field, index, total, isFixed, onChange, onRemove, onMoveUp, onMoveDown, languages }) {
+function FieldRow({ field, index, total, isFixed, onChange, onRemove, onMoveUp, onMoveDown, languages, usedColumnNames, currentColumnNames }) {
   const [expanded, setExpanded] = useState(false);
 
   const typeLabel = FIELD_TYPES.find((t) => t.value === field.type)?.label || field.type;
@@ -179,24 +179,31 @@ function FieldRow({ field, index, total, isFixed, onChange, onRemove, onMoveUp, 
           {/* column_name — accepts spaces; stored as snake_case */}
           <div>
             <label style={S.label}>Column Name *</label>
-            <input
-              style={S.input(false)}
-              value={field.column_name}
-              readOnly={isFixed}
-              onChange={(e) => {
-                const raw = e.target.value.replace(/[^a-zA-Z0-9\s_]/g, "");
-                onChange(index, "column_name", raw);
-              }}
-              placeholder="e.g. Student Name"
-            />
-            {!isFixed && field.column_name.trim() && (
-              <div style={{ marginTop: 4, fontSize: 11, color: "#94a3b8" }}>
-                DB column:{" "}
-                <span style={{ fontFamily: "monospace", color: "#334155", fontWeight: 600 }}>
-                  {field.column_name.trim().toLowerCase().replace(/\s+/g, "_")}
-                </span>
-              </div>
-            )}
+            {(() => {
+              const normalized = field.column_name.trim().toLowerCase().replace(/\s+/g, "_");
+              const isReused = !isFixed && normalized &&
+                usedColumnNames?.has(normalized) &&
+                !currentColumnNames?.has(normalized);
+              return (
+                <>
+                  <input
+                    style={S.input(isReused)}
+                    value={field.column_name}
+                    readOnly={isFixed}
+                    onChange={(e) => {
+                      const raw = e.target.value.replace(/[^a-zA-Z0-9\s_]/g, "");
+                      onChange(index, "column_name", raw);
+                    }}
+                    placeholder="e.g. Student Name"
+                  />
+                  {isReused && (
+                    <div style={S.errorText}>
+                      "{normalized}" was previously used and cannot be reused — choose a different name.
+                    </div>
+                  )}
+                </>
+              );
+            })()}
           </div>
 
           {/* field type */}
@@ -267,6 +274,7 @@ const ghostBtn = {
 function blankField(order) {
   return {
     _key:        nextKey(),
+    isNew:       true,   // not yet saved to DB — safe to fully remove
     column_name: "",
     label:       {},
     type:        "text",
@@ -334,9 +342,12 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
 
   /* ── Step 2 state ── */
   const [fields, setFields]               = useState([]);
+  // column names excluded from the active form (fixed toggles + any removed fields in edit mode)
   const [excludedFixed, setExcludedFixed] = useState(new Set());
   const [colsLoading, setColsLoading]     = useState(false);
   const [colsError, setColsError]         = useState("");
+  // column names ever used in this form's schema (prevents reuse of deleted columns)
+  const [usedColumnNames, setUsedColumnNames] = useState(new Set());
 
   /* ── Submit state ── */
   const [submitting, setSubmitting]   = useState(false);
@@ -344,16 +355,57 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
 
   /* ── Load existing schema in edit mode ── */
   useEffect(() => {
-    if (!isEdit || !initialData) return;
-    const existingSchema = initialData.schema;
-    if (existingSchema?.fields) {
-      setFields(existingSchema.fields.map((f, i) => ({ _key: nextKey(), ...f, order: i })));
-      setExcludedFixed(new Set(existingSchema.excluded_fixed_columns || []));
+    if (!isEdit || !initialData?.form_name) return;
+
+    function applySchema(existingSchema, year) {
+      if (!existingSchema?.fields) return;
+      // Deduplicate by normalised column name — old saves could have ghost duplicates
+      const seen = new Set();
+      const uniqueFields = existingSchema.fields.filter((f) => {
+        const col = f.column_name?.trim().toLowerCase().replace(/\s+/g, "_");
+        if (!col || seen.has(col)) return false;
+        seen.add(col);
+        return true;
+      });
+      setFields(uniqueFields.map((f, i) => ({ _key: nextKey(), ...f, order: i })));
+      // Populate excludedFixed from: explicit excluded_fixed_columns + legacy hidden:true fields
+      const fromExcluded = existingSchema.excluded_fixed_columns || [];
+      const fromHidden   = existingSchema.fields.filter((f) => f.hidden).map((f) => f.column_name);
+      setExcludedFixed(new Set([...fromExcluded, ...fromHidden]));
+      setBasics((b) => ({
+        ...b,
+        description: existingSchema.description || b.description,
+        year: year || b.year,
+      }));
     }
-    if (existingSchema?.description) {
-      setBasics((b) => ({ ...b, description: existingSchema.description, year: initialData.year || CURRENT_YEAR }));
+
+    // If initialData already carries a full schema object, use it directly
+    if (initialData.schema?.fields) {
+      applySchema(initialData.schema, initialData.year);
+      if (initialData.used_column_names?.length) {
+        setUsedColumnNames(new Set(initialData.used_column_names));
+      }
+      return;
     }
-  }, [isEdit, initialData]);
+
+    // Otherwise fetch the active schema from the API
+    setColsLoading(true);
+    setColsError("");
+    apiFetch(`/api/forms/${initialData.form_name}/schema`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.success && data.schema) {
+          applySchema(data.schema.schema, data.schema.year);
+          if (data.schema.used_column_names?.length) {
+            setUsedColumnNames(new Set(data.schema.used_column_names));
+          }
+        } else {
+          setColsError(data.message || "Could not load schema.");
+        }
+      })
+      .catch((err) => { if (!isAuthError(err)) setColsError("Failed to fetch schema."); })
+      .finally(() => setColsLoading(false));
+  }, [isEdit, initialData, apiFetch]);
 
   /* ── Load table columns in adapt mode ── */
   useEffect(() => {
@@ -404,7 +456,18 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
   }
 
   function removeField(idx) {
-    setFields((prev) => prev.filter((_, i) => i !== idx).map((f, i) => ({ ...f, order: i })));
+    setFields((prev) => {
+      const removed = prev[idx];
+      const colName = removed.column_name?.trim().toLowerCase().replace(/\s+/g, "_");
+      if (isEdit && colName && !removed.isNew) {
+        // Field came from the DB: keep it in fields[] so schema.fields stays
+        // complete; express exclusion only via excluded_fixed_columns.
+        setExcludedFixed((ex) => { const n = new Set(ex); n.add(colName); return n; });
+        return prev;
+      }
+      // New field (never saved) or create/adapt mode: remove it entirely.
+      return prev.filter((_, i) => i !== idx).map((f, i) => ({ ...f, order: i }));
+    });
   }
 
   function moveField(idx, dir) {
@@ -425,32 +488,51 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
     });
   }
 
-  const activeFields = isAdapt
-    ? fields.filter((f) => !f.is_fixed || !excludedFixed.has(f.column_name))
+  const activeFields = (isAdapt || isEdit)
+    ? fields.filter((f) => {
+        const col = f.column_name?.trim().toLowerCase().replace(/\s+/g, "_") || f.column_name;
+        return !excludedFixed.has(f.column_name) && !excludedFixed.has(col);
+      })
     : fields;
 
   /* ── Build schema object ── */
   function buildSchema() {
+    // All fields are kept in fields[] regardless of exclusion status.
+    // excluded_fixed_columns is the sole indicator of what is inactive.
+    const allFields = fields.map((f, i) => {
+      const { _key, hidden, isNew, ...rest } = f; // strip internal flags
+      return {
+        ...rest,
+        column_name: f.column_name.trim().toLowerCase().replace(/\s+/g, "_"),
+        order: i,
+      };
+    });
+
     return {
       display_label: basics.form_name.trim() || identifier,
       description:   basics.description.trim(),
-      fields: activeFields.map((f, i) => {
-        const { _key, ...rest } = f;
-        return {
-          ...rest,
-          column_name: f.column_name.trim().toLowerCase().replace(/\s+/g, "_"),
-          order: i,
-        };
-      }),
-      excluded_fixed_columns: isAdapt ? Array.from(excludedFixed) : [],
+      fields: allFields,
+      excluded_fixed_columns: Array.from(excludedFixed).map((c) =>
+        c.trim().toLowerCase().replace(/\s+/g, "_")
+      ),
     };
   }
 
   /* ── Validate step 2 ── */
   function validateFields() {
+    const currentColumnNames = new Set(
+      fields.map((f) => f.column_name.trim().toLowerCase().replace(/\s+/g, "_")).filter(Boolean)
+    );
     for (const f of activeFields) {
       if (!f.column_name.trim()) { setSubmitError("All fields must have a column name."); return false; }
       if (!f.label?.en?.trim())  { setSubmitError("All fields must have an English label."); return false; }
+      if (!f.is_fixed) {
+        const normalized = f.column_name.trim().toLowerCase().replace(/\s+/g, "_");
+        if (usedColumnNames.has(normalized) && !currentColumnNames.has(normalized)) {
+          setSubmitError(`Column name "${normalized}" was previously used and cannot be reused.`);
+          return false;
+        }
+      }
     }
     setSubmitError("");
     return true;
@@ -543,18 +625,6 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
                 placeholder="e.g. Student Records"
               />
               {basicsErrors.form_name && <div style={S.errorText}>{basicsErrors.form_name}</div>}
-              {!isEdit && !isAdapt && basics.form_name && (
-                <div style={{ marginTop: 6, display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ fontSize: 11, color: "#94a3b8" }}>Table identifier:</span>
-                  <span style={{
-                    fontFamily: "monospace", fontSize: 12, fontWeight: 600,
-                    background: "#f1f5f9", color: "#334155", padding: "2px 10px", borderRadius: 6,
-                  }}>
-                    {identifier || "—"}
-                  </span>
-                  <span style={{ fontSize: 11, color: "#94a3b8" }}>→ records table: <strong>{identifier}_records</strong></span>
-                </div>
-              )}
             </div>
 
             {/* description */}
@@ -584,23 +654,6 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
               {basicsErrors.year && <div style={S.errorText}>{basicsErrors.year}</div>}
             </div>
 
-            {/* share toggle — super admin + create only */}
-            {isSuperAdmin && isCreate && (
-              <div style={{ background: "#f0f9ff", border: "1px solid #bae6fd", borderRadius: 10, padding: "14px 18px" }}>
-                <label style={{ display: "flex", alignItems: "flex-start", gap: 12, cursor: "pointer" }}>
-                  <input
-                    type="checkbox"
-                    checked={basics.share_table}
-                    onChange={(e) => setBasics((b) => ({ ...b, share_table: e.target.checked }))}
-                    style={{ accentColor: ACCENT, width: 16, height: 16, marginTop: 1 }}
-                  />
-                  <div>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: "#0369a1" }}>Share as a template across institutions</div>
-                    <div style={{ fontSize: 12, color: "#0891b2", marginTop: 3 }}>Other institutions can adopt and customise it.</div>
-                  </div>
-                </label>
-              </div>
-            )}
           </div>
 
           <div style={footerRow}>
@@ -622,7 +675,9 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
           />
 
           {colsLoading && (
-            <div style={{ padding: "32px 28px", textAlign: "center", color: "#94a3b8", fontSize: 13 }}>Loading table columns…</div>
+            <div style={{ padding: "32px 28px", textAlign: "center", color: "#94a3b8", fontSize: 13 }}>
+              {isEdit ? "Loading existing schema…" : "Loading table columns…"}
+            </div>
           )}
           {colsError && (
             <div style={{ margin: "16px 28px", padding: "12px 16px", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, fontSize: 13, color: "#b91c1c" }}>
@@ -675,23 +730,30 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
                   <div style={{ fontSize: 12, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 10 }}>
                     Fields ({activeFields.length}) — click to expand and edit
                   </div>
-                  {activeFields.map((field, i) => {
-                    const globalIdx = fields.indexOf(field);
-                    return (
-                      <FieldRow
-                        key={field._key}
-                        field={field}
-                        index={i}
-                        total={activeFields.length}
-                        isFixed={field.is_fixed}
-                        languages={languages}
-                        onChange={(_, path, val) => updateField(globalIdx !== -1 ? globalIdx : i, path, val)}
-                        onRemove={() => removeField(globalIdx !== -1 ? globalIdx : i)}
-                        onMoveUp={() => moveField(i, -1)}
-                        onMoveDown={() => moveField(i, 1)}
-                      />
+                  {(() => {
+                    const currentColumnNames = new Set(
+                      fields.map((f) => f.column_name.trim().toLowerCase().replace(/\s+/g, "_")).filter(Boolean)
                     );
-                  })}
+                    return activeFields.map((field, i) => {
+                      const globalIdx = fields.indexOf(field);
+                      return (
+                        <FieldRow
+                          key={field._key}
+                          field={field}
+                          index={i}
+                          total={activeFields.length}
+                          isFixed={field.is_fixed}
+                          languages={languages}
+                          usedColumnNames={usedColumnNames}
+                          currentColumnNames={currentColumnNames}
+                          onChange={(_, path, val) => updateField(globalIdx !== -1 ? globalIdx : i, path, val)}
+                          onRemove={() => removeField(globalIdx !== -1 ? globalIdx : i)}
+                          onMoveUp={() => moveField(i, -1)}
+                          onMoveDown={() => moveField(i, 1)}
+                        />
+                      );
+                    });
+                  })()}
                 </div>
               )}
 
@@ -703,6 +765,73 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
               }}>
                 <IcoPlus /> Add Custom Field
               </button>
+
+              {/* Restore excluded columns — edit mode only */}
+              {isEdit && excludedFixed.size > 0 && (
+                <div style={{ marginTop: 20, background: "#fefce8", border: "1px solid #fde68a", borderRadius: 10, padding: "14px 18px" }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "#92400e", textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 10 }}>
+                    Excluded Columns — click to restore
+                  </div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                    {(() => {
+                      const seenCols = new Set();
+                      return fields.filter((f) => {
+                        const col = f.column_name?.trim().toLowerCase().replace(/\s+/g, "_");
+                        if (!col || seenCols.has(col)) return false;
+                        if (!excludedFixed.has(f.column_name) && !excludedFixed.has(col)) return false;
+                        seenCols.add(col);
+                        return true;
+                      });
+                    })()
+                      .map((f) => {
+                        const col = f.column_name?.trim().toLowerCase().replace(/\s+/g, "_") || f.column_name;
+                        const typeLabel = FIELD_TYPES.find((t) => t.value === f.type)?.label || f.type;
+                        return (
+                          <button
+                            key={col}
+                            type="button"
+                            onClick={() => {
+                              setExcludedFixed((prev) => {
+                                const next = new Set(prev);
+                                next.delete(f.column_name);
+                                next.delete(col);
+                                return next;
+                              });
+                            }}
+                            style={{
+                              display: "inline-flex", alignItems: "center", gap: 6,
+                              padding: "6px 14px", borderRadius: 20, fontSize: 12, fontWeight: 600,
+                              cursor: "pointer", transition: "all .15s",
+                              background: "#fef3c7", color: "#92400e",
+                              border: "1.5px solid #fde68a",
+                            }}
+                          >
+                            ↩ {col}
+                            <span style={{ fontSize: 10, color: "#b45309", fontWeight: 400 }}>({typeLabel})</span>
+                          </button>
+                        );
+                      })}
+                  </div>
+                </div>
+              )}
+
+              {/* consent to share — create mode only */}
+              {isCreate && (
+                <div style={{ marginTop: 20, background: "#f0f9ff", border: "1px solid #bae6fd", borderRadius: 10, padding: "14px 18px" }}>
+                  <label style={{ display: "flex", alignItems: "flex-start", gap: 12, cursor: "pointer" }}>
+                    <input
+                      type="checkbox"
+                      checked={basics.share_table}
+                      onChange={(e) => setBasics((b) => ({ ...b, share_table: e.target.checked }))}
+                      style={{ accentColor: ACCENT, width: 16, height: 16, marginTop: 1 }}
+                    />
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: "#0369a1" }}>Consent to share with other institutions</div>
+                      <div style={{ fontSize: 12, color: "#0891b2", marginTop: 3 }}>Enabling this allows other institutions to adopt and customise this form as a template.</div>
+                    </div>
+                  </label>
+                </div>
+              )}
 
               {submitError && (
                 <div style={{ marginTop: 16, background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, padding: "10px 14px", fontSize: 13, color: "#b91c1c" }}>
@@ -729,8 +858,6 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
           <div style={{ padding: "24px 28px", display: "flex", flexDirection: "column", gap: 20 }}>
             <ReviewSection title="Form Details">
               <ReviewRow label="Form Name"       value={basics.form_name || initialData?.form_name} />
-              <ReviewRow label="Identifier"      value={isEdit || isAdapt ? initialData?.form_name : identifier} mono />
-              <ReviewRow label="Records Table"   value={`${isEdit || isAdapt ? initialData?.form_name : identifier}_records`} mono />
               <ReviewRow label="Year"            value={String(basics.year)} />
               {basics.description && <ReviewRow label="Description" value={basics.description} />}
               {isSuperAdmin && isCreate && (
