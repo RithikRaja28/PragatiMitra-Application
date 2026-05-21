@@ -26,7 +26,7 @@ async function getActiveSchema(pool, formName, institutionId, year) {
   let q = `SELECT * FROM custom_field_schemas
            WHERE form_name = $1 AND institution_id = $2 AND is_active = true`;
   if (year) { q += ` AND year = $3`; params.push(year); }
-  q += ` ORDER BY schema_version DESC LIMIT 1`;
+  q += ` LIMIT 1`;
   const { rows } = await pool.query(q, params);
   return rows[0] || null;
 }
@@ -34,6 +34,19 @@ async function getActiveSchema(pool, formName, institutionId, year) {
 /* ─── normalise a field's column name to its DB form ─── */
 function dbCol(col) {
   return col.trim().toLowerCase().replace(/\s+/g, "_");
+}
+
+/* ─── get active, deduplicated fields from a schema row ─── */
+function activeFields(schemaRow) {
+  const excluded = new Set(schemaRow.schema?.excluded_fixed_columns || []);
+  const seen = new Set();
+  return (schemaRow.schema?.fields || []).filter((f) => {
+    const col = dbCol(f.column_name);
+    if (excluded.has(col) || excluded.has(f.column_name)) return false;
+    if (seen.has(col)) return false;
+    seen.add(col);
+    return true;
+  });
 }
 
 /* ─────────────────────────────────────────────────────────────────────
@@ -92,7 +105,7 @@ router.post("/:formName/records", async (req, res) => {
     const schema = await getActiveSchema(pool, formName, institutionId, year);
     if (!schema) return res.status(404).json({ success: false, message: "No active schema found." });
 
-    const fields = schema.schema?.fields || [];
+    const fields = activeFields(schema);
     const fieldCols = fields.map((f) => dbCol(f.column_name));
     const formYear = Number(year) || schema.year;
 
@@ -139,7 +152,7 @@ router.put("/:formName/records/:id", async (req, res) => {
     const schema = await getActiveSchema(pool, formName, institutionId, null);
     if (!schema) return res.status(404).json({ success: false, message: "No active schema found." });
 
-    const fields = schema.schema?.fields || [];
+    const fields = activeFields(schema);
     const fieldCols = fields.map((f) => dbCol(f.column_name));
 
     let idx = 1;

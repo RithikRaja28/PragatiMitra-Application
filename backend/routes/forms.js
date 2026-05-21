@@ -21,7 +21,6 @@ async function resolveInstitutionId(pool, req) {
 
 /* ─────────────────────────────────────────────────────────────────────
    GET /api/forms/languages
-   Returns list of supported languages from supported_languages table.
 ───────────────────────────────────────────────────────────────────── */
 router.get("/languages", async (req, res) => {
   const pool = req.app.locals.pool;
@@ -31,7 +30,6 @@ router.get("/languages", async (req, res) => {
     );
     return res.json({ success: true, languages: rows });
   } catch (err) {
-    // Table may not exist yet — return a safe fallback
     logger.warn("GET /api/forms/languages — falling back to defaults", { message: err.message });
     return res.json({
       success: true,
@@ -46,8 +44,6 @@ router.get("/languages", async (req, res) => {
 
 /* ─────────────────────────────────────────────────────────────────────
    GET /api/forms/institution-forms
-   Returns table_list rows accessible to the current institution.
-   Query param: ?institution_id=<uuid> (super admin only; others use token)
 ───────────────────────────────────────────────────────────────────── */
 router.get("/institution-forms", async (req, res) => {
   const pool = req.app.locals.pool;
@@ -84,8 +80,6 @@ router.get("/institution-forms", async (req, res) => {
 
 /* ─────────────────────────────────────────────────────────────────────
    GET /api/forms/templates
-   Shared templates (share_table=true) that this institution hasn't
-   accessed yet. Super admin sees all shared templates.
 ───────────────────────────────────────────────────────────────────── */
 router.get("/templates", async (req, res) => {
   const pool = req.app.locals.pool;
@@ -121,8 +115,6 @@ router.get("/templates", async (req, res) => {
 
 /* ─────────────────────────────────────────────────────────────────────
    GET /api/forms/my-forms
-   Forms configured for the current institution.
-   Super admin sees all table_list entries with schema counts.
 ───────────────────────────────────────────────────────────────────── */
 router.get("/my-forms", async (req, res) => {
   const pool = req.app.locals.pool;
@@ -145,7 +137,7 @@ router.get("/my-forms", async (req, res) => {
 
     const { rows } = await pool.query(
       `SELECT cfs.id, cfs.form_name, cfs.institution_id, cfs.year,
-              cfs.schema_version, cfs.schema, cfs.is_active, cfs.created_at,
+              cfs.schema, cfs.is_active, cfs.created_at,
               tl.share_table
        FROM custom_field_schemas cfs
        JOIN table_list tl ON tl.form_name = cfs.form_name
@@ -162,14 +154,11 @@ router.get("/my-forms", async (req, res) => {
 
 /* ─────────────────────────────────────────────────────────────────────
    GET /api/forms/:formName/table-columns
-   Returns physical columns for a given table (information_schema).
-   Used in template-adapt mode to show existing fixed columns.
 ───────────────────────────────────────────────────────────────────── */
 router.get("/:formName/table-columns", async (req, res) => {
   const pool = req.app.locals.pool;
   const { formName } = req.params;
 
-  // Only allow safe identifiers
   if (!/^[a-z][a-z0-9_]*$/.test(formName)) {
     return res.status(400).json({ success: false, message: "Invalid form name." });
   }
@@ -179,8 +168,9 @@ router.get("/:formName/table-columns", async (req, res) => {
       `SELECT column_name, data_type, is_nullable, column_default
        FROM information_schema.columns
        WHERE table_schema = 'public' AND table_name = $1
-         AND column_name NOT IN ('id','form_name','institution_id','year','schema_id',
-                                  'status','order_index','custom_fields',
+         AND column_name NOT IN ('id','form_name','institution_id','department_id','year',
+                                  'schema_id','status','order_index','custom_fields',
+                                  'language','created_by','updated_by',
                                   'created_at','updated_at')
        ORDER BY ordinal_position`,
       [formName]
@@ -194,7 +184,6 @@ router.get("/:formName/table-columns", async (req, res) => {
 
 /* ─────────────────────────────────────────────────────────────────────
    GET /api/forms/:formName/schema
-   Returns the active schema for a form + institution.
 ───────────────────────────────────────────────────────────────────── */
 router.get("/:formName/schema", async (req, res) => {
   const pool = req.app.locals.pool;
@@ -215,7 +204,7 @@ router.get("/:formName/schema", async (req, res) => {
       `SELECT * FROM custom_field_schemas
        WHERE form_name = $1 AND institution_id = $2 AND is_active = true
        ${yearClause}
-       ORDER BY schema_version DESC LIMIT 1`,
+       ORDER BY year DESC LIMIT 1`,
       params
     );
 
@@ -245,12 +234,15 @@ function buildRecordsTableDDL(tableName, fields) {
     "id UUID PRIMARY KEY DEFAULT gen_random_uuid()",
     "form_name TEXT",
     "institution_id UUID",
+    "department_id UUID",
     "year INT",
     "schema_id UUID",
     "status TEXT",
     "order_index INT",
     "custom_fields JSONB",
     "language TEXT",
+    "created_by UUID",
+    "updated_by UUID",
     "created_at TIMESTAMPTZ DEFAULT now()",
     "updated_at TIMESTAMPTZ DEFAULT now()",
   ];
@@ -259,6 +251,13 @@ function buildRecordsTableDDL(tableName, fields) {
     return `${col} ${pgType(f.type)}`;
   });
   return `CREATE TABLE IF NOT EXISTS ${tableName} (\n  ${[...standard, ...fixed].join(",\n  ")}\n)`;
+}
+
+/* ── Collect all column names from schema fields (including hidden) ── */
+function collectColumnNames(fields) {
+  return (fields || [])
+    .map((f) => f.column_name?.trim().toLowerCase().replace(/\s+/g, "_"))
+    .filter(Boolean);
 }
 
 /* ─────────────────────────────────────────────────────────────────────
@@ -319,21 +318,15 @@ router.post(
           [institutionId, isSuperAdmin && share_table, req.user.userId, normalizedName]
         );
 
-        // 2. Insert custom_field_schemas
-        const { rows: vRows } = await client.query(
-          `SELECT COALESCE(MAX(schema_version), 0) AS max_v
-           FROM custom_field_schemas
-           WHERE form_name = $1 AND institution_id = $2 AND year = $3`,
-          [normalizedName, institutionId, formYear]
-        );
-        const nextVersion = vRows[0].max_v + 1;
+        // 2. Insert custom_field_schemas (one per form/institution/year)
+        const usedColNames = collectColumnNames(schema.fields);
 
         const { rows: sRows } = await client.query(
           `INSERT INTO custom_field_schemas
-             (form_name, institution_id, year, schema_version, schema, is_active, created_by)
-           VALUES ($1, $2, $3, $4, $5::jsonb, true, $6)
+             (form_name, institution_id, year, schema, is_active, created_by, used_column_names)
+           VALUES ($1, $2, $3, $4::jsonb, true, $5, $6)
            RETURNING id`,
-          [normalizedName, institutionId, formYear, nextVersion, JSON.stringify(schema), req.user.userId]
+          [normalizedName, institutionId, formYear, JSON.stringify(schema), req.user.userId, usedColNames]
         );
         const schemaId = sRows[0].id;
 
@@ -372,7 +365,7 @@ router.post(
     } catch (err) {
       logger.error("POST /api/forms", { stack: err.stack });
       if (err.code === "23505") {
-        return res.status(409).json({ success: false, message: "A schema for this form/institution/year already exists at this version." });
+        return res.status(409).json({ success: false, message: "A schema for this form/institution/year already exists." });
       }
       return res.status(500).json({ success: false, message: "Failed to create form." });
     }
@@ -382,7 +375,6 @@ router.post(
 /* ─────────────────────────────────────────────────────────────────────
    POST /api/forms/adopt
    Adopt a shared template for the current institution.
-   Creates a new custom_field_schemas entry for this institution.
    Body: { form_name, schema, year?, institution_id? }
 ───────────────────────────────────────────────────────────────────── */
 router.post(
@@ -427,21 +419,14 @@ router.post(
           [institutionId, req.user.userId, form_name]
         );
 
-        // Next schema version
-        const { rows: vRows } = await client.query(
-          `SELECT COALESCE(MAX(schema_version), 0) AS max_v
-           FROM custom_field_schemas
-           WHERE form_name = $1 AND institution_id = $2 AND year = $3`,
-          [form_name, institutionId, formYear]
-        );
-        const nextVersion = vRows[0].max_v + 1;
+        const usedColNames = collectColumnNames(schema.fields);
 
         const { rows: sRows } = await client.query(
           `INSERT INTO custom_field_schemas
-             (form_name, institution_id, year, schema_version, schema, is_active, created_by)
-           VALUES ($1, $2, $3, $4, $5::jsonb, true, $6)
+             (form_name, institution_id, year, schema, is_active, created_by, used_column_names)
+           VALUES ($1, $2, $3, $4::jsonb, true, $5, $6)
            RETURNING id`,
-          [form_name, institutionId, formYear, nextVersion, JSON.stringify(schema), req.user.userId]
+          [form_name, institutionId, formYear, JSON.stringify(schema), req.user.userId, usedColNames]
         );
 
         await client.query("COMMIT");
@@ -459,6 +444,9 @@ router.post(
       }
     } catch (err) {
       logger.error("POST /api/forms/adopt", { stack: err.stack });
+      if (err.code === "23505") {
+        return res.status(409).json({ success: false, message: "A schema for this form/institution/year already exists." });
+      }
       return res.status(500).json({ success: false, message: "Failed to adopt template." });
     }
   }
@@ -466,7 +454,9 @@ router.post(
 
 /* ─────────────────────────────────────────────────────────────────────
    PUT /api/forms/:formName/schema
-   Save a new schema version (deactivates previous active version).
+   Update the schema in-place (single row per form/institution/year).
+   Validates that no previously-used column name is re-introduced.
+   Also runs ALTER TABLE … ADD COLUMN for any genuinely new fields.
    Body: { schema, year?, institution_id? }
 ───────────────────────────────────────────────────────────────────── */
 router.put(
@@ -479,7 +469,12 @@ router.put(
 
     if (!schema) return res.status(400).json({ success: false, message: "schema is required." });
 
+    if (!/^[a-z][a-z0-9_]*$/.test(formName)) {
+      return res.status(400).json({ success: false, message: "Invalid form name." });
+    }
+
     const formYear = Number(year) || new Date().getFullYear();
+    const recordsTable = `${formName}_records`;
 
     try {
       const institutionId = await resolveInstitutionId(pool, req);
@@ -491,28 +486,68 @@ router.put(
       try {
         await client.query("BEGIN");
 
-        // Deactivate current active version
-        await client.query(
-          `UPDATE custom_field_schemas SET is_active = false
-           WHERE form_name = $1 AND institution_id = $2 AND year = $3 AND is_active = true`,
-          [formName, institutionId, formYear]
-        );
-
-        const { rows: vRows } = await client.query(
-          `SELECT COALESCE(MAX(schema_version), 0) AS max_v
-           FROM custom_field_schemas
+        // Load current schema row
+        const { rows: existing } = await client.query(
+          `SELECT id, schema, used_column_names FROM custom_field_schemas
            WHERE form_name = $1 AND institution_id = $2 AND year = $3`,
           [formName, institutionId, formYear]
         );
-        const nextVersion = vRows[0].max_v + 1;
 
-        const { rows: sRows } = await client.query(
-          `INSERT INTO custom_field_schemas
-             (form_name, institution_id, year, schema_version, schema, is_active, created_by)
-           VALUES ($1, $2, $3, $4, $5::jsonb, true, $6)
-           RETURNING id`,
-          [formName, institutionId, formYear, nextVersion, JSON.stringify(schema), req.user.userId]
+        if (!existing.length) {
+          await client.query("ROLLBACK");
+          return res.status(404).json({ success: false, message: "Schema not found for this form/institution/year." });
+        }
+
+        const currentRow = existing[0];
+        const usedColumnNames = new Set(currentRow.used_column_names || []);
+        const currentFieldNames = new Set(
+          (currentRow.schema?.fields || []).map((f) => f.column_name)
         );
+
+        // Validate: active (non-excluded) incoming fields must not reuse a previously-deleted column name
+        const incomingFields = schema.fields || [];
+        const excludedFixedCols = new Set(schema.excluded_fixed_columns || []);
+
+        const reused = incomingFields
+          .filter((f) => !excludedFixedCols.has(f.column_name))
+          .map((f) => f.column_name?.trim().toLowerCase().replace(/\s+/g, "_"))
+          .filter((col) => col && usedColumnNames.has(col) && !currentFieldNames.has(col));
+
+        if (reused.length > 0) {
+          await client.query("ROLLBACK");
+          return res.status(400).json({
+            success: false,
+            message: `Column name(s) were previously used and cannot be reused: ${reused.join(", ")}. Choose a different name to avoid exposing old data.`,
+          });
+        }
+
+        // Merge new column names into used_column_names
+        const newColNames = collectColumnNames(incomingFields);
+        const mergedUsed = Array.from(new Set([...usedColumnNames, ...newColNames]));
+
+        // Update schema in-place
+        const { rows: sRows } = await client.query(
+          `UPDATE custom_field_schemas
+           SET schema = $1::jsonb,
+               used_column_names = $2,
+               updated_by = $3
+           WHERE form_name = $4 AND institution_id = $5 AND year = $6
+           RETURNING id`,
+          [JSON.stringify(schema), mergedUsed, req.user.userId, formName, institutionId, formYear]
+        );
+
+        // ADD COLUMN only for fields that are active (not excluded) and genuinely new
+        const visibleNewFields = incomingFields.filter(
+          (f) => !excludedFixedCols.has(f.column_name) && !currentFieldNames.has(f.column_name)
+        );
+        for (const field of visibleNewFields) {
+          const colName = field.column_name.trim().toLowerCase().replace(/\s+/g, "_");
+          if (/^[a-z][a-z0-9_]*$/.test(colName)) {
+            await client.query(
+              `ALTER TABLE ${recordsTable} ADD COLUMN IF NOT EXISTS ${colName} ${pgType(field.type)}`
+            );
+          }
+        }
 
         await client.query("COMMIT");
 
@@ -520,7 +555,6 @@ router.put(
           success: true,
           message: "Schema updated successfully.",
           schema_id: sRows[0].id,
-          schema_version: nextVersion,
         });
       } catch (err) {
         await client.query("ROLLBACK");

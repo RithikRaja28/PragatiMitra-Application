@@ -563,7 +563,10 @@ export default function FormDataPage() {
     }
   }
 
-  const schemaFields = schema?.schema?.fields || [];
+  const excludedCols = new Set(schema?.schema?.excluded_fixed_columns || []);
+  const schemaFields = (schema?.schema?.fields || []).filter(
+    (f) => !excludedCols.has(dbCol(f.column_name)) && !excludedCols.has(f.column_name)
+  );
 
   /* ══════════════════════════════════════════════════════
      VIEW 1 — Form selection grid
@@ -702,7 +705,7 @@ export default function FormDataPage() {
             {recsLoading ? "Loading…" : `${records.length} record${records.length !== 1 ? "s" : ""}`}
             {schema && (
               <span style={{ marginLeft: 8, fontFamily: "monospace", fontSize: 11 }}>
-                · schema v{schema.schema_version} · {schema.year}
+                · {schema.year}
               </span>
             )}
           </p>
