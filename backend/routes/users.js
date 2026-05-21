@@ -14,15 +14,50 @@ const { getLogContext } = logger;
 
 const router = express.Router();
 
+/* ── multer (memory storage) ── */
+const handleUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } }).single("file");
+
 /* ── Role helpers ── */
 function isOnlyInstAdmin(req) {
   const roles = req.user.roles || [];
   return roles.includes("institute_admin") && !roles.includes("super_admin");
 }
 
+function isDeptAdmin(req) {
+  const roles = req.user.roles || [];
+  return roles.includes("department_admin") && !roles.includes("super_admin") && !roles.includes("institute_admin");
+}
+
+function normalize(str) {
+  return String(str ?? "").toLowerCase().replace(/[\s_-]+/g, "");
+}
+
 function toLabel(col) {
   return col.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
+
+/* ── Schema config (extend as needed) ── */
+const SCHEMA_CONFIG = {
+  EXCLUDED:       ["id", "password_hash", "created_at", "updated_at", "deleted_at"],
+  FK:             {
+    institution_id: { importKey: "institution_name", label: "Institution" },
+    department_id:  { importKey: "department_name",  label: "Department"  },
+  },
+  FORCE_REQUIRED: ["full_name", "email", "institution_name"],
+  ALIASES:        {
+    full_name:        ["name", "fullname", "full name"],
+    email:            ["email address", "emailaddress"],
+    institution_name: ["institution", "college", "university", "school"],
+    department_name:  ["department", "dept"],
+    role_name:        ["role", "roles"],
+    account_status:   ["status"],
+    password:         ["pass", "passwd"],
+  },
+  VIRTUAL_IMPORT: [
+    { key: "role_name",   label: "Role",     required: false },
+    { key: "password",    label: "Password", required: false },
+  ],
+};
 
 async function getImportSchema(pool) {
   const { rows: cols } = await pool.query(`
@@ -147,15 +182,31 @@ router.post(
   }
 );
 
-/* ── GET /api/users ── */
-router.get("/", verifyToken, requireRole(["super_admin", "institute_admin"]), async (req, res) => {
-  const pool = req.app.locals.pool;
-  try {
-    let rows;
+/* ── POST /api/users/import/validate ──────────────────────────── */
+// FIX #3: This was erroneously embedded inside GET /api/users — extracted as its own route.
+router.post(
+  "/import/validate",
+  verifyToken,
+  requireRole(["super_admin", "institute_admin"]),
+  async (req, res) => {
+    const pool = req.app.locals.pool;
+    const { mapping, sessionId, defaultInstitutionId = null, defaultRoleName = "" } = req.body;
 
-    if (isDeptAdmin(req)) {
-      // Department admin: only users in their own institution + department, with optional role filter
-      const { role } = req.query;
+    if (!mapping || !sessionId)
+      return res.status(400).json({ success: false, message: "mapping and sessionId are required." });
+
+    const session = req.app.locals.importSessions.get(sessionId);
+    if (!session || !session.rows.length)
+      return res.status(400).json({ success: false, message: "Import session expired. Please re-upload your file." });
+
+    const data = session.rows;
+
+    try {
+      const [{ rows: institutions }, { rows: departments }, { rows: roles }] = await Promise.all([
+        pool.query("SELECT institution_id, LOWER(institution_name) AS name_lower, LOWER(COALESCE(email_domain,'')) AS email_domain FROM institutions WHERE status = 'ACTIVE'"),
+        pool.query("SELECT department_id, LOWER(name) AS name_lower, institution_id FROM departments WHERE status = 'ACTIVE'"),
+        pool.query("SELECT id, LOWER(name) AS name_lower FROM roles"),
+      ]);
 
       const instByName = new Map(institutions.map((i) => [i.name_lower, { id: i.institution_id, domain: i.email_domain.trim() }]));
       const instById   = new Map(institutions.map((i) => [i.institution_id, i.email_domain.trim()]));
@@ -245,6 +296,77 @@ router.get("/", verifyToken, requireRole(["super_admin", "institute_admin"]), as
     }
   }
 );
+
+/* ── GET /api/users ── */
+// FIX #1 & #2: Removed validate-route code that was misplaced inside this route.
+// FIX #5: Added proper conditions/params/whereClause building.
+router.get("/", verifyToken, requireRole(["super_admin", "institute_admin"]), async (req, res) => {
+  const pool = req.app.locals.pool;
+  try {
+    const conditions = ["u.account_status != 'DELETED'"];
+    const params     = [];
+
+    if (isDeptAdmin(req)) {
+      params.push(req.user.institutionId, req.user.departmentId);
+      conditions.push(`u.institution_id = $${params.length - 1}::uuid`);
+      conditions.push(`u.department_id  = $${params.length}::uuid`);
+    } else if (isOnlyInstAdmin(req)) {
+      params.push(req.user.institutionId);
+      conditions.push(`u.institution_id = $${params.length}::uuid`);
+    }
+
+    if (req.query.role) {
+      params.push(req.query.role);
+      conditions.push(`
+        EXISTS (
+          SELECT 1 FROM user_roles ur2
+          JOIN roles r2 ON r2.id = ur2.role_id
+          WHERE ur2.user_id = u.id
+            AND ur2.revoked_at IS NULL
+            AND r2.name = $${params.length}
+        )
+      `);
+    }
+
+    const whereClause = conditions.join(" AND ");
+
+    const { rows } = await pool.query(`
+      SELECT
+        u.id,
+        u.full_name,
+        u.email,
+        u.account_status,
+        u.last_login_at,
+        u.created_at,
+        u.institution_id,
+        u.department_id,
+        i.institution_name,
+        d.name AS department_name,
+        COALESCE(
+          (SELECT json_agg(json_build_object(
+              'name',         r.name,
+              'display_name', r.display_name
+            ))
+           FROM user_roles ur
+           JOIN roles r ON r.id = ur.role_id
+           WHERE ur.user_id = u.id
+             AND ur.revoked_at IS NULL
+             AND (ur.expires_at IS NULL OR ur.expires_at > now())
+          ), '[]'::json
+        ) AS roles
+      FROM users u
+      LEFT JOIN institutions i ON i.institution_id = u.institution_id
+      LEFT JOIN departments  d ON d.department_id  = u.department_id
+      WHERE ${whereClause}
+      ORDER BY u.created_at DESC
+    `, params);
+
+    return res.json({ success: true, users: rows });
+  } catch (err) {
+    logger.error("GET /api/users failed", { ...getLogContext(req), stack: err.stack });
+    return res.status(500).json({ success: false, message: "Internal server error." });
+  }
+});
 
 /* ── POST /api/users/import/execute ───────────────────────────── */
 router.post(
@@ -500,6 +622,20 @@ router.get(
     const format = req.query.format === "xlsx" ? "xlsx" : "csv";
 
     try {
+      const conditions = ["u.account_status != 'DELETED'"];
+      const params     = [];
+
+      if (isDeptAdmin(req)) {
+        params.push(req.user.institutionId, req.user.departmentId);
+        conditions.push(`u.institution_id = $${params.length - 1}::uuid`);
+        conditions.push(`u.department_id  = $${params.length}::uuid`);
+      } else if (isOnlyInstAdmin(req)) {
+        params.push(req.user.institutionId);
+        conditions.push(`u.institution_id = $${params.length}::uuid`);
+      }
+
+      const whereClause = conditions.join(" AND ");
+
       const { rows } = await pool.query(`
         SELECT
           u.id,
@@ -529,14 +665,13 @@ router.get(
         LEFT JOIN departments  d ON d.department_id  = u.department_id
         WHERE ${whereClause}
         ORDER BY u.created_at DESC
-      `);
+      `, params);
 
       const ws = XLSX.utils.json_to_sheet(rows.length ? rows : [{}]);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "Users");
       const ts = new Date().toISOString().slice(0, 10);
 
-      // ── AUDIT: Export ─────────────────────────────────────────────
       writeAuditLog(req, {
         actionType: "USERS_EXPORTED",
         entityType: "USER",
@@ -544,7 +679,6 @@ router.get(
         message:    `User data exported as ${format.toUpperCase()} — ${rows.length} records`,
         metadata:   { format, record_count: rows.length, exported_on: ts },
       }).catch(() => {});
-      // ─────────────────────────────────────────────────────────────
 
       if (format === "xlsx") {
         const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
@@ -565,6 +699,7 @@ router.get(
 );
 
 /* ── GET /api/users/export/sample ────────────────────────────── */
+// FIX #4: Removed the leaked GET /api/users SQL query and return statement from the bottom of this route.
 router.get(
   "/export/sample",
   verifyToken,
@@ -673,46 +808,16 @@ router.get(
         });
       }
 
-      const whereClause = conditions.join(" AND ");
-
-      ({ rows } = await pool.query(`
-        SELECT
-          u.id,
-          u.full_name,
-          u.email,
-          u.account_status,
-          u.last_login_at,
-          u.created_at,
-          u.institution_id,
-          u.department_id,
-          i.institution_name,
-          d.name AS department_name,
-          COALESCE(
-            (SELECT json_agg(json_build_object(
-                'name',         r.name,
-                'display_name', r.display_name
-              ))
-             FROM user_roles ur
-             JOIN roles r ON r.id = ur.role_id
-             WHERE ur.user_id = u.id
-               AND ur.revoked_at IS NULL
-               AND (ur.expires_at IS NULL OR ur.expires_at > now())
-            ), '[]'::json
-          ) AS roles
-        FROM users u
-        LEFT JOIN institutions i ON i.institution_id = u.institution_id
-        LEFT JOIN departments  d ON d.department_id  = u.department_id
-        WHERE ${whereClause}
-        ORDER BY u.created_at DESC
-      `, params));
+      const buf = await workbook.xlsx.writeBuffer();
+      res.setHeader("Content-Disposition", 'attachment; filename="users_import_sample.xlsx"');
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      return res.send(buf);
+    } catch (err) {
+      logger.error("Export sample failed", { ...getLogContext(req), stack: err.stack });
+      return res.status(500).json({ success: false, message: "Export sample failed." });
     }
-
-    return res.json({ success: true, users: rows });
-  } catch (err) {
-    logger.error("GET /api/users failed", { ...getLogContext(req), stack: err.stack });
-    return res.status(500).json({ success: false, message: "Internal server error." });
   }
-});
+);
 
 /* ── PUT /api/users/:id ── */
 router.put("/:id", verifyToken, requireRole(["super_admin", "institute_admin"]), async (req, res) => {
@@ -728,7 +833,6 @@ router.put("/:id", verifyToken, requireRole(["super_admin", "institute_admin"]),
     return res.status(400).json({ success: false, message: "Invalid account status." });
 
   try {
-    // ── Fetch existing user before update (needed for audit diff) ──
     const { rows: existingRows } = await pool.query(
       `SELECT full_name, email, account_status, institution_id, department_id
        FROM users WHERE id = $1 AND account_status != 'DELETED'`,
@@ -739,7 +843,6 @@ router.put("/:id", verifyToken, requireRole(["super_admin", "institute_admin"]),
 
     const existing = existingRows[0];
 
-    // ── Department admin: verify target user belongs to their institution + department ──
     if (isDeptAdmin(req)) {
       if (
         existing.institution_id !== req.user.institutionId ||
@@ -752,8 +855,6 @@ router.put("/:id", verifyToken, requireRole(["super_admin", "institute_admin"]),
       }
       institution_id = req.user.institutionId;
       department_id  = req.user.departmentId;
-
-    // ── Institute admin: verify target user belongs to their institution ──
     } else if (isOnlyInstAdmin(req)) {
       if (existing.institution_id !== req.user.institutionId)
         return res.status(403).json({ success: false, message: "You can only manage users from your own institution." });
@@ -801,7 +902,6 @@ router.post("/", verifyToken, requireRole(["super_admin", "institute_admin"]), a
   const pool = req.app.locals.pool;
   let { full_name, email, password, institution_id, department_id, role_name } = req.body;
 
-  // ── Scope institution / department to what the admin owns ──
   if (isDeptAdmin(req)) {
     institution_id = req.user.institutionId;
     department_id  = req.user.departmentId;
