@@ -114,7 +114,6 @@ async function getImportSchema(pool) {
     });
   }
 
-  // Required fields first, then optional
   fields.sort((a, b) => (b.required ? 1 : 0) - (a.required ? 1 : 0));
   return fields;
 }
@@ -270,7 +269,6 @@ router.post(
         if (!institution_id && !rowErrors.some((e) => e.field === "institution_name"))
           rowErrors.push({ field: "institution_name", reason: "Institution is required" });
 
-        /* Email domain must match institution's configured domain */
         if (institution_id && email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
           const instDomain  = instById.get(institution_id) || "";
           const emailDomain = email.split("@")[1]?.toLowerCase() || "";
@@ -360,7 +358,6 @@ router.post(
         return col !== undefined ? String(row[col] ?? "").trim() : "";
       };
 
-      // Hash default password once — covers the vast majority of bulk-import rows
       const DEFAULT_PASS = "Welcome@123";
       const defaultHash  = await bcrypt.hash(DEFAULT_PASS, 10);
 
@@ -393,7 +390,6 @@ router.post(
         if (!institution_id)
           { errorRows.push({ row: rowNum, error: "Institution is required — map the column or set a default" }); continue; }
 
-        /* Email domain must match institution's configured domain */
         const instDomain  = instById.get(institution_id) || "";
         const emailDomain = email.split("@")[1]?.toLowerCase() || "";
         if (instDomain && emailDomain !== instDomain)
@@ -412,7 +408,6 @@ router.post(
         prepared.push({ full_name, email: email.toLowerCase(), rawPassword, institution_id, department_id, role_id, account_status });
       }
 
-      // Reuse default hash for most rows; hash custom passwords in concurrent batches of 20
       const HASH_CONCURRENCY = 20;
       for (let i = 0; i < prepared.length; i += HASH_CONCURRENCY) {
         await Promise.all(prepared.slice(i, i + HASH_CONCURRENCY).map(async (u) => {
@@ -422,7 +417,6 @@ router.post(
         }));
       }
 
-      // Pre-fetch existing emails in one query
       const { rows: existing } = await pool.query(
         `SELECT email, id FROM users WHERE email = ANY($1::text[]) AND account_status != 'DELETED'`,
         [prepared.map((p) => p.email)]
@@ -447,7 +441,6 @@ router.post(
       const total  = toInsert.length + toUpdate.length;
       let   done   = 0;
 
-      // ── Batch INSERT new users ────────────────────────────────────
       for (let i = 0; i < toInsert.length; i += CHUNK) {
         const chunk  = toInsert.slice(i, i + CHUNK);
         const vals   = [];
@@ -468,7 +461,6 @@ router.post(
 
         const idByEmail = new Map(ins.map((r) => [r.email, r.id]));
 
-        // Batch insert user_roles for this chunk
         const roleInserts = chunk
           .filter((u) => u.role_id)
           .map((u) => ({ userId: idByEmail.get(u.email), roleId: u.role_id }))
@@ -491,7 +483,6 @@ router.post(
         send({ phase: "importing", done, total });
       }
 
-      // ── Batch UPDATE existing users ───────────────────────────────
       for (let i = 0; i < toUpdate.length; i += CHUNK) {
         const chunk = toUpdate.slice(i, i + CHUNK);
 
@@ -514,7 +505,6 @@ router.post(
           ]
         );
 
-        // Revoke old roles then batch-insert new ones
         const usersWithRoles = chunk.filter((u) => u.role_id);
         if (usersWithRoles.length) {
           await pool.query(
@@ -602,6 +592,16 @@ router.get(
       XLSX.utils.book_append_sheet(wb, ws, "Users");
       const ts = new Date().toISOString().slice(0, 10);
 
+      // ── AUDIT: Export ─────────────────────────────────────────────
+      writeAuditLog(req, {
+        actionType: "USERS_EXPORTED",
+        entityType: "USER",
+        status:     "SUCCESS",
+        message:    `User data exported as ${format.toUpperCase()} — ${rows.length} records`,
+        metadata:   { format, record_count: rows.length, exported_on: ts },
+      }).catch(() => {});
+      // ─────────────────────────────────────────────────────────────
+
       if (format === "xlsx") {
         const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
         res.setHeader("Content-Disposition", `attachment; filename="users_${ts}.xlsx"`);
@@ -668,12 +668,10 @@ router.get(
         return res.send(csv);
       }
 
-      // Excel with dropdowns via ExcelJS
       let ExcelJS;
       try { ExcelJS = require("exceljs"); } catch (_) { ExcelJS = null; }
 
       if (!ExcelJS) {
-        // Fallback: plain xlsx without dropdowns
         const ws = XLSX.utils.json_to_sheet(sampleData);
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, "Users Import Sample");
@@ -688,13 +686,11 @@ router.get(
       const lookups   = workbook.addWorksheet("_Lookups");
       lookups.state   = "veryHidden";
 
-      // Write lookup values into hidden sheet columns
       instNames.forEach((v, i) => { lookups.getCell(i + 1, 1).value = v; });
       deptNames.forEach((v, i) => { lookups.getCell(i + 1, 2).value = v; });
       roleNames.forEach((v, i) => { lookups.getCell(i + 1, 3).value = v; });
       ["ACTIVE", "INACTIVE", "SUSPENDED"].forEach((v, i) => { lookups.getCell(i + 1, 4).value = v; });
 
-      // Named ranges for data validation
       if (instNames.length) workbook.definedNames.add(`_Lookups!$A$1:$A$${instNames.length}`, "InstList");
       if (deptNames.length) workbook.definedNames.add(`_Lookups!$B$1:$B$${deptNames.length}`, "DeptList");
       if (roleNames.length) workbook.definedNames.add(`_Lookups!$C$1:$C$${roleNames.length}`, "RoleList");
@@ -884,10 +880,9 @@ router.post("/", verifyToken, requireRole(["super_admin", "institute_admin"]), a
       message:    `User "${rows[0].full_name}" created`,
     });
 
-    // ── Fire-and-forget welcome email ──────────────────────────────────
     const newUser = rows[0];
     setImmediate(() => {
-      sendWelcomeEmail(pool, {                              // ← pool added
+      sendWelcomeEmail(pool, {
         full_name: newUser.full_name,
         email:     newUser.email,
         password,
@@ -895,23 +890,13 @@ router.post("/", verifyToken, requireRole(["super_admin", "institute_admin"]), a
         userId:    newUser.id,
       })
         .then((info) => {
-          if (!info) return;                                // email_enabled = false, skipped
-          logger.info("Welcome email sent", {
-            userId:    newUser.id,
-            recipient: newUser.email,
-            messageId: info.messageId,
-          });
+          if (!info) return;
+          logger.info("Welcome email sent", { userId: newUser.id, recipient: newUser.email, messageId: info.messageId });
         })
         .catch((err) => {
-          logger.error("Welcome email FAILED (user still created)", {
-            userId:    newUser.id,
-            recipient: newUser.email,
-            error:     err.message,
-            stack:     err.stack,
-          });
+          logger.error("Welcome email FAILED (user still created)", { userId: newUser.id, recipient: newUser.email, error: err.message, stack: err.stack });
         });
     });
-    // ──────────────────────────────────────────────────────────────────
 
     return res.status(201).json({ success: true, user: rows[0] });
   } catch (err) {

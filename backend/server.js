@@ -41,7 +41,7 @@ app.use(helmet());
 app.use(cors({
   origin:      [
     "http://localhost:5173",
-    "http://localhost:3000",
+    "http://localhost:5000",
     "http://localhost:4000",
     "https://yourfrontend.com",
   ],
@@ -125,6 +125,9 @@ app.use("/api/audit-logs",   auditLogRoutes);
 app.use("/api/upload",       uploadRoutes);
 app.use("/api/notification-templates", notificationTemplatesRouter);
 app.use("/api/radiology",              radiologyRoutes);   // ← radiology mounted
+app.use("/api/kpi", require("./routes/kpi"));
+
+
 /* ─── Global error handler (must be last) ───────────────────── */
 app.use(errorHandler);
 

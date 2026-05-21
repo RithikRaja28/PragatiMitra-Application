@@ -2,8 +2,9 @@
  * RootLayout.jsx
  */
 
-import { Suspense } from "react";
+import { Suspense, useState } from "react";
 import AppShell from "../../components/Dashboard/AppShell";
+import SettingsSidebar, { flatSettingsItems } from "../../components/Dashboard/SettingsSidebar";
 import "./RootLayout.css";
 import { useAuth } from "../../store/AuthContext";
 import { getRoleConfig } from "../../components/Dashboard/roleConfig";
@@ -42,6 +43,8 @@ function PageLoader() {
 
 export default function RootLayout() {
   const { user, loading } = useAuth();
+  const [showSettings, setShowSettings] = useState(false);
+  const [activeSettingsId, setActiveSettingsId] = useState("notifications");
   const role = user?.roles?.[0]?.name;
   const config = getRoleConfig(role);
 
@@ -84,6 +87,62 @@ export default function RootLayout() {
 
   if (loading) return <ShellSkeleton />;
 
+  // Inject CSS variables for settings view (same as AppShell)
+  function injectSettingsCSS() {
+    if (typeof document === "undefined" || document.getElementById("settings-css-vars")) return;
+    const el = document.createElement("style");
+    el.id = "settings-css-vars";
+    el.textContent = `
+      :root {
+        --sh-topbar: #0f172a;
+        --sh-topbar-b: rgba(255,255,255,0.07);
+        --sh-sidebar: #ffffff;
+        --sh-bg: #f1f5f9;
+        --sh-border: rgba(0,0,0,0.08);
+        --sh-accent: #2563eb;
+        --sh-accent2: #7c3aed;
+        --sh-text: #1e293b;
+        --sh-muted: #94a3b8;
+        --sh-hover: rgba(37,99,235,0.07);
+        --sh-active: rgba(37,99,235,0.10);
+        --sh-font: 'Plus Jakarta Sans', sans-serif;
+      }
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    `;
+    document.head.appendChild(el);
+  }
+
+  // Get the active settings page content
+  const allSettingsItems = flatSettingsItems();
+  const activeSettingsPage = allSettingsItems.find(item => item.id === activeSettingsId);
+
+  // If settings is shown, render settings sidebar + content
+  if (showSettings) {
+    injectSettingsCSS();
+    return (
+      <Suspense fallback={<PageLoader />}>
+        <div style={{ display: "flex", height: "100dvh", width: "100%", overflow: "hidden" }}>
+          <SettingsSidebar
+            activeId={activeSettingsId}
+            onSelect={setActiveSettingsId}
+            onBack={() => setShowSettings(false)}
+          />
+          <main style={{
+            flex: 1,
+            overflowY: "auto",
+            background: "var(--sh-bg)",
+            fontFamily: "var(--sh-font)",
+            color: "var(--sh-text)",
+          }}>
+            <div style={{ padding: "32px 36px" }}>
+              {activeSettingsPage?.renderPage()}
+            </div>
+          </main>
+        </div>
+      </Suspense>
+    );
+  }
+
   return (
     <Suspense fallback={<PageLoader />}>
       <AppShell
@@ -94,6 +153,11 @@ export default function RootLayout() {
         user={shellUser}
         notificationCount={2}
         onNavigate={(id) => console.log("Navigated to:", id)}
+        onSettingsClick={() => {
+          console.log("Settings clicked - opening settings");
+          setShowSettings(true);
+          setActiveSettingsId("notifications");
+        }}
       />
     </Suspense>
   );

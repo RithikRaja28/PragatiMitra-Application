@@ -1,13 +1,31 @@
-const logger = require("./logger");
+"use strict";
 
 /**
  * utils/audit.js
  *
- * Auto-captured from every request — no manual input ever needed:
- *   • ip_address   — real client IP, respects X-Forwarded-For / X-Real-IP
- *   • user_agent   — raw User-Agent header
- *   • browser_name — friendly label derived from User-Agent (no npm dependency)
+ * FIX 1: audit_logs.entity_id column is type UUID in PostgreSQL.
+ *         management_committees.id is a plain INTEGER (SERIAL).
+ *         Passing an integer string like "1" into a UUID column throws:
+ *           "invalid input syntax for type uuid: '1'"
+ *
+ * FIX 2: Login/logout routes run before JWT auth middleware, so req.user
+ *         is null and userId resolves to null → actor shows as "System".
+ *         Solution: accept an optional `overrideUserId` field in options.
+ *         When provided it takes priority over req.user?.userId.
+ *         Login route passes the resolved user's ID directly.
  */
+
+const logger = require("./logger");
+
+/* ─────────────────────────────────────────────────────────────
+   UUID validation
+───────────────────────────────────────────────────────────── */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function isUuid(value) {
+  if (!value) return false;
+  return UUID_RE.test(String(value));
+}
 
 /* ─────────────────────────────────────────────────────────────
    parseBrowserName — zero-dependency UA parser
@@ -37,6 +55,10 @@ function parseBrowserName(ua = "") {
 
 /* ─────────────────────────────────────────────────────────────
    writeAuditLog(req, options)
+
+   options.overrideUserId — pass the real user UUID when req.user
+   is not populated (e.g. login/logout routes that run before the
+   verifyToken middleware).  Takes priority over req.user?.userId.
 ───────────────────────────────────────────────────────────── */
 async function writeAuditLog(req, options) {
   const pool = req.app.locals.pool;
@@ -44,16 +66,19 @@ async function writeAuditLog(req, options) {
   const {
     actionType,
     entityType,
-    entityId      = null,
-    oldValue      = null,
-    newValue      = null,
-    changedFields = null,
-    status        = "SUCCESS",
-    message       = null,
-    metadata      = null,
+    entityId        = null,
+    oldValue        = null,
+    newValue        = null,
+    changedFields   = null,
+    status          = "SUCCESS",
+    message         = null,
+    metadata        = null,
+    // ── NEW: explicit user override for pre-auth routes ────────
+    overrideUserId  = null,
   } = options;
 
-  const userId = req.user?.userId || null;
+  // overrideUserId wins; fall back to JWT-populated req.user
+  const userId = overrideUserId || req.user?.userId || null;
 
   // Real client IP — respects reverse-proxy headers
   const ip =
@@ -65,6 +90,17 @@ async function writeAuditLog(req, options) {
   const userAgent   = req.headers["user-agent"] || null;
   const browserName = parseBrowserName(userAgent);
 
+  // entity_id column is UUID — non-UUID values go into metadata.entity_ref
+  const safeEntityId = isUuid(entityId) ? entityId : null;
+
+  let finalMetadata = metadata ? { ...metadata } : {};
+  if (entityId !== null && entityId !== undefined && !isUuid(entityId)) {
+    finalMetadata.entity_ref = String(entityId);
+  }
+  const metadataJson = Object.keys(finalMetadata).length
+    ? JSON.stringify(finalMetadata)
+    : null;
+
   try {
     await pool.query(
       `INSERT INTO public.audit_logs
@@ -75,22 +111,28 @@ async function writeAuditLog(req, options) {
       [
         userId,
         actionType,
-        entityType.toUpperCase(),
-        entityId,
+        entityType ? entityType.toUpperCase() : null,
+        safeEntityId,
         oldValue      ? JSON.stringify(oldValue)  : null,
         newValue      ? JSON.stringify(newValue)  : null,
-        changedFields,
+        changedFields ? changedFields             : null,
         status,
         message,
         ip,
         userAgent,
         browserName,
-        metadata      ? JSON.stringify(metadata)  : null,
+        metadataJson,
       ]
     );
   } catch (err) {
-    // Never let audit failures crash the main request
-    logger.error("Failed to write audit log", { stack: err.stack });
+    logger.error("Failed to write audit log", {
+      actionType,
+      entityType,
+      entityId,
+      errCode:    err.code,
+      errMessage: err.message,
+      stack:      err.stack,
+    });
   }
 }
 

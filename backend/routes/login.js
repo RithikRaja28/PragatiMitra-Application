@@ -1,3 +1,5 @@
+"use strict";
+
 const express   = require("express");
 const jwt       = require("jsonwebtoken");
 const bcrypt    = require("bcrypt");
@@ -6,10 +8,13 @@ const rateLimit = require("express-rate-limit");
 
 const logger            = require("../utils/logger");
 const { getLogContext } = logger;
+// ── NEW ──────────────────────────────────────────────────────────
+const { writeAuditLog } = require("../utils/audit");
+// ────────────────────────────────────────────────────────────────
 
 const router = express.Router();
 
-const REFRESH_TOKEN_TTL_MS = 1 * 24 * 60 * 60 * 1000; // 1 days
+const REFRESH_TOKEN_TTL_MS = 1 * 24 * 60 * 60 * 1000; // 1 day
 
 /* ── Rate limiters ── */
 const loginLimiter = rateLimit({
@@ -41,12 +46,10 @@ function generateRefreshToken() {
   return crypto.randomBytes(64).toString("hex");
 }
 
-// Never store raw refresh tokens — SHA-256 hash before writing to DB
 function hashToken(raw) {
   return crypto.createHash("sha256").update(raw).digest("hex");
 }
 
-// HttpOnly cookie options — JS cannot read this token at all
 function cookieOptions() {
   return {
     httpOnly: true,
@@ -101,13 +104,13 @@ function buildAccessPayload(user, sessionId) {
 
 function buildUserObject(user) {
   return {
-    id:                 user.id,
-    fullName:           user.full_name,
-    email:              user.email,
-    institutionId:      user.institution_id,
-    institutionName:    user.institution_name,
-    departmentId:       user.department_id,
-    departmentName:     user.department_name,
+    id:                   user.id,
+    fullName:             user.full_name,
+    email:                user.email,
+    institutionId:        user.institution_id,
+    institutionName:      user.institution_name,
+    departmentId:         user.department_id,
+    departmentName:       user.department_name,
     profileImageUrl:      user.profile_image_url,
     mustChangePassword:   user.must_change_password,
     isTemporaryPassword:  user.is_temporary_password,
@@ -136,10 +139,29 @@ router.post("/login", loginLimiter, async (req, res) => {
       [normalizedEmail]
     );
 
-    if (!user)
+    // ── AUDIT: Login failed — user not found ────────────────────────
+    if (!user) {
+      await writeAuditLog(req, {
+        actionType: "LOGIN_FAILED",
+        entityType: "SESSION",
+        status:     "FAILURE",
+        message:    `Login attempt for unknown email: ${normalizedEmail}`,
+        metadata:   { reason: "user_not_found", attempted_email: normalizedEmail },
+      });
       return res.status(401).json({ success: false, message: "Invalid email or password." });
+    }
 
+    // ── AUDIT: Login failed — account inactive / suspended ─────────
     if (user.account_status !== "ACTIVE") {
+      await writeAuditLog(req, {
+        actionType:     "LOGIN_FAILED",
+        entityType:     "SESSION",
+        entityId:       user.id,
+        overrideUserId: user.id,
+        status:         "FAILURE",
+        message:        `Login blocked for ${user.email} — account ${user.account_status}`,
+        metadata:       { reason: "account_not_active", account_status: user.account_status },
+      });
       return res.status(403).json({
         success: false,
         message: user.account_status === "INACTIVE"
@@ -149,8 +171,20 @@ router.post("/login", loginLimiter, async (req, res) => {
     }
 
     const passwordMatch = await bcrypt.compare(password, user.password_hash);
-    if (!passwordMatch)
+
+    // ── AUDIT: Login failed — wrong password ────────────────────────
+    if (!passwordMatch) {
+      await writeAuditLog(req, {
+        actionType:     "LOGIN_FAILED",
+        entityType:     "SESSION",
+        entityId:       user.id,
+        overrideUserId: user.id,
+        status:         "FAILURE",
+        message:        `Failed login attempt for ${user.email} — incorrect password`,
+        metadata:       { reason: "invalid_password" },
+      });
       return res.status(401).json({ success: false, message: "Invalid email or password." });
+    }
 
     // Single session: wipe all previous sessions for this user
     await pool.query("DELETE FROM sessions WHERE user_id = $1", [user.id]);
@@ -167,7 +201,22 @@ router.post("/login", loginLimiter, async (req, res) => {
 
     await pool.query("UPDATE users SET last_login_at = now() WHERE id = $1", [user.id]);
 
-    // Refresh token goes in HttpOnly cookie — never exposed to JavaScript
+    // ── AUDIT: Login success ────────────────────────────────────────
+    await writeAuditLog(req, {
+      actionType:     "LOGIN_SUCCESS",
+      entityType:     "SESSION",
+      entityId:       user.id,
+      overrideUserId: user.id,
+      status:         "SUCCESS",
+      message:        `${user.full_name} (${user.email}) signed in`,
+      metadata:       {
+        session_id:   sessionId,
+        roles:        (user.roles || []).map((r) => r.name),
+        institution:  user.institution_name || null,
+      },
+    });
+    // ───────────────────────────────────────────────────────────────
+
     res.cookie("pm_refresh", rawRefreshToken, cookieOptions());
 
     return res.status(200).json({
@@ -194,15 +243,24 @@ router.post("/refresh", refreshLimiter, async (req, res) => {
   const incomingHash = hashToken(rawToken);
 
   try {
-    // ── Token reuse detection ──────────────────────────────────────────────
-    // If this hash matches a *previous* (already-rotated) token, someone is
-    // replaying a stale token — possible theft. Nuke all sessions for the user.
+    // ── Token reuse detection ───────────────────────────────────────
     const { rows: reuseRows } = await pool.query(
       "SELECT user_id FROM sessions WHERE previous_token_hash = $1",
       [incomingHash]
     );
 
     if (reuseRows.length) {
+      // ── AUDIT: Security violation — token replay ──────────────────
+      await writeAuditLog(req, {
+        actionType:     "SESSION_TOKEN_REUSE",
+        entityType:     "SESSION",
+        entityId:       reuseRows[0].user_id,
+        overrideUserId: reuseRows[0].user_id,
+        status:         "FAILURE",
+        message:        "Possible token theft detected — all sessions invalidated",
+        metadata:       { reason: "refresh_token_reuse" },
+      });
+      // ─────────────────────────────────────────────────────────────
       await pool.query("DELETE FROM sessions WHERE user_id = $1", [reuseRows[0].user_id]);
       res.clearCookie("pm_refresh", { path: "/api/auth" });
       return res.status(401).json({
@@ -210,7 +268,6 @@ router.post("/refresh", refreshLimiter, async (req, res) => {
         message: "Security violation detected. Please sign in again.",
       });
     }
-    // ──────────────────────────────────────────────────────────────────────
 
     const { rows } = await pool.query(
       `SELECT s.id, s.user_id, s.expires_at
@@ -231,7 +288,6 @@ router.post("/refresh", refreshLimiter, async (req, res) => {
       return res.status(401).json({ success: false, expired: true, message: "Session expired. Please sign in again." });
     }
 
-    // Rotate: issue new token, keep old hash as previous for next reuse check
     const newRawToken  = generateRefreshToken();
     const newExpiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_MS);
 
@@ -337,7 +393,6 @@ router.post("/change-password", verifyToken, async (req, res) => {
 
     const dbUser = rows[0];
 
-    // Skip current-password check for temporary passwords; require it otherwise
     if (!dbUser.is_temporary_password) {
       if (!currentPassword)
         return res.status(400).json({ success: false, message: "currentPassword is required." });
@@ -374,10 +429,37 @@ router.post("/logout", async (req, res) => {
   const rawToken = req.cookies.pm_refresh;
 
   if (rawToken) {
-    await pool.query(
-      "DELETE FROM sessions WHERE token_hash = $1",
-      [hashToken(rawToken)]
-    ).catch(() => {});
+    try {
+      // ── Look up session to get user info for audit before deleting ──
+      const { rows } = await pool.query(
+        `SELECT s.user_id, u.full_name, u.email
+         FROM sessions s
+         JOIN users u ON u.id = s.user_id
+         WHERE s.token_hash = $1`,
+        [hashToken(rawToken)]
+      );
+
+      await pool.query(
+        "DELETE FROM sessions WHERE token_hash = $1",
+        [hashToken(rawToken)]
+      );
+
+      // ── AUDIT: Logout ─────────────────────────────────────────────
+      if (rows.length) {
+        const { user_id, full_name, email } = rows[0];
+        await writeAuditLog(req, {
+          actionType:     "LOGOUT",
+          entityType:     "SESSION",
+          entityId:       user_id,
+          overrideUserId: user_id,
+          status:         "SUCCESS",
+          message:        `${full_name} (${email}) signed out`,
+        });
+      }
+      // ─────────────────────────────────────────────────────────────
+    } catch (_) {
+      // Never let audit/session cleanup crash the logout response
+    }
   }
 
   res.clearCookie("pm_refresh", { path: "/api/auth" });

@@ -15,19 +15,28 @@
  *   PUT    /api/committees/:id
  *   PATCH  /api/committees/:id/status
  *   DELETE /api/committees/:id
+ *
+ * FIX (audit logs not appearing):
+ *   ✅ Removed internal writeAuditLog — was silently failing due to
+ *      changedFields type mismatch (JSON.stringify vs raw array)
+ *   ✅ Now uses shared utils/audit.js writeAuditLog consistently
+ *   ✅ All calls pass entityType: "COMMITTEE" explicitly
+ *   ✅ changedFields passed as raw JS array (not JSON.stringify)
  * ─────────────────────────────────────────────────────────────
  */
 
-const express         = require("express");
-const { verifyToken } = require("../middleware/auth");
+const express              = require("express");
+const { verifyToken }      = require("../middleware/auth");
+const logger               = require("../utils/logger");
+const { getLogContext }    = logger;
 
-const logger            = require("../utils/logger");
-const { getLogContext } = logger;
+// ── FIX: Use the shared audit utility instead of the internal one ──────────
+const { writeAuditLog }    = require("../utils/audit");
 
 const router = express.Router();
 router.use(verifyToken);
 
-/* ── Enum values (single source of truth — also used in validation) ── */
+/* ── Enum values ─────────────────────────────────────────────── */
 const COMMITTEE_TYPES = [
   { value: "GB",     label: "Governing Body (GB)" },
   { value: "EC",     label: "Executive Council (EC)" },
@@ -36,7 +45,6 @@ const COMMITTEE_TYPES = [
   { value: "OTHERS", label: "Others" },
 ];
 
-/* ── UPDATED: Chairperson, Member Secretary, Secretary, Member, Vice President, President ── */
 const POSITIONS = [
   { value: "CHAIRPERSON",      label: "Chairperson" },
   { value: "MEMBER_SECRETARY", label: "Member Secretary" },
@@ -48,10 +56,9 @@ const POSITIONS = [
 
 const COMMITTEE_TYPE_VALUES = COMMITTEE_TYPES.map((t) => t.value);
 const POSITION_VALUES       = POSITIONS.map((p) => p.value);
+const FINANCE_YEAR_RE       = /^\d{4}-\d{4}$/;
 
-const FINANCE_YEAR_RE = /^\d{4}-\d{4}$/;
-
-/* ── Helpers ── */
+/* ── Helpers ─────────────────────────────────────────────────── */
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function isValidInstituteId(v) {
@@ -78,8 +85,8 @@ function generateFinanceYears() {
 }
 
 function validateMembers(raw) {
-  if (!Array.isArray(raw))   return { ok: false, error: "members must be a JSON array." };
-  if (raw.length === 0)      return { ok: false, error: "At least one member is required." };
+  if (!Array.isArray(raw))  return { ok: false, error: "members must be a JSON array." };
+  if (raw.length === 0)     return { ok: false, error: "At least one member is required." };
   const sanitised = [];
   for (let i = 0; i < raw.length; i++) {
     const m           = raw[i];
@@ -92,6 +99,21 @@ function validateMembers(raw) {
     sanitised.push({ name, designation });
   }
   return { ok: true, sanitised };
+}
+
+/* ─────────────────────────────────────────────────────────────
+   changedFieldsBetween — compare two flat/shallow objects and
+   return the list of keys whose values differ.
+───────────────────────────────────────────────────────────── */
+function changedFieldsBetween(oldObj, newObj) {
+  const keys = new Set([...Object.keys(oldObj), ...Object.keys(newObj)]);
+  const diff = [];
+  for (const k of keys) {
+    const ov = JSON.stringify(oldObj[k] ?? null);
+    const nv = JSON.stringify(newObj[k] ?? null);
+    if (ov !== nv) diff.push(k);
+  }
+  return diff;
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -174,9 +196,7 @@ router.get("/", async (req, res) => {
    POST /api/committees
 ═══════════════════════════════════════════════════════════════ */
 router.post("/", async (req, res) => {
-  const pool      = req.app.locals.pool;
-  const createdBy = req.user?.userId;
-
+  const pool = req.app.locals.pool;
   const { institute_id, finance_year, committee_type, members: rawMembers, position, contact } = req.body;
 
   const errors = {};
@@ -194,7 +214,7 @@ router.post("/", async (req, res) => {
   }
 
   try {
-    /* Duplicate guard: same institute + year + type + position */
+    /* Duplicate guard */
     const { rows: dup } = await pool.query(
       `SELECT 1 FROM management_committees
        WHERE  institute_id   = $1
@@ -223,10 +243,29 @@ router.post("/", async (req, res) => {
     );
 
     const typeLabel = COMMITTEE_TYPES.find((t) => t.value === committee_type)?.label ?? committee_type;
+
+    // ── FIX: Use shared writeAuditLog from utils/audit.js ─────────────────
+    await writeAuditLog(req, {
+      actionType:    "COMMITTEE_CREATED",
+      entityType:    "COMMITTEE",              // ← explicit, matches audit_logs column
+      entityId:      String(created.id),
+      status:        "SUCCESS",
+      message:       `Committee "${typeLabel}" created for ${finance_year}.`,
+      newValue: {
+        institute_id:   created.institute_id,
+        finance_year:   created.finance_year,
+        committee_type: created.committee_type,
+        position:       created.position,
+        contact:        created.contact,
+        members:        created.members,
+        status:         created.status,
+      },
+    });
+
     return res.status(201).json({
       success: true,
       message: `Committee "${typeLabel}" created successfully.`,
-      data: created,
+      data:    created,
     });
   } catch (err) {
     logger.error("POST /api/committees failed", { ...getLogContext(req), stack: err.stack });
@@ -303,6 +342,38 @@ router.put("/:id", async (req, res) => {
       [id, finance_year, committee_type, JSON.stringify(membersResult.sanitised), position, contact?.trim() || null]
     );
 
+    const oldSnapshot = {
+      finance_year:   row.finance_year,
+      committee_type: row.committee_type,
+      position:       row.position,
+      contact:        row.contact ?? null,
+      members:        row.members,
+    };
+    const newSnapshot = {
+      finance_year:   updated.finance_year,
+      committee_type: updated.committee_type,
+      position:       updated.position,
+      contact:        updated.contact ?? null,
+      members:        updated.members,
+    };
+
+    // ── FIX: changedFields passed as raw array (not JSON.stringify) ────────
+    const changed = changedFieldsBetween(oldSnapshot, newSnapshot);
+
+    const typeLabel = COMMITTEE_TYPES.find((t) => t.value === updated.committee_type)?.label ?? committee_type;
+
+    // ── FIX: Use shared writeAuditLog from utils/audit.js ─────────────────
+    await writeAuditLog(req, {
+      actionType:    "COMMITTEE_UPDATED",
+      entityType:    "COMMITTEE",
+      entityId:      String(id),
+      status:        "SUCCESS",
+      message:       `Committee "${typeLabel}" (${updated.finance_year}) updated.`,
+      oldValue:      oldSnapshot,
+      newValue:      newSnapshot,
+      changedFields: changed,     // ← raw JS array, utils/audit.js handles it correctly
+    });
+
     return res.json({ success: true, message: "Committee updated successfully.", data: updated });
   } catch (err) {
     logger.error("PUT /api/committees/:id failed", { ...getLogContext(req), stack: err.stack });
@@ -314,8 +385,8 @@ router.put("/:id", async (req, res) => {
    PATCH /api/committees/:id/status
 ═══════════════════════════════════════════════════════════════ */
 router.patch("/:id/status", async (req, res) => {
-  const pool    = req.app.locals.pool;
-  const id      = Number(req.params.id);
+  const pool       = req.app.locals.pool;
+  const id         = Number(req.params.id);
   const { status } = req.body;
 
   if (!Number.isInteger(id) || id <= 0) {
@@ -327,7 +398,7 @@ router.patch("/:id/status", async (req, res) => {
 
   try {
     const { rows: existing } = await pool.query(
-      `SELECT id, committee_type, status FROM management_committees WHERE id = $1`, [id]
+      `SELECT id, committee_type, finance_year, status FROM management_committees WHERE id = $1`, [id]
     );
     if (!existing.length) {
       return res.status(404).json({ success: false, message: "Committee not found." });
@@ -336,16 +407,34 @@ router.patch("/:id/status", async (req, res) => {
       return res.status(409).json({ success: false, message: `Committee is already ${status.toLowerCase()}.` });
     }
 
+    const prevStatus  = existing[0].status;
+    const financeYear = existing[0].finance_year;
+
     await pool.query(
       `UPDATE management_committees SET status = $2, updated_at = NOW() WHERE id = $1`,
       [id, status]
     );
 
-    const label = COMMITTEE_TYPES.find((t) => t.value === existing[0].committee_type)?.label
-                  ?? existing[0].committee_type.replace(/_/g, " ");
+    const label      = COMMITTEE_TYPES.find((t) => t.value === existing[0].committee_type)?.label
+                       ?? existing[0].committee_type.replace(/_/g, " ");
+    const actionType = status === "ACTIVE" ? "COMMITTEE_ACTIVATED" : "COMMITTEE_DEACTIVATED";
+    const verb       = status === "ACTIVE" ? "activated" : "deactivated";
+
+    // ── FIX: Use shared writeAuditLog from utils/audit.js ─────────────────
+    await writeAuditLog(req, {
+      actionType,
+      entityType:    "COMMITTEE",
+      entityId:      String(id),
+      status:        "SUCCESS",
+      message:       `"${label}" (${financeYear}) ${verb}.`,
+      oldValue:      { status: prevStatus },
+      newValue:      { status },
+      changedFields: ["status"],   // ← raw array, correct for utils/audit.js
+    });
+
     return res.json({
       success: true,
-      message: `"${label}" has been ${status === "ACTIVE" ? "activated" : "deactivated"}.`,
+      message: `"${label}" has been ${verb}.`,
     });
   } catch (err) {
     logger.error("PATCH /api/committees/:id/status failed", { ...getLogContext(req), stack: err.stack });
@@ -365,14 +454,37 @@ router.delete("/:id", async (req, res) => {
   }
 
   try {
-    const { rows } = await pool.query(
-      `DELETE FROM management_committees WHERE id = $1 RETURNING id, committee_type`, [id]
+    const { rows: existing } = await pool.query(
+      `SELECT * FROM management_committees WHERE id = $1`, [id]
     );
-    if (!rows.length) {
+    if (!existing.length) {
       return res.status(404).json({ success: false, message: "Committee not found." });
     }
-    const label = COMMITTEE_TYPES.find((t) => t.value === rows[0].committee_type)?.label
-                  ?? rows[0].committee_type.replace(/_/g, " ");
+    const row = existing[0];
+
+    await pool.query(`DELETE FROM management_committees WHERE id = $1`, [id]);
+
+    const label = COMMITTEE_TYPES.find((t) => t.value === row.committee_type)?.label
+                  ?? row.committee_type.replace(/_/g, " ");
+
+    // ── FIX: Use shared writeAuditLog from utils/audit.js ─────────────────
+    await writeAuditLog(req, {
+      actionType: "COMMITTEE_DELETED",
+      entityType: "COMMITTEE",
+      entityId:   String(id),
+      status:     "SUCCESS",
+      message:    `Committee "${label}" (${row.finance_year}) deleted.`,
+      oldValue: {
+        institute_id:   row.institute_id,
+        finance_year:   row.finance_year,
+        committee_type: row.committee_type,
+        position:       row.position,
+        contact:        row.contact ?? null,
+        members:        row.members,
+        status:         row.status,
+      },
+    });
+
     return res.json({ success: true, message: `"${label}" has been deleted.` });
   } catch (err) {
     logger.error("DELETE /api/committees/:id failed", { ...getLogContext(req), stack: err.stack });

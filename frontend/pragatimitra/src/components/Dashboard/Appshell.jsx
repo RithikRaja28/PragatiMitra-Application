@@ -478,7 +478,7 @@ function injectCSS(id, css) {
 }
 
 /* ─── Topbar ────────────────────────────────────────────────── */
-function Topbar({ appName, logo, user, onHamburger, onSearch, searchPlaceholder, headerActions, notificationCount, navItems, onNavClick }) {
+function Topbar({ appName, logo, user, onHamburger, onSearch, searchPlaceholder, headerActions, notificationCount, navItems, onNavClick, onSettingsClick }) {
   const [query,       setQuery]       = useState("");
   const [menuOpen,    setMenuOpen]    = useState(false);
   const [searchOpen,  setSearchOpen]  = useState(false);
@@ -705,7 +705,15 @@ function Topbar({ appName, logo, user, onHamburger, onSearch, searchPlaceholder,
           </button>
         </div>
 
-        <button className="sh-icon-btn" aria-label="Settings">
+        <button 
+          className="sh-icon-btn" 
+          aria-label="Settings"
+          onClick={() => {
+            console.log("Settings clicked");
+            onSettingsClick?.();
+          }}
+          style={{ cursor: "pointer" }}
+        >
           <Icons.Settings size={16} />
         </button>
 
@@ -838,6 +846,7 @@ export default function AppShell({
   headerActions,
   notificationCount = 0,
   onNavigate,
+  onSettingsClick,
   defaultCollapsed = false,
 }) {
   injectCSS("app-shell-v2", CSS);
@@ -883,6 +892,7 @@ export default function AppShell({
           notificationCount={notificationCount}
           navItems={navItems}
           onNavClick={handleNavClick}
+          onSettingsClick={onSettingsClick}
         />
 
         {/* Body: sidebar + content */}
