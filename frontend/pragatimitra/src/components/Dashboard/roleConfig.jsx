@@ -27,8 +27,14 @@ import RoleAccessPage            from "../../pages/Roles/superadmin/RoleAccessPa
 import KPIPage                   from "../../pages/Roles/superadmin/Kpipage";
 
 /* ── Institute Admin page imports ───────────────────────────── */
-import InstitutionAdminOverviewPage from "../../pages/Roles/institutionadmin/InstitutionAdminOverviewPage";
-import ReportSetupPage              from "../../pages/Roles/institutionadmin/ReportSetupPage";
+import InstitutionAdminOverviewPage      from "../../pages/Roles/institutionadmin/InstitutionAdminOverviewPage";
+import ReportSetupPage                   from "../../pages/Roles/institutionadmin/ReportSetupPage";
+import InstituteAdminUserManagementPage  from "../../pages/Roles/institutionadmin/InstituteAdminUserManagementPage";
+import InstituteAdminDepartmentPage      from "../../pages/Roles/institutionadmin/InstituteAdminDepartmentPage";
+
+/* ── Department Admin page imports ──────────────────────────── */
+import DepartmentAdminDashboardPage      from "../../pages/Roles/departmentadmin/DepartmentAdminDashboardPage";
+import DepartmentAdminUserManagementPage from "../../pages/Roles/departmentadmin/DepartmentAdminUserManagementPage";
 
 /* ── Director's Office page imports ─────────────────────────── */
 import DirectorsDashboardPage from "../../pages/Roles/directorsoffice/DirectorsDashboardPage";
@@ -257,6 +263,18 @@ export const ROLE_CONFIG = {
         ],
       },
       {
+        group: "User Management",
+        items: [
+          { id: "ia-users",        label: "Users",       icon: "Users",     permission: null },
+        ],
+      },
+      {
+        group: "Dept Management",
+        items: [
+          { id: "ia-departments",  label: "Departments", icon: "Building2", permission: null },
+        ],
+      },
+      {
         group: "Reports",
         items: [
           {
@@ -314,16 +332,45 @@ export const ROLE_CONFIG = {
       },
     ],
     pages: {
-      "ia-overview": <InstitutionAdminOverviewPage />,
-      "ia-report-setup": <ReportSetupPage />,
-      "ia-sections": <SectionsPage />,
-      "ia-workflow": <WorkflowPage />,
-      "ia-task-workflow": <TaskWorkflowPage />,
+
+      "ia-overview":        <InstitutionAdminOverviewPage />,
+      "ia-users":           <InstituteAdminUserManagementPage />,
+      "ia-departments":     <InstituteAdminDepartmentPage />,
+      "ia-report-setup":    <ReportSetupPage />,
+      "ia-sections":        <SectionsPage />,
+      "ia-workflow":        <WorkflowPage />,
+      "ia-task-workflow":   <TaskWorkflowPage />,
       "ia-version-control": <VersionControlPage />,
       "ia-system": <SystemPage />,
     },
     defaultPage: "ia-overview",
     user: { name: "Institute Admin", initials: "IA", org: "PragatiMitra" },
+  },
+
+  /* ── DEPARTMENT ADMIN ────────────────────────────────────── */
+  // ✅ key = "department_admin" — matches backend exactly
+  department_admin: {
+    navItems: [
+      {
+        group: "",
+        items: [
+          { id: "da-overview", label: "Dashboard",       icon: "LayoutDashboard", permission: null },
+        ],
+      },
+      {
+        group: "User Management",
+        items: [
+          { id: "da-users",    label: "User Management", icon: "Users",           permission: null },
+        ],
+      },
+      
+    ],
+    pages: {
+      "da-overview": <DepartmentAdminDashboardPage />,
+      "da-users":    <DepartmentAdminUserManagementPage />,
+    },
+    defaultPage: "da-overview",
+    user: { name: "Department Admin", initials: "DA", org: "PragatiMitra" },
   },
 
   /* ── FINANCE OFFICER ──────────────────────────────────────── */

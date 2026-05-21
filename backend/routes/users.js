@@ -14,61 +14,10 @@ const { getLogContext } = logger;
 
 const router = express.Router();
 
-/* ─── Multer: memory storage, 25 MB cap ────────────────────────── */
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits:  { fileSize: 25 * 1024 * 1024 },
-  fileFilter(_req, file, cb) {
-    const ok = /\.(csv|xlsx|xls)$/i.test(file.originalname);
-    cb(ok ? null : new Error("Only CSV and Excel files (.csv, .xlsx, .xls) are allowed"), ok);
-  },
-});
-
-function handleUpload(req, res, next) {
-  upload.single("file")(req, res, (err) => {
-    if (err instanceof multer.MulterError) {
-      const msg = err.code === "LIMIT_FILE_SIZE"
-        ? "File too large. Maximum size is 25 MB."
-        : err.message;
-      return res.status(400).json({ success: false, message: msg });
-    }
-    if (err) return res.status(400).json({ success: false, message: err.message });
-    next();
-  });
-}
-
-/* ─── Schema config ─────────────────────────────────────────────── */
-const SCHEMA_CONFIG = {
-  EXCLUDED: [
-    "id", "password_hash", "created_at", "updated_at", "last_login_at", "created_by",
-    "must_change_password", "is_temporary_password", "profile_image_url",
-    "token_version", "password_changed_at", "refresh_token", "reset_token",
-    "reset_token_expires", "email_verified", "email_verification_token",
-    "two_factor_secret", "two_factor_enabled", "failed_login_attempts",
-    "locked_until", "last_password_change",
-  ],
-  FK: {
-    institution_id: { label: "Institution", importKey: "institution_name", exportExpr: "i.institution_name" },
-    department_id:  { label: "Department",  importKey: "department_name",  exportExpr: "d.name" },
-  },
-  VIRTUAL_IMPORT: [
-    { key: "password",  label: "Password", required: false },
-    { key: "role_name", label: "Role",     required: false },
-  ],
-  FORCE_REQUIRED: ["full_name", "email", "institution_name"],
-  ALIASES: {
-    full_name:        ["name", "fullname", "full name", "full_name", "username", "user name", "employee name", "employee_name", "staff name", "staff_name"],
-    email:            ["mail", "email id", "emailid", "email_id", "email address", "emailaddress", "e-mail", "e mail"],
-    institution_name: ["institution", "institution name", "institution_name", "org", "organization", "college", "institute", "school", "university"],
-    department_name:  ["dept", "department", "department name", "department_name", "dept name", "division"],
-    role_name:        ["role", "user role", "rolename", "role_name", "role name", "designation", "access level", "access_level"],
-    account_status:   ["status", "user status", "state", "account_status", "account status", "active"],
-    password:         ["pass", "pwd", "temp password", "initial password", "temp_password", "initial_password"],
-  },
-};
-
-function normalize(s) {
-  return String(s).toLowerCase().replace(/[\s_\-\.]+/g, "");
+/* ── Role helpers ── */
+function isOnlyInstAdmin(req) {
+  const roles = req.user.roles || [];
+  return roles.includes("institute_admin") && !roles.includes("super_admin");
 }
 
 function toLabel(col) {
@@ -198,28 +147,15 @@ router.post(
   }
 );
 
-/* ── POST /api/users/import/validate ──────────────────────────── */
-router.post(
-  "/import/validate",
-  verifyToken,
-  requireRole(["super_admin", "institute_admin"]),
-  async (req, res) => {
-    const pool = req.app.locals.pool;
-    const { mapping, sessionId, defaultInstitutionId = null } = req.body;
+/* ── GET /api/users ── */
+router.get("/", verifyToken, requireRole(["super_admin", "institute_admin"]), async (req, res) => {
+  const pool = req.app.locals.pool;
+  try {
+    let rows;
 
-    if (!mapping || !sessionId)
-      return res.status(400).json({ success: false, message: "mapping and sessionId are required." });
-    const session = req.app.locals.importSessions.get(sessionId);
-    if (!session)
-      return res.status(400).json({ success: false, message: "Import session expired. Please re-upload your file." });
-    const data = session.rows;
-
-    try {
-      const [{ rows: institutions }, { rows: departments }, { rows: roles }] = await Promise.all([
-        pool.query("SELECT institution_id, LOWER(institution_name) AS name_lower, LOWER(COALESCE(email_domain,'')) AS email_domain FROM institutions WHERE status = 'ACTIVE'"),
-        pool.query("SELECT department_id, LOWER(name) AS name_lower, institution_id FROM departments WHERE status = 'ACTIVE'"),
-        pool.query("SELECT id, LOWER(name) AS name_lower FROM roles"),
-      ]);
+    if (isDeptAdmin(req)) {
+      // Department admin: only users in their own institution + department, with optional role filter
+      const { role } = req.query;
 
       const instByName = new Map(institutions.map((i) => [i.name_lower, { id: i.institution_id, domain: i.email_domain.trim() }]));
       const instById   = new Map(institutions.map((i) => [i.institution_id, i.email_domain.trim()]));
@@ -566,24 +502,32 @@ router.get(
     try {
       const { rows } = await pool.query(`
         SELECT
-          u.full_name        AS "Full Name",
-          u.email            AS "Email",
-          u.account_status   AS "Account Status",
-          i.institution_name AS "Institution",
-          d.name             AS "Department",
+          u.id,
+          u.full_name,
+          u.email,
+          u.account_status,
+          u.last_login_at,
+          u.created_at,
+          u.institution_id,
+          u.department_id,
+          i.institution_name,
+          d.name AS department_name,
           COALESCE(
-            (SELECT string_agg(r.display_name, ', ')
-             FROM user_roles ur JOIN roles r ON r.id = ur.role_id
-             WHERE ur.user_id = u.id AND ur.revoked_at IS NULL
+            (SELECT json_agg(json_build_object(
+                'name',         r.name,
+                'display_name', r.display_name
+              ))
+             FROM user_roles ur
+             JOIN roles r ON r.id = ur.role_id
+             WHERE ur.user_id = u.id
+               AND ur.revoked_at IS NULL
                AND (ur.expires_at IS NULL OR ur.expires_at > now())
-            ), ''
-          ) AS "Roles",
-          TO_CHAR(u.created_at,    'YYYY-MM-DD') AS "Created At",
-          TO_CHAR(u.last_login_at, 'YYYY-MM-DD') AS "Last Login"
+            ), '[]'::json
+          ) AS roles
         FROM users u
         LEFT JOIN institutions i ON i.institution_id = u.institution_id
         LEFT JOIN departments  d ON d.department_id  = u.department_id
-        WHERE u.account_status != 'DELETED'
+        WHERE ${whereClause}
         ORDER BY u.created_at DESC
       `);
 
@@ -729,51 +673,40 @@ router.get(
         });
       }
 
-      const buffer = await workbook.xlsx.writeBuffer();
-      res.setHeader("Content-Disposition", 'attachment; filename="users_import_sample.xlsx"');
-      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-      return res.send(Buffer.from(buffer));
-    } catch (err) {
-      logger.error("Sample export failed", { ...getLogContext(req), stack: err.stack });
-      return res.status(500).json({ success: false, message: "Sample file generation failed." });
-    }
-  }
-);
+      const whereClause = conditions.join(" AND ");
 
-/* ── GET /api/users ───────────────────────────────────────────── */
-router.get("/", verifyToken, requireRole(["super_admin", "institute_admin"]), async (req, res) => {
-  const pool = req.app.locals.pool;
-  try {
-    const { rows } = await pool.query(`
-      SELECT
-        u.id,
-        u.full_name,
-        u.email,
-        u.account_status,
-        u.last_login_at,
-        u.created_at,
-        u.institution_id,
-        u.department_id,
-        i.institution_name,
-        d.name AS department_name,
-        COALESCE(
-          (SELECT json_agg(json_build_object(
-              'name',         r.name,
-              'display_name', r.display_name
-            ))
-           FROM user_roles ur
-           JOIN roles r ON r.id = ur.role_id
-           WHERE ur.user_id = u.id
-             AND ur.revoked_at IS NULL
-             AND (ur.expires_at IS NULL OR ur.expires_at > now())
-          ), '[]'::json
-        ) AS roles
-      FROM users u
-      LEFT JOIN institutions i ON i.institution_id = u.institution_id
-      LEFT JOIN departments  d ON d.department_id  = u.department_id
-      WHERE u.account_status != 'DELETED'
-      ORDER BY u.created_at DESC
-    `);
+      ({ rows } = await pool.query(`
+        SELECT
+          u.id,
+          u.full_name,
+          u.email,
+          u.account_status,
+          u.last_login_at,
+          u.created_at,
+          u.institution_id,
+          u.department_id,
+          i.institution_name,
+          d.name AS department_name,
+          COALESCE(
+            (SELECT json_agg(json_build_object(
+                'name',         r.name,
+                'display_name', r.display_name
+              ))
+             FROM user_roles ur
+             JOIN roles r ON r.id = ur.role_id
+             WHERE ur.user_id = u.id
+               AND ur.revoked_at IS NULL
+               AND (ur.expires_at IS NULL OR ur.expires_at > now())
+            ), '[]'::json
+          ) AS roles
+        FROM users u
+        LEFT JOIN institutions i ON i.institution_id = u.institution_id
+        LEFT JOIN departments  d ON d.department_id  = u.department_id
+        WHERE ${whereClause}
+        ORDER BY u.created_at DESC
+      `, params));
+    }
+
     return res.json({ success: true, users: rows });
   } catch (err) {
     logger.error("GET /api/users failed", { ...getLogContext(req), stack: err.stack });
@@ -781,11 +714,11 @@ router.get("/", verifyToken, requireRole(["super_admin", "institute_admin"]), as
   }
 });
 
-/* ── PUT /api/users/:id ───────────────────────────────────────── */
+/* ── PUT /api/users/:id ── */
 router.put("/:id", verifyToken, requireRole(["super_admin", "institute_admin"]), async (req, res) => {
   const pool = req.app.locals.pool;
   const { id } = req.params;
-  const { full_name, email, institution_id, department_id, account_status } = req.body;
+  let { full_name, email, institution_id, department_id, account_status } = req.body;
 
   if (!full_name?.trim() || !email?.trim())
     return res.status(400).json({ success: false, message: "Name and email are required." });
@@ -795,6 +728,7 @@ router.put("/:id", verifyToken, requireRole(["super_admin", "institute_admin"]),
     return res.status(400).json({ success: false, message: "Invalid account status." });
 
   try {
+    // ── Fetch existing user before update (needed for audit diff) ──
     const { rows: existingRows } = await pool.query(
       `SELECT full_name, email, account_status, institution_id, department_id
        FROM users WHERE id = $1 AND account_status != 'DELETED'`,
@@ -804,6 +738,27 @@ router.put("/:id", verifyToken, requireRole(["super_admin", "institute_admin"]),
       return res.status(404).json({ success: false, message: "User not found." });
 
     const existing = existingRows[0];
+
+    // ── Department admin: verify target user belongs to their institution + department ──
+    if (isDeptAdmin(req)) {
+      if (
+        existing.institution_id !== req.user.institutionId ||
+        existing.department_id  !== req.user.departmentId
+      ) {
+        return res.status(403).json({
+          success: false,
+          message: "You can only manage users from your own department.",
+        });
+      }
+      institution_id = req.user.institutionId;
+      department_id  = req.user.departmentId;
+
+    // ── Institute admin: verify target user belongs to their institution ──
+    } else if (isOnlyInstAdmin(req)) {
+      if (existing.institution_id !== req.user.institutionId)
+        return res.status(403).json({ success: false, message: "You can only manage users from your own institution." });
+      institution_id = req.user.institutionId;
+    }
 
     const { rows } = await pool.query(
       `UPDATE users
@@ -841,10 +796,18 @@ router.put("/:id", verifyToken, requireRole(["super_admin", "institute_admin"]),
   }
 });
 
-/* ── POST /api/users ──────────────────────────────────────────── */
+/* ── POST /api/users ── */
 router.post("/", verifyToken, requireRole(["super_admin", "institute_admin"]), async (req, res) => {
   const pool = req.app.locals.pool;
-  const { full_name, email, password, institution_id, department_id, role_name } = req.body;
+  let { full_name, email, password, institution_id, department_id, role_name } = req.body;
+
+  // ── Scope institution / department to what the admin owns ──
+  if (isDeptAdmin(req)) {
+    institution_id = req.user.institutionId;
+    department_id  = req.user.departmentId;
+  } else if (isOnlyInstAdmin(req)) {
+    institution_id = req.user.institutionId;
+  }
 
   if (!full_name?.trim() || !email?.trim() || !password || !institution_id || !role_name)
     return res.status(400).json({ success: false, message: "Name, email, password, institution, and role are required." });
