@@ -7,13 +7,8 @@ const { verifyToken } = require("../middleware/auth");
 const logger            = require("../utils/logger");
 const { getLogContext } = logger;
 
-// Apply auth to ALL routes at once — same pattern as departments.js / institutions.js
 router.use(verifyToken);
 
-/* ─────────────────────────────────────────────────────────────
-   Shared SELECT columns used in both the list and single-entry
-   queries. Includes all auto-captured request-context fields.
-───────────────────────────────────────────────────────────── */
 const LOG_COLUMNS = `
   al.id,
   al.action_type,
@@ -35,9 +30,6 @@ const LOG_COLUMNS = `
 
 /* ─────────────────────────────────────────────────────────────
    GET /api/audit-logs/summary
-   ⚠️  MUST be before /:id — otherwise Express treats "summary"
-   as the :id param value.
-   Returns total count per entity_type for the stat cards.
 ───────────────────────────────────────────────────────────── */
 router.get("/summary", async (req, res) => {
   const pool = req.app.locals.pool;
@@ -64,9 +56,9 @@ router.get("/summary", async (req, res) => {
 /* ─────────────────────────────────────────────────────────────
    GET /api/audit-logs
    Query params:
-     entity_type  — "USER" | "DEPARTMENT" | "INSTITUTION" | "ROLE"
+     entity_type  — "USER" | "DEPARTMENT" | "INSTITUTION" | "ROLE" | "COMMITTEE" | "SESSION"
      search       — free-text across action_type, message, ip_address,
-                    browser_name, actor name/email
+                    browser_name, actor name/email, metadata
      page         — default 1
      limit        — default 20, max 100
 ───────────────────────────────────────────────────────────── */
@@ -89,12 +81,13 @@ router.get("/", async (req, res) => {
 
   if (search && search.trim()) {
     conditions.push(`(
-      al.action_type  ILIKE $${idx} OR
-      al.message      ILIKE $${idx} OR
-      al.ip_address   ILIKE $${idx} OR
-      al.browser_name ILIKE $${idx} OR
-      u.full_name     ILIKE $${idx} OR
-      u.email         ILIKE $${idx}
+      al.action_type         ILIKE $${idx} OR
+      al.message             ILIKE $${idx} OR
+      al.ip_address          ILIKE $${idx} OR
+      al.browser_name        ILIKE $${idx} OR
+      u.full_name            ILIKE $${idx} OR
+      u.email                ILIKE $${idx} OR
+      al.metadata::text      ILIKE $${idx}
     )`);
     values.push(`%${search.trim()}%`);
     idx++;
@@ -140,7 +133,6 @@ router.get("/", async (req, res) => {
 
 /* ─────────────────────────────────────────────────────────────
    GET /api/audit-logs/:id
-   Single audit log entry — MUST be last (avoids param collision).
 ───────────────────────────────────────────────────────────── */
 router.get("/:id", async (req, res) => {
   const pool = req.app.locals.pool;

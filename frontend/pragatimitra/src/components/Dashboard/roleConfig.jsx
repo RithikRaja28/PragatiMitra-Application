@@ -24,6 +24,7 @@ import DepartmentManagementPage  from "../../pages/Roles/superadmin/DepartmentMa
 import InstitutionManagementPage from "../../pages/Roles/superadmin/InstitutionManagementPage";
 import CommitteeManagementPage   from "../../pages/Roles/superadmin/CommitteesManagementPage";
 import RoleAccessPage            from "../../pages/Roles/superadmin/RoleAccessPage";
+import KPIPage                   from "../../pages/Roles/superadmin/Kpipage";
 
 /* ── Institute Admin page imports ───────────────────────────── */
 import InstitutionAdminOverviewPage from "../../pages/Roles/institutionadmin/InstitutionAdminOverviewPage";
@@ -192,6 +193,11 @@ export const ROLE_CONFIG = {
       },
 
       {
+        group: "KPI",
+        items: [{ id: "kpi", label: "KPI", icon: "BarChart2", permission: null }],
+      },
+
+      {
         group: "Access & Data",
         items: [
           {
@@ -229,6 +235,7 @@ export const ROLE_CONFIG = {
       "role-access": <RoleAccessPage />,
       "master-data": <SuperAdminMasterDataPage />,
       "audit-logs": <AuditLogsPage />,
+      "kpi": <KPIPage />,
     },
     defaultPage: "overview",
     user: { name: "Super Admin", initials: "SA", org: "PragatiMitra HQ" },
