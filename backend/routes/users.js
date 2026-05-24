@@ -14,10 +14,55 @@ const { getLogContext } = logger;
 
 const router = express.Router();
 
-/* ── multer (memory storage) ── */
-const handleUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } }).single("file");
+/* ─────────────────────────────────────────────────────────────────────────────
+   SCHEMA CONFIG
+   Centralises which columns are excluded from import, which are FK lookups,
+   which are always required, any column aliases, and virtual import fields.
+   Adjust to match your actual DB schema / business rules.
+───────────────────────────────────────────────────────────────────────────── */
+const SCHEMA_CONFIG = {
+  // Columns that should never appear in the import field list
+  EXCLUDED: [
+    "id", "password_hash", "created_at", "updated_at", "deleted_at",
+    "last_login_at", "created_by", "must_change_password", "is_temporary_password",
+  ],
 
-/* ── Role helpers ── */
+  // Foreign-key columns: maps DB column name → { importKey, label }
+  FK: {
+    institution_id: { importKey: "institution_name", label: "Institution" },
+    department_id:  { importKey: "department_name",  label: "Department"  },
+  },
+
+  // Fields that must always be present, regardless of DB nullability
+  FORCE_REQUIRED: ["full_name", "email", "institution_name"],
+
+  // Alternative header names accepted for each field key
+  ALIASES: {
+    full_name:        ["name", "full name", "fullname"],
+    email:            ["email address", "e-mail"],
+    institution_name: ["institution", "college", "university", "school"],
+    department_name:  ["department", "dept"],
+    role_name:        ["role", "user role"],
+    account_status:   ["status"],
+    password:         ["pass", "initial password"],
+  },
+
+  // Fields that exist in the import sheet but have no direct DB column
+  VIRTUAL_IMPORT: [
+    { key: "password",  label: "Password",  required: false },
+    { key: "role_name", label: "Role",      required: false },
+  ],
+};
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   MULTER — memory storage, 10 MB limit
+───────────────────────────────────────────────────────────────────────────── */
+const upload      = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+const handleUpload = upload.single("file");
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   ROLE HELPERS
+───────────────────────────────────────────────────────────────────────────── */
 function isOnlyInstAdmin(req) {
   const roles = req.user.roles || [];
   return roles.includes("institute_admin") && !roles.includes("super_admin");
@@ -25,40 +70,26 @@ function isOnlyInstAdmin(req) {
 
 function isDeptAdmin(req) {
   const roles = req.user.roles || [];
-  return roles.includes("department_admin") && !roles.includes("super_admin") && !roles.includes("institute_admin");
+  return roles.includes("department_admin")
+    && !roles.includes("super_admin")
+    && !roles.includes("institute_admin");
 }
 
+/* ─────────────────────────────────────────────────────────────────────────────
+   IMPORT HELPERS
+───────────────────────────────────────────────────────────────────────────── */
+
+/** Normalise a string for fuzzy header matching: lowercase, strip spaces/underscores/hyphens */
 function normalize(str) {
-  return String(str ?? "").toLowerCase().replace(/[\s_-]+/g, "");
+  return String(str).toLowerCase().replace(/[\s_\-]+/g, "");
 }
 
+/** Convert a snake_case column name to a human-readable label */
 function toLabel(col) {
   return col.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-/* ── Schema config (extend as needed) ── */
-const SCHEMA_CONFIG = {
-  EXCLUDED:       ["id", "password_hash", "created_at", "updated_at", "deleted_at"],
-  FK:             {
-    institution_id: { importKey: "institution_name", label: "Institution" },
-    department_id:  { importKey: "department_name",  label: "Department"  },
-  },
-  FORCE_REQUIRED: ["full_name", "email", "institution_name"],
-  ALIASES:        {
-    full_name:        ["name", "fullname", "full name"],
-    email:            ["email address", "emailaddress"],
-    institution_name: ["institution", "college", "university", "school"],
-    department_name:  ["department", "dept"],
-    role_name:        ["role", "roles"],
-    account_status:   ["status"],
-    password:         ["pass", "passwd"],
-  },
-  VIRTUAL_IMPORT: [
-    { key: "role_name",   label: "Role",     required: false },
-    { key: "password",    label: "Password", required: false },
-  ],
-};
-
+/** Build the list of importable fields by introspecting the users table */
 async function getImportSchema(pool) {
   const { rows: cols } = await pool.query(`
     SELECT column_name, is_nullable, column_default
@@ -68,40 +99,56 @@ async function getImportSchema(pool) {
   `);
 
   const fields = [];
+
   for (const col of cols) {
     const name = col.column_name;
     if (SCHEMA_CONFIG.EXCLUDED.includes(name)) continue;
+
     if (SCHEMA_CONFIG.FK[name]) {
       const fk = SCHEMA_CONFIG.FK[name];
       fields.push({
-        key: fk.importKey, label: fk.label, dbColumn: name,
+        key:      fk.importKey,
+        label:    fk.label,
+        dbColumn: name,
         required: SCHEMA_CONFIG.FORCE_REQUIRED.includes(fk.importKey),
-        isFk: true, isVirtual: false,
-        aliases: SCHEMA_CONFIG.ALIASES[fk.importKey] || [],
+        isFk:     true,
+        isVirtual: false,
+        aliases:  SCHEMA_CONFIG.ALIASES[fk.importKey] || [],
       });
       continue;
     }
+
     const required = SCHEMA_CONFIG.FORCE_REQUIRED.includes(name)
       ? true
       : (col.is_nullable === "NO" && !col.column_default);
+
     fields.push({
-      key: name, label: toLabel(name), dbColumn: name, required,
-      isFk: false, isVirtual: false,
-      aliases: SCHEMA_CONFIG.ALIASES[name] || [],
+      key:      name,
+      label:    toLabel(name),
+      dbColumn: name,
+      required,
+      isFk:     false,
+      isVirtual: false,
+      aliases:  SCHEMA_CONFIG.ALIASES[name] || [],
     });
   }
 
   for (const vf of SCHEMA_CONFIG.VIRTUAL_IMPORT) {
     fields.push({
-      ...vf, dbColumn: null, isFk: false, isVirtual: true,
-      aliases: SCHEMA_CONFIG.ALIASES[vf.key] || [],
+      ...vf,
+      dbColumn:  null,
+      isFk:      false,
+      isVirtual: true,
+      aliases:   SCHEMA_CONFIG.ALIASES[vf.key] || [],
     });
   }
 
+  // Required fields first
   fields.sort((a, b) => (b.required ? 1 : 0) - (a.required ? 1 : 0));
   return fields;
 }
 
+/** Auto-map spreadsheet columns to import field keys using name/alias matching */
 function buildAutoMapping(fields, cols) {
   const mapping = {};
   for (const field of fields) {
@@ -116,11 +163,13 @@ function buildAutoMapping(fields, cols) {
   return mapping;
 }
 
-/* ── GET /api/users/import/schema ─────────────────────────────── */
+/* ─────────────────────────────────────────────────────────────────────────────
+   GET /api/users/import/schema
+───────────────────────────────────────────────────────────────────────────── */
 router.get(
   "/import/schema",
   verifyToken,
-  requireRole(["super_admin", "institute_admin"]),
+  requireRole(["super_admin", "institute_admin", "department_admin"]),
   async (req, res) => {
     try {
       const fields = await getImportSchema(req.app.locals.pool);
@@ -132,11 +181,13 @@ router.get(
   }
 );
 
-/* ── POST /api/users/import/parse ─────────────────────────────── */
+/* ─────────────────────────────────────────────────────────────────────────────
+   POST /api/users/import/parse
+───────────────────────────────────────────────────────────────────────────── */
 router.post(
   "/import/parse",
   verifyToken,
-  requireRole(["super_admin", "institute_admin"]),
+  requireRole(["super_admin", "institute_admin", "department_admin"]),
   handleUpload,
   async (req, res) => {
     if (!req.file)
@@ -166,7 +217,12 @@ router.post(
 
       const columns   = Object.keys(rows[0]);
       const sessionId = randomUUID();
-      req.app.locals.importSessions.set(sessionId, { rows, expiresAt: Date.now() + 3_600_000 });
+
+      req.app.locals.importSessions.set(sessionId, {
+        rows,
+        expiresAt: Date.now() + 3_600_000,
+      });
+
       return res.json({
         success:     true,
         sessionId,
@@ -182,15 +238,20 @@ router.post(
   }
 );
 
-/* ── POST /api/users/import/validate ──────────────────────────── */
-// FIX #3: This was erroneously embedded inside GET /api/users — extracted as its own route.
+/* ─────────────────────────────────────────────────────────────────────────────
+   POST /api/users/import/validate
+───────────────────────────────────────────────────────────────────────────── */
 router.post(
   "/import/validate",
   verifyToken,
-  requireRole(["super_admin", "institute_admin"]),
+  requireRole(["super_admin", "institute_admin", "department_admin"]),
   async (req, res) => {
     const pool = req.app.locals.pool;
-    const { mapping, sessionId, defaultInstitutionId = null, defaultRoleName = "" } = req.body;
+    const {
+      mapping,
+      sessionId,
+      defaultInstitutionId = null,
+    } = req.body;
 
     if (!mapping || !sessionId)
       return res.status(400).json({ success: false, message: "mapping and sessionId are required." });
@@ -239,11 +300,12 @@ router.post(
         const role_str  = get(row, "role_name");
 
         if (!full_name)
-          rowErrors.push({ field: "full_name",        reason: "Full name is required" });
+          rowErrors.push({ field: "full_name", reason: "Full name is required" });
+
         if (!email)
-          rowErrors.push({ field: "email",            reason: "Email is required" });
+          rowErrors.push({ field: "email", reason: "Email is required" });
         else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
-          rowErrors.push({ field: "email",            reason: "Invalid email format" });
+          rowErrors.push({ field: "email", reason: "Invalid email format" });
 
         let institution_id = defaultInstitutionId || null;
         if (inst_name) {
@@ -297,82 +359,13 @@ router.post(
   }
 );
 
-/* ── GET /api/users ── */
-// FIX #1 & #2: Removed validate-route code that was misplaced inside this route.
-// FIX #5: Added proper conditions/params/whereClause building.
-router.get("/", verifyToken, requireRole(["super_admin", "institute_admin"]), async (req, res) => {
-  const pool = req.app.locals.pool;
-  try {
-    const conditions = ["u.account_status != 'DELETED'"];
-    const params     = [];
-
-    if (isDeptAdmin(req)) {
-      params.push(req.user.institutionId, req.user.departmentId);
-      conditions.push(`u.institution_id = $${params.length - 1}::uuid`);
-      conditions.push(`u.department_id  = $${params.length}::uuid`);
-    } else if (isOnlyInstAdmin(req)) {
-      params.push(req.user.institutionId);
-      conditions.push(`u.institution_id = $${params.length}::uuid`);
-    }
-
-    if (req.query.role) {
-      params.push(req.query.role);
-      conditions.push(`
-        EXISTS (
-          SELECT 1 FROM user_roles ur2
-          JOIN roles r2 ON r2.id = ur2.role_id
-          WHERE ur2.user_id = u.id
-            AND ur2.revoked_at IS NULL
-            AND r2.name = $${params.length}
-        )
-      `);
-    }
-
-    const whereClause = conditions.join(" AND ");
-
-    const { rows } = await pool.query(`
-      SELECT
-        u.id,
-        u.full_name,
-        u.email,
-        u.account_status,
-        u.last_login_at,
-        u.created_at,
-        u.institution_id,
-        u.department_id,
-        i.institution_name,
-        d.name AS department_name,
-        COALESCE(
-          (SELECT json_agg(json_build_object(
-              'name',         r.name,
-              'display_name', r.display_name
-            ))
-           FROM user_roles ur
-           JOIN roles r ON r.id = ur.role_id
-           WHERE ur.user_id = u.id
-             AND ur.revoked_at IS NULL
-             AND (ur.expires_at IS NULL OR ur.expires_at > now())
-          ), '[]'::json
-        ) AS roles
-      FROM users u
-      LEFT JOIN institutions i ON i.institution_id = u.institution_id
-      LEFT JOIN departments  d ON d.department_id  = u.department_id
-      WHERE ${whereClause}
-      ORDER BY u.created_at DESC
-    `, params);
-
-    return res.json({ success: true, users: rows });
-  } catch (err) {
-    logger.error("GET /api/users failed", { ...getLogContext(req), stack: err.stack });
-    return res.status(500).json({ success: false, message: "Internal server error." });
-  }
-});
-
-/* ── POST /api/users/import/execute ───────────────────────────── */
+/* ─────────────────────────────────────────────────────────────────────────────
+   POST /api/users/import/execute
+───────────────────────────────────────────────────────────────────────────── */
 router.post(
   "/import/execute",
   verifyToken,
-  requireRole(["super_admin", "institute_admin"]),
+  requireRole(["super_admin", "institute_admin", "department_admin"]),
   async (req, res) => {
     const pool = req.app.locals.pool;
     const {
@@ -385,9 +378,11 @@ router.post(
 
     if (!mapping || !sessionId)
       return res.status(400).json({ success: false, message: "mapping and sessionId are required." });
+
     const session = req.app.locals.importSessions.get(sessionId);
     if (!session || !session.rows.length)
       return res.status(400).json({ success: false, message: "Import session expired. Please re-upload your file." });
+
     const data = session.rows;
 
     res.setHeader("Content-Type", "text/event-stream");
@@ -395,7 +390,10 @@ router.post(
     res.setHeader("Connection", "keep-alive");
     res.setHeader("X-Accel-Buffering", "no");
     res.flushHeaders();
-    const send = (payload) => { try { res.write(`data: ${JSON.stringify(payload)}\n\n`); } catch (_) {} };
+
+    const send = (payload) => {
+      try { res.write(`data: ${JSON.stringify(payload)}\n\n`); } catch (_) {}
+    };
 
     try {
       const [{ rows: insts }, { rows: depts }, { rows: roles }] = await Promise.all([
@@ -411,6 +409,7 @@ router.post(
 
       const fieldToCol = {};
       for (const [f, c] of Object.entries(mapping)) if (c) fieldToCol[f] = c;
+
       const get = (row, field) => {
         const col = fieldToCol[field];
         return col !== undefined ? String(row[col] ?? "").trim() : "";
@@ -460,19 +459,26 @@ router.post(
         const role_lookup    = role_str || defaultRoleName || "";
         const role_id        = role_lookup ? (roleMap.get(role_lookup.toLowerCase()) || null) : null;
         const VALID_STATUSES = ["ACTIVE", "INACTIVE", "SUSPENDED"];
-        const account_status = VALID_STATUSES.includes(status_str?.toUpperCase()) ? status_str.toUpperCase() : "ACTIVE";
-        const rawPassword    = password || DEFAULT_PASS;
+        const account_status = VALID_STATUSES.includes(status_str?.toUpperCase())
+          ? status_str.toUpperCase()
+          : "ACTIVE";
+        const rawPassword = password || DEFAULT_PASS;
 
-        prepared.push({ full_name, email: email.toLowerCase(), rawPassword, institution_id, department_id, role_id, account_status });
+        prepared.push({
+          full_name, email: email.toLowerCase(), rawPassword,
+          institution_id, department_id, role_id, account_status,
+        });
       }
 
       const HASH_CONCURRENCY = 20;
       for (let i = 0; i < prepared.length; i += HASH_CONCURRENCY) {
-        await Promise.all(prepared.slice(i, i + HASH_CONCURRENCY).map(async (u) => {
-          u.password_hash = (u.rawPassword === DEFAULT_PASS)
-            ? defaultHash
-            : await bcrypt.hash(u.rawPassword, 10);
-        }));
+        await Promise.all(
+          prepared.slice(i, i + HASH_CONCURRENCY).map(async (u) => {
+            u.password_hash = (u.rawPassword === DEFAULT_PASS)
+              ? defaultHash
+              : await bcrypt.hash(u.rawPassword, 10);
+          })
+        );
       }
 
       const { rows: existing } = await pool.query(
@@ -496,22 +502,26 @@ router.post(
       }
 
       const CHUNK = 500;
-      const total  = toInsert.length + toUpdate.length;
-      let   done   = 0;
+      const total = toInsert.length + toUpdate.length;
+      let   done  = 0;
 
       for (let i = 0; i < toInsert.length; i += CHUNK) {
         const chunk  = toInsert.slice(i, i + CHUNK);
         const vals   = [];
         const tuples = chunk.map((u, idx) => {
           const b = idx * 7;
-          vals.push(u.full_name, u.email, u.password_hash, u.institution_id, u.department_id, u.account_status, req.user.userId);
+          vals.push(
+            u.full_name, u.email, u.password_hash,
+            u.institution_id, u.department_id, u.account_status,
+            req.user.userId
+          );
           return `($${b+1},$${b+2},$${b+3},$${b+4}::uuid,$${b+5}::uuid,$${b+6},true,true,$${b+7}::uuid)`;
         });
 
         const { rows: ins } = await pool.query(
           `INSERT INTO users
-             (full_name,email,password_hash,institution_id,department_id,account_status,
-              must_change_password,is_temporary_password,created_by)
+             (full_name, email, password_hash, institution_id, department_id, account_status,
+              must_change_password, is_temporary_password, created_by)
            VALUES ${tuples.join(",")}
            RETURNING id, email`,
           vals
@@ -532,7 +542,8 @@ router.post(
             return `($${b+1}::uuid,$${b+2}::uuid,$${b+3}::uuid)`;
           });
           await pool.query(
-            `INSERT INTO user_roles (user_id,role_id,assigned_by) VALUES ${rt.join(",")} ON CONFLICT DO NOTHING`,
+            `INSERT INTO user_roles (user_id, role_id, assigned_by)
+             VALUES ${rt.join(",")} ON CONFLICT DO NOTHING`,
             rv
           );
         }
@@ -577,7 +588,8 @@ router.post(
             return `($${b+1}::uuid,$${b+2}::uuid,$${b+3}::uuid)`;
           });
           await pool.query(
-            `INSERT INTO user_roles (user_id,role_id,assigned_by) VALUES ${rt.join(",")} ON CONFLICT DO NOTHING`,
+            `INSERT INTO user_roles (user_id, role_id, assigned_by)
+             VALUES ${rt.join(",")} ON CONFLICT DO NOTHING`,
             rv
           );
         }
@@ -612,11 +624,13 @@ router.post(
   }
 );
 
-/* ── GET /api/users/export ────────────────────────────────────── */
+/* ─────────────────────────────────────────────────────────────────────────────
+   GET /api/users/export
+───────────────────────────────────────────────────────────────────────────── */
 router.get(
   "/export",
   verifyToken,
-  requireRole(["super_admin", "institute_admin"]),
+  requireRole(["super_admin", "institute_admin", "department_admin"]),
   async (req, res) => {
     const pool   = req.app.locals.pool;
     const format = req.query.format === "xlsx" ? "xlsx" : "csv";
@@ -627,36 +641,24 @@ router.get(
 
       if (isDeptAdmin(req)) {
         params.push(req.user.institutionId, req.user.departmentId);
-        conditions.push(`u.institution_id = $${params.length - 1}::uuid`);
-        conditions.push(`u.department_id  = $${params.length}::uuid`);
+        conditions.push(`u.institution_id = $${params.length - 1}`);
+        conditions.push(`u.department_id  = $${params.length}`);
       } else if (isOnlyInstAdmin(req)) {
         params.push(req.user.institutionId);
-        conditions.push(`u.institution_id = $${params.length}::uuid`);
+        conditions.push(`u.institution_id = $${params.length}`);
       }
 
       const whereClause = conditions.join(" AND ");
 
       const { rows } = await pool.query(`
         SELECT
-          u.id,
-          u.full_name,
-          u.email,
-          u.account_status,
-          u.last_login_at,
-          u.created_at,
-          u.institution_id,
-          u.department_id,
-          i.institution_name,
-          d.name AS department_name,
+          u.id, u.full_name, u.email, u.account_status,
+          u.last_login_at, u.created_at, u.institution_id, u.department_id,
+          i.institution_name, d.name AS department_name,
           COALESCE(
-            (SELECT json_agg(json_build_object(
-                'name',         r.name,
-                'display_name', r.display_name
-              ))
-             FROM user_roles ur
-             JOIN roles r ON r.id = ur.role_id
-             WHERE ur.user_id = u.id
-               AND ur.revoked_at IS NULL
+            (SELECT json_agg(json_build_object('name', r.name, 'display_name', r.display_name))
+             FROM user_roles ur JOIN roles r ON r.id = ur.role_id
+             WHERE ur.user_id = u.id AND ur.revoked_at IS NULL
                AND (ur.expires_at IS NULL OR ur.expires_at > now())
             ), '[]'::json
           ) AS roles
@@ -698,12 +700,13 @@ router.get(
   }
 );
 
-/* ── GET /api/users/export/sample ────────────────────────────── */
-// FIX #4: Removed the leaked GET /api/users SQL query and return statement from the bottom of this route.
+/* ─────────────────────────────────────────────────────────────────────────────
+   GET /api/users/export/sample
+───────────────────────────────────────────────────────────────────────────── */
 router.get(
   "/export/sample",
   verifyToken,
-  requireRole(["super_admin", "institute_admin"]),
+  requireRole(["super_admin", "institute_admin", "department_admin"]),
   async (req, res) => {
     const pool   = req.app.locals.pool;
     const format = req.query.format === "xlsx" ? "xlsx" : "csv";
@@ -721,20 +724,20 @@ router.get(
 
       const sampleData = [
         {
-          full_name: "Arun Kumar",   email: "arun@example.com",
-          password: "TempPass@123",  institution_name: instNames[0] || "Example College",
+          full_name: "Arun Kumar",  email: "arun@example.com",
+          password:  "TempPass@123", institution_name: instNames[0] || "Example College",
           department_name: deptNames[0] || "Computer Science",
           role_name: roleNames[0] || "contributor", account_status: "ACTIVE",
         },
         {
-          full_name: "Priya Singh",  email: "priya@example.com",
-          password: "TempPass@123",  institution_name: instNames[0] || "Example College",
+          full_name: "Priya Singh", email: "priya@example.com",
+          password:  "TempPass@123", institution_name: instNames[0] || "Example College",
           department_name: deptNames[1] || "Electronics",
           role_name: roleNames[1] || "reviewer", account_status: "ACTIVE",
         },
         {
-          full_name: "Vikram Nair",  email: "vikram@example.com",
-          password: "TempPass@123",  institution_name: instNames[0] || "Example College",
+          full_name: "Vikram Nair", email: "vikram@example.com",
+          password:  "TempPass@123", institution_name: instNames[0] || "Example College",
           department_name: "", role_name: roleNames[0] || "contributor", account_status: "ACTIVE",
         },
       ];
@@ -814,13 +817,206 @@ router.get(
       return res.send(buf);
     } catch (err) {
       logger.error("Export sample failed", { ...getLogContext(req), stack: err.stack });
-      return res.status(500).json({ success: false, message: "Export sample failed." });
+      return res.status(500).json({ success: false, message: "Sample export failed." });
     }
   }
 );
 
-/* ── PUT /api/users/:id ── */
-router.put("/:id", verifyToken, requireRole(["super_admin", "institute_admin"]), async (req, res) => {
+/* ─────────────────────────────────────────────────────────────────────────────
+   GET /api/users/check-email?email=xxx&excludeId=uuid
+   Lightweight existence check used by the frontend before form submission.
+   Pass excludeId (the user's own id) when checking during edit so the user's
+   own current email doesn't falsely trigger a conflict.
+   Scoped by the caller's role — same institution scope as POST /api/users.
+───────────────────────────────────────────────────────────────────────────── */
+router.get(
+  "/check-email",
+  verifyToken,
+  requireRole(["super_admin", "institute_admin", "department_admin"]),
+  async (req, res) => {
+    const pool      = req.app.locals.pool;
+    const email     = (req.query.email     || "").trim().toLowerCase();
+    const excludeId = (req.query.excludeId || "").trim();  // own user id when editing
+
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+      return res.status(400).json({ success: false, message: "Valid email is required." });
+
+    try {
+      const conditions = ["email = $1", "account_status != 'DELETED'"];
+      const params     = [email];
+
+      // Exclude the user's own record when checking during edit
+      if (excludeId) {
+        params.push(excludeId);
+        conditions.push(`id != $${params.length}`);
+      }
+
+      if (isDeptAdmin(req) || isOnlyInstAdmin(req)) {
+        params.push(req.user.institutionId);
+        conditions.push(`institution_id = $${params.length}`);
+      }
+
+      const { rows } = await pool.query(
+        `SELECT 1 FROM users WHERE ${conditions.join(" AND ")} LIMIT 1`,
+        params
+      );
+
+      return res.json({ success: true, exists: rows.length > 0 });
+    } catch (err) {
+      logger.error("GET /api/users/check-email failed", { ...getLogContext(req), stack: err.stack });
+      return res.status(500).json({ success: false, message: "Internal server error." });
+    }
+  }
+);
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   GET /api/users
+───────────────────────────────────────────────────────────────────────────── */
+router.get("/", verifyToken, requireRole(["super_admin", "institute_admin", "department_admin"]), async (req, res) => {
+  const pool = req.app.locals.pool;
+  try {
+    let rows;
+
+    if (isDeptAdmin(req)) {
+      const { role } = req.query;
+      const conditions = [
+        "u.account_status != 'DELETED'",
+        `u.institution_id = $1`,
+        `u.department_id  = $2`,
+      ];
+      const params = [req.user.institutionId, req.user.departmentId];
+
+      if (role) {
+        params.push(role);
+        conditions.push(`EXISTS (
+          SELECT 1 FROM user_roles ur2
+          JOIN roles r2 ON r2.id = ur2.role_id
+          WHERE ur2.user_id = u.id
+            AND r2.name = $${params.length}
+            AND ur2.revoked_at IS NULL
+            AND (ur2.expires_at IS NULL OR ur2.expires_at > now())
+        )`);
+      }
+
+      ({ rows } = await pool.query(`
+        SELECT
+          u.id, u.full_name, u.email, u.account_status,
+          u.last_login_at, u.created_at, u.institution_id, u.department_id,
+          i.institution_name, d.name AS department_name,
+          COALESCE(
+            (SELECT json_agg(json_build_object('name', r.name, 'display_name', r.display_name))
+             FROM user_roles ur JOIN roles r ON r.id = ur.role_id
+             WHERE ur.user_id = u.id AND ur.revoked_at IS NULL
+               AND (ur.expires_at IS NULL OR ur.expires_at > now())
+            ), '[]'::json
+          ) AS roles
+        FROM users u
+        LEFT JOIN institutions i ON i.institution_id = u.institution_id
+        LEFT JOIN departments  d ON d.department_id  = u.department_id
+        WHERE ${conditions.join(" AND ")}
+        ORDER BY u.created_at DESC
+      `, params));
+
+    } else if (isOnlyInstAdmin(req)) {
+      const { role, department_id } = req.query;
+      const conditions = [
+        "u.account_status != 'DELETED'",
+        `u.institution_id = $1`,
+      ];
+      const params = [req.user.institutionId];
+
+      if (department_id) {
+        params.push(department_id);
+        conditions.push(`u.department_id = $${params.length}`);
+      }
+      if (role) {
+        params.push(role);
+        conditions.push(`EXISTS (
+          SELECT 1 FROM user_roles ur2
+          JOIN roles r2 ON r2.id = ur2.role_id
+          WHERE ur2.user_id = u.id
+            AND r2.name = $${params.length}
+            AND ur2.revoked_at IS NULL
+            AND (ur2.expires_at IS NULL OR ur2.expires_at > now())
+        )`);
+      }
+
+      ({ rows } = await pool.query(`
+        SELECT
+          u.id, u.full_name, u.email, u.account_status,
+          u.last_login_at, u.created_at, u.institution_id, u.department_id,
+          i.institution_name, d.name AS department_name,
+          COALESCE(
+            (SELECT json_agg(json_build_object('name', r.name, 'display_name', r.display_name))
+             FROM user_roles ur JOIN roles r ON r.id = ur.role_id
+             WHERE ur.user_id = u.id AND ur.revoked_at IS NULL
+               AND (ur.expires_at IS NULL OR ur.expires_at > now())
+            ), '[]'::json
+          ) AS roles
+        FROM users u
+        LEFT JOIN institutions i ON i.institution_id = u.institution_id
+        LEFT JOIN departments  d ON d.department_id  = u.department_id
+        WHERE ${conditions.join(" AND ")}
+        ORDER BY u.created_at DESC
+      `, params));
+
+    } else {
+      const { institution_id, role, department_id } = req.query;
+      const conditions = ["u.account_status != 'DELETED'"];
+      const params     = [];
+
+      if (institution_id) {
+        params.push(institution_id);
+        conditions.push(`u.institution_id = $${params.length}`);
+      }
+      if (department_id) {
+        params.push(department_id);
+        conditions.push(`u.department_id = $${params.length}`);
+      }
+      if (role) {
+        params.push(role);
+        conditions.push(`EXISTS (
+          SELECT 1 FROM user_roles ur2
+          JOIN roles r2 ON r2.id = ur2.role_id
+          WHERE ur2.user_id = u.id
+            AND r2.name = $${params.length}
+            AND ur2.revoked_at IS NULL
+            AND (ur2.expires_at IS NULL OR ur2.expires_at > now())
+        )`);
+      }
+
+      ({ rows } = await pool.query(`
+        SELECT
+          u.id, u.full_name, u.email, u.account_status,
+          u.last_login_at, u.created_at, u.institution_id, u.department_id,
+          i.institution_name, d.name AS department_name,
+          COALESCE(
+            (SELECT json_agg(json_build_object('name', r.name, 'display_name', r.display_name))
+             FROM user_roles ur JOIN roles r ON r.id = ur.role_id
+             WHERE ur.user_id = u.id AND ur.revoked_at IS NULL
+               AND (ur.expires_at IS NULL OR ur.expires_at > now())
+            ), '[]'::json
+          ) AS roles
+        FROM users u
+        LEFT JOIN institutions i ON i.institution_id = u.institution_id
+        LEFT JOIN departments  d ON d.department_id  = u.department_id
+        WHERE ${conditions.join(" AND ")}
+        ORDER BY u.created_at DESC
+      `, params));
+    }
+
+    return res.json({ success: true, users: rows });
+  } catch (err) {
+    logger.error("GET /api/users failed", { ...getLogContext(req), stack: err.stack });
+    return res.status(500).json({ success: false, message: "Internal server error." });
+  }
+});
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   PUT /api/users/:id
+   Explicit email-uniqueness pre-check (excludes self) before doing any work.
+───────────────────────────────────────────────────────────────────────────── */
+router.put("/:id", verifyToken, requireRole(["super_admin", "institute_admin", "department_admin"]), async (req, res) => {
   const pool = req.app.locals.pool;
   const { id } = req.params;
   let { full_name, email, institution_id, department_id, account_status } = req.body;
@@ -833,6 +1029,7 @@ router.put("/:id", verifyToken, requireRole(["super_admin", "institute_admin"]),
     return res.status(400).json({ success: false, message: "Invalid account status." });
 
   try {
+    // 1. Confirm the user being edited actually exists
     const { rows: existingRows } = await pool.query(
       `SELECT full_name, email, account_status, institution_id, department_id
        FROM users WHERE id = $1 AND account_status != 'DELETED'`,
@@ -843,6 +1040,24 @@ router.put("/:id", verifyToken, requireRole(["super_admin", "institute_admin"]),
 
     const existing = existingRows[0];
 
+    // 2. Explicit email uniqueness check — exclude the user being edited (id != $2)
+    //    Runs before bcrypt / heavy work so we fail fast with a clear message.
+    const normalizedEmail = email.trim().toLowerCase();
+    const { rows: emailConflict } = await pool.query(
+      `SELECT id FROM users
+       WHERE email = $1
+         AND id != $2
+         AND account_status != 'DELETED'`,
+      [normalizedEmail, id]
+    );
+    if (emailConflict.length)
+      return res.status(409).json({
+        success: false,
+        field:   "email",
+        message: "This email is already in use by another account.",
+      });
+
+    // 3. Scope guard — dept/inst admins can only touch users in their own scope
     if (isDeptAdmin(req)) {
       if (
         existing.institution_id !== req.user.institutionId ||
@@ -861,12 +1076,13 @@ router.put("/:id", verifyToken, requireRole(["super_admin", "institute_admin"]),
       institution_id = req.user.institutionId;
     }
 
+    // 4. Perform the update
     const { rows } = await pool.query(
       `UPDATE users
        SET full_name=$1, email=$2, institution_id=$3, department_id=$4, account_status=$5
        WHERE id=$6
        RETURNING id, full_name, email, account_status, institution_id, department_id`,
-      [full_name.trim(), email.trim().toLowerCase(), institution_id || null, department_id || null, account_status, id]
+      [full_name.trim(), normalizedEmail, institution_id || null, department_id || null, account_status, id]
     );
 
     if (!rows.length)
@@ -882,23 +1098,37 @@ router.put("/:id", verifyToken, requireRole(["super_admin", "institute_admin"]),
       entityType:    "USER",
       entityId:      updated.id,
       oldValue:      existing,
-      newValue:      { full_name: updated.full_name, email: updated.email, account_status: updated.account_status, institution_id: updated.institution_id, department_id: updated.department_id },
+      newValue:      {
+        full_name:      updated.full_name,
+        email:          updated.email,
+        account_status: updated.account_status,
+        institution_id: updated.institution_id,
+        department_id:  updated.department_id,
+      },
       changedFields,
-      status:        "SUCCESS",
-      message:       `User "${updated.full_name}" updated`,
+      status:  "SUCCESS",
+      message: `User "${updated.full_name}" updated`,
     });
 
     return res.json({ success: true, user: updated });
   } catch (err) {
+    // Belt-and-suspenders: DB unique constraint still catches any race condition
     if (err.code === "23505")
-      return res.status(409).json({ success: false, message: "Email already in use at this institution." });
+      return res.status(409).json({
+        success: false,
+        field:   "email",
+        message: "This email is already in use by another account.",
+      });
     logger.error("PUT /api/users/:id failed", { ...getLogContext(req), stack: err.stack });
     return res.status(500).json({ success: false, message: "Internal server error." });
   }
 });
 
-/* ── POST /api/users ── */
-router.post("/", verifyToken, requireRole(["super_admin", "institute_admin"]), async (req, res) => {
+/* ─────────────────────────────────────────────────────────────────────────────
+   POST /api/users
+   Explicit email-uniqueness pre-check before bcrypt hashing.
+───────────────────────────────────────────────────────────────────────────── */
+router.post("/", verifyToken, requireRole(["super_admin", "institute_admin", "department_admin"]), async (req, res) => {
   const pool = req.app.locals.pool;
   let { full_name, email, password, institution_id, department_id, role_name } = req.body;
 
@@ -916,17 +1146,36 @@ router.post("/", verifyToken, requireRole(["super_admin", "institute_admin"]), a
     return res.status(400).json({ success: false, message: "Password must be at least 8 characters." });
 
   try {
+    // 1. Explicit email uniqueness check — runs before bcrypt so we fail fast
+    const normalizedEmail = email.trim().toLowerCase();
+    const { rows: emailConflict } = await pool.query(
+      `SELECT id FROM users
+       WHERE email = $1
+         AND account_status != 'DELETED'`,
+      [normalizedEmail]
+    );
+    if (emailConflict.length)
+      return res.status(409).json({
+        success: false,
+        field:   "email",
+        message: "An account with this email already exists.",
+      });
+
+    // 2. Validate role
     const { rows: roleRows } = await pool.query("SELECT id FROM roles WHERE name = $1", [role_name]);
     if (!roleRows.length)
       return res.status(400).json({ success: false, message: "Invalid role." });
 
+    // 3. Hash password and insert — bcrypt only runs if email is confirmed unique
     const passwordHash = await bcrypt.hash(password, 10);
 
     const { rows } = await pool.query(
-      `INSERT INTO users (full_name, email, password_hash, institution_id, department_id, must_change_password, is_temporary_password, created_by)
+      `INSERT INTO users
+         (full_name, email, password_hash, institution_id, department_id,
+          must_change_password, is_temporary_password, created_by)
        VALUES ($1,$2,$3,$4,$5,true,true,$6)
        RETURNING id, full_name, email, account_status`,
-      [full_name.trim(), email.trim().toLowerCase(), passwordHash, institution_id, department_id || null, req.user.userId]
+      [full_name.trim(), normalizedEmail, passwordHash, institution_id, department_id || null, req.user.userId]
     );
 
     await pool.query(
@@ -938,11 +1187,19 @@ router.post("/", verifyToken, requireRole(["super_admin", "institute_admin"]), a
       actionType: "USER_CREATED",
       entityType: "USER",
       entityId:   rows[0].id,
-      newValue:   { full_name: rows[0].full_name, email: rows[0].email, account_status: rows[0].account_status, role: role_name, institution_id, department_id: department_id || null },
-      status:     "SUCCESS",
-      message:    `User "${rows[0].full_name}" created`,
+      newValue:   {
+        full_name:      rows[0].full_name,
+        email:          rows[0].email,
+        account_status: rows[0].account_status,
+        role:           role_name,
+        institution_id,
+        department_id:  department_id || null,
+      },
+      status:  "SUCCESS",
+      message: `User "${rows[0].full_name}" created`,
     });
 
+    // Fire-and-forget welcome email
     const newUser = rows[0];
     setImmediate(() => {
       sendWelcomeEmail(pool, {
@@ -954,17 +1211,31 @@ router.post("/", verifyToken, requireRole(["super_admin", "institute_admin"]), a
       })
         .then((info) => {
           if (!info) return;
-          logger.info("Welcome email sent", { userId: newUser.id, recipient: newUser.email, messageId: info.messageId });
+          logger.info("Welcome email sent", {
+            userId:    newUser.id,
+            recipient: newUser.email,
+            messageId: info.messageId,
+          });
         })
         .catch((err) => {
-          logger.error("Welcome email FAILED (user still created)", { userId: newUser.id, recipient: newUser.email, error: err.message, stack: err.stack });
+          logger.error("Welcome email FAILED (user still created)", {
+            userId:    newUser.id,
+            recipient: newUser.email,
+            error:     err.message,
+            stack:     err.stack,
+          });
         });
     });
 
     return res.status(201).json({ success: true, user: rows[0] });
   } catch (err) {
+    // Belt-and-suspenders: DB unique constraint still catches any race condition
     if (err.code === "23505")
-      return res.status(409).json({ success: false, message: "Email already exists at this institution." });
+      return res.status(409).json({
+        success: false,
+        field:   "email",
+        message: "An account with this email already exists.",
+      });
     logger.error("POST /api/users failed", { ...getLogContext(req), stack: err.stack });
     return res.status(500).json({ success: false, message: "Internal server error." });
   }
