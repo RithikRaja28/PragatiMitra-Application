@@ -12,6 +12,7 @@ import * as Icons from "lucide-react";
 import { useAuth } from "../../store/AuthContext";
 import { useLanguage } from "../../i18n/LanguageContext";
 import { t } from "../../i18n/translations";
+
 /* ─── Context ───────────────────────────────────────────────── */
 const ShellContext = createContext(null);
 export const useShell = () => useContext(ShellContext);
@@ -50,7 +51,6 @@ const CSS = `
 
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-  /* ── Root: column layout so topbar spans full width ── */
   .sh-root {
     display: flex;
     flex-direction: column;
@@ -77,18 +77,12 @@ const CSS = `
     z-index: 60;
   }
 
-  /* Logo mark + name */
   .sh-logo {
-    display: flex;
-    align-items: center;
-    gap: 9px;
-    flex-shrink: 0;
-    text-decoration: none;
-    margin-right: 8px;
+    display: flex; align-items: center; gap: 9px;
+    flex-shrink: 0; text-decoration: none; margin-right: 8px;
   }
   .sh-logo-mark {
-    width: 30px; height: 30px;
-    border-radius: 8px;
+    width: 30px; height: 30px; border-radius: 8px;
     background: linear-gradient(135deg, var(--sh-accent), var(--sh-accent2));
     display: flex; align-items: center; justify-content: center;
     font-size: 12px; font-weight: 800; color: #fff; letter-spacing: -.5px;
@@ -100,33 +94,20 @@ const CSS = `
   }
   @media (max-width: 640px) { .sh-logo-name { display: none; } }
 
-  /* Divider */
   .sh-topbar-div {
     width: 1px; height: 20px;
     background: rgba(255,255,255,0.1);
-    flex-shrink: 0;
-    margin: 0 4px;
+    flex-shrink: 0; margin: 0 4px;
   }
   @media (max-width: 640px) { .sh-topbar-div { display: none; } }
 
-  /* Search wrapper — owns flex sizing + dropdown anchor */
-  .sh-search-wrap {
-    position: relative;
-    flex: 1;
-    max-width: 400px;
-  }
+  .sh-search-wrap { position: relative; flex: 1; max-width: 400px; }
 
-  /* Search bar */
   .sh-search {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    width: 100%;
+    display: flex; align-items: center; gap: 8px; width: 100%;
     background: rgba(255,255,255,0.07);
     border: 1px solid rgba(255,255,255,0.10);
-    border-radius: 8px;
-    padding: 0 12px;
-    height: 34px;
+    border-radius: 8px; padding: 0 12px; height: 34px;
     transition: border-color .15s, background .15s;
   }
   .sh-search:focus-within {
@@ -147,33 +128,24 @@ const CSS = `
   }
   @media (max-width: 480px) { .sh-search-kbd { display: none; } }
 
-  /* Search dropdown */
   .sh-search-dropdown {
-    position: absolute;
-    top: calc(100% + 8px);
-    left: 0;
-    width: 100%;
-    min-width: 340px;
-    background: #fff;
-    border-radius: 14px;
+    position: absolute; top: calc(100% + 8px); left: 0;
+    width: 100%; min-width: 340px;
+    background: #fff; border-radius: 14px;
     border: 1px solid rgba(0,0,0,0.08);
     box-shadow: 0 16px 48px rgba(0,0,0,0.18);
-    z-index: 9999;
-    overflow: hidden;
+    z-index: 9999; overflow: hidden;
     animation: shMenuIn .13s ease both;
   }
   .sh-search-group-hdr {
-    padding: 10px 14px 4px;
-    font-size: 10px; font-weight: 700;
-    letter-spacing: 0.8px; text-transform: uppercase;
-    color: #94a3b8;
+    padding: 10px 14px 4px; font-size: 10px; font-weight: 700;
+    letter-spacing: 0.8px; text-transform: uppercase; color: #94a3b8;
   }
   .sh-search-result {
     display: flex; align-items: center; gap: 10px;
     padding: 8px 14px; cursor: pointer; width: 100%;
     border: none; background: transparent; text-align: left;
-    font-family: var(--sh-font);
-    transition: background .1s;
+    font-family: var(--sh-font); transition: background .1s;
   }
   .sh-search-result:hover { background: #f8fafc; }
   .sh-search-result.sel { background: rgba(37,99,235,0.07); }
@@ -183,27 +155,17 @@ const CSS = `
     display: flex; align-items: center; justify-content: center;
     color: var(--sh-accent); flex-shrink: 0;
   }
-  .sh-search-result-label {
-    flex: 1; font-size: 13px; font-weight: 500; color: #1e293b;
-  }
+  .sh-search-result-label { flex: 1; font-size: 13px; font-weight: 500; color: #1e293b; }
   .sh-search-result-group {
     font-size: 10px; font-weight: 600; color: #94a3b8;
-    background: #f1f5f9; border-radius: 4px;
-    padding: 2px 7px; white-space: nowrap;
+    background: #f1f5f9; border-radius: 4px; padding: 2px 7px; white-space: nowrap;
   }
-  .sh-search-empty {
-    padding: 24px 14px; text-align: center;
-    font-size: 13px; color: #94a3b8;
-  }
+  .sh-search-empty { padding: 24px 14px; text-align: center; font-size: 13px; color: #94a3b8; }
   .sh-search-footer {
-    padding: 8px 14px;
-    border-top: 1px solid #f1f5f9;
+    padding: 8px 14px; border-top: 1px solid #f1f5f9;
     display: flex; gap: 14px; align-items: center;
   }
-  .sh-search-hint {
-    display: flex; align-items: center; gap: 4px;
-    font-size: 10px; color: #94a3b8; font-family: var(--sh-font);
-  }
+  .sh-search-hint { display: flex; align-items: center; gap: 4px; font-size: 10px; color: #94a3b8; }
   .sh-search-hint kbd {
     font-family: var(--sh-mono); font-size: 9px;
     background: #f1f5f9; border: 1px solid #e2e8f0;
@@ -211,8 +173,6 @@ const CSS = `
   }
 
   .sh-spacer { flex: 1; }
-
-  /* Action buttons */
   .sh-actions { display: flex; align-items: center; gap: 4px; }
 
   .sh-icon-btn {
@@ -231,7 +191,6 @@ const CSS = `
     background: #3b82f6; border: 2px solid var(--sh-topbar);
   }
 
-  /* Avatar pill */
   .sh-avatar {
     display: flex; align-items: center; gap: 8px;
     padding: 4px 10px 4px 4px; border-radius: 8px;
@@ -250,7 +209,6 @@ const CSS = `
   .sh-avatar-org  { font-size: 10px; color: rgba(255,255,255,0.4); white-space: nowrap; }
   @media (max-width: 520px) { .sh-avatar-info { display: none; } }
 
-  /* Hamburger (mobile) */
   .sh-hamburger {
     display: none; align-items: center; justify-content: center;
     width: 34px; height: 34px; border-radius: 8px;
@@ -262,15 +220,9 @@ const CSS = `
   .sh-hamburger:hover { background: rgba(255,255,255,0.09); color: #fff; }
   @media (max-width: 768px) { .sh-hamburger { display: flex; } }
 
-  /* ── BODY (sidebar + content) ── */
-  .sh-body {
-    display: flex;
-    flex: 1;
-    min-height: 0;
-    overflow: hidden;
-  }
+  /* ── BODY ── */
+  .sh-body { display: flex; flex: 1; min-height: 0; overflow: hidden; }
 
-  /* ── MOBILE OVERLAY ── */
   .sh-overlay {
     display: none; position: fixed; inset: 0;
     background: rgba(15,23,42,.35); backdrop-filter: blur(4px);
@@ -290,11 +242,9 @@ const CSS = `
     z-index: 50; flex-shrink: 0; overflow: hidden;
   }
   .sh-sidebar.col { width: var(--sh-side-col); }
-
   @media (max-width: 768px) {
     .sh-sidebar {
-      position: fixed;
-      top: var(--sh-topbar-h); left: 0; bottom: 0;
+      position: fixed; top: var(--sh-topbar-h); left: 0; bottom: 0;
       transform: translateX(-100%);
       width: var(--sh-side-open) !important;
       box-shadow: 4px 0 32px rgba(0,0,0,.14);
@@ -302,7 +252,6 @@ const CSS = `
     .sh-sidebar.mob { transform: translateX(0); }
   }
 
-  /* ── NAV SCROLL ── */
   .sh-nav {
     flex: 1; overflow-y: auto; overflow-x: hidden; padding: 10px 0;
     scrollbar-width: thin; scrollbar-color: var(--sh-border) transparent;
@@ -310,7 +259,6 @@ const CSS = `
   .sh-nav::-webkit-scrollbar { width: 4px; }
   .sh-nav::-webkit-scrollbar-thumb { background: var(--sh-border); border-radius: 4px; }
 
-  /* ── NAV GROUP ── */
   .sh-nav-group { margin-bottom: 4px; }
   .sh-nav-group-label {
     padding: 6px 16px 4px; font-size: 10px; font-weight: 700;
@@ -319,7 +267,6 @@ const CSS = `
   }
   .sh-sidebar.col .sh-nav-group-label { opacity: 0; height: 0; padding: 0; }
 
-  /* ── NAV ITEM ── */
   .sh-nav-item {
     display: flex; align-items: center; gap: 10px;
     padding: 0 12px; height: 40px; margin: 1px 8px; border-radius: 8px;
@@ -331,20 +278,14 @@ const CSS = `
     transition: background var(--sh-ease), color var(--sh-ease);
   }
   .sh-nav-item:hover { background: var(--sh-hover); color: var(--sh-text); }
-  .sh-nav-item.on {
-    background: var(--sh-active); color: var(--sh-accent);
-  }
+  .sh-nav-item.on { background: var(--sh-active); color: var(--sh-accent); }
   .sh-nav-item.on::before {
-    content: '';
-    position: absolute; left: 0; top: 8px; bottom: 8px;
+    content: ''; position: absolute; left: 0; top: 8px; bottom: 8px;
     width: 3px; background: var(--sh-accent); border-radius: 0 3px 3px 0;
   }
-  .sh-nav-label {
-    transition: opacity var(--sh-ease), width var(--sh-ease); font-size: 13.5px;
-  }
+  .sh-nav-label { transition: opacity var(--sh-ease), width var(--sh-ease); font-size: 13.5px; }
   .sh-sidebar.col .sh-nav-label { opacity: 0; width: 0; }
 
-  /* Collapsed tooltip */
   .sh-sidebar.col .sh-nav-item[data-tip]:hover::after {
     content: attr(data-tip);
     position: absolute; left: calc(var(--sh-side-col) - 4px); top: 50%;
@@ -357,18 +298,13 @@ const CSS = `
   }
   @keyframes shTip { to { opacity:1; left: calc(var(--sh-side-col) + 6px); } }
 
-  /* Badge */
   .sh-item-badge {
     margin-left: auto; background: var(--sh-accent); color: #fff;
     font-size: 10px; font-weight: 700; border-radius: 20px;
     padding: 1px 6px; flex-shrink: 0;
   }
 
-  /* ── SIDEBAR FOOTER ── */
-  .sh-sidebar-footer {
-    border-top: 1px solid var(--sh-border);
-    padding: 10px 8px; flex-shrink: 0;
-  }
+  .sh-sidebar-footer { border-top: 1px solid var(--sh-border); padding: 10px 8px; flex-shrink: 0; }
   .sh-collapse-btn {
     display: flex; align-items: center; justify-content: center;
     width: 100%; height: 36px; border-radius: 8px;
@@ -380,44 +316,30 @@ const CSS = `
 
   /* ── CONTENT ── */
   .sh-content {
-    flex: 1; overflow-y: auto; overflow-x: hidden;
-    background: var(--sh-bg);
+    flex: 1; overflow-y: auto; overflow-x: hidden; background: var(--sh-bg);
     scrollbar-width: thin; scrollbar-color: var(--sh-border) transparent;
   }
   .sh-content::-webkit-scrollbar { width: 6px; }
   .sh-content::-webkit-scrollbar-thumb { background: var(--sh-border); border-radius: 4px; }
-
   .sh-page-enter { animation: shPageIn .18s ease both; }
-  @keyframes shPageIn {
-    from { opacity:0; transform:translateY(6px); }
-    to   { opacity:1; transform:translateY(0); }
-  }
+  @keyframes shPageIn { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
 
-  /* ── USER DROPDOWN ── */
+  /* ── DROPDOWNS ── */
   .sh-user-wrap { position: relative; }
-
   .sh-user-menu {
-    position: absolute;
-    top: calc(100% + 8px);
-    right: 0;
-    background: #fff;
-    border-radius: 14px;
+    position: absolute; top: calc(100% + 8px); right: 0;
+    background: #fff; border-radius: 14px;
     border: 1px solid rgba(0,0,0,0.08);
     box-shadow: 0 12px 40px rgba(0,0,0,0.16);
-    min-width: 232px;
-    z-index: 9999;
-    overflow: hidden;
+    min-width: 232px; z-index: 9999; overflow: hidden;
     animation: shMenuIn .13s ease both;
   }
   @keyframes shMenuIn {
     from { opacity:0; transform:translateY(-6px) scale(.97); }
-    to   { opacity:1; transform:translateY(0)    scale(1);   }
+    to   { opacity:1; transform:translateY(0) scale(1); }
   }
-
   .sh-menu-header {
-    padding: 16px 16px 12px;
-    background: #fafbfc;
-    border-bottom: 1px solid #f1f5f9;
+    padding: 16px 16px 12px; background: #fafbfc; border-bottom: 1px solid #f1f5f9;
   }
   .sh-menu-avatar {
     width: 38px; height: 38px; border-radius: 10px;
@@ -427,29 +349,24 @@ const CSS = `
   }
   .sh-menu-name  { font-size: 13px; font-weight: 700; color: #1e293b; }
   .sh-menu-email { font-size: 11px; color: #94a3b8; margin-top: 2px; }
-
-  .sh-menu-body { padding: 8px; }
-
+  .sh-menu-body  { padding: 8px; }
   .sh-menu-btn {
     display: flex; align-items: center; gap: 10px;
     width: 100%; padding: 9px 12px; border-radius: 8px;
     border: none; background: transparent; cursor: pointer;
     font-family: var(--sh-font); font-size: 13px; font-weight: 500;
-    text-align: left; color: #475569;
-    transition: background .12s, color .12s;
+    text-align: left; color: #475569; transition: background .12s, color .12s;
   }
   .sh-menu-btn:hover { background: #f1f5f9; color: #1e293b; }
   .sh-menu-btn.danger { color: #dc2626; }
   .sh-menu-btn.danger:hover { background: #fef2f2; color: #dc2626; }
 
-  /* ── Language toggle pill ── */
+  /* ── Language toggle ── */
   .sh-lang-toggle {
-    display: flex; align-items: center;
-    border-radius: 20px;
+    display: flex; align-items: center; border-radius: 20px;
     border: 1px solid rgba(255,255,255,0.12);
     background: rgba(255,255,255,0.06);
-    overflow: hidden; flex-shrink: 0;
-    height: 30px;
+    overflow: hidden; flex-shrink: 0; height: 30px;
   }
   .sh-lang-opt {
     display: flex; align-items: center; justify-content: center;
@@ -459,26 +376,152 @@ const CSS = `
     cursor: pointer; border: none; background: transparent;
     transition: background var(--sh-ease), color var(--sh-ease);
   }
-  .sh-lang-opt.on {
-    background: var(--sh-accent);
-    color: #fff;
+  .sh-lang-opt.on { background: var(--sh-accent); color: #fff; }
+  .sh-lang-opt:not(.on):hover { color: rgba(255,255,255,0.75); background: rgba(255,255,255,0.06); }
+
+  /* ── Academic Year picker ── */
+  .sh-ay-wrap { position: relative; flex-shrink: 0; }
+
+  .sh-ay-btn {
+    display: flex; align-items: center; gap: 5px;
+    height: 34px; padding: 0 11px; border-radius: 8px;
+    border: 1px solid rgba(255,255,255,0.15);
+    background: rgba(255,255,255,0.08);
+    color: #fff; cursor: pointer;
+    font-family: var(--sh-font); font-size: 12px; font-weight: 600;
+    white-space: nowrap; flex-shrink: 0;
+    transition: background var(--sh-ease), border-color var(--sh-ease);
   }
-  .sh-lang-opt:not(.on):hover {
-    color: rgba(255,255,255,0.75);
-    background: rgba(255,255,255,0.06);
+  .sh-ay-btn:hover {
+    background: rgba(255,255,255,0.13);
+    border-color: rgba(255,255,255,0.25);
   }
+  .sh-ay-btn.open {
+    background: rgba(37,99,235,0.25);
+    border-color: rgba(37,99,235,0.6);
+  }
+  .sh-ay-tag {
+    font-size: 9px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.5px; color: rgba(255,255,255,0.45);
+  }
+  .sh-ay-val { font-size: 12px; font-weight: 700; color: #fff; }
+  .sh-ay-chevron {
+    opacity: 0.5; transition: transform .2s; flex-shrink: 0;
+  }
+  .sh-ay-btn.open .sh-ay-chevron { transform: rotate(180deg); }
+
+  .sh-ay-dropdown {
+    position: absolute; top: calc(100% + 8px); right: 0;
+    background: #fff; border-radius: 12px;
+    border: 1px solid rgba(0,0,0,0.09);
+    box-shadow: 0 14px 40px rgba(0,0,0,0.16);
+    min-width: 175px; z-index: 9999; overflow: hidden;
+    animation: shMenuIn .13s ease both;
+  }
+  .sh-ay-hdr {
+    display: flex; align-items: center; gap: 7px;
+    padding: 10px 14px 8px;
+    font-size: 10px; font-weight: 700; letter-spacing: 0.8px;
+    text-transform: uppercase; color: #94a3b8;
+    border-bottom: 1px solid #f1f5f9;
+  }
+  .sh-ay-opt {
+    display: flex; align-items: center; justify-content: space-between;
+    width: 100%; padding: 9px 14px;
+    border: none; background: transparent; cursor: pointer;
+    font-family: var(--sh-font); font-size: 13px; text-align: left;
+    color: #475569; font-weight: 500;
+    transition: background .1s, color .1s;
+  }
+  .sh-ay-opt:hover { background: #f8fafc; color: #1e293b; }
+  .sh-ay-opt.sel { color: #2563eb; font-weight: 700; background: rgba(37,99,235,0.05); }
+  .sh-ay-check { color: #2563eb; flex-shrink: 0; }
 `;
 
 function injectCSS(id, css) {
-  if (typeof document === "undefined" || document.getElementById(id)) return;
-  const el = document.createElement("style");
-  el.id = id;
+  if (typeof document === "undefined") return;
+  let el = document.getElementById(id);
+  if (!el) {
+    el = document.createElement("style");
+    el.id = id;
+    document.head.appendChild(el);
+  }
   el.textContent = css;
-  document.head.appendChild(el);
+}
+
+/* ─── Academic Year Picker ──────────────────────────────────── */
+const ACADEMIC_YEARS = ["2021-22", "2022-23", "2023-24", "2024-25", "2025-26"];
+
+function AcademicYearPicker({ selectedYear, onChange }) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  const yr = selectedYear || "2024-25";
+
+  return (
+    <div className="sh-ay-wrap" ref={wrapRef}>
+      <button
+        className={`sh-ay-btn${open ? " open" : ""}`}
+        onClick={() => setOpen((o) => !o)}
+        aria-label="Select academic year"
+        aria-expanded={open}
+        aria-haspopup="listbox"
+      >
+        <Icons.GraduationCap size={13} style={{ opacity: 0.75, flexShrink: 0 }} />
+        <span className="sh-ay-tag">AY</span>
+        <span className="sh-ay-val">{yr}</span>
+        <Icons.ChevronDown size={12} className="sh-ay-chevron" />
+      </button>
+
+      {open && (
+        <div className="sh-ay-dropdown" role="listbox" aria-label="Academic year">
+          <div className="sh-ay-hdr">
+            <Icons.CalendarDays size={11} style={{ opacity: 0.6 }} />
+            Academic Year
+          </div>
+          {ACADEMIC_YEARS.map((y) => (
+            <button
+              key={y}
+              className={`sh-ay-opt${yr === y ? " sel" : ""}`}
+              role="option"
+              aria-selected={yr === y}
+              onClick={() => { onChange?.(y); setOpen(false); }}
+            >
+              {y}
+              {yr === y && <Icons.Check size={13} className="sh-ay-check" />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 /* ─── Topbar ────────────────────────────────────────────────── */
-function Topbar({ appName, logo, user, onHamburger, onSearch, searchPlaceholder, headerActions, notificationCount, navItems, onNavClick, onSettingsClick }) {
+function Topbar({
+  appName,
+  logo,
+  user,
+  onHamburger,
+  onSearch,
+  searchPlaceholder,
+  headerActions,
+  notificationCount,
+  navItems,
+  onNavClick,
+  onSettingsClick,
+  selectedYear,
+  onYearChange,
+}) {
   const [query,       setQuery]       = useState("");
   const [menuOpen,    setMenuOpen]    = useState(false);
   const [searchOpen,  setSearchOpen]  = useState(false);
@@ -490,7 +533,6 @@ function Topbar({ appName, logo, user, onHamburger, onSearch, searchPlaceholder,
   const { user: authUser, logout } = useAuth();
   const { lang, toggle: toggleLang } = useLanguage();
 
-  /* Flatten + filter nav items against the current query */
   const flatResults = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return [];
@@ -503,23 +545,19 @@ function Topbar({ appName, logo, user, onHamburger, onSearch, searchPlaceholder,
       .slice(0, 8);
   }, [query, navItems, lang]);
 
-  /* Reset keyboard selection when results change */
   useEffect(() => setSelectedIdx(-1), [flatResults]);
 
-  /* Close dropdown on outside click */
   useEffect(() => {
     if (!searchOpen) return;
-    const handler = (e) => {
-      if (searchRef.current && !searchRef.current.contains(e.target))
-        setSearchOpen(false);
+    const h = (e) => {
+      if (searchRef.current && !searchRef.current.contains(e.target)) setSearchOpen(false);
     };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
   }, [searchOpen]);
 
-  /* '/' shortcut to focus search */
   useEffect(() => {
-    const handler = (e) => {
+    const h = (e) => {
       const tag = document.activeElement?.tagName;
       if (e.key === "/" && tag !== "INPUT" && tag !== "TEXTAREA") {
         e.preventDefault();
@@ -527,36 +565,24 @@ function Topbar({ appName, logo, user, onHamburger, onSearch, searchPlaceholder,
         setSearchOpen(true);
       }
     };
-    document.addEventListener("keydown", handler);
-    return () => document.removeEventListener("keydown", handler);
+    document.addEventListener("keydown", h);
+    return () => document.removeEventListener("keydown", h);
   }, []);
 
   const navigateTo = useCallback((item) => {
     onNavClick?.(item.id);
-    setQuery("");
-    setSearchOpen(false);
-    inputRef.current?.blur();
+    setQuery(""); setSearchOpen(false); inputRef.current?.blur();
   }, [onNavClick]);
 
   const handleSearchKeyDown = (e) => {
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      setSelectedIdx((i) => Math.min(i + 1, flatResults.length - 1));
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      setSelectedIdx((i) => Math.max(i - 1, 0));
-    } else if (e.key === "Enter" && selectedIdx >= 0) {
-      e.preventDefault();
-      navigateTo(flatResults[selectedIdx]);
-    } else if (e.key === "Escape") {
-      setQuery("");
-      setSearchOpen(false);
-      inputRef.current?.blur();
-    }
+    if (e.key === "ArrowDown") { e.preventDefault(); setSelectedIdx((i) => Math.min(i + 1, flatResults.length - 1)); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); setSelectedIdx((i) => Math.max(i - 1, 0)); }
+    else if (e.key === "Enter" && selectedIdx >= 0) { e.preventDefault(); navigateTo(flatResults[selectedIdx]); }
+    else if (e.key === "Escape") { setQuery(""); setSearchOpen(false); inputRef.current?.blur(); }
   };
 
-  const displayName = authUser?.full_name || user?.name || "User";
-  const displayOrg  = user?.org || "";
+  const displayName  = authUser?.full_name || user?.name || "User";
+  const displayOrg   = user?.org || "";
   const displayEmail = authUser?.email || "";
   const initials =
     user?.initials ||
@@ -564,45 +590,30 @@ function Topbar({ appName, logo, user, onHamburger, onSearch, searchPlaceholder,
       ? displayName.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase()
       : "U");
 
-  /* Close menu on outside click */
   useEffect(() => {
     if (!menuOpen) return;
-    const handler = (e) => {
-      if (menuRef.current && !menuRef.current.contains(e.target)) setMenuOpen(false);
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
+    const h = (e) => { if (menuRef.current && !menuRef.current.contains(e.target)) setMenuOpen(false); };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
   }, [menuOpen]);
 
-  const handleLogout = () => {
-    setMenuOpen(false);
-    logout();
-  };
+  const handleLogout = () => { setMenuOpen(false); logout(); };
 
   return (
     <header className="sh-topbar">
-      {/* Hamburger — mobile only */}
-      <button
-        className="sh-hamburger"
-        onClick={onHamburger}
-        aria-label="Open menu"
-      >
+      {/* Hamburger */}
+      <button className="sh-hamburger" onClick={onHamburger} aria-label="Open menu">
         <Icons.Menu size={18} />
       </button>
 
-      {/* Logo + App name */}
+      {/* Logo */}
       <div className="sh-logo">
         <div className="sh-logo-mark">
-          {typeof logo === "string"
-            ? logo
-            : appName
-              ? appName.slice(0, 2).toUpperCase()
-              : "PM"}
+          {typeof logo === "string" ? logo : appName ? appName.slice(0, 2).toUpperCase() : "PM"}
         </div>
         <span className="sh-logo-name">{t(appName || "PragatiMitra", lang)}</span>
       </div>
 
-      {/* Divider */}
       <div className="sh-topbar-div" />
 
       {/* Search */}
@@ -613,11 +624,7 @@ function Topbar({ appName, logo, user, onHamburger, onSearch, searchPlaceholder,
             ref={inputRef}
             type="text"
             value={query}
-            onChange={(e) => {
-              setQuery(e.target.value);
-              setSearchOpen(true);
-              onSearch?.(e.target.value);
-            }}
+            onChange={(e) => { setQuery(e.target.value); setSearchOpen(true); onSearch?.(e.target.value); }}
             onFocus={() => setSearchOpen(true)}
             onKeyDown={handleSearchKeyDown}
             placeholder={t(searchPlaceholder || "Search…", lang)}
@@ -625,13 +632,10 @@ function Topbar({ appName, logo, user, onHamburger, onSearch, searchPlaceholder,
           <span className="sh-search-kbd">/</span>
         </div>
 
-        {/* Dropdown */}
         {searchOpen && query.trim() !== "" && (
           <div className="sh-search-dropdown" role="listbox">
             {flatResults.length === 0 ? (
-              <div className="sh-search-empty">
-                No results for &ldquo;{query}&rdquo;
-              </div>
+              <div className="sh-search-empty">No results for &ldquo;{query}&rdquo;</div>
             ) : (
               flatResults.map((item, idx) => {
                 const showHeader =
@@ -639,11 +643,7 @@ function Topbar({ appName, logo, user, onHamburger, onSearch, searchPlaceholder,
                   (idx === 0 || flatResults[idx - 1].groupLabel !== item.groupLabel);
                 return (
                   <Fragment key={item.id}>
-                    {showHeader && (
-                      <div className="sh-search-group-hdr">
-                        {t(item.groupLabel, lang)}
-                      </div>
-                    )}
+                    {showHeader && <div className="sh-search-group-hdr">{t(item.groupLabel, lang)}</div>}
                     <button
                       className={`sh-search-result${selectedIdx === idx ? " sel" : ""}`}
                       role="option"
@@ -651,16 +651,10 @@ function Topbar({ appName, logo, user, onHamburger, onSearch, searchPlaceholder,
                       onMouseEnter={() => setSelectedIdx(idx)}
                       onClick={() => navigateTo(item)}
                     >
-                      <span className="sh-search-result-icon">
-                        <DynIcon name={item.icon} size={15} />
-                      </span>
-                      <span className="sh-search-result-label">
-                        {t(item.label, lang)}
-                      </span>
+                      <span className="sh-search-result-icon"><DynIcon name={item.icon} size={15} /></span>
+                      <span className="sh-search-result-label">{t(item.label, lang)}</span>
                       {item.groupLabel && (
-                        <span className="sh-search-result-group">
-                          {t(item.groupLabel, lang) || "General"}
-                        </span>
+                        <span className="sh-search-result-group">{t(item.groupLabel, lang) || "General"}</span>
                       )}
                     </button>
                   </Fragment>
@@ -678,10 +672,14 @@ function Topbar({ appName, logo, user, onHamburger, onSearch, searchPlaceholder,
 
       <div className="sh-spacer" />
 
-      {/* Actions */}
+      {/* ── Actions ── */}
       <div className="sh-actions">
         {headerActions}
 
+        {/* Academic Year */}
+        <AcademicYearPicker selectedYear={selectedYear} onChange={onYearChange} />
+
+        {/* Notifications */}
         <button className="sh-icon-btn" aria-label="Notifications">
           <Icons.Bell size={16} />
           {notificationCount > 0 && <span className="sh-badge" />}
@@ -693,31 +691,24 @@ function Topbar({ appName, logo, user, onHamburger, onSearch, searchPlaceholder,
             className={`sh-lang-opt${lang === "en" ? " on" : ""}`}
             onClick={() => lang !== "en" && toggleLang()}
             aria-pressed={lang === "en"}
-          >
-            EN
-          </button>
+          >EN</button>
           <button
             className={`sh-lang-opt${lang === "hi" ? " on" : ""}`}
             onClick={() => lang !== "hi" && toggleLang()}
             aria-pressed={lang === "hi"}
-          >
-            हि
-          </button>
+          >हि</button>
         </div>
 
-        <button 
-          className="sh-icon-btn" 
+        {/* Settings */}
+        <button
+          className="sh-icon-btn"
           aria-label="Settings"
-          onClick={() => {
-            console.log("Settings clicked");
-            onSettingsClick?.();
-          }}
-          style={{ cursor: "pointer" }}
+          onClick={() => { console.log("Settings clicked"); onSettingsClick?.(); }}
         >
           <Icons.Settings size={16} />
         </button>
 
-        {/* Avatar + dropdown */}
+        {/* Avatar */}
         <div className="sh-user-wrap" ref={menuRef}>
           <button
             className="sh-avatar"
@@ -733,39 +724,29 @@ function Topbar({ appName, logo, user, onHamburger, onSearch, searchPlaceholder,
             <Icons.ChevronDown
               size={12}
               color="rgba(255,255,255,0.4)"
-              style={{
-                marginLeft: 4,
-                transition: "transform .2s",
-                transform: menuOpen ? "rotate(180deg)" : "rotate(0deg)",
-              }}
+              style={{ marginLeft: 4, transition: "transform .2s", transform: menuOpen ? "rotate(180deg)" : "rotate(0deg)" }}
             />
           </button>
 
           {menuOpen && (
-              <div className="sh-user-menu" role="menu">
-                <div className="sh-menu-header">
-                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <div className="sh-menu-avatar">{initials}</div>
-                    <div>
-                      <div className="sh-menu-name">{displayName}</div>
-                      {displayEmail && (
-                        <div className="sh-menu-email">{displayEmail}</div>
-                      )}
-                    </div>
+            <div className="sh-user-menu" role="menu">
+              <div className="sh-menu-header">
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <div className="sh-menu-avatar">{initials}</div>
+                  <div>
+                    <div className="sh-menu-name">{displayName}</div>
+                    {displayEmail && <div className="sh-menu-email">{displayEmail}</div>}
                   </div>
                 </div>
-                <div className="sh-menu-body">
-                  <button
-                    className="sh-menu-btn danger"
-                    role="menuitem"
-                    onClick={handleLogout}
-                  >
-                    <Icons.LogOut size={15} />
-                    Sign out
-                  </button>
-                </div>
               </div>
-            )}
+              <div className="sh-menu-body">
+                <button className="sh-menu-btn danger" role="menuitem" onClick={handleLogout}>
+                  <Icons.LogOut size={15} />
+                  Sign out
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </header>
@@ -775,21 +756,14 @@ function Topbar({ appName, logo, user, onHamburger, onSearch, searchPlaceholder,
 /* ─── Sidebar ───────────────────────────────────────────────── */
 function Sidebar({ navItems, collapsed, mobileOpen, onCollapse, onNavClick, activeId }) {
   const { lang } = useLanguage();
-
-  const cls = [
-    "sh-sidebar",
-    collapsed  ? "col" : "",
-    mobileOpen ? "mob" : "",
-  ].filter(Boolean).join(" ");
+  const cls = ["sh-sidebar", collapsed ? "col" : "", mobileOpen ? "mob" : ""].filter(Boolean).join(" ");
 
   return (
     <aside className={cls}>
       <nav className="sh-nav">
         {(navItems || []).map((group, gi) => (
           <div key={gi} className="sh-nav-group">
-            {group.group && (
-              <div className="sh-nav-group-label">{t(group.group, lang)}</div>
-            )}
+            {group.group && <div className="sh-nav-group-label">{t(group.group, lang)}</div>}
             {(group.items || []).map((item) => (
               <button
                 key={item.id}
@@ -798,13 +772,9 @@ function Sidebar({ navItems, collapsed, mobileOpen, onCollapse, onNavClick, acti
                 data-tip={collapsed ? t(item.label, lang) : undefined}
                 aria-label={t(item.label, lang)}
               >
-                <span style={{ flexShrink: 0 }}>
-                  <DynIcon name={item.icon} size={17} />
-                </span>
+                <span style={{ flexShrink: 0 }}><DynIcon name={item.icon} size={17} /></span>
                 <span className="sh-nav-label">{t(item.label, lang)}</span>
-                {item.badge != null && (
-                  <span className="sh-item-badge">{item.badge}</span>
-                )}
+                {item.badge != null && <span className="sh-item-badge">{item.badge}</span>}
               </button>
             ))}
           </div>
@@ -835,11 +805,11 @@ function Sidebar({ navItems, collapsed, mobileOpen, onCollapse, onNavClick, acti
 
 /* ─── Main export ───────────────────────────────────────────── */
 export default function AppShell({
-  navItems = [],
-  pages = {},
+  navItems      = [],
+  pages         = {},
   defaultPage,
   logo,
-  appName = "PragatiMitra",
+  appName       = "PragatiMitra",
   user,
   searchPlaceholder,
   onSearch,
@@ -847,15 +817,18 @@ export default function AppShell({
   notificationCount = 0,
   onNavigate,
   onSettingsClick,
-  defaultCollapsed = false,
+  defaultCollapsed  = false,
+  defaultYear       = "2024-25",
+  onYearChange,
 }) {
-  injectCSS("app-shell-v2", CSS);
+  injectCSS("app-shell-v4", CSS);
 
   const firstId = defaultPage || navItems[0]?.items?.[0]?.id || Object.keys(pages)[0] || "";
-  const [activeId,   setActiveId]   = useState(firstId);
-  const [collapsed,  setCollapsed]  = useState(defaultCollapsed);
-  const [mobileOpen, setMobileOpen] = useState(false);
-  const [pageKey,    setPageKey]    = useState(0);
+  const [activeId,     setActiveId]     = useState(firstId);
+  const [collapsed,    setCollapsed]    = useState(defaultCollapsed);
+  const [mobileOpen,   setMobileOpen]   = useState(false);
+  const [pageKey,      setPageKey]      = useState(0);
+  const [selectedYear, setSelectedYear] = useState(defaultYear);
 
   useEffect(() => {
     const fn = () => { if (window.innerWidth > 768) setMobileOpen(false); };
@@ -864,11 +837,12 @@ export default function AppShell({
   }, []);
 
   const handleNavClick = useCallback((id) => {
-    setActiveId(id);
-    setPageKey((k) => k + 1);
-    setMobileOpen(false);
-    onNavigate?.(id);
+    setActiveId(id); setPageKey((k) => k + 1); setMobileOpen(false); onNavigate?.(id);
   }, [onNavigate]);
+
+  const handleYearChange = useCallback((yr) => {
+    setSelectedYear(yr); onYearChange?.(yr);
+  }, [onYearChange]);
 
   const currentPage = pages[activeId] ?? (
     <div style={{ padding: 40, color: "var(--sh-muted)", fontFamily: "var(--sh-font)" }}>
@@ -877,10 +851,8 @@ export default function AppShell({
   );
 
   return (
-    <ShellContext.Provider value={{ activeId, setActiveId: handleNavClick, collapsed, setCollapsed }}>
+    <ShellContext.Provider value={{ activeId, setActiveId: handleNavClick, collapsed, setCollapsed, selectedYear }}>
       <div className="sh-root">
-
-        {/* Full-width top bar */}
         <Topbar
           appName={appName}
           logo={logo}
@@ -893,18 +865,16 @@ export default function AppShell({
           navItems={navItems}
           onNavClick={handleNavClick}
           onSettingsClick={onSettingsClick}
+          selectedYear={selectedYear}
+          onYearChange={handleYearChange}
         />
 
-        {/* Body: sidebar + content */}
         <div className="sh-body">
-
-          {/* Mobile overlay */}
           <div
             className={`sh-overlay${mobileOpen ? " open" : ""}`}
             onClick={() => setMobileOpen(false)}
             aria-hidden="true"
           />
-
           <Sidebar
             navItems={navItems}
             collapsed={collapsed}
@@ -913,7 +883,6 @@ export default function AppShell({
             onNavClick={handleNavClick}
             activeId={activeId}
           />
-
           <main className="sh-content">
             <div key={pageKey} className="sh-page-enter">
               {currentPage}

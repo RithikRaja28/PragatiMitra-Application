@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { useApi } from "../../../hooks/useApi";
 import { useAuth } from "../../../store/AuthContext";
 import { S, Toast } from "../../../components/shared/formUtils";
@@ -159,11 +159,14 @@ function UserForm({
         }
       : { ...EMPTY_FORM }
   );
-  const [fieldErrs,   setFieldErrs]   = useState({});
-  const [roles,       setRoles]       = useState([]);
-  const [saving,      setSaving]      = useState(false);
-  const [serverError, setServerError] = useState("");
+  const [fieldErrs,     setFieldErrs]     = useState({});
+  const [roles,         setRoles]         = useState([]);
+  const [saving,        setSaving]        = useState(false);
+  const [serverError,   setServerError]   = useState("");
+  const [emailTaken,    setEmailTaken]    = useState(false);
+  const [emailChecking, setEmailChecking] = useState(false);
 
+  /* load role options once (create mode only) */
   useEffect(() => {
     if (!isEdit) {
       apiFetch("/api/lookup/roles")
@@ -173,23 +176,79 @@ function UserForm({
     }
   }, [apiFetch, isEdit]);
 
+  /* ── Debounced email availability check (both create and edit modes) ──────
+     Fires 500 ms after the user stops typing, only when the email is
+     syntactically valid. In edit mode, passes excludeId=entity.id so the
+     user's own current email doesn't falsely report as taken.
+  ── */
+  useEffect(() => {
+    const email = form.email.trim();
+
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setEmailTaken(false);
+      setEmailChecking(false);
+      return;
+    }
+
+    // In edit mode, skip the check if the email hasn't changed from the original
+    if (isEdit && email === entity.email.trim().toLowerCase()) {
+      setEmailTaken(false);
+      setEmailChecking(false);
+      return;
+    }
+
+    setEmailChecking(true);
+
+    const timer = setTimeout(async () => {
+      try {
+        // Pass excludeId in edit mode so the user's own record is not flagged
+        const excludeParam = isEdit ? `&excludeId=${encodeURIComponent(entity.id)}` : "";
+        const res  = await apiFetch(`/api/users/check-email?email=${encodeURIComponent(email)}${excludeParam}`);
+        const data = await res.json();
+        setEmailTaken(data.exists === true);
+      } catch {
+        // Network error — don't block; server-side constraint is the final guard
+        setEmailTaken(false);
+      } finally {
+        setEmailChecking(false);
+      }
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [form.email, isEdit, apiFetch, entity]);
+
   const set = (key, value) => {
     setForm((f) => ({ ...f, [key]: value }));
     setFieldErrs((e) => ({ ...e, [key]: undefined }));
     setServerError("");
+    if (key === "email") {
+      setEmailTaken(false);
+      setEmailChecking(false);
+    }
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    // 1. Client-side field validation
     const errs = validateForm(form, isEdit);
     if (Object.keys(errs).length) { setFieldErrs(errs); return; }
+
+    // 2. Block if live check already confirmed the email is taken (both create and edit)
+    if (emailTaken) {
+      setFieldErrs((prev) => ({ ...prev, email: "This email is already registered." }));
+      return;
+    }
+
+    // 3. Block if the check is still in-flight (button should also be disabled, but belt-and-suspenders)
+    if (emailChecking) return;
 
     setSaving(true);
     setServerError("");
 
     try {
       if (isEdit) {
-        const res = await apiFetch(`/api/users/${entity.id}`, {
+        const res  = await apiFetch(`/api/users/${entity.id}`, {
           method: "PUT",
           body: JSON.stringify({
             full_name:      form.full_name,
@@ -200,10 +259,19 @@ function UserForm({
           }),
         });
         const data = await res.json();
-        if (!res.ok) { setServerError(data.message || "Update failed."); setSaving(false); return; }
+        if (!res.ok) {
+          // 409 from PUT means the new email is already used by someone else
+          if (res.status === 409) {
+            setFieldErrs((prev) => ({ ...prev, email: data.message || "Email already in use." }));
+          } else {
+            setServerError(data.message || "Update failed.");
+          }
+          setSaving(false);
+          return;
+        }
         onSaved("User updated successfully.");
       } else {
-        const res = await apiFetch("/api/users", {
+        const res  = await apiFetch("/api/users", {
           method: "POST",
           body: JSON.stringify({
             full_name:      form.full_name,
@@ -215,7 +283,18 @@ function UserForm({
           }),
         });
         const data = await res.json();
-        if (!res.ok) { setServerError(data.message || "Failed to create user."); setSaving(false); return; }
+        if (!res.ok) {
+          // 409 = duplicate email (DB unique constraint, catches any race condition
+          // that slips past the pre-check above)
+          if (res.status === 409) {
+            setEmailTaken(true);
+            setFieldErrs((prev) => ({ ...prev, email: data.message || "This email is already registered." }));
+          } else {
+            setServerError(data.message || "Failed to create user.");
+          }
+          setSaving(false);
+          return;
+        }
         onCreated(`User "${form.full_name}" created successfully.`);
       }
     } catch {
@@ -223,6 +302,15 @@ function UserForm({
       setSaving(false);
     }
   };
+
+  /* ── Email field feedback helpers ───────────────────────────────────── */
+  const emailValue   = form.email.trim();
+  const emailIsValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailValue);
+  const showChecking = !fieldErrs.email && emailIsValid && emailChecking;
+  const showTaken    = !fieldErrs.email && emailIsValid && !emailChecking && emailTaken;
+  // Only show "available" tick when the email has actually changed from the original (edit) or is new (create)
+  const emailChanged = !isEdit || form.email.trim().toLowerCase() !== entity.email.trim().toLowerCase();
+  const showFree     = !fieldErrs.email && emailIsValid && !emailChecking && !emailTaken && emailValue && emailChanged;
 
   return (
     <FormScreen
@@ -233,7 +321,7 @@ function UserForm({
       iconBg="#d1fae5"
       onBack={onBack}
       onSubmit={handleSubmit}
-      submitting={saving}
+      submitting={saving || emailChecking}
       submitLabel={isEdit ? "Save Changes" : "Create User"}
       submitError={serverError}
     >
@@ -252,14 +340,60 @@ function UserForm({
       {/* Email */}
       <div>
         <label style={S.label}>Email Address *</label>
-        <input
-          style={S.input(!!fieldErrs.email)}
-          type="email"
-          placeholder="e.g. arun@aiia.edu.in"
-          value={form.email}
-          onChange={(e) => set("email", e.target.value)}
-        />
-        {fieldErrs.email && <span style={S.errorText}>{fieldErrs.email}</span>}
+        <div style={{ position: "relative" }}>
+          <input
+            style={S.input(!!fieldErrs.email || showTaken)}
+            type="email"
+            placeholder="e.g. arun@aiia.edu.in"
+            value={form.email}
+            onChange={(e) => set("email", e.target.value)}
+          />
+          {/* Inline spinner while checking */}
+          {showChecking && (
+            <span style={{
+              position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)",
+              width: 14, height: 14, border: "2px solid #e2e8f0",
+              borderTopColor: ACCENT, borderRadius: "50%",
+              animation: "spin 0.7s linear infinite", display: "inline-block",
+            }} />
+          )}
+          {/* Green tick when available */}
+          {showFree && (
+            <span style={{
+              position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)",
+              fontSize: 14, color: ACCENT, lineHeight: 1,
+            }}>
+              ✓
+            </span>
+          )}
+          {/* Red X when taken */}
+          {showTaken && (
+            <span style={{
+              position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)",
+              fontSize: 14, color: "#dc2626", lineHeight: 1,
+            }}>
+              ✕
+            </span>
+          )}
+        </div>
+
+        {/* Feedback text below the input */}
+        {fieldErrs.email  && <span style={S.errorText}>{fieldErrs.email}</span>}
+        {!fieldErrs.email && showChecking && (
+          <span style={{ fontSize: 11, color: "#94a3b8", marginTop: 4, display: "block" }}>
+            Checking availability…
+          </span>
+        )}
+        {!fieldErrs.email && showTaken && (
+          <span style={{ fontSize: 11, color: "#dc2626", marginTop: 4, display: "block", fontWeight: 500 }}>
+            This email is already registered.
+          </span>
+        )}
+        {!fieldErrs.email && showFree && (
+          <span style={{ fontSize: 11, color: ACCENT, marginTop: 4, display: "block", fontWeight: 500 }}>
+            Email is available
+          </span>
+        )}
       </div>
 
       {/* Password — create only */}
@@ -349,7 +483,7 @@ function UserList({ apiFetch, onEdit }) {
     setLoading(true);
     setError("");
 
-    const p = new URLSearchParams();
+    const p  = new URLSearchParams();
     if (filterRole) p.set("role", filterRole);
     const qs = p.toString();
 
@@ -370,7 +504,7 @@ function UserList({ apiFetch, onEdit }) {
     const next = user.account_status === "ACTIVE" ? "INACTIVE" : "ACTIVE";
     setToggling(user.id);
     try {
-      const res = await apiFetch(`/api/users/${user.id}`, {
+      const res  = await apiFetch(`/api/users/${user.id}`, {
         method: "PUT",
         body: JSON.stringify({
           full_name:      user.full_name,
@@ -412,18 +546,15 @@ function UserList({ apiFetch, onEdit }) {
           onChange={(e) => setFilterRole(e.target.value)}
           style={{ ...S.select(false), width: "auto", minWidth: 180 }}
         >
-        <option value="">All Roles</option>
-        {roles
-          .filter(
-            (r) =>
-              !["super_admin","institute_admin","finance_officer",
-                "directors_office", "publication_cell",].includes(r.name)
-          )
-          .map((r) => (
-            <option key={r.id} value={r.name}>
-              {r.display_name}
-            </option>
-          ))}
+          <option value="">All Roles</option>
+          {roles
+            .filter((r) =>
+              !["super_admin", "institute_admin", "finance_officer",
+                "directors_office", "publication_cell"].includes(r.name)
+            )
+            .map((r) => (
+              <option key={r.id} value={r.name}>{r.display_name}</option>
+            ))}
         </select>
 
         {filterRole && (
