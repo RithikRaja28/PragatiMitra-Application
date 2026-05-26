@@ -3,9 +3,24 @@
 const express = require("express");
 const { verifyToken } = require("../middleware/auth");
 const logger = require("../utils/logger");
+const { translateFields } = require("../services/translationService");
 
 const router = express.Router();
 router.use(verifyToken);
+
+// Field types whose values may contain natural-language text worth translating
+const TRANSLATABLE_FIELD_TYPES = new Set(["text", "textarea"]);
+
+// Session-level cache: prevents repeated ALTER TABLE calls for already-present _hi columns
+const ensuredHiCols = new Set();
+
+async function ensureHindiColumns(pool, tableName, hiColNames) {
+  const pending = hiColNames.filter((c) => !ensuredHiCols.has(`${tableName}.${c}`));
+  for (const col of pending) {
+    await pool.query(`ALTER TABLE ${tableName} ADD COLUMN IF NOT EXISTS ${col} TEXT`);
+    ensuredHiCols.add(`${tableName}.${col}`);
+  }
+}
 
 function validateFormName(name) {
   return /^[a-z][a-z0-9_]*$/.test(name);
@@ -109,12 +124,25 @@ router.post("/:formName/records", async (req, res) => {
     const fieldCols = fields.map((f) => dbCol(f.column_name));
     const formYear = Number(year) || schema.year;
 
+    // Translate text/textarea field values to Hindi
+    const translatableMap = {};
+    for (const f of fields) {
+      if (TRANSLATABLE_FIELD_TYPES.has(f.type)) {
+        const col = dbCol(f.column_name);
+        if (data[col] != null) translatableMap[col] = data[col];
+      }
+    }
+    const hiFields = await translateFields(translatableMap);
+    if (Object.keys(hiFields).length > 0) {
+      await ensureHindiColumns(pool, `${formName}_records`, Object.keys(hiFields));
+    }
+
     const stdCols   = ["form_name", "institution_id", "year", "schema_id", "language"];
     const stdVals   = [formName, institutionId, formYear, schema.id, language];
     const fieldVals = fieldCols.map((col) => data[col] ?? null);
 
-    const allCols = [...stdCols, ...fieldCols];
-    const allVals = [...stdVals, ...fieldVals];
+    const allCols = [...stdCols, ...fieldCols, ...Object.keys(hiFields)];
+    const allVals = [...stdVals, ...fieldVals, ...Object.values(hiFields)];
     const placeholders = allVals.map((_, i) => `$${i + 1}`).join(", ");
 
     const { rows } = await pool.query(
@@ -155,11 +183,30 @@ router.put("/:formName/records/:id", async (req, res) => {
     const fields = activeFields(schema);
     const fieldCols = fields.map((f) => dbCol(f.column_name));
 
+    // Translate text/textarea field values to Hindi
+    const translatableMap = {};
+    for (const f of fields) {
+      if (TRANSLATABLE_FIELD_TYPES.has(f.type)) {
+        const col = dbCol(f.column_name);
+        if (data[col] != null) translatableMap[col] = data[col];
+      }
+    }
+    const hiFields = await translateFields(translatableMap);
+    if (Object.keys(hiFields).length > 0) {
+      await ensureHindiColumns(pool, `${formName}_records`, Object.keys(hiFields));
+    }
+
     let idx = 1;
     const setClauses = fieldCols.map((col) => `${col} = $${idx++}`);
+    for (const col of Object.keys(hiFields)) setClauses.push(`${col} = $${idx++}`);
     setClauses.push(`updated_at = now()`);
 
-    const vals = [...fieldCols.map((col) => data[col] ?? null), institutionId, id];
+    const vals = [
+      ...fieldCols.map((col) => data[col] ?? null),
+      ...Object.values(hiFields),
+      institutionId,
+      id,
+    ];
 
     const { rows } = await pool.query(
       `UPDATE ${formName}_records SET ${setClauses.join(", ")}

@@ -19,7 +19,11 @@
       "Bash(cd /d \"d:\\\\PROJECTS\\\\PragatiMitra-Application\")",
       "Bash(Get-ChildItem -Directory)",
       "Bash(Select-Object Name)",
-      "Bash(node -e \"require\\('multer'\\); console.log\\('ok'\\)\")"
+      "Bash(node -e \"require\\('multer'\\); console.log\\('ok'\\)\")",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\LENOVO\\\\Documents\\\\cloned Project\\\\PragatiMitra-Application\\\\backend\" -Directory)",
+      "PowerShell(ls -Recurse \"c:\\\\Users\\\\LENOVO\\\\Documents\\\\cloned Project\\\\PragatiMitra-Application\\\\backend\" -Exclude node_modules -File | Where-Object { $_.Extension -eq \".js\" } | Select-Object FullName)",
+      "PowerShell(head -20)",
+      "Bash(node -e ' *)"
     ]
   }
 }

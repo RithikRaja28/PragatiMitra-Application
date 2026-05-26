@@ -218,6 +218,9 @@ router.get("/:formName/schema", async (req, res) => {
   }
 });
 
+/* ── Field types whose values may contain natural-language text ── */
+const TRANSLATABLE_FIELD_TYPES = new Set(["text", "textarea"]);
+
 /* ── Map schema field type → PostgreSQL column type ── */
 function pgType(fieldType) {
   const map = {
@@ -246,9 +249,11 @@ function buildRecordsTableDDL(tableName, fields) {
     "created_at TIMESTAMPTZ DEFAULT now()",
     "updated_at TIMESTAMPTZ DEFAULT now()",
   ];
-  const fixed = (fields || []).map((f) => {
+  const fixed = (fields || []).flatMap((f) => {
     const col = f.column_name.toLowerCase().replace(/\s+/g, "_");
-    return `${col} ${pgType(f.type)}`;
+    const colDef = [`${col} ${pgType(f.type)}`];
+    if (TRANSLATABLE_FIELD_TYPES.has(f.type)) colDef.push(`${col}_hi TEXT`);
+    return colDef;
   });
   return `CREATE TABLE IF NOT EXISTS ${tableName} (\n  ${[...standard, ...fixed].join(",\n  ")}\n)`;
 }
@@ -546,6 +551,11 @@ router.put(
             await client.query(
               `ALTER TABLE ${recordsTable} ADD COLUMN IF NOT EXISTS ${colName} ${pgType(field.type)}`
             );
+            if (TRANSLATABLE_FIELD_TYPES.has(field.type)) {
+              await client.query(
+                `ALTER TABLE ${recordsTable} ADD COLUMN IF NOT EXISTS ${colName}_hi TEXT`
+              );
+            }
           }
         }
 
