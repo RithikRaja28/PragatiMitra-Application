@@ -3,23 +3,18 @@
 const express = require("express");
 const { verifyToken } = require("../middleware/auth");
 const logger = require("../utils/logger");
-const { translateFields } = require("../services/translationService");
+const { translateRow } = require("../services/translationService");
 
 const router = express.Router();
 router.use(verifyToken);
 
-// Field types whose values may contain natural-language text worth translating
-const TRANSLATABLE_FIELD_TYPES = new Set(["text", "textarea"]);
+// Session-level cache: prevents repeated ALTER TABLE calls for source_row_id column
+const ensuredSourceRowIdTables = new Set();
 
-// Session-level cache: prevents repeated ALTER TABLE calls for already-present _hi columns
-const ensuredHiCols = new Set();
-
-async function ensureHindiColumns(pool, tableName, hiColNames) {
-  const pending = hiColNames.filter((c) => !ensuredHiCols.has(`${tableName}.${c}`));
-  for (const col of pending) {
-    await pool.query(`ALTER TABLE ${tableName} ADD COLUMN IF NOT EXISTS ${col} TEXT`);
-    ensuredHiCols.add(`${tableName}.${col}`);
-  }
+async function ensureSourceRowIdColumn(pool, tableName) {
+  if (ensuredSourceRowIdTables.has(tableName)) return;
+  await pool.query(`ALTER TABLE ${tableName} ADD COLUMN IF NOT EXISTS source_row_id UUID`);
+  ensuredSourceRowIdTables.add(tableName);
 }
 
 function validateFormName(name) {
@@ -46,12 +41,10 @@ async function getActiveSchema(pool, formName, institutionId, year) {
   return rows[0] || null;
 }
 
-/* ─── normalise a field's column name to its DB form ─── */
 function dbCol(col) {
   return col.trim().toLowerCase().replace(/\s+/g, "_");
 }
 
-/* ─── get active, deduplicated fields from a schema row ─── */
 function activeFields(schemaRow) {
   const excluded = new Set(schemaRow.schema?.excluded_fixed_columns || []);
   const seen = new Set();
@@ -66,13 +59,12 @@ function activeFields(schemaRow) {
 
 /* ─────────────────────────────────────────────────────────────────────
    GET /api/form-data/:formName/records
-   List all records for this institution from <formName>_records.
-   Also returns the active schema so the frontend can render headers.
+   Returns English records by default. Pass ?language=hi for Hindi rows.
 ───────────────────────────────────────────────────────────────────── */
 router.get("/:formName/records", async (req, res) => {
   const pool = req.app.locals.pool;
   const { formName } = req.params;
-  const { year } = req.query;
+  const { year, language = "en" } = req.query;
 
   if (!validateFormName(formName)) {
     return res.status(400).json({ success: false, message: "Invalid form name." });
@@ -86,8 +78,10 @@ router.get("/:formName/records", async (req, res) => {
     if (!schema) return res.status(404).json({ success: false, message: "No active schema found for this form." });
 
     const { rows: records } = await pool.query(
-      `SELECT * FROM ${formName}_records WHERE institution_id = $1 ORDER BY created_at DESC`,
-      [institutionId]
+      `SELECT * FROM ${formName}_records
+       WHERE institution_id = $1 AND (language = $2 OR ($2 = 'en' AND language IS NULL))
+       ORDER BY created_at DESC`,
+      [institutionId, language]
     );
 
     return res.json({ success: true, records, schema });
@@ -99,7 +93,9 @@ router.get("/:formName/records", async (req, res) => {
 
 /* ─────────────────────────────────────────────────────────────────────
    POST /api/form-data/:formName/records
-   Insert a new record. Body: { data: { col: value }, year?, language? }
+   Inserts the English row, then asynchronously inserts a Hindi row
+   (language = 'hi', source_row_id = <english row id>).
+   Body: { data: { col: value }, year?, language? }
 ───────────────────────────────────────────────────────────────────── */
 router.post("/:formName/records", async (req, res) => {
   const pool = req.app.locals.pool;
@@ -124,33 +120,45 @@ router.post("/:formName/records", async (req, res) => {
     const fieldCols = fields.map((f) => dbCol(f.column_name));
     const formYear = Number(year) || schema.year;
 
-    // Translate text/textarea field values to Hindi
-    const translatableMap = {};
-    for (const f of fields) {
-      if (TRANSLATABLE_FIELD_TYPES.has(f.type)) {
-        const col = dbCol(f.column_name);
-        if (data[col] != null) translatableMap[col] = data[col];
-      }
-    }
-    const hiFields = await translateFields(translatableMap);
-    if (Object.keys(hiFields).length > 0) {
-      await ensureHindiColumns(pool, `${formName}_records`, Object.keys(hiFields));
-    }
-
-    const stdCols   = ["form_name", "institution_id", "year", "schema_id", "language"];
-    const stdVals   = [formName, institutionId, formYear, schema.id, language];
+    const stdCols = ["form_name", "institution_id", "year", "schema_id", "language"];
+    const stdVals = [formName, institutionId, formYear, schema.id, language];
     const fieldVals = fieldCols.map((col) => data[col] ?? null);
 
-    const allCols = [...stdCols, ...fieldCols, ...Object.keys(hiFields)];
-    const allVals = [...stdVals, ...fieldVals, ...Object.values(hiFields)];
+    const allCols = [...stdCols, ...fieldCols];
+    const allVals = [...stdVals, ...fieldVals];
     const placeholders = allVals.map((_, i) => `$${i + 1}`).join(", ");
 
     const { rows } = await pool.query(
       `INSERT INTO ${formName}_records (${allCols.join(", ")}) VALUES (${placeholders}) RETURNING *`,
       allVals
     );
+    const enRow = rows[0];
 
-    return res.json({ success: true, record: rows[0], message: "Record created successfully." });
+    // Only auto-generate Hindi row for English submissions
+    if (language === "en") {
+      const tableName = `${formName}_records`;
+      setImmediate(async () => {
+        try {
+          await ensureSourceRowIdColumn(pool, tableName);
+
+          const hiData = await translateRow(data);
+          const hiStdVals = [formName, institutionId, formYear, schema.id, "hi"];
+          const hiFieldVals = fieldCols.map((col) => hiData[col] ?? null);
+          const hiAllCols = [...stdCols, ...fieldCols, "source_row_id"];
+          const hiAllVals = [...hiStdVals, ...hiFieldVals, enRow.id];
+          const hiPlaceholders = hiAllVals.map((_, i) => `$${i + 1}`).join(", ");
+
+          await pool.query(
+            `INSERT INTO ${tableName} (${hiAllCols.join(", ")}) VALUES (${hiPlaceholders})`,
+            hiAllVals
+          );
+        } catch (err) {
+          logger.error(`Hindi row insert failed for ${formName}`, { stack: err.stack });
+        }
+      });
+    }
+
+    return res.json({ success: true, record: enRow, message: "Record created successfully." });
   } catch (err) {
     logger.error(`POST /api/form-data/${formName}/records`, { stack: err.stack });
     return res.status(500).json({ success: false, message: "Failed to create record." });
@@ -159,7 +167,8 @@ router.post("/:formName/records", async (req, res) => {
 
 /* ─────────────────────────────────────────────────────────────────────
    PUT /api/form-data/:formName/records/:id
-   Update an existing record. Body: { data: { col: value } }
+   Updates the English row, then asynchronously updates the linked Hindi row.
+   Body: { data: { col: value } }
 ───────────────────────────────────────────────────────────────────── */
 router.put("/:formName/records/:id", async (req, res) => {
   const pool = req.app.locals.pool;
@@ -183,27 +192,12 @@ router.put("/:formName/records/:id", async (req, res) => {
     const fields = activeFields(schema);
     const fieldCols = fields.map((f) => dbCol(f.column_name));
 
-    // Translate text/textarea field values to Hindi
-    const translatableMap = {};
-    for (const f of fields) {
-      if (TRANSLATABLE_FIELD_TYPES.has(f.type)) {
-        const col = dbCol(f.column_name);
-        if (data[col] != null) translatableMap[col] = data[col];
-      }
-    }
-    const hiFields = await translateFields(translatableMap);
-    if (Object.keys(hiFields).length > 0) {
-      await ensureHindiColumns(pool, `${formName}_records`, Object.keys(hiFields));
-    }
-
     let idx = 1;
     const setClauses = fieldCols.map((col) => `${col} = $${idx++}`);
-    for (const col of Object.keys(hiFields)) setClauses.push(`${col} = $${idx++}`);
     setClauses.push(`updated_at = now()`);
 
     const vals = [
       ...fieldCols.map((col) => data[col] ?? null),
-      ...Object.values(hiFields),
       institutionId,
       id,
     ];
@@ -216,6 +210,28 @@ router.put("/:formName/records/:id", async (req, res) => {
 
     if (!rows.length) return res.status(404).json({ success: false, message: "Record not found." });
 
+    // Asynchronously update linked Hindi row
+    const tableName = `${formName}_records`;
+    setImmediate(async () => {
+      try {
+        await ensureSourceRowIdColumn(pool, tableName);
+
+        const hiData = await translateRow(data);
+        let hidx = 1;
+        const hiSetClauses = fieldCols.map((col) => `${col} = $${hidx++}`);
+        hiSetClauses.push(`updated_at = now()`);
+        const hiVals = [...fieldCols.map((col) => hiData[col] ?? null), id];
+
+        await pool.query(
+          `UPDATE ${tableName} SET ${hiSetClauses.join(", ")}
+           WHERE source_row_id = $${hidx}`,
+          hiVals
+        );
+      } catch (err) {
+        logger.error(`Hindi row update failed for ${formName}/${id}`, { stack: err.stack });
+      }
+    });
+
     return res.json({ success: true, record: rows[0], message: "Record updated successfully." });
   } catch (err) {
     logger.error(`PUT /api/form-data/${formName}/records/${id}`, { stack: err.stack });
@@ -225,6 +241,7 @@ router.put("/:formName/records/:id", async (req, res) => {
 
 /* ─────────────────────────────────────────────────────────────────────
    DELETE /api/form-data/:formName/records/:id
+   Deletes the English row and its linked Hindi row (source_row_id match).
 ───────────────────────────────────────────────────────────────────── */
 router.delete("/:formName/records/:id", async (req, res) => {
   const pool = req.app.locals.pool;
@@ -238,8 +255,11 @@ router.delete("/:formName/records/:id", async (req, res) => {
     const institutionId = await resolveInstitutionId(pool, req);
     if (!institutionId) return res.status(400).json({ success: false, message: "Institution ID required." });
 
+    await ensureSourceRowIdColumn(pool, `${formName}_records`);
+
     const { rowCount } = await pool.query(
-      `DELETE FROM ${formName}_records WHERE id = $1 AND institution_id = $2`,
+      `DELETE FROM ${formName}_records
+       WHERE (id = $1 OR source_row_id = $1) AND institution_id = $2`,
       [id, institutionId]
     );
 

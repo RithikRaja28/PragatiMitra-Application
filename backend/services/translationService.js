@@ -217,27 +217,26 @@ async function transliteratePhrase(phrase) {
 }
 
 /**
- * Given { col: "English text" } returns { col_hi: "हिंदी" } for every
- * entry whose value passes isTranslatableText().
- * Failures are non-fatal — fields that cannot be transliterated are omitted.
+ * Translate all translatable string fields in a data row to Hindi.
+ * Returns a shallow clone of dataMap with translatable string values replaced by Hindi.
+ * Non-translatable values (numbers, IDs, emails, mixed alphanumeric) are preserved unchanged.
  *
- * @param {Record<string, any>} fieldMap
- * @returns {Promise<Record<string, string>>}
+ * @param {Record<string, any>} dataMap
+ * @returns {Promise<Record<string, any>>}
  */
-async function translateFields(fieldMap) {
-  const hiFields = {};
-  const eligible = Object.entries(fieldMap).filter(([, v]) => isTranslatableText(v));
-  if (!eligible.length) return hiFields;
+async function translateRow(dataMap) {
+  const result = { ...dataMap };
+  const eligible = Object.entries(dataMap).filter(([, v]) => isTranslatableText(v));
+  if (!eligible.length) return result;
 
-  // Transliterate all eligible phrases concurrently (word cache prevents duplicate API calls)
   await Promise.all(eligible.map(([, val]) => transliteratePhrase(val.trim())));
 
   for (const [col, val] of eligible) {
     const hindi = phraseCache.get(val.trim());
-    if (hindi) hiFields[`${col}_hi`] = hindi;
+    if (hindi) result[col] = hindi;
   }
 
-  return hiFields;
+  return result;
 }
 
-module.exports = { isTranslatableText, translateFields };
+module.exports = { isTranslatableText, translateRow };
