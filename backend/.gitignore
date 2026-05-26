@@ -2,3 +2,4 @@ node_modules
 .env
 *.log
 logs/
+backend/config/pragatimitra-497416-6a889477f089.json

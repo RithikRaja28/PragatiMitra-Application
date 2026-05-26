@@ -139,6 +139,7 @@ function phoneticWord(originalWord) {
         }
       }
     }
+    
     if (matched) continue;
 
     // ── 4. Single consonant ──────────────────────────────────────────────
