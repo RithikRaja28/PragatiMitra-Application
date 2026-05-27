@@ -41,6 +41,22 @@ function IconArrow() {
     </svg>
   );
 }
+function IconLock() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+    </svg>
+  );
+}
+function IconUnlock() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+      <path d="M7 11V7a5 5 0 0 1 9.9-1" />
+    </svg>
+  );
+}
 
 const ACCENT = "#2563eb";
 
@@ -118,6 +134,7 @@ export default function FormManagementPage({ isSuperAdmin = false }) {
   const [loading, setLoading]       = useState(true);
   const [error, setError]           = useState("");
   const [toast, setToast]           = useState(null);
+  const [lockTogglingForm, setLockTogglingForm] = useState(null);
 
   const showToast = (message, type = "success") => {
     setToast({ message, type });
@@ -167,6 +184,32 @@ export default function FormManagementPage({ isSuperAdmin = false }) {
   }
   function onBuilderBack() {
     setView("list");
+  }
+
+  /* ── lock / unlock ── */
+  async function handleToggleLock(form) {
+    const action = form.is_locked ? "unlock" : "lock";
+    setLockTogglingForm(form.form_name);
+    try {
+      const res = await apiFetch(`/api/forms/${form.form_name}/${action}`, { method: "POST" });
+      const data = await res.json();
+      if (data.success) {
+        showToast(data.message);
+        setMyForms((prev) =>
+          prev.map((f) =>
+            f.form_name === form.form_name
+              ? { ...f, is_locked: !form.is_locked, locked_by: data.lock?.locked_by ?? null, locked_at: data.lock?.locked_at ?? null }
+              : f
+          )
+        );
+      } else {
+        showToast(data.message || "Failed to update lock.", "error");
+      }
+    } catch {
+      showToast("Network error. Please try again.", "error");
+    } finally {
+      setLockTogglingForm(null);
+    }
   }
 
   /* ── builder mode ── */
@@ -336,7 +379,7 @@ export default function FormManagementPage({ isSuperAdmin = false }) {
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
               <tr style={{ background: "#f8fafc" }}>
-                {["Form Name", "Year", "Version", "Shared", "Created", ""].map((h) => (
+                {["Form Name", "Year", "Version", "Shared", isSuperAdmin ? null : "Lock Status", "Created", ""].filter(Boolean).map((h) => (
                   <th key={h} style={{
                     padding: "10px 20px", textAlign: "left", fontSize: 11,
                     fontWeight: 700, color: "#94a3b8", textTransform: "uppercase",
@@ -392,6 +435,33 @@ export default function FormManagementPage({ isSuperAdmin = false }) {
                       <Badge label="Private" color="#64748b" />
                     )}
                   </td>
+                  {!isSuperAdmin && (
+                    <td style={{ padding: "14px 20px" }}>
+                      <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                        {form.is_locked ? (
+                          <Badge label="Locked" color="#dc2626" />
+                        ) : (
+                          <Badge label="Open" color="#16a34a" />
+                        )}
+                        <button
+                          onClick={() => handleToggleLock(form)}
+                          disabled={lockTogglingForm === form.form_name}
+                          title={form.is_locked ? "Unlock form" : "Lock form"}
+                          style={{
+                            display: "inline-flex", alignItems: "center", gap: 5,
+                            background: form.is_locked ? "#fef2f2" : "#f0fdf4",
+                            color: form.is_locked ? "#dc2626" : "#16a34a",
+                            border: `1px solid ${form.is_locked ? "#fecaca" : "#bbf7d0"}`,
+                            borderRadius: 7, padding: "5px 10px", fontSize: 11, fontWeight: 700,
+                            cursor: lockTogglingForm === form.form_name ? "not-allowed" : "pointer",
+                            opacity: lockTogglingForm === form.form_name ? 0.6 : 1,
+                          }}
+                        >
+                          {form.is_locked ? <><IconUnlock /> Unlock</> : <><IconLock /> Lock</>}
+                        </button>
+                      </div>
+                    </td>
+                  )}
                   <td style={{ padding: "14px 20px", fontSize: 12, color: "#64748b" }}>
                     {formatDate(form.created_at)}
                   </td>

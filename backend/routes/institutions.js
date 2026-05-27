@@ -668,6 +668,22 @@ router.post("/", async (req, res) => {
        rawCity, rawState, rawCountry, rawPincode, createdBy]
     );
 
+    // Auto-sync: add this institution to all globally shared forms and pre-create lock configs
+    await pool.query(
+      `UPDATE table_list
+       SET institute_access = array_append(COALESCE(institute_access,'{}'), $1::uuid),
+           updated_at = now()
+       WHERE share_table = true
+         AND NOT ($1::uuid = ANY(COALESCE(institute_access, '{}'::uuid[])))`,
+      [newInst.institution_id]
+    );
+    await pool.query(
+      `INSERT INTO form_lock_config (form_name, institution_id, is_locked)
+       SELECT form_name, $1, false FROM table_list WHERE share_table = true
+       ON CONFLICT (form_name, institution_id) DO NOTHING`,
+      [newInst.institution_id]
+    );
+
     await writeAuditLog(req, {
       actionType: "INST_CREATED",
       entityType: "INSTITUTION",

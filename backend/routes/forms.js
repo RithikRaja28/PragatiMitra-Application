@@ -57,16 +57,22 @@ router.get("/institution-forms", async (req, res) => {
     let rows;
     if (isSuperAdmin) {
       ({ rows } = await pool.query(
-        `SELECT id, form_name, institute_access, share_table, created_by, created_at, updated_at
+        `SELECT id, form_name, institute_access, share_table, created_by, created_at, updated_at,
+                false AS is_locked, NULL AS locked_by, NULL AS locked_at
          FROM table_list
          ORDER BY form_name`
       ));
     } else {
       ({ rows } = await pool.query(
-        `SELECT id, form_name, institute_access, share_table, created_by, created_at, updated_at
-         FROM table_list
-         WHERE $1::uuid = ANY(COALESCE(institute_access, '{}'::uuid[]))
-         ORDER BY form_name`,
+        `SELECT tl.id, tl.form_name, tl.institute_access, tl.share_table, tl.created_by, tl.created_at, tl.updated_at,
+                COALESCE(flc.is_locked, false) AS is_locked,
+                flc.locked_by,
+                flc.locked_at
+         FROM table_list tl
+         LEFT JOIN form_lock_config flc
+           ON flc.form_name = tl.form_name AND flc.institution_id = $1
+         WHERE $1::uuid = ANY(COALESCE(tl.institute_access, '{}'::uuid[]))
+         ORDER BY tl.form_name`,
         [institutionId]
       ));
     }
@@ -138,9 +144,14 @@ router.get("/my-forms", async (req, res) => {
     const { rows } = await pool.query(
       `SELECT cfs.id, cfs.form_name, cfs.institution_id, cfs.year,
               cfs.schema, cfs.is_active, cfs.created_at,
-              tl.share_table
+              tl.share_table,
+              COALESCE(flc.is_locked, false) AS is_locked,
+              flc.locked_by,
+              flc.locked_at
        FROM custom_field_schemas cfs
        JOIN table_list tl ON tl.form_name = cfs.form_name
+       LEFT JOIN form_lock_config flc
+         ON flc.form_name = cfs.form_name AND flc.institution_id = cfs.institution_id
        WHERE cfs.institution_id = $1 AND cfs.is_active = true
        ORDER BY cfs.form_name, cfs.year DESC`,
       [institutionId]
@@ -331,13 +342,22 @@ router.post(
         );
         const schemaId = sRows[0].id;
 
-        // 3. Insert form_lock_config
-        await client.query(
-          `INSERT INTO form_lock_config (form_name, institution_id, is_locked)
-           VALUES ($1, $2, false)
-           ON CONFLICT (form_name, institution_id) DO NOTHING`,
-          [normalizedName, institutionId]
-        );
+        // 3. Insert form_lock_config — for shared forms cover ALL institutions; otherwise just this one
+        if (share_table) {
+          await client.query(
+            `INSERT INTO form_lock_config (form_name, institution_id, is_locked)
+             SELECT $1, institution_id, false FROM institutions
+             ON CONFLICT (form_name, institution_id) DO NOTHING`,
+            [normalizedName]
+          );
+        } else {
+          await client.query(
+            `INSERT INTO form_lock_config (form_name, institution_id, is_locked)
+             VALUES ($1, $2, false)
+             ON CONFLICT (form_name, institution_id) DO NOTHING`,
+            [normalizedName, institutionId]
+          );
+        }
 
         // 4. Create physical records table
         const ddl = buildRecordsTableDDL(recordsTable, schema.fields || []);
@@ -428,6 +448,14 @@ router.post(
            VALUES ($1, $2, $3, $4::jsonb, true, $5, $6)
            RETURNING id`,
           [form_name, institutionId, formYear, JSON.stringify(schema), req.user.userId, usedColNames]
+        );
+
+        // Ensure a lock config row exists for this institution (default unlocked)
+        await client.query(
+          `INSERT INTO form_lock_config (form_name, institution_id, is_locked)
+           VALUES ($1, $2, false)
+           ON CONFLICT (form_name, institution_id) DO NOTHING`,
+          [form_name, institutionId]
         );
 
         await client.query("COMMIT");
@@ -566,6 +594,129 @@ router.put(
     } catch (err) {
       logger.error("PUT /api/forms/:formName/schema", { stack: err.stack });
       return res.status(500).json({ success: false, message: "Failed to update schema." });
+    }
+  }
+);
+
+/* ─────────────────────────────────────────────────────────────────────
+   GET /api/forms/:formName/lock-status
+   Returns the current lock state for the resolved institution.
+───────────────────────────────────────────────────────────────────── */
+router.get("/:formName/lock-status", async (req, res) => {
+  const pool = req.app.locals.pool;
+  const { formName } = req.params;
+
+  if (!/^[a-z][a-z0-9_]*$/.test(formName)) {
+    return res.status(400).json({ success: false, message: "Invalid form name." });
+  }
+
+  try {
+    const institutionId = await resolveInstitutionId(pool, req);
+    if (!institutionId) {
+      return res.status(400).json({ success: false, message: "Institution ID required." });
+    }
+
+    const { rows } = await pool.query(
+      `SELECT is_locked, locked_by, locked_at
+       FROM form_lock_config
+       WHERE form_name = $1 AND institution_id = $2`,
+      [formName, institutionId]
+    );
+
+    const lock = rows[0] || { is_locked: false, locked_by: null, locked_at: null };
+    return res.json({ success: true, ...lock });
+  } catch (err) {
+    logger.error("GET /api/forms/:formName/lock-status", { stack: err.stack });
+    return res.status(500).json({ success: false, message: "Failed to fetch lock status." });
+  }
+});
+
+/* ─────────────────────────────────────────────────────────────────────
+   POST /api/forms/:formName/lock
+   Locks the form for the resolved institution.
+───────────────────────────────────────────────────────────────────── */
+router.post(
+  "/:formName/lock",
+  requireRole(["super_admin", "institute_admin"]),
+  async (req, res) => {
+    const pool = req.app.locals.pool;
+    const { formName } = req.params;
+
+    if (!/^[a-z][a-z0-9_]*$/.test(formName)) {
+      return res.status(400).json({ success: false, message: "Invalid form name." });
+    }
+
+    try {
+      const institutionId = await resolveInstitutionId(pool, req);
+      if (!institutionId) {
+        return res.status(400).json({ success: false, message: "Institution ID required." });
+      }
+
+      const { rows } = await pool.query(
+        `INSERT INTO form_lock_config (form_name, institution_id, is_locked, locked_by, locked_at)
+         VALUES ($1, $2, true, $3, now())
+         ON CONFLICT (form_name, institution_id) DO UPDATE
+           SET is_locked = true, locked_by = $3, locked_at = now(), updated_at = now()
+         RETURNING *`,
+        [formName, institutionId, req.user.userId]
+      );
+
+      await writeAuditLog(req, {
+        actionType: "LOCK_FORM",
+        entityType: "form_lock",
+        entityId: rows[0].id,
+        newValue: { form_name: formName, institution_id: institutionId, is_locked: true },
+      });
+
+      return res.json({ success: true, message: `Form "${formName}" locked.`, lock: rows[0] });
+    } catch (err) {
+      logger.error("POST /api/forms/:formName/lock", { stack: err.stack });
+      return res.status(500).json({ success: false, message: "Failed to lock form." });
+    }
+  }
+);
+
+/* ─────────────────────────────────────────────────────────────────────
+   POST /api/forms/:formName/unlock
+   Unlocks the form for the resolved institution.
+───────────────────────────────────────────────────────────────────── */
+router.post(
+  "/:formName/unlock",
+  requireRole(["super_admin", "institute_admin"]),
+  async (req, res) => {
+    const pool = req.app.locals.pool;
+    const { formName } = req.params;
+
+    if (!/^[a-z][a-z0-9_]*$/.test(formName)) {
+      return res.status(400).json({ success: false, message: "Invalid form name." });
+    }
+
+    try {
+      const institutionId = await resolveInstitutionId(pool, req);
+      if (!institutionId) {
+        return res.status(400).json({ success: false, message: "Institution ID required." });
+      }
+
+      const { rows } = await pool.query(
+        `INSERT INTO form_lock_config (form_name, institution_id, is_locked)
+         VALUES ($1, $2, false)
+         ON CONFLICT (form_name, institution_id) DO UPDATE
+           SET is_locked = false, locked_by = null, locked_at = null, updated_at = now()
+         RETURNING *`,
+        [formName, institutionId]
+      );
+
+      await writeAuditLog(req, {
+        actionType: "UNLOCK_FORM",
+        entityType: "form_lock",
+        entityId: rows[0].id,
+        newValue: { form_name: formName, institution_id: institutionId, is_locked: false },
+      });
+
+      return res.json({ success: true, message: `Form "${formName}" unlocked.`, lock: rows[0] });
+    } catch (err) {
+      logger.error("POST /api/forms/:formName/unlock", { stack: err.stack });
+      return res.status(500).json({ success: false, message: "Failed to unlock form." });
     }
   }
 );

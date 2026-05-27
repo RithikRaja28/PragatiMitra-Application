@@ -45,6 +45,14 @@ function dbCol(col) {
   return col.trim().toLowerCase().replace(/\s+/g, "_");
 }
 
+async function checkFormLock(pool, formName, institutionId) {
+  const { rows } = await pool.query(
+    `SELECT is_locked FROM form_lock_config WHERE form_name = $1 AND institution_id = $2`,
+    [formName, institutionId]
+  );
+  return rows[0]?.is_locked || false;
+}
+
 function activeFields(schemaRow) {
   const excluded = new Set(schemaRow.schema?.excluded_fixed_columns || []);
   const seen = new Set();
@@ -84,7 +92,14 @@ router.get("/:formName/records", async (req, res) => {
       [institutionId, language]
     );
 
-    return res.json({ success: true, records, schema });
+    const { rows: lockRows } = await pool.query(
+      `SELECT is_locked, locked_by, locked_at FROM form_lock_config
+       WHERE form_name = $1 AND institution_id = $2`,
+      [formName, institutionId]
+    );
+    const lock = lockRows[0] || { is_locked: false, locked_by: null, locked_at: null };
+
+    return res.json({ success: true, records, schema, lock });
   } catch (err) {
     logger.error(`GET /api/form-data/${formName}/records`, { stack: err.stack });
     return res.status(500).json({ success: false, message: "Failed to fetch records." });
@@ -112,6 +127,13 @@ router.post("/:formName/records", async (req, res) => {
   try {
     const institutionId = await resolveInstitutionId(pool, req);
     if (!institutionId) return res.status(400).json({ success: false, message: "Institution ID required." });
+
+    if (await checkFormLock(pool, formName, institutionId)) {
+      return res.status(403).json({
+        success: false,
+        message: "This form is currently locked by the institution admin. You can only view the records.",
+      });
+    }
 
     const schema = await getActiveSchema(pool, formName, institutionId, year);
     if (!schema) return res.status(404).json({ success: false, message: "No active schema found." });
@@ -186,6 +208,13 @@ router.put("/:formName/records/:id", async (req, res) => {
     const institutionId = await resolveInstitutionId(pool, req);
     if (!institutionId) return res.status(400).json({ success: false, message: "Institution ID required." });
 
+    if (await checkFormLock(pool, formName, institutionId)) {
+      return res.status(403).json({
+        success: false,
+        message: "This form is currently locked by the institution admin. You can only view the records.",
+      });
+    }
+
     const schema = await getActiveSchema(pool, formName, institutionId, null);
     if (!schema) return res.status(404).json({ success: false, message: "No active schema found." });
 
@@ -254,6 +283,13 @@ router.delete("/:formName/records/:id", async (req, res) => {
   try {
     const institutionId = await resolveInstitutionId(pool, req);
     if (!institutionId) return res.status(400).json({ success: false, message: "Institution ID required." });
+
+    if (await checkFormLock(pool, formName, institutionId)) {
+      return res.status(403).json({
+        success: false,
+        message: "This form is currently locked by the institution admin. You can only view the records.",
+      });
+    }
 
     await ensureSourceRowIdColumn(pool, `${formName}_records`);
 

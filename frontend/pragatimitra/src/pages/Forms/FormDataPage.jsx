@@ -441,6 +441,9 @@ export default function FormDataPage() {
   const [recsLoading, setRecsLoading] = useState(false);
   const [recsError, setRecsError]     = useState("");
 
+  /* ── lock status ── */
+  const [lockInfo, setLockInfo] = useState({ is_locked: false, locked_by: null, locked_at: null });
+
   /* ── modal state ── */
   const [modalOpen, setModalOpen]   = useState(false);
   const [editRecord, setEditRecord] = useState(null);
@@ -484,6 +487,7 @@ export default function FormDataPage() {
       if (data.success) {
         setRecords(data.records || []);
         setSchema(data.schema);
+        setLockInfo(data.lock || { is_locked: false, locked_by: null, locked_at: null });
       } else {
         setRecsError(data.message || "Failed to load records.");
       }
@@ -506,6 +510,7 @@ export default function FormDataPage() {
     setSchema(null);
     setRecords([]);
     setRecsError("");
+    setLockInfo({ is_locked: false, locked_by: null, locked_at: null });
   }
 
   /* ── save (create or update) ── */
@@ -685,6 +690,25 @@ export default function FormDataPage() {
         />
       )}
 
+      {/* locked banner */}
+      {lockInfo.is_locked && (
+        <div style={{
+          display: "flex", alignItems: "center", gap: 12,
+          background: "#fef2f2", border: "1px solid #fecaca",
+          borderRadius: 10, padding: "12px 18px", marginBottom: 20,
+        }}>
+          <span style={{ fontSize: 18 }}>🔒</span>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#b91c1c" }}>
+              This form is currently locked by the institution admin.
+            </div>
+            <div style={{ fontSize: 12, color: "#dc2626", marginTop: 2 }}>
+              You can only view the records. Adding, editing, and deleting are disabled.
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* header */}
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 28 }}>
         <div>
@@ -700,6 +724,15 @@ export default function FormDataPage() {
           </button>
           <h1 style={{ fontSize: 22, fontWeight: 700, color: "#1e293b", letterSpacing: "-0.3px", margin: "0 0 4px" }}>
             {selectedForm?.form_name.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
+            {lockInfo.is_locked && (
+              <span style={{
+                marginLeft: 10, fontSize: 13, fontWeight: 600, color: "#dc2626",
+                background: "#fef2f2", border: "1px solid #fecaca",
+                borderRadius: 6, padding: "2px 8px", verticalAlign: "middle",
+              }}>
+                🔒 Locked
+              </span>
+            )}
           </h1>
           <p style={{ fontSize: 13, color: "#94a3b8", margin: 0 }}>
             {recsLoading ? "Loading…" : `${records.length} record${records.length !== 1 ? "s" : ""}`}
@@ -712,11 +745,15 @@ export default function FormDataPage() {
         </div>
         <button
           onClick={() => { setEditRecord(null); setModalError(""); setModalOpen(true); }}
+          disabled={lockInfo.is_locked}
+          title={lockInfo.is_locked ? "Form is locked — contact your institution admin" : ""}
           style={{
             display: "inline-flex", alignItems: "center", gap: 7,
-            background: ACCENT, color: "#fff", border: "none", borderRadius: 10,
-            padding: "10px 18px", fontSize: 13, fontWeight: 700, cursor: "pointer",
-            boxShadow: `0 2px 8px ${ACCENT}40`,
+            background: lockInfo.is_locked ? "#94a3b8" : ACCENT,
+            color: "#fff", border: "none", borderRadius: 10,
+            padding: "10px 18px", fontSize: 13, fontWeight: 700,
+            cursor: lockInfo.is_locked ? "not-allowed" : "pointer",
+            boxShadow: lockInfo.is_locked ? "none" : `0 2px 8px ${ACCENT}40`,
           }}
         >
           <IcoPlus /> Add Record
@@ -795,16 +832,28 @@ export default function FormDataPage() {
                     <td style={{ ...tdStyle, textAlign: "right" }}>
                       <div style={{ display: "inline-flex", gap: 6 }}>
                         <button
-                          onClick={() => { setEditRecord(rec); setModalError(""); setModalOpen(true); }}
-                          style={actionBtn}
-                          title="Edit"
+                          onClick={() => { if (!lockInfo.is_locked) { setEditRecord(rec); setModalError(""); setModalOpen(true); } }}
+                          disabled={lockInfo.is_locked}
+                          style={{
+                            ...actionBtn,
+                            opacity: lockInfo.is_locked ? 0.35 : 1,
+                            cursor: lockInfo.is_locked ? "not-allowed" : "pointer",
+                          }}
+                          title={lockInfo.is_locked ? "Form is locked" : "Edit"}
                         >
                           <IcoEdit />
                         </button>
                         <button
-                          onClick={() => setDeleteTarget(rec)}
-                          style={{ ...actionBtn, color: "#dc2626", borderColor: "#fecaca" }}
-                          title="Delete"
+                          onClick={() => { if (!lockInfo.is_locked) setDeleteTarget(rec); }}
+                          disabled={lockInfo.is_locked}
+                          style={{
+                            ...actionBtn,
+                            color: lockInfo.is_locked ? "#94a3b8" : "#dc2626",
+                            borderColor: lockInfo.is_locked ? "#e2e8f0" : "#fecaca",
+                            opacity: lockInfo.is_locked ? 0.35 : 1,
+                            cursor: lockInfo.is_locked ? "not-allowed" : "pointer",
+                          }}
+                          title={lockInfo.is_locked ? "Form is locked" : "Delete"}
                         >
                           <IcoTrash />
                         </button>
