@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useApi } from "../../hooks/useApi";
 import { useAuth } from "../../store/AuthContext";
 import { S, Toast, isAuthError, formatDate } from "../../components/shared/formUtils";
@@ -64,6 +64,13 @@ function IcoFile() {
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
       <polyline points="14 2 14 8 20 8" />
+    </svg>
+  );
+}
+function IcoSearch() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
     </svg>
   );
 }
@@ -444,6 +451,14 @@ export default function FormDataPage() {
   /* ── lock status ── */
   const [lockInfo, setLockInfo] = useState({ is_locked: false, locked_by: null, locked_at: null });
 
+  /* ── search (live + debounced) ── */
+  const [searchInput, setSearchInput] = useState("");
+  const [searchTerm, setSearchTerm]   = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => setSearchTerm(searchInput), 250);
+    return () => clearTimeout(t);
+  }, [searchInput]);
+
   /* ── modal state ── */
   const [modalOpen, setModalOpen]   = useState(false);
   const [editRecord, setEditRecord] = useState(null);
@@ -572,6 +587,24 @@ export default function FormDataPage() {
   const schemaFields = (schema?.schema?.fields || []).filter(
     (f) => !excludedCols.has(dbCol(f.column_name)) && !excludedCols.has(f.column_name)
   );
+
+  /* ── Filter records by debounced search across all schema-visible columns ── */
+  const filteredRecords = useMemo(() => {
+    const needle = searchTerm.trim().toLowerCase();
+    if (!needle) return records;
+    return records.filter((rec) =>
+      schemaFields.some((f) => {
+        const v = rec[dbCol(f.column_name)];
+        return v != null && String(v).toLowerCase().includes(needle);
+      })
+    );
+  }, [records, searchTerm, schemaFields]);
+
+  /* Reset the search box when switching forms */
+  useEffect(() => {
+    setSearchInput("");
+    setSearchTerm("");
+  }, [selectedForm?.form_name]);
 
   /* ══════════════════════════════════════════════════════
      VIEW 1 — Form selection grid
@@ -735,7 +768,11 @@ export default function FormDataPage() {
             )}
           </h1>
           <p style={{ fontSize: 13, color: "#94a3b8", margin: 0 }}>
-            {recsLoading ? "Loading…" : `${records.length} record${records.length !== 1 ? "s" : ""}`}
+            {recsLoading
+              ? "Loading…"
+              : searchTerm
+                ? `${filteredRecords.length} of ${records.length} record${records.length !== 1 ? "s" : ""}`
+                : `${records.length} record${records.length !== 1 ? "s" : ""}`}
             {schema && (
               <span style={{ marginLeft: 8, fontFamily: "monospace", fontSize: 11 }}>
                 · {schema.year}
@@ -771,6 +808,55 @@ export default function FormDataPage() {
         background: "#fff", borderRadius: 16, border: "1px solid rgba(0,0,0,0.07)",
         boxShadow: "0 1px 6px rgba(0,0,0,0.05)", overflow: "hidden",
       }}>
+        {/* Toolbar: search bar */}
+        {!recsLoading && records.length > 0 && (
+          <div style={{
+            padding: "12px 20px", borderBottom: "1px solid #f1f5f9",
+            display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap",
+          }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#1e293b" }}>
+              Records
+              {searchTerm && (
+                <span style={{ marginLeft: 8, fontSize: 12, fontWeight: 500, color: "#94a3b8" }}>
+                  · {filteredRecords.length} matching
+                </span>
+              )}
+            </div>
+            <div style={{ position: "relative", width: 260 }}>
+              <span style={{
+                position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)",
+                color: "#94a3b8", display: "flex",
+              }}>
+                <IcoSearch />
+              </span>
+              <input
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                placeholder="Search records..."
+                style={{
+                  width: "100%", padding: "7px 30px 7px 32px",
+                  fontSize: 13, color: "#1e293b",
+                  border: "1px solid #e2e8f0", borderRadius: 8, outline: "none",
+                  background: "#fff",
+                }}
+              />
+              {searchInput && (
+                <button
+                  onClick={() => setSearchInput("")}
+                  title="Clear"
+                  style={{
+                    position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)",
+                    background: "none", border: "none", color: "#94a3b8",
+                    fontSize: 16, lineHeight: 1, cursor: "pointer", padding: "2px 6px",
+                  }}
+                >
+                  ×
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
         {recsLoading ? (
           <div style={{ padding: "60px 24px", textAlign: "center", color: "#94a3b8", fontSize: 13 }}>
             Loading records…
@@ -780,6 +866,12 @@ export default function FormDataPage() {
             <div style={{ fontSize: 36, marginBottom: 12 }}>📝</div>
             <div style={{ fontSize: 14, fontWeight: 600, color: "#64748b", marginBottom: 6 }}>No records yet</div>
             <div style={{ fontSize: 13 }}>Click "Add Record" to create the first entry.</div>
+          </div>
+        ) : filteredRecords.length === 0 ? (
+          <div style={{ textAlign: "center", padding: "56px 24px", color: "#94a3b8" }}>
+            <div style={{ fontSize: 36, marginBottom: 12 }}>🔍</div>
+            <div style={{ fontSize: 14, fontWeight: 600, color: "#64748b", marginBottom: 6 }}>No matching records</div>
+            <div style={{ fontSize: 13 }}>Try a different search term or clear the search to see all records.</div>
           </div>
         ) : (
           <div style={{ overflowX: "auto" }}>
@@ -797,10 +889,10 @@ export default function FormDataPage() {
                 </tr>
               </thead>
               <tbody>
-                {records.map((rec, i) => (
+                {filteredRecords.map((rec, i) => (
                   <tr
                     key={rec.id}
-                    style={{ borderBottom: i < records.length - 1 ? "1px solid #f8fafc" : "none", transition: "background .1s" }}
+                    style={{ borderBottom: i < filteredRecords.length - 1 ? "1px solid #f8fafc" : "none", transition: "background .1s" }}
                     onMouseEnter={(e) => (e.currentTarget.style.background = "#f8fafc")}
                     onMouseLeave={(e) => (e.currentTarget.style.background = "")}
                   >

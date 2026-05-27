@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { useApi } from "../../hooks/useApi";
 import { Toast, isAuthError, formatDate } from "../../components/shared/formUtils";
 import FormBuilderPage from "./FormBuilderPage";
+import InstituteFormRecordsPage from "./InstituteFormRecordsPage";
 
 const ACCENT = "#0891b2";
 
@@ -45,6 +46,14 @@ function IconUnlock() {
     </svg>
   );
 }
+function IconEye() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
 
 function Badge({ label, color }) {
   return (
@@ -77,7 +86,7 @@ function EmptyState() {
 export default function InstituteFormManagementPage() {
   const { apiFetch } = useApi();
 
-  const [view, setView]               = useState("list"); // "list" | "builder"
+  const [view, setView]               = useState("list"); // "list" | "builder" | "records"
   const [builderMode, setBuilderMode] = useState(null);   // "create" | "edit"
   const [selectedForm, setSelectedForm] = useState(null);
 
@@ -146,6 +155,18 @@ export default function InstituteFormManagementPage() {
     setView("builder");
   }
 
+  function openRecords(form) {
+    setSelectedForm(form);
+    setView("records");
+  }
+
+  function backToList() {
+    setView("list");
+    setSelectedForm(null);
+    // Refresh the form list so the lock badge reflects any changes made inside View Records.
+    load();
+  }
+
   function onBuilderDone(message) {
     setView("list");
     showToast(message || "Form saved successfully.");
@@ -164,6 +185,15 @@ export default function InstituteFormManagementPage() {
         isSuperAdmin={false}
         onDone={onBuilderDone}
         onBack={onBuilderBack}
+      />
+    );
+  }
+
+  if (view === "records" && selectedForm) {
+    return (
+      <InstituteFormRecordsPage
+        form={selectedForm}
+        onBack={backToList}
       />
     );
   }
@@ -337,20 +367,37 @@ export default function InstituteFormManagementPage() {
                     </div>
                   </td>
                   <td style={{ padding: "14px 20px", textAlign: "right" }}>
-                    <button
-                      onClick={() => openManage(form)}
-                      style={{
-                        display: "inline-flex", alignItems: "center", gap: 6,
-                        background: "#f0f9ff", color: ACCENT,
-                        border: `1px solid ${ACCENT}30`, borderRadius: 8,
-                        padding: "7px 14px", fontSize: 12, fontWeight: 700,
-                        cursor: "pointer", transition: "background .15s",
-                      }}
-                      onMouseEnter={(e) => (e.currentTarget.style.background = ACCENT + "18")}
-                      onMouseLeave={(e) => (e.currentTarget.style.background = "#f0f9ff")}
-                    >
-                      <IconSettings /> Manage
-                    </button>
+                    <div style={{ display: "inline-flex", gap: 8, justifyContent: "flex-end" }}>
+                      <button
+                        onClick={() => openRecords(form)}
+                        title="View all department records for this form"
+                        style={{
+                          display: "inline-flex", alignItems: "center", gap: 6,
+                          background: "#f5f3ff", color: "#7c3aed",
+                          border: "1px solid #ddd6fe", borderRadius: 8,
+                          padding: "7px 14px", fontSize: 12, fontWeight: 700,
+                          cursor: "pointer", transition: "background .15s",
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.background = "#ede9fe")}
+                        onMouseLeave={(e) => (e.currentTarget.style.background = "#f5f3ff")}
+                      >
+                        <IconEye /> View Records
+                      </button>
+                      <button
+                        onClick={() => openManage(form)}
+                        style={{
+                          display: "inline-flex", alignItems: "center", gap: 6,
+                          background: "#f0f9ff", color: ACCENT,
+                          border: `1px solid ${ACCENT}30`, borderRadius: 8,
+                          padding: "7px 14px", fontSize: 12, fontWeight: 700,
+                          cursor: "pointer", transition: "background .15s",
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.background = ACCENT + "18")}
+                        onMouseLeave={(e) => (e.currentTarget.style.background = "#f0f9ff")}
+                      >
+                        <IconSettings /> Manage
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}

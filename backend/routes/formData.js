@@ -141,9 +141,11 @@ router.post("/:formName/records", async (req, res) => {
     const fields = activeFields(schema);
     const fieldCols = fields.map((f) => dbCol(f.column_name));
     const formYear = Number(year) || schema.year;
+    const departmentId = req.user.departmentId || null;
+    const createdBy = req.user.userId || null;
 
-    const stdCols = ["form_name", "institution_id", "year", "schema_id", "language"];
-    const stdVals = [formName, institutionId, formYear, schema.id, language];
+    const stdCols = ["form_name", "institution_id", "department_id", "year", "schema_id", "language", "created_by"];
+    const stdVals = [formName, institutionId, departmentId, formYear, schema.id, language, createdBy];
     const fieldVals = fieldCols.map((col) => data[col] ?? null);
 
     const allCols = [...stdCols, ...fieldCols];
@@ -164,7 +166,7 @@ router.post("/:formName/records", async (req, res) => {
           await ensureSourceRowIdColumn(pool, tableName);
 
           const hiData = await translateRow(data);
-          const hiStdVals = [formName, institutionId, formYear, schema.id, "hi"];
+          const hiStdVals = [formName, institutionId, departmentId, formYear, schema.id, "hi", createdBy];
           const hiFieldVals = fieldCols.map((col) => hiData[col] ?? null);
           const hiAllCols = [...stdCols, ...fieldCols, "source_row_id"];
           const hiAllVals = [...hiStdVals, ...hiFieldVals, enRow.id];

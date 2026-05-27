@@ -599,6 +599,103 @@ router.put(
 );
 
 /* ─────────────────────────────────────────────────────────────────────
+   GET /api/forms/:formName/institution-records
+   Institution-admin view: all department records for one form,
+   grouped by department_name. Strictly view-only.
+   Query: ?language=en|hi (default 'en')
+   Response: {
+     success, schema, departments: [{id, name, count}],
+     grouped: { 'Computer Science': [rows...], 'Electronics': [...] }
+   }
+───────────────────────────────────────────────────────────────────── */
+router.get("/:formName/institution-records", async (req, res) => {
+  const pool = req.app.locals.pool;
+  const { formName } = req.params;
+  const { year, language = "en" } = req.query;
+
+  if (!/^[a-z][a-z0-9_]*$/.test(formName)) {
+    return res.status(400).json({ success: false, message: "Invalid form name." });
+  }
+
+  try {
+    const institutionId = await resolveInstitutionId(pool, req);
+    if (!institutionId) {
+      return res.status(400).json({ success: false, message: "Institution ID required." });
+    }
+
+    // Active schema (used for dynamic column rendering on the client)
+    const schemaParams = [formName, institutionId];
+    let schemaYearClause = "";
+    if (year) { schemaYearClause = " AND year = $3"; schemaParams.push(year); }
+    const { rows: schemaRows } = await pool.query(
+      `SELECT * FROM custom_field_schemas
+       WHERE form_name = $1 AND institution_id = $2 AND is_active = true
+       ${schemaYearClause}
+       ORDER BY year DESC LIMIT 1`,
+      schemaParams
+    );
+    if (!schemaRows.length) {
+      return res.status(404).json({ success: false, message: "No active schema found for this form." });
+    }
+    const schema = schemaRows[0];
+
+    // Verify the records table exists before querying (avoids 500 on never-used forms)
+    const { rows: existsRows } = await pool.query(
+      `SELECT 1 FROM information_schema.tables
+       WHERE table_schema = 'public' AND table_name = $1`,
+      [`${formName}_records`]
+    );
+    if (!existsRows.length) {
+      return res.json({ success: true, schema, departments: [], grouped: {} });
+    }
+
+    // All records belonging to this institution + selected language.
+    // LEFT JOIN departments directly so we get the readable name in one shot.
+    // Fallback: if record.department_id is NULL but created_by is set,
+    // derive the department from the submitting user's profile.
+    const { rows: records } = await pool.query(
+      `SELECT r.*,
+              COALESCE(d_rec.name, d_user.name) AS resolved_department_name
+       FROM ${formName}_records r
+       LEFT JOIN departments d_rec  ON d_rec.department_id  = r.department_id
+       LEFT JOIN users u            ON u.id                  = r.created_by
+       LEFT JOIN departments d_user ON d_user.department_id  = u.department_id
+       WHERE r.institution_id = $1
+         AND (r.language = $2 OR ($2 = 'en' AND r.language IS NULL))
+       ORDER BY r.created_at DESC`,
+      [institutionId, language]
+    );
+
+    // Group records by resolved department name (UUIDs are never exposed)
+    const grouped = {};
+    const counts = new Map();
+    for (const rec of records) {
+      const deptName = rec.resolved_department_name || "Unassigned";
+      if (!grouped[deptName]) grouped[deptName] = [];
+      grouped[deptName].push(rec);
+      counts.set(deptName, (counts.get(deptName) || 0) + 1);
+    }
+
+    const departments = Array.from(counts.entries())
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    // Current lock state so the View Records page can render the toggle.
+    const { rows: lockRows } = await pool.query(
+      `SELECT is_locked, locked_by, locked_at FROM form_lock_config
+       WHERE form_name = $1 AND institution_id = $2`,
+      [formName, institutionId]
+    );
+    const lock = lockRows[0] || { is_locked: false, locked_by: null, locked_at: null };
+
+    return res.json({ success: true, schema, departments, grouped, lock });
+  } catch (err) {
+    logger.error(`GET /api/forms/${formName}/institution-records`, { stack: err.stack });
+    return res.status(500).json({ success: false, message: "Failed to fetch institution records." });
+  }
+});
+
+/* ─────────────────────────────────────────────────────────────────────
    GET /api/forms/:formName/lock-status
    Returns the current lock state for the resolved institution.
 ───────────────────────────────────────────────────────────────────── */
