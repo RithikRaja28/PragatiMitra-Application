@@ -13,6 +13,26 @@ function displayCol(col) {
   return col.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+/* Derive deadline display + status from a form row (DB-driven). */
+function formStatus(form) {
+  const deadline = form.deadline_at ? new Date(form.deadline_at) : null;
+  const expired = deadline ? deadline.getTime() <= Date.now() : false;
+  const dateText = deadline
+    ? deadline.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })
+    : "No deadline";
+
+  let badge;
+  if (form.is_locked || expired) {
+    badge = { label: expired ? "Expired" : "Locked", color: "#dc2626", bg: "#fef2f2" };
+  } else if (deadline) {
+    const daysLeft = Math.ceil((deadline.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+    badge = { label: `${daysLeft}d left`, color: daysLeft <= 3 ? "#d97706" : "#16a34a", bg: daysLeft <= 3 ? "#fffbeb" : "#f0fdf4" };
+  } else {
+    badge = { label: "Open", color: "#16a34a", bg: "#f0fdf4" };
+  }
+  return { dateText, expired, badge };
+}
+
 /* ── Icons ── */
 function IcoPlus() {
   return (
@@ -71,6 +91,13 @@ function IcoSearch() {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+    </svg>
+  );
+}
+function IcoClock() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
     </svg>
   );
 }
@@ -516,6 +543,8 @@ export default function FormDataPage() {
   function openForm(form) {
     setSelectedForm(form);
     setView("records");
+    setSearchInput("");
+    setSearchTerm("");
     loadRecords(form);
   }
 
@@ -525,6 +554,8 @@ export default function FormDataPage() {
     setSchema(null);
     setRecords([]);
     setRecsError("");
+    setSearchInput("");
+    setSearchTerm("");
     setLockInfo({ is_locked: false, locked_by: null, locked_at: null });
   }
 
@@ -600,11 +631,6 @@ export default function FormDataPage() {
     );
   }, [records, searchTerm, schemaFields]);
 
-  /* Reset the search box when switching forms */
-  useEffect(() => {
-    setSearchInput("");
-    setSearchTerm("");
-  }, [selectedForm?.form_name]);
 
   /* ══════════════════════════════════════════════════════
      VIEW 1 — Form selection grid
@@ -685,7 +711,26 @@ export default function FormDataPage() {
                 <div style={{ fontSize: 11, color: "#94a3b8", fontFamily: "monospace" }}>
                   {form.form_name}
                 </div>
-                <div style={{ marginTop: 14, fontSize: 11, color: ACCENT, fontWeight: 600 }}>
+
+                {/* deadline + status (DB-driven) */}
+                {(() => {
+                  const { dateText, badge } = formStatus(form);
+                  return (
+                    <div style={{ marginTop: 14, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                      <span style={{ fontSize: 11, color: "#64748b", display: "inline-flex", alignItems: "center", gap: 5 }}>
+                        <IcoClock /> {dateText}
+                      </span>
+                      <span style={{
+                        fontSize: 10, fontWeight: 700, color: badge.color, background: badge.bg,
+                        padding: "2px 9px", borderRadius: 20,
+                      }}>
+                        {badge.label}
+                      </span>
+                    </div>
+                  );
+                })()}
+
+                <div style={{ marginTop: 12, fontSize: 11, color: ACCENT, fontWeight: 600 }}>
                   Open →
                 </div>
               </button>
@@ -724,23 +769,30 @@ export default function FormDataPage() {
       )}
 
       {/* locked banner */}
-      {lockInfo.is_locked && (
-        <div style={{
-          display: "flex", alignItems: "center", gap: 12,
-          background: "#fef2f2", border: "1px solid #fecaca",
-          borderRadius: 10, padding: "12px 18px", marginBottom: 20,
-        }}>
-          <span style={{ fontSize: 18 }}>🔒</span>
-          <div>
-            <div style={{ fontSize: 13, fontWeight: 700, color: "#b91c1c" }}>
-              This form is currently locked by the institution admin.
-            </div>
-            <div style={{ fontSize: 12, color: "#dc2626", marginTop: 2 }}>
-              You can only view the records. Adding, editing, and deleting are disabled.
+      {lockInfo.is_locked && (() => {
+        const deadlineExpired =
+          lockInfo.auto_locked ||
+          (lockInfo.deadline_at && new Date(lockInfo.deadline_at).getTime() <= Date.now());
+        return (
+          <div style={{
+            display: "flex", alignItems: "center", gap: 12,
+            background: "#fef2f2", border: "1px solid #fecaca",
+            borderRadius: 10, padding: "12px 18px", marginBottom: 20,
+          }}>
+            <span style={{ fontSize: 18 }}>{deadlineExpired ? "⏰" : "🔒"}</span>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "#b91c1c" }}>
+                {deadlineExpired
+                  ? "This form deadline has expired for your institution. The form is automatically locked."
+                  : "This form is currently locked by the institution admin."}
+              </div>
+              <div style={{ fontSize: 12, color: "#dc2626", marginTop: 2 }}>
+                You can only view the records. Adding, editing, and deleting are disabled.
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* header */}
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 28 }}>

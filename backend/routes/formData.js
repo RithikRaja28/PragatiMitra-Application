@@ -45,12 +45,27 @@ function dbCol(col) {
   return col.trim().toLowerCase().replace(/\s+/g, "_");
 }
 
-async function checkFormLock(pool, formName, institutionId) {
+/* Returns { locked, message } — chooses the deadline-expired message when the
+   lock is the result of an expired deadline, otherwise the manual-lock message. */
+async function getLockBlock(pool, formName, institutionId) {
   const { rows } = await pool.query(
-    `SELECT is_locked FROM form_lock_config WHERE form_name = $1 AND institution_id = $2`,
+    `SELECT flc.is_locked, flc.auto_locked, flc.deadline_at
+     FROM form_lock_config flc
+     WHERE flc.form_name = $1 AND flc.institution_id = $2`,
     [formName, institutionId]
   );
-  return rows[0]?.is_locked || false;
+  const row = rows[0];
+  if (!row?.is_locked) return { locked: false, message: null };
+
+  const expired =
+    row.auto_locked ||
+    (row.deadline_at && new Date(row.deadline_at).getTime() <= Date.now());
+
+  const message = expired
+    ? "This form deadline has expired for your institution. The form is automatically locked."
+    : "This form is currently locked by the institution admin. You can only view the records.";
+
+  return { locked: true, message };
 }
 
 function activeFields(schemaRow) {
@@ -93,11 +108,12 @@ router.get("/:formName/records", async (req, res) => {
     );
 
     const { rows: lockRows } = await pool.query(
-      `SELECT is_locked, locked_by, locked_at FROM form_lock_config
+      `SELECT is_locked, locked_by, locked_at, deadline_at, COALESCE(auto_locked, false) AS auto_locked
+       FROM form_lock_config
        WHERE form_name = $1 AND institution_id = $2`,
       [formName, institutionId]
     );
-    const lock = lockRows[0] || { is_locked: false, locked_by: null, locked_at: null };
+    const lock = lockRows[0] || { is_locked: false, locked_by: null, locked_at: null, deadline_at: null, auto_locked: false };
 
     return res.json({ success: true, records, schema, lock });
   } catch (err) {
@@ -128,11 +144,9 @@ router.post("/:formName/records", async (req, res) => {
     const institutionId = await resolveInstitutionId(pool, req);
     if (!institutionId) return res.status(400).json({ success: false, message: "Institution ID required." });
 
-    if (await checkFormLock(pool, formName, institutionId)) {
-      return res.status(403).json({
-        success: false,
-        message: "This form is currently locked by the institution admin. You can only view the records.",
-      });
+    const lockBlock = await getLockBlock(pool, formName, institutionId);
+    if (lockBlock.locked) {
+      return res.status(403).json({ success: false, message: lockBlock.message });
     }
 
     const schema = await getActiveSchema(pool, formName, institutionId, year);
@@ -210,11 +224,9 @@ router.put("/:formName/records/:id", async (req, res) => {
     const institutionId = await resolveInstitutionId(pool, req);
     if (!institutionId) return res.status(400).json({ success: false, message: "Institution ID required." });
 
-    if (await checkFormLock(pool, formName, institutionId)) {
-      return res.status(403).json({
-        success: false,
-        message: "This form is currently locked by the institution admin. You can only view the records.",
-      });
+    const lockBlock = await getLockBlock(pool, formName, institutionId);
+    if (lockBlock.locked) {
+      return res.status(403).json({ success: false, message: lockBlock.message });
     }
 
     const schema = await getActiveSchema(pool, formName, institutionId, null);
@@ -286,11 +298,9 @@ router.delete("/:formName/records/:id", async (req, res) => {
     const institutionId = await resolveInstitutionId(pool, req);
     if (!institutionId) return res.status(400).json({ success: false, message: "Institution ID required." });
 
-    if (await checkFormLock(pool, formName, institutionId)) {
-      return res.status(403).json({
-        success: false,
-        message: "This form is currently locked by the institution admin. You can only view the records.",
-      });
+    const lockBlock = await getLockBlock(pool, formName, institutionId);
+    if (lockBlock.locked) {
+      return res.status(403).json({ success: false, message: lockBlock.message });
     }
 
     await ensureSourceRowIdColumn(pool, `${formName}_records`);

@@ -99,6 +99,12 @@ pool.connect((err, client, release) => {
 // Make pool available to all route handlers via req.app.locals.pool
 app.locals.pool = pool;
 
+/* ── Form deadline auto-lock: ensure columns, then start periodic checker ── */
+const { ensureDeadlineColumns, startDeadlineScheduler } = require("./services/formDeadlineService");
+ensureDeadlineColumns(pool)
+  .then(() => startDeadlineScheduler(pool, 60 * 1000))
+  .catch((e) => logger.error("Failed to init form deadline scheduler", { stack: e.stack }));
+
 /* ── Import session cache: rows stored server-side after parse ───── */
 app.locals.importSessions = new Map();
 // Purge sessions older than 1 hour every 30 minutes

@@ -136,6 +136,9 @@ export default function InstituteFormRecordsPage({ form, onBack }) {
           is_locked: !!lockData.is_locked,
           locked_by: lockData.locked_by ?? null,
           locked_at: lockData.locked_at ?? null,
+          // deadline fields only come from the records payload
+          deadline_at: data.lock?.deadline_at ?? null,
+          auto_locked: data.lock?.auto_locked ?? false,
         });
       } else if (data.success) {
         // Fall back to the lock object embedded in the records response.

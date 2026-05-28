@@ -678,8 +678,8 @@ router.post("/", async (req, res) => {
       [newInst.institution_id]
     );
     await pool.query(
-      `INSERT INTO form_lock_config (form_name, institution_id, is_locked)
-       SELECT form_name, $1, false FROM table_list WHERE share_table = true
+      `INSERT INTO form_lock_config (form_name, institution_id, is_locked, deadline_at, auto_locked)
+       SELECT form_name, $1, false, NULL, false FROM table_list WHERE share_table = true
        ON CONFLICT (form_name, institution_id) DO NOTHING`,
       [newInst.institution_id]
     );

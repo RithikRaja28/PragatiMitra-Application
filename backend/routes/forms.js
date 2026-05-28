@@ -56,15 +56,20 @@ router.get("/institution-forms", async (req, res) => {
 
     let rows;
     if (isSuperAdmin) {
+      // Super admin has no single institution context — deadlines are per-institution.
       ({ rows } = await pool.query(
         `SELECT id, form_name, institute_access, share_table, created_by, created_at, updated_at,
+                NULL::timestamptz AS deadline_at, false AS auto_locked,
                 false AS is_locked, NULL AS locked_by, NULL AS locked_at
          FROM table_list
          ORDER BY form_name`
       ));
     } else {
+      // Deadline + lock state come from this institution's form_lock_config row.
       ({ rows } = await pool.query(
         `SELECT tl.id, tl.form_name, tl.institute_access, tl.share_table, tl.created_by, tl.created_at, tl.updated_at,
+                flc.deadline_at,
+                COALESCE(flc.auto_locked, false) AS auto_locked,
                 COALESCE(flc.is_locked, false) AS is_locked,
                 flc.locked_by,
                 flc.locked_at
@@ -293,6 +298,8 @@ router.post(
     if (!schema || typeof schema !== "object") {
       return res.status(400).json({ success: false, message: "schema is required." });
     }
+    // Deadlines are institution-specific and managed after creation via
+    // PUT /api/forms/:formName/deadline — never set at creation time.
 
     const normalizedName = String(form_name).trim().toLowerCase().replace(/\s+/g, "_");
     if (!/^[a-z][a-z0-9_]*$/.test(normalizedName)) {
@@ -311,7 +318,7 @@ router.post(
       try {
         await client.query("BEGIN");
 
-        // 1. Register in table_list
+        // 1. Register in table_list (no deadline here — deadlines are per-institution)
         await client.query(
           `INSERT INTO table_list (form_name, share_table, institute_access, created_by)
            VALUES ($1, $2, ARRAY[$3::uuid], $4)
@@ -342,18 +349,19 @@ router.post(
         );
         const schemaId = sRows[0].id;
 
-        // 3. Insert form_lock_config — for shared forms cover ALL institutions; otherwise just this one
+        // 3. Insert form_lock_config — for shared forms cover ALL institutions; otherwise just this one.
+        //    Deadlines start NULL; each institution sets its own later.
         if (share_table) {
           await client.query(
-            `INSERT INTO form_lock_config (form_name, institution_id, is_locked)
-             SELECT $1, institution_id, false FROM institutions
+            `INSERT INTO form_lock_config (form_name, institution_id, is_locked, deadline_at, auto_locked)
+             SELECT $1, institution_id, false, NULL, false FROM institutions
              ON CONFLICT (form_name, institution_id) DO NOTHING`,
             [normalizedName]
           );
         } else {
           await client.query(
-            `INSERT INTO form_lock_config (form_name, institution_id, is_locked)
-             VALUES ($1, $2, false)
+            `INSERT INTO form_lock_config (form_name, institution_id, is_locked, deadline_at, auto_locked)
+             VALUES ($1, $2, false, NULL, false)
              ON CONFLICT (form_name, institution_id) DO NOTHING`,
             [normalizedName, institutionId]
           );
@@ -450,10 +458,11 @@ router.post(
           [form_name, institutionId, formYear, JSON.stringify(schema), req.user.userId, usedColNames]
         );
 
-        // Ensure a lock config row exists for this institution (default unlocked)
+        // Ensure a lock config row exists for this institution (default unlocked,
+        // no deadline — each institution sets its own afterwards).
         await client.query(
-          `INSERT INTO form_lock_config (form_name, institution_id, is_locked)
-           VALUES ($1, $2, false)
+          `INSERT INTO form_lock_config (form_name, institution_id, is_locked, deadline_at, auto_locked)
+           VALUES ($1, $2, false, NULL, false)
            ON CONFLICT (form_name, institution_id) DO NOTHING`,
           [form_name, institutionId]
         );
@@ -680,13 +689,15 @@ router.get("/:formName/institution-records", async (req, res) => {
       .map(([name, count]) => ({ name, count }))
       .sort((a, b) => a.name.localeCompare(b.name));
 
-    // Current lock state so the View Records page can render the toggle.
+    // Current lock + deadline state (institution-specific) so the View Records
+    // page can render the toggle and any expiry info.
     const { rows: lockRows } = await pool.query(
-      `SELECT is_locked, locked_by, locked_at FROM form_lock_config
+      `SELECT is_locked, locked_by, locked_at, deadline_at, COALESCE(auto_locked, false) AS auto_locked
+       FROM form_lock_config
        WHERE form_name = $1 AND institution_id = $2`,
       [formName, institutionId]
     );
-    const lock = lockRows[0] || { is_locked: false, locked_by: null, locked_at: null };
+    const lock = lockRows[0] || { is_locked: false, locked_by: null, locked_at: null, deadline_at: null, auto_locked: false };
 
     return res.json({ success: true, schema, departments, grouped, lock });
   } catch (err) {
@@ -727,6 +738,119 @@ router.get("/:formName/lock-status", async (req, res) => {
     return res.status(500).json({ success: false, message: "Failed to fetch lock status." });
   }
 });
+
+/* ─────────────────────────────────────────────────────────────────────
+   GET /api/forms/:formName/deadline
+   Returns this institution's deadline + lock state for the form.
+───────────────────────────────────────────────────────────────────── */
+router.get("/:formName/deadline", async (req, res) => {
+  const pool = req.app.locals.pool;
+  const { formName } = req.params;
+
+  if (!/^[a-z][a-z0-9_]*$/.test(formName)) {
+    return res.status(400).json({ success: false, message: "Invalid form name." });
+  }
+
+  try {
+    const institutionId = await resolveInstitutionId(pool, req);
+    if (!institutionId) {
+      return res.status(400).json({ success: false, message: "Institution ID required." });
+    }
+
+    const { rows } = await pool.query(
+      `SELECT deadline_at, COALESCE(auto_locked, false) AS auto_locked,
+              COALESCE(is_locked, false) AS is_locked, locked_at
+       FROM form_lock_config
+       WHERE form_name = $1 AND institution_id = $2`,
+      [formName, institutionId]
+    );
+
+    const row = rows[0] || { deadline_at: null, auto_locked: false, is_locked: false, locked_at: null };
+    return res.json({ success: true, ...row });
+  } catch (err) {
+    logger.error("GET /api/forms/:formName/deadline", { stack: err.stack });
+    return res.status(500).json({ success: false, message: "Failed to fetch deadline." });
+  }
+});
+
+/* ─────────────────────────────────────────────────────────────────────
+   PUT /api/forms/:formName/deadline
+   Add / update / remove the deadline for ONLY the resolved institution's row.
+   Body: { deadline_at }  — ISO string to set; null/"" to remove.
+   - Setting a future deadline re-opens a row that was auto-locked.
+   - Removing the deadline clears auto_locked and unlocks an auto-locked row.
+   - Manual locks (auto_locked = false, is_locked = true) are never touched.
+───────────────────────────────────────────────────────────────────── */
+router.put(
+  "/:formName/deadline",
+  requireRole(["super_admin", "institute_admin"]),
+  async (req, res) => {
+    const pool = req.app.locals.pool;
+    const { formName } = req.params;
+    const { deadline_at } = req.body;
+
+    if (!/^[a-z][a-z0-9_]*$/.test(formName)) {
+      return res.status(400).json({ success: false, message: "Invalid form name." });
+    }
+
+    // Resolve the new deadline value (null = remove).
+    let newDeadline = null;
+    if (deadline_at != null && String(deadline_at).trim() !== "") {
+      const d = new Date(deadline_at);
+      if (isNaN(d.getTime())) {
+        return res.status(400).json({ success: false, message: "Invalid deadline date." });
+      }
+      newDeadline = d.toISOString();
+    }
+
+    try {
+      const institutionId = await resolveInstitutionId(pool, req);
+      if (!institutionId) {
+        return res.status(400).json({ success: false, message: "Institution ID required." });
+      }
+
+      // Upsert the institution's row, then apply deadline + auto-lock reconciliation.
+      const { rows } = await pool.query(
+        `INSERT INTO form_lock_config (form_name, institution_id, is_locked, deadline_at, auto_locked)
+         VALUES ($1, $2, false, $3, false)
+         ON CONFLICT (form_name, institution_id) DO UPDATE SET
+           deadline_at = $3,
+           -- Removing the deadline, or setting it to the future, re-opens an
+           -- AUTO-locked row; manual locks remain locked.
+           is_locked   = CASE
+                            WHEN form_lock_config.auto_locked
+                             AND ($3 IS NULL OR $3 > NOW())
+                            THEN false ELSE form_lock_config.is_locked END,
+           locked_at   = CASE
+                            WHEN form_lock_config.auto_locked
+                             AND ($3 IS NULL OR $3 > NOW())
+                            THEN NULL ELSE form_lock_config.locked_at END,
+           auto_locked = CASE
+                            WHEN $3 IS NULL OR $3 > NOW()
+                            THEN false ELSE form_lock_config.auto_locked END,
+           updated_at  = now()
+         RETURNING deadline_at, is_locked, auto_locked, locked_at`,
+        [formName, institutionId, newDeadline]
+      );
+
+      await writeAuditLog(req, {
+        actionType: newDeadline ? "SET_FORM_DEADLINE" : "REMOVE_FORM_DEADLINE",
+        entityType: "form_lock",
+        entityId: null,
+        newValue: { form_name: formName, institution_id: institutionId, deadline_at: newDeadline },
+      });
+
+      return res.json({
+        success: true,
+        message: newDeadline ? "Deadline saved." : "Deadline removed.",
+        ...rows[0],
+      });
+    } catch (err) {
+      logger.error("PUT /api/forms/:formName/deadline", { stack: err.stack });
+      return res.status(500).json({ success: false, message: "Failed to update deadline." });
+    }
+  }
+);
 
 /* ─────────────────────────────────────────────────────────────────────
    POST /api/forms/:formName/lock
