@@ -7,20 +7,53 @@ const translate = new Translate({
   keyFilename: path.join(__dirname, "../config/pragatimitra-497416-6a889477f089.json"),
 });
 
-// Two-level cache:
-//   wordCache  — individual word → Hindi  (persists for process lifetime)
-//   phraseCache — full phrase → Hindi
+// Caches (all persist for process lifetime):
+//   wordCache      — individual word → Hindi   (transliteration path)
+//   phraseCache    — full phrase → Hindi        (transliteration path)
+//   sentenceCache  — full sentence → Hindi      (translation path)
 const wordCache = new Map();
 const phraseCache = new Map();
+const sentenceCache = new Map();
 
 // Only process pure English alphabetic text
 const PURE_TEXT_RE = /^[A-Za-z\s]+$/;
+const HAS_ALPHA_RE = /[A-Za-z]/;
 const DEVANAGARI_RE = /[ऀ-ॿ]/;
 
 function isTranslatableText(value) {
   if (typeof value !== "string") return false;
   const t = value.trim();
   return t.length > 0 && PURE_TEXT_RE.test(t);
+}
+
+/* ─── Translation modes ──────────────────────────────────────────────────────
+   transliterate — phonetic/script conversion, good for names & proper nouns
+                   (Divakar → दिवाकर).  This is the legacy behavior.
+   translate     — actual language translation of full sentences, good for
+                   descriptions/remarks (I am walking → मैं चल रहा हूँ).
+   none          — value copied verbatim (numbers, dates, emails, files, etc.).
+
+   The mode for a field is taken from its explicit `translation_mode` when set;
+   otherwise it falls back to a sensible default derived from the field type.
+   Existing schemas have no `translation_mode`, so `text`/`textarea` default to
+   `transliterate` — exactly the pre-existing behavior. */
+const DEFAULT_MODE_BY_TYPE = {
+  text:        "transliterate",
+  textarea:    "transliterate",
+  description: "translate",
+  number:      "none",
+  date:        "none",
+  boolean:     "none",
+  email:       "none",
+  phone:       "none",
+  document:    "none",
+};
+
+const VALID_MODES = new Set(["transliterate", "translate", "none"]);
+
+function resolveTranslationMode(field) {
+  if (field && VALID_MODES.has(field.translation_mode)) return field.translation_mode;
+  return DEFAULT_MODE_BY_TYPE[field?.type] || "transliterate";
 }
 
 // ─── English letter names in Devanagari (for ALL-CAPS abbreviations) ────────
@@ -217,26 +250,77 @@ async function transliteratePhrase(phrase) {
 }
 
 /**
- * Translate all translatable string fields in a data row to Hindi.
- * Returns a shallow clone of dataMap with translatable string values replaced by Hindi.
- * Non-translatable values (numbers, IDs, emails, mixed alphanumeric) are preserved unchanged.
+ * Translate a full sentence to Hindi using Google Translate as ONE phrase
+ * (not word-by-word). This is the correct path for descriptions / remarks /
+ * comments where word-by-word transliteration would be meaningless.
  *
- * @param {Record<string, any>} dataMap
- * @returns {Promise<Record<string, any>>}
+ *   "I am walking to college" → "मैं कॉलेज जा रहा हूँ"
+ *
+ * Cached at the sentence level so repeated values across bulk inserts never
+ * trigger extra API calls. On API failure or a non-Devanagari result the
+ * original text is returned unchanged.
  */
-async function translateRow(dataMap) {
-  const result = { ...dataMap };
-  const eligible = Object.entries(dataMap).filter(([, v]) => isTranslatableText(v));
-  if (!eligible.length) return result;
+async function translateSentence(sentence) {
+  const trimmed = sentence.trim();
+  if (sentenceCache.has(trimmed)) return sentenceCache.get(trimmed);
 
-  await Promise.all(eligible.map(([, val]) => transliteratePhrase(val.trim())));
-
-  for (const [col, val] of eligible) {
-    const hindi = phraseCache.get(val.trim());
-    if (hindi) result[col] = hindi;
+  let hindi = trimmed;
+  try {
+    const [result] = await translate.translate(trimmed, "hi");
+    const out = Array.isArray(result) ? result[0] : result;
+    if (out && DEVANAGARI_RE.test(out)) hindi = out;
+  } catch {
+    // keep original on failure
   }
 
+  sentenceCache.set(trimmed, hindi);
+  return hindi;
+}
+
+/**
+ * Convert all eligible string fields in a data row to Hindi, respecting each
+ * field's translation mode.
+ *
+ *   transliterate → transliteratePhrase  (names, cities, proper nouns)
+ *   translate     → translateSentence    (descriptions, remarks, long text)
+ *   none          → value copied verbatim
+ *
+ * `fieldModes` maps a (snake_cased) column name to its resolved mode. When it
+ * is omitted (legacy callers), every translatable string is transliterated —
+ * exactly the original behavior, so existing forms are unaffected.
+ *
+ * Non-translatable values (numbers, IDs, emails, mixed alphanumeric) are
+ * preserved unchanged.
+ *
+ * @param {Record<string, any>} dataMap
+ * @param {Record<string, "transliterate"|"translate"|"none">|null} [fieldModes]
+ * @returns {Promise<Record<string, any>>}
+ */
+async function translateRow(dataMap, fieldModes = null) {
+  const result = { ...dataMap };
+  const tasks = [];
+
+  for (const [col, val] of Object.entries(dataMap)) {
+    if (typeof val !== "string" || !val.trim()) continue;
+    const trimmed = val.trim();
+
+    // No fieldModes → legacy transliterate-everything behavior.
+    const mode = fieldModes ? (fieldModes[col] || "transliterate") : "transliterate";
+    if (mode === "none") continue;
+
+    if (mode === "translate") {
+      if (!HAS_ALPHA_RE.test(trimmed)) continue; // nothing to translate (e.g. "78")
+      tasks.push(translateSentence(trimmed).then((hi) => { if (hi) result[col] = hi; }));
+    } else {
+      // transliterate — keep the strict pure-text gate so values like emails,
+      // dates or mixed alphanumerics are never mangled.
+      if (!isTranslatableText(val)) continue;
+      tasks.push(transliteratePhrase(trimmed).then((hi) => { if (hi) result[col] = hi; }));
+    }
+  }
+
+  await Promise.all(tasks);
   return result;
 }
 
-module.exports = { isTranslatableText, translateRow };
+module.exports = { isTranslatableText, translateRow, resolveTranslationMode };

@@ -237,7 +237,7 @@ router.get("/:formName/schema", async (req, res) => {
 /* ── Map schema field type → PostgreSQL column type ── */
 function pgType(fieldType) {
   const map = {
-    text: "TEXT", textarea: "TEXT", email: "TEXT",
+    text: "TEXT", textarea: "TEXT", description: "TEXT", email: "TEXT",
     phone: "TEXT", document: "TEXT", number: "NUMERIC",
     date: "DATE", boolean: "BOOLEAN",
   };

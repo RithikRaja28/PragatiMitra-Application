@@ -19,15 +19,31 @@ const CURRENT_YEAR = new Date().getFullYear();
 
 /* field types shown to user; "boolean" renders as "Yes / No" in UI */
 const FIELD_TYPES = [
-  { value: "text",     label: "Text" },
-  { value: "textarea", label: "Long Text" },
-  { value: "number",   label: "Number" },
-  { value: "date",     label: "Date" },
-  { value: "boolean",  label: "Yes / No" },
-  { value: "email",    label: "Email" },
-  { value: "phone",    label: "Phone" },
-  { value: "document", label: "Document (Upload)" },
+  { value: "text",        label: "Text" },
+  { value: "textarea",    label: "Long Text" },
+  { value: "description", label: "Description (Paragraph)" },
+  { value: "number",      label: "Number" },
+  { value: "date",        label: "Date" },
+  { value: "boolean",     label: "Yes / No" },
+  { value: "email",       label: "Email" },
+  { value: "phone",       label: "Phone" },
+  { value: "document",    label: "Document (Upload)" },
 ];
+
+/* Language-conversion mode is derived automatically from the field type and is
+   never chosen by the admin. Mirrors the backend (translationService.js):
+     transliterate — phonetic, for names/cities/proper nouns (Divakar → दिवाकर)
+     translate     — real sentence translation (I am walking → मैं कॉलेज जा रहा हूँ)
+     none          — copy the value verbatim (numbers, dates, emails, files)
+   Kept in sync with the backend so existing `text` fields keep transliterating. */
+const DEFAULT_TRANSLATION_MODE = {
+  text: "transliterate", textarea: "transliterate", description: "translate",
+  number: "none", date: "none", boolean: "none",
+  email: "none", phone: "none", document: "none",
+};
+function defaultTranslationMode(type) {
+  return DEFAULT_TRANSLATION_MODE[type] || "transliterate";
+}
 
 /* derive DB identifier from human-readable form name */
 function toIdentifier(name) {
@@ -502,8 +518,11 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
     const allFields = fields.map((f, i) => {
       const { _key, hidden, isNew, ...rest } = f; // strip internal flags
       return {
+        // translation_mode is always derived from the field type (never chosen
+        // by the admin); this explicit value overrides any older stored mode.
         ...rest,
         column_name: f.column_name.trim().toLowerCase().replace(/\s+/g, "_"),
+        translation_mode: defaultTranslationMode(f.type),
         order: i,
       };
     });

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useApi } from "../../hooks/useApi";
 import { useAuth } from "../../store/AuthContext";
+import { useLanguage } from "../../i18n/LanguageContext";
 import { S, Toast, isAuthError, formatDate } from "../../components/shared/formUtils";
 
 const ACCENT = "#2563eb";
@@ -287,7 +288,7 @@ function FieldInput({ field, value, onChange, getToken }) {
     );
   }
 
-  if (type === "textarea") {
+  if (type === "textarea" || type === "description") {
     return (
       <div>
         <label style={S.label}>{label}{field.required && " *"}</label>
@@ -458,6 +459,7 @@ function DeleteModal({ onConfirm, onClose, deleting }) {
 export default function FormDataPage() {
   const { apiFetch } = useApi();
   const { accessToken } = useAuth();
+  const { lang } = useLanguage();
   const getToken = useCallback(() => accessToken, [accessToken]);
 
   /* ── top-level view ── */
@@ -519,12 +521,14 @@ export default function FormDataPage() {
 
   useEffect(() => { loadForms(); }, [loadForms]);
 
-  /* ── load records for selected form ── */
+  /* ── load records for selected form, in the currently selected language ──
+     Hindi rows already exist in the DB (language='hi'); we just fetch them.
+     No translation happens here. */
   const loadRecords = useCallback(async (form) => {
     setRecsLoading(true);
     setRecsError("");
     try {
-      const res  = await apiFetch(`/api/form-data/${form.form_name}/records`);
+      const res  = await apiFetch(`/api/form-data/${form.form_name}/records?language=${lang}`);
       const data = await res.json();
       if (data.success) {
         setRecords(data.records || []);
@@ -538,14 +542,21 @@ export default function FormDataPage() {
     } finally {
       setRecsLoading(false);
     }
-  }, [apiFetch]);
+  }, [apiFetch, lang]);
+
+  /* Load whenever a form is opened OR the language toggles while viewing
+     records. loadRecords changes identity when `lang` changes, so flipping
+     EN ⇄ HI re-fetches the matching-language rows (same pattern the
+     institution view uses). */
+  useEffect(() => {
+    if (view === "records" && selectedForm) loadRecords(selectedForm);
+  }, [view, selectedForm, loadRecords]);
 
   function openForm(form) {
     setSelectedForm(form);
     setView("records");
     setSearchInput("");
     setSearchTerm("");
-    loadRecords(form);
   }
 
   function backToForms() {
@@ -630,6 +641,13 @@ export default function FormDataPage() {
       })
     );
   }, [records, searchTerm, schemaFields]);
+
+  /* Hindi rows are auto-generated mirrors of the English row (linked via
+     source_row_id). Data entry must happen in English so the link stays
+     intact, so the Hindi view is read-only — adding/editing/deleting is
+     disabled while Hindi is selected (switch to English to make changes). */
+  const viewingTranslated = lang === "hi";
+  const readOnly = lockInfo.is_locked || viewingTranslated;
 
 
   /* ══════════════════════════════════════════════════════
@@ -794,6 +812,25 @@ export default function FormDataPage() {
         );
       })()}
 
+      {/* translated (Hindi) view banner — read-only, edits happen in English */}
+      {viewingTranslated && !lockInfo.is_locked && (
+        <div style={{
+          display: "flex", alignItems: "center", gap: 12,
+          background: "#eff6ff", border: "1px solid #bfdbfe",
+          borderRadius: 10, padding: "12px 18px", marginBottom: 20,
+        }}>
+          <span style={{ fontSize: 18 }}>🌐</span>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#1e3a8a" }}>
+              हिंदी अनुवाद देखा जा रहा है — केवल देखने का मोड।
+            </div>
+            <div style={{ fontSize: 12, color: "#2563eb", marginTop: 2 }}>
+              रिकॉर्ड जोड़ने, संपादित करने या हटाने के लिए अंग्रेज़ी (EN) पर स्विच करें।
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* header */}
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 28 }}>
         <div>
@@ -833,16 +870,22 @@ export default function FormDataPage() {
           </p>
         </div>
         <button
-          onClick={() => { setEditRecord(null); setModalError(""); setModalOpen(true); }}
-          disabled={lockInfo.is_locked}
-          title={lockInfo.is_locked ? "Form is locked — contact your institution admin" : ""}
+          onClick={() => { if (!readOnly) { setEditRecord(null); setModalError(""); setModalOpen(true); } }}
+          disabled={readOnly}
+          title={
+            lockInfo.is_locked
+              ? "Form is locked — contact your institution admin"
+              : viewingTranslated
+                ? "Switch to English (EN) to add records"
+                : ""
+          }
           style={{
             display: "inline-flex", alignItems: "center", gap: 7,
-            background: lockInfo.is_locked ? "#94a3b8" : ACCENT,
+            background: readOnly ? "#94a3b8" : ACCENT,
             color: "#fff", border: "none", borderRadius: 10,
             padding: "10px 18px", fontSize: 13, fontWeight: 700,
-            cursor: lockInfo.is_locked ? "not-allowed" : "pointer",
-            boxShadow: lockInfo.is_locked ? "none" : `0 2px 8px ${ACCENT}40`,
+            cursor: readOnly ? "not-allowed" : "pointer",
+            boxShadow: readOnly ? "none" : `0 2px 8px ${ACCENT}40`,
           }}
         >
           <IcoPlus /> Add Record
@@ -933,7 +976,7 @@ export default function FormDataPage() {
                   <th style={thStyle}>#</th>
                   {schemaFields.map((f) => (
                     <th key={dbCol(f.column_name)} style={thStyle}>
-                      {f.label?.en || displayCol(f.column_name)}
+                      {f.label?.[lang] || f.label?.en || displayCol(f.column_name)}
                     </th>
                   ))}
                   <th style={thStyle}>Created</th>
@@ -976,28 +1019,28 @@ export default function FormDataPage() {
                     <td style={{ ...tdStyle, textAlign: "right" }}>
                       <div style={{ display: "inline-flex", gap: 6 }}>
                         <button
-                          onClick={() => { if (!lockInfo.is_locked) { setEditRecord(rec); setModalError(""); setModalOpen(true); } }}
-                          disabled={lockInfo.is_locked}
+                          onClick={() => { if (!readOnly) { setEditRecord(rec); setModalError(""); setModalOpen(true); } }}
+                          disabled={readOnly}
                           style={{
                             ...actionBtn,
-                            opacity: lockInfo.is_locked ? 0.35 : 1,
-                            cursor: lockInfo.is_locked ? "not-allowed" : "pointer",
+                            opacity: readOnly ? 0.35 : 1,
+                            cursor: readOnly ? "not-allowed" : "pointer",
                           }}
-                          title={lockInfo.is_locked ? "Form is locked" : "Edit"}
+                          title={lockInfo.is_locked ? "Form is locked" : viewingTranslated ? "Switch to English (EN) to edit" : "Edit"}
                         >
                           <IcoEdit />
                         </button>
                         <button
-                          onClick={() => { if (!lockInfo.is_locked) setDeleteTarget(rec); }}
-                          disabled={lockInfo.is_locked}
+                          onClick={() => { if (!readOnly) setDeleteTarget(rec); }}
+                          disabled={readOnly}
                           style={{
                             ...actionBtn,
-                            color: lockInfo.is_locked ? "#94a3b8" : "#dc2626",
-                            borderColor: lockInfo.is_locked ? "#e2e8f0" : "#fecaca",
-                            opacity: lockInfo.is_locked ? 0.35 : 1,
-                            cursor: lockInfo.is_locked ? "not-allowed" : "pointer",
+                            color: readOnly ? "#94a3b8" : "#dc2626",
+                            borderColor: readOnly ? "#e2e8f0" : "#fecaca",
+                            opacity: readOnly ? 0.35 : 1,
+                            cursor: readOnly ? "not-allowed" : "pointer",
                           }}
-                          title={lockInfo.is_locked ? "Form is locked" : "Delete"}
+                          title={lockInfo.is_locked ? "Form is locked" : viewingTranslated ? "Switch to English (EN) to delete" : "Delete"}
                         >
                           <IcoTrash />
                         </button>

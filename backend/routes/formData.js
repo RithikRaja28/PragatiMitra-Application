@@ -3,7 +3,7 @@
 const express = require("express");
 const { verifyToken } = require("../middleware/auth");
 const logger = require("../utils/logger");
-const { translateRow } = require("../services/translationService");
+const { translateRow, resolveTranslationMode } = require("../services/translationService");
 
 const router = express.Router();
 router.use(verifyToken);
@@ -80,6 +80,16 @@ function activeFields(schemaRow) {
   });
 }
 
+/* Map each field's DB column → its resolved translation mode
+   (transliterate | translate | none). Drives translateRow(). */
+function buildFieldModes(fields) {
+  const modes = {};
+  for (const f of fields) {
+    modes[dbCol(f.column_name)] = resolveTranslationMode(f);
+  }
+  return modes;
+}
+
 /* ─────────────────────────────────────────────────────────────────────
    GET /api/form-data/:formName/records
    Returns English records by default. Pass ?language=hi for Hindi rows.
@@ -154,6 +164,7 @@ router.post("/:formName/records", async (req, res) => {
 
     const fields = activeFields(schema);
     const fieldCols = fields.map((f) => dbCol(f.column_name));
+    const fieldModes = buildFieldModes(fields);
     const formYear = Number(year) || schema.year;
     const departmentId = req.user.departmentId || null;
     const createdBy = req.user.userId || null;
@@ -179,7 +190,7 @@ router.post("/:formName/records", async (req, res) => {
         try {
           await ensureSourceRowIdColumn(pool, tableName);
 
-          const hiData = await translateRow(data);
+          const hiData = await translateRow(data, fieldModes);
           const hiStdVals = [formName, institutionId, departmentId, formYear, schema.id, "hi", createdBy];
           const hiFieldVals = fieldCols.map((col) => hiData[col] ?? null);
           const hiAllCols = [...stdCols, ...fieldCols, "source_row_id"];
@@ -234,6 +245,7 @@ router.put("/:formName/records/:id", async (req, res) => {
 
     const fields = activeFields(schema);
     const fieldCols = fields.map((f) => dbCol(f.column_name));
+    const fieldModes = buildFieldModes(fields);
 
     let idx = 1;
     const setClauses = fieldCols.map((col) => `${col} = $${idx++}`);
@@ -259,7 +271,7 @@ router.put("/:formName/records/:id", async (req, res) => {
       try {
         await ensureSourceRowIdColumn(pool, tableName);
 
-        const hiData = await translateRow(data);
+        const hiData = await translateRow(data, fieldModes);
         let hidx = 1;
         const hiSetClauses = fieldCols.map((col) => `${col} = $${hidx++}`);
         hiSetClauses.push(`updated_at = now()`);
