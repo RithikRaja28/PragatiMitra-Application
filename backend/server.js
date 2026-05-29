@@ -31,6 +31,8 @@ const lookupRoutes                = require("./routes/lookup");
 const auditLogRoutes              = require("./routes/auditLogs");
 const notificationTemplatesRouter = require("./routes/notificationTemplates");
 const radiologyRoutes             = require("./routes/radiology");   // ← radiology
+const formImportExport            = require("./routes/formimportexport");
+
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -131,6 +133,7 @@ app.use("/api/notification-templates", notificationTemplatesRouter);
 app.use("/api/radiology",              radiologyRoutes);   // ← radiology mounted
 app.use("/api/forms",                  require("./routes/forms"));
 app.use("/api/form-data",              require("./routes/formData"));
+app.use("/api/form-data", formImportExport);
 /* ─── Global error handler (must be last) ───────────────────── */
 app.use(errorHandler);
 
