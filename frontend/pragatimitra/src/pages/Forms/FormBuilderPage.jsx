@@ -341,6 +341,9 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
     description: "",
     share_table: false,
     year:        CURRENT_YEAR,
+    // Form-level Hindi translation toggle. Default ON (preserves behavior);
+    // for edit/adapt seed from the form's current value when available.
+    translate_to_hindi: (isEdit || isAdapt) ? (initialData?.translate_to_hindi ?? true) : true,
   });
   const [basicsErrors, setBasicsErrors] = useState({});
 
@@ -416,6 +419,9 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
           applySchema(data.schema.schema, data.schema.year);
           if (data.schema.used_column_names?.length) {
             setUsedColumnNames(new Set(data.schema.used_column_names));
+          }
+          if (typeof data.translate_to_hindi === "boolean") {
+            setBasics((b) => ({ ...b, translate_to_hindi: data.translate_to_hindi }));
           }
         } else {
           setColsError(data.message || "Could not load schema.");
@@ -571,7 +577,7 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
       if (isCreate) {
         res = await apiFetch("/api/forms", {
           method: "POST",
-          body: JSON.stringify({ form_name: identifier, share_table: basics.share_table, schema, year: basics.year }),
+          body: JSON.stringify({ form_name: identifier, share_table: basics.share_table, schema, year: basics.year, translate_to_hindi: basics.translate_to_hindi }),
         });
       } else if (isAdapt) {
         res = await apiFetch("/api/forms/adopt", {
@@ -581,7 +587,7 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
       } else {
         res = await apiFetch(`/api/forms/${initialData.form_name}/schema`, {
           method: "PUT",
-          body: JSON.stringify({ schema, year: initialData.year || basics.year }),
+          body: JSON.stringify({ schema, year: initialData.year || basics.year, translate_to_hindi: basics.translate_to_hindi }),
         });
       }
 
@@ -921,6 +927,29 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
                 <ReviewRow label="Shared Template" value={basics.share_table ? "Yes — available to all institutions" : "No — private to this institution"} />
               )}
             </ReviewSection>
+
+            {/* Language Configuration — per-form Hindi translation toggle.
+                Hidden in adapt mode (the template's existing setting applies). */}
+            {!isAdapt && (
+              <ReviewSection title="Language Configuration">
+                <label style={{ display: "flex", alignItems: "flex-start", gap: 12, cursor: "pointer" }}>
+                  <input
+                    type="checkbox"
+                    checked={basics.translate_to_hindi}
+                    onChange={(e) => setBasics((b) => ({ ...b, translate_to_hindi: e.target.checked }))}
+                    style={{ accentColor: ACCENT, width: 16, height: 16, marginTop: 1, flexShrink: 0 }}
+                  />
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: "#1e293b" }}>Translate submitted data to Hindi</div>
+                    <div style={{ fontSize: 12, color: "#64748b", marginTop: 3, lineHeight: 1.5 }}>
+                      When enabled, submitted records will automatically create Hindi language records using the existing
+                      translation/transliteration system. When disabled, only the original English record is stored — no
+                      translation is performed.
+                    </div>
+                  </div>
+                </label>
+              </ReviewSection>
+            )}
 
             <ReviewSection title={`Schema Architecture Preview · ${activeFields.length} field${activeFields.length !== 1 ? "s" : ""}`}>
               {activeFields.length === 0 ? (

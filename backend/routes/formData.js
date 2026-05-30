@@ -21,6 +21,22 @@ function validateFormName(name) {
   return /^[a-z][a-z0-9_]*$/.test(name);
 }
 
+/* Form-level Hindi translation toggle (table_list.translate_to_hindi).
+   When FALSE, the entire Hindi pipeline is skipped: no Google Translate /
+   transliteration call and no Hindi mirror row. Defaults to TRUE when the
+   row/column is missing so existing forms behave exactly as before. */
+async function isHindiTranslationEnabled(pool, formName) {
+  try {
+    const { rows } = await pool.query(
+      `SELECT COALESCE(translate_to_hindi, true) AS enabled FROM table_list WHERE form_name = $1`,
+      [formName]
+    );
+    return rows.length ? rows[0].enabled !== false : true;
+  } catch {
+    return true; // never block a submission because a metadata read failed
+  }
+}
+
 function dbCol(col) {
   return col.trim().toLowerCase().replace(/\s+/g, "_");
 }
@@ -214,8 +230,10 @@ router.post("/:formName/records", async (req, res) => {
     );
     const enRow = rows[0];
 
-    // Only auto-generate Hindi row for English submissions
-    if (language === "en") {
+    // Only auto-generate a Hindi row for English submissions AND when this
+    // form has the Hindi translation toggle enabled. When disabled we store
+    // only the English row — no translation/transliteration API call is made.
+    if (language === "en" && await isHindiTranslationEnabled(pool, formName)) {
       const tableName = `${formName}_records`;
       setImmediate(async () => {
         try {
@@ -299,27 +317,31 @@ router.put("/:formName/records/:id", async (req, res) => {
     if (!rows.length)
       return res.status(404).json({ success: false, message: "Record not found." });
 
-    // Asynchronously update linked Hindi row
-    const tableName = `${formName}_records`;
-    setImmediate(async () => {
-      try {
-        await ensureSourceRowIdColumn(pool, tableName);
+    // Asynchronously update the linked Hindi row — only when this form has
+    // Hindi translation enabled. When disabled, no Hindi row exists and no
+    // translation pipeline runs.
+    if (await isHindiTranslationEnabled(pool, formName)) {
+      const tableName = `${formName}_records`;
+      setImmediate(async () => {
+        try {
+          await ensureSourceRowIdColumn(pool, tableName);
 
-        const hiData = await translateRow(data, fieldModes);
-        let hidx = 1;
-        const hiSetClauses = fieldCols.map((col) => `${col} = $${hidx++}`);
-        hiSetClauses.push(`updated_at = now()`);
-        const hiVals = [...fieldCols.map((col) => hiData[col] ?? null), id];
+          const hiData = await translateRow(data, fieldModes);
+          let hidx = 1;
+          const hiSetClauses = fieldCols.map((col) => `${col} = $${hidx++}`);
+          hiSetClauses.push(`updated_at = now()`);
+          const hiVals = [...fieldCols.map((col) => hiData[col] ?? null), id];
 
-        await pool.query(
-          `UPDATE ${tableName} SET ${hiSetClauses.join(", ")}
-           WHERE source_row_id = $${hidx}`,
-          hiVals
-        );
-      } catch (err) {
-        logger.error(`Hindi row update failed for ${formName}/${id}`, { stack: err.stack });
-      }
-    });
+          await pool.query(
+            `UPDATE ${tableName} SET ${hiSetClauses.join(", ")}
+             WHERE source_row_id = $${hidx}`,
+            hiVals
+          );
+        } catch (err) {
+          logger.error(`Hindi row update failed for ${formName}/${id}`, { stack: err.stack });
+        }
+      });
+    }
 
     return res.json({ success: true, record: rows[0], message: "Record updated successfully." });
   } catch (err) {

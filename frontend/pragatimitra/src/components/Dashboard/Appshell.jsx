@@ -109,12 +109,12 @@ const CSS = `
   }
   @media (max-width: 640px) { .sh-logo-name { display: none; } }
 
-  /* Search wrapper — fixed center column (logo/actions take equal sides) */
+  /* Search wrapper — sits on the right, just before the action cluster */
   .sh-search-wrap {
     position: relative;
-    flex: 0 1 560px;
-    width: 560px;
-    max-width: 560px;
+    flex: 0 0 340px;
+    width: 340px;
+    max-width: 340px;
   }
   @media (max-width: 900px) { .sh-search-wrap { flex: 1 1 auto; width: auto; } }
 
@@ -212,8 +212,8 @@ const CSS = `
     border-radius: 3px; padding: 1px 5px; color: #64748b;
   }
 
-  /* Action buttons — right third of the 3-column header */
-  .sh-actions { display: flex; align-items: center; gap: 6px; flex: 1 1 0; justify-content: flex-end; }
+  /* Action buttons — far right, after the search */
+  .sh-actions { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
 
   .sh-icon-btn {
     display: flex; align-items: center; justify-content: center;

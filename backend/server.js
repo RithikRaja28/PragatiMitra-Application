@@ -99,6 +99,13 @@ pool.connect((err, client, release) => {
 // Make pool available to all route handlers via req.app.locals.pool
 app.locals.pool = pool;
 
+/* ── Form-level Hindi translation toggle: ensure the metadata column exists.
+   NOT NULL DEFAULT TRUE backfills every existing form to TRUE, so current
+   auto-translate behavior is preserved (backward compatible). ── */
+pool
+  .query(`ALTER TABLE table_list ADD COLUMN IF NOT EXISTS translate_to_hindi BOOLEAN NOT NULL DEFAULT TRUE`)
+  .catch((e) => logger.error("Failed to ensure table_list.translate_to_hindi column", { stack: e.stack }));
+
 /* ── Form deadline auto-lock: ensure columns, then start periodic checker ── */
 const { ensureDeadlineColumns, startDeadlineScheduler } = require("./services/formDeadlineService");
 ensureDeadlineColumns(pool)
