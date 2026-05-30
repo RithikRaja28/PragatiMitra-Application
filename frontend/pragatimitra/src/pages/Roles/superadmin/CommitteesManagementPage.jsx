@@ -1,9 +1,4 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-<<<<<<< HEAD
-import { useApi } from "../../../hooks/useApi";
-import FormScreen from "../../../components/shared/FormScreen";
-import { S, Toast, isAuthError, formatDate } from "../../../components/shared/formUtils";
-=======
 import { Landmark, Pencil, Trash2 } from "lucide-react";
 import { useApi } from "../../../hooks/useApi";
 import FormScreen from "../../../components/shared/FormScreen";
@@ -11,7 +6,6 @@ import { S, Toast, isAuthError } from "../../../components/shared/formUtils";
 import PageHeader from "../../../components/shared/PageHeader";
 import { ActionButton, ActionButtonGroup } from "../../../components/shared/ActionButtons";
 import { StatusBadge, tableCardStyle } from "../../../components/shared/ui";
->>>>>>> 2dfc12740a97cede23f7be06dd88218fc7713123
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { t } from "../../../i18n/translations";
 
@@ -32,11 +26,8 @@ function Overlay({ children }) {
         position: "fixed",
         inset: 0,
         background: "rgba(15,23,42,0.48)",
-<<<<<<< HEAD
-=======
         backdropFilter: "blur(2px)",
         WebkitBackdropFilter: "blur(2px)",
->>>>>>> 2dfc12740a97cede23f7be06dd88218fc7713123
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
@@ -231,11 +222,7 @@ function CommitteeForm({
       pageTitle={t("Committees", lang)}
       formTitle={isEdit ? t("Edit Committee", lang) : t("New Committee", lang)}
       formSubtitle="Fill in the details below."
-<<<<<<< HEAD
-      icon={isEdit ? "✏️" : "🏛️"}
-=======
       icon={isEdit ? <Pencil size={20} color="#d97706" strokeWidth={2} /> : <Landmark size={20} color="#2563eb" strokeWidth={2} />}
->>>>>>> 2dfc12740a97cede23f7be06dd88218fc7713123
       iconBg={isEdit ? "#fef3c7" : "#eff6ff"}
       onBack={onBack}
       onSubmit={handleSubmit}
@@ -267,11 +254,7 @@ function CommitteeForm({
       )}
 
       {/* Finance Year + Committee Type */}
-<<<<<<< HEAD
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-=======
       <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 14 }}>
->>>>>>> 2dfc12740a97cede23f7be06dd88218fc7713123
         <div>
           <label style={S.label}>{t("Finance Year", lang)}</label>
           <select
@@ -311,11 +294,7 @@ function CommitteeForm({
       </div>
 
       {/* Position + Contact */}
-<<<<<<< HEAD
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-=======
       <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 14 }}>
->>>>>>> 2dfc12740a97cede23f7be06dd88218fc7713123
         <div>
           <label style={S.label}>{t("Position", lang)}</label>
           <select
@@ -391,18 +370,10 @@ function DeleteModal({ committee, onClose, onConfirm, deleting, getTypeLabel }) 
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-<<<<<<< HEAD
-              fontSize: 26,
-              margin: "0 auto 16px",
-            }}
-          >
-            🗑️
-=======
               margin: "0 auto 16px",
             }}
           >
             <Trash2 size={26} strokeWidth={1.8} color="#dc2626" />
->>>>>>> 2dfc12740a97cede23f7be06dd88218fc7713123
           </div>
           <div
             style={{ fontSize: 17, fontWeight: 700, color: "#1e293b", marginBottom: 8 }}
@@ -441,305 +412,12 @@ function DeleteModal({ committee, onClose, onConfirm, deleting, getTypeLabel }) 
   );
 }
 
-<<<<<<< HEAD
-/* ─── Committee Card ─────────────────────────────────────────── */
-function CommitteeCard({
-  committee,
-  onEdit,
-  onToggleStatus,
-  onDelete,
-  isToggling,
-  getTypeLabel,
-  getPosLabel,
-}) {
-  const { lang } = useLanguage();
-  const isActive = committee.status === "ACTIVE";
-  const colors = TYPE_COLORS[committee.committee_type] ?? DEFAULT_COLOR;
-  const members = Array.isArray(committee.members) ? committee.members : [];
-
-  return (
-    <div
-      style={{
-        background: "#fff",
-        border: `1px solid ${isActive ? "rgba(0,0,0,0.07)" : "#f1f5f9"}`,
-        borderRadius: 14,
-        padding: "22px 24px",
-        boxShadow: "0 1px 4px rgba(0,0,0,0.05)",
-        opacity: isActive ? 1 : 0.75,
-        display: "flex",
-        flexDirection: "column",
-      }}
-    >
-      {/* Top row */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "flex-start",
-          justifyContent: "space-between",
-          marginBottom: 14,
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
-          <div
-            style={{
-              minWidth: 44,
-              height: 44,
-              borderRadius: 11,
-              background: colors.bg,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontSize: 9,
-              fontWeight: 800,
-              color: colors.text,
-              letterSpacing: 0.3,
-              padding: "0 6px",
-              textAlign: "center",
-              lineHeight: 1.2,
-            }}
-          >
-            {getTypeLabel(committee.committee_type)
-              .split(" ")
-              .map((w) => w[0])
-              .join("")
-              .slice(0, 4)}
-          </div>
-          <div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: "#1e293b" }}>
-              {getTypeLabel(committee.committee_type)}
-            </div>
-            <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>
-              {committee.finance_year} · {getPosLabel(committee.position)}
-            </div>
-          </div>
-        </div>
-        <span
-          style={{
-            padding: "3px 10px",
-            borderRadius: 20,
-            fontSize: 11,
-            fontWeight: 600,
-            background: isActive ? "#d1fae5" : "#f1f5f9",
-            color: isActive ? "#065f46" : "#94a3b8",
-            whiteSpace: "nowrap",
-            flexShrink: 0,
-            marginLeft: 8,
-          }}
-        >
-          {isActive ? t("Active", lang) : t("Inactive", lang)}
-        </span>
-      </div>
-
-      {/* Stats */}
-      <div
-        style={{
-          display: "flex",
-          gap: 16,
-          marginBottom: 14,
-          padding: "12px 14px",
-          background: "#f8fafc",
-          borderRadius: 10,
-          flex: 1,
-        }}
-      >
-        <div>
-          <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 2 }}>{t("Members", lang)}</div>
-          <div style={{ fontSize: 20, fontWeight: 700, color: "#1e293b" }}>
-            {members.length}
-          </div>
-        </div>
-        {committee.contact && (
-          <>
-            <div style={{ width: 1, background: "#e2e8f0" }} />
-            <div>
-              <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 2 }}>{t("Contact", lang)}</div>
-              <div style={{ fontSize: 12, fontWeight: 600, color: "#1e293b" }}>
-                {committee.contact}
-              </div>
-            </div>
-          </>
-        )}
-        <div style={{ marginLeft: "auto" }}>
-          <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 2 }}>{t("Added", lang)}</div>
-          <div style={{ fontSize: 12, fontWeight: 500, color: "#64748b" }}>
-            {formatDate(committee.created_at)}
-          </div>
-        </div>
-      </div>
-
-      {/* Member preview */}
-      {members.length > 0 && (
-        <div style={{ marginBottom: 14 }}>
-          {members.slice(0, 3).map((m, i) => (
-            <div
-              key={i}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                padding: "5px 0",
-                borderBottom:
-                  i < Math.min(members.length, 3) - 1 ? "1px solid #f1f5f9" : "none",
-              }}
-            >
-              <div
-                style={{
-                  width: 26,
-                  height: 26,
-                  borderRadius: 8,
-                  background: colors.bg,
-                  color: colors.text,
-                  fontSize: 10,
-                  fontWeight: 700,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  flexShrink: 0,
-                }}
-              >
-                {m.name
-                  .split(" ")
-                  .map((w) => w[0])
-                  .join("")
-                  .slice(0, 2)
-                  .toUpperCase()}
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div
-                  style={{
-                    fontSize: 12,
-                    fontWeight: 600,
-                    color: "#1e293b",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {m.name}
-                </div>
-                <div style={{ fontSize: 10, color: "#94a3b8" }}>{m.designation}</div>
-              </div>
-            </div>
-          ))}
-          {members.length > 3 && (
-            <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 6, paddingLeft: 34 }}>
-              +{members.length - 3} more member{members.length - 3 > 1 ? "s" : ""}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Actions */}
-      <div style={{ display: "flex", gap: 8 }}>
-        <button
-          onClick={() => onEdit(committee)}
-          style={{
-            flex: 1,
-            padding: "8px 0",
-            borderRadius: 8,
-            border: "1.5px solid #e2e8f0",
-            background: "#fff",
-            fontSize: 12,
-            fontWeight: 600,
-            color: "#2563eb",
-            cursor: "pointer",
-          }}
-        >
-          {t("Edit", lang)}
-        </button>
-        <button
-          onClick={() => onToggleStatus(committee)}
-          disabled={isToggling}
-          style={{
-            flex: 1,
-            padding: "8px 0",
-            borderRadius: 8,
-            border: `1.5px solid ${isActive ? "#fee2e2" : "#bbf7d0"}`,
-            background: "#fff",
-            fontSize: 12,
-            fontWeight: 600,
-            color: isActive ? "#dc2626" : "#059669",
-            cursor: isToggling ? "not-allowed" : "pointer",
-            opacity: isToggling ? 0.6 : 1,
-          }}
-        >
-          {isToggling ? "…" : isActive ? t("Deactivate", lang) : t("Activate", lang)}
-        </button>
-        <button
-          onClick={() => onDelete(committee)}
-          style={{
-            width: 36,
-            padding: "8px 0",
-            borderRadius: 8,
-            border: "1.5px solid #fecaca",
-            background: "#fff",
-            fontSize: 14,
-            color: "#dc2626",
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-          title="Delete"
-        >
-          🗑
-        </button>
-      </div>
-    </div>
-  );
-}
-
-/* ─── Skeleton + Filter Select ───────────────────────────────── */
-function SkeletonCard() {
-  return (
-    <div
-      style={{
-        background: "#fff",
-        border: "1px solid rgba(0,0,0,0.07)",
-        borderRadius: 14,
-        padding: "22px 24px",
-      }}
-    >
-      {[55, 100, 70, 40, 85].map((w, i) => (
-        <div
-          key={i}
-          style={{
-            height: i === 1 ? 56 : 14,
-            width: `${w}%`,
-            background: "#f1f5f9",
-            borderRadius: 8,
-            marginBottom: 14,
-            animation: "pulse 1.4s ease-in-out infinite",
-          }}
-        />
-      ))}
-    </div>
-  );
-}
-
-=======
->>>>>>> 2dfc12740a97cede23f7be06dd88218fc7713123
 function FilterSelect({ value, onChange, children, minWidth = 160 }) {
   return (
     <select
       value={value}
       onChange={(e) => onChange(e.target.value)}
-<<<<<<< HEAD
-      style={{
-        padding: "8px 12px",
-        border: "1.5px solid #e2e8f0",
-        borderRadius: 9,
-        fontSize: 13,
-        fontWeight: 500,
-        color: "#1e293b",
-        background: "#fff",
-        outline: "none",
-        cursor: "pointer",
-        minWidth,
-      }}
-=======
       style={{ ...S.select(false), width: "auto", minWidth }}
->>>>>>> 2dfc12740a97cede23f7be06dd88218fc7713123
     >
       {children}
     </select>
@@ -1033,101 +711,6 @@ export default function CommitteeManagementPage() {
       {toast && <Toast message={toast.message} type={toast.type} />}
 
       {/* Page header */}
-<<<<<<< HEAD
-      <div
-        style={{
-          display: "flex",
-          alignItems: "flex-start",
-          justifyContent: "space-between",
-          marginBottom: 28,
-          flexWrap: "wrap",
-          gap: 16,
-        }}
-      >
-        <div>
-          <div
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 8,
-              background: "#0891b214",
-              borderRadius: 8,
-              padding: "4px 12px",
-              marginBottom: 12,
-            }}
-          >
-            <div
-              style={{ width: 7, height: 7, borderRadius: "50%", background: "#0891b2" }}
-            />
-            <span
-              style={{
-                fontSize: 11,
-                fontWeight: 600,
-                color: "#0891b2",
-                textTransform: "uppercase",
-                letterSpacing: 1,
-              }}
-            >
-              {t("Committee Management", lang)}
-            </span>
-          </div>
-          <h1
-            style={{
-              fontSize: 24,
-              fontWeight: 700,
-              color: "#1e293b",
-              letterSpacing: "-0.4px",
-              marginBottom: 6,
-            }}
-          >
-            {t("Management Committees", lang)}
-          </h1>
-          <p style={{ color: "#94a3b8", fontSize: 14 }}>
-            Configure governing bodies, councils, and committees for each finance year.
-          </p>
-        </div>
-
-        <div style={{ display: "flex", alignItems: "flex-end", gap: 12, flexWrap: "wrap" }}>
-          {isReady && !institutionsError && institutions.length > 0 && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              <span style={{ ...S.label, marginBottom: 4 }}>{t("Institution", lang)}</span>
-              <FilterSelect
-                value={selectedInstituteId ?? ""}
-                onChange={(v) => setSelectedInstituteId(v)}
-                minWidth={220}
-              >
-                {institutions.map((inst) => (
-                  <option key={inst.institution_id} value={inst.institution_id}>
-                    {inst.institution_name}
-                  </option>
-                ))}
-              </FilterSelect>
-            </div>
-          )}
-          {isReady && !institutionsError && institutions.length > 0 && (
-            <button
-              onClick={() => setFormView({ mode: "create", entity: null })}
-              style={{
-                padding: "10px 20px",
-                borderRadius: 10,
-                border: "none",
-                background: "#0891b2",
-                fontSize: 13,
-                fontWeight: 700,
-                color: "#fff",
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                gap: 7,
-                whiteSpace: "nowrap",
-              }}
-            >
-              <span style={{ fontSize: 18, lineHeight: 1 }}>+</span> {t("+ New Committee", lang)}
-            </button>
-          )}
-        </div>
-      </div>
-=======
       <PageHeader
         breadcrumb={[t("Home", lang), t("Committee Management", lang), t("Committees", lang)]}
         title={t("Management Committees", lang)}
@@ -1162,7 +745,6 @@ export default function CommitteeManagementPage() {
           </>
         }
       />
->>>>>>> 2dfc12740a97cede23f7be06dd88218fc7713123
 
       {institutionsError && (
         <div
@@ -1250,49 +832,6 @@ export default function CommitteeManagementPage() {
         </div>
       )}
 
-<<<<<<< HEAD
-      {/* Cards grid */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fill, minmax(310px, 1fr))",
-          gap: 16,
-        }}
-      >
-        {loadingMeta || loadingCommittees ? (
-          Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)
-        ) : filteredCommittees.length > 0 ? (
-          filteredCommittees.map((c) => (
-            <CommitteeCard
-              key={c.id}
-              committee={c}
-              onEdit={(item) => setFormView({ mode: "edit", entity: item })}
-              onToggleStatus={handleToggleStatus}
-              onDelete={(item) => { setDeletingItem(item); setConfirmDelete(true); }}
-              isToggling={togglingId === c.id}
-              getTypeLabel={getTypeLabel}
-              getPosLabel={getPosLabel}
-            />
-          ))
-        ) : (
-          isReady && (
-            <div
-              style={{
-                gridColumn: "1 / -1",
-                textAlign: "center",
-                padding: "64px 0",
-                color: "#94a3b8",
-              }}
-            >
-              <div style={{ fontSize: 36, marginBottom: 12 }}>🏛️</div>
-              <div
-                style={{ fontSize: 15, fontWeight: 600, color: "#64748b", marginBottom: 6 }}
-              >
-                {typeFilter !== "ALL" ||
-                yearFilter !== "ALL" ||
-                statusFilter !== "ALL" ||
-                searchQuery
-=======
       {/* ── Committees table ── */}
       <div style={tableCardStyle}>
         {loadingMeta || loadingCommittees ? (
@@ -1425,19 +964,11 @@ export default function CommitteeManagementPage() {
             <div style={{ textAlign: "center", padding: "64px 24px", color: "#94a3b8" }}>
               <div style={{ fontSize: 15, fontWeight: 600, color: "#64748b", marginBottom: 6 }}>
                 {typeFilter !== "ALL" || yearFilter !== "ALL" || statusFilter !== "ALL" || searchQuery
->>>>>>> 2dfc12740a97cede23f7be06dd88218fc7713123
                   ? "No committees match the current filters"
                   : "No committees yet"}
               </div>
               <div style={{ fontSize: 13 }}>
-<<<<<<< HEAD
-                {typeFilter === "ALL" &&
-                yearFilter === "ALL" &&
-                statusFilter === "ALL" &&
-                !searchQuery
-=======
                 {typeFilter === "ALL" && yearFilter === "ALL" && statusFilter === "ALL" && !searchQuery
->>>>>>> 2dfc12740a97cede23f7be06dd88218fc7713123
                   ? 'Click "New Committee" to add the first one.'
                   : "Try adjusting the filters above."}
               </div>

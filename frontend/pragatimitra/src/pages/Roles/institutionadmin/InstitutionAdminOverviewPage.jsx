@@ -3,20 +3,6 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell,
 } from "recharts";
-<<<<<<< HEAD
-import { useLanguage } from "../../../i18n/LanguageContext";
-import { t } from "../../../i18n/translations";
-
-const C = {
-  primary:   "#6366f1",
-  primaryLt: "#ede9fe",
-  primaryMid:"#818cf8",
-  text:      "#1e1b4b",
-  textMid:   "#4338ca",
-  textSub:   "#6b7280",
-  border:    "rgba(99,102,241,0.15)",
-  bg:        "#f5f3ff",
-=======
 import { Plus } from "lucide-react";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { t } from "../../../i18n/translations";
@@ -31,7 +17,6 @@ const C = {
   textSub:   "#64748b",
   border:    "rgba(37,99,235,0.12)",
   bg:        "#f8f9fb",
->>>>>>> 2dfc12740a97cede23f7be06dd88218fc7713123
   surface:   "#ffffff",
 };
 
@@ -101,30 +86,6 @@ export default function InstitutionAdminOverviewPage() {
       display: "flex", flexDirection: "column", gap: 14, background: C.bg, minHeight: "100vh" }}>
 
       {/* Header */}
-<<<<<<< HEAD
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
-        <div>
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 6,
-            background: C.primaryLt, borderRadius: 6, padding: "3px 11px", marginBottom: 8 }}>
-            <span style={{ width: 6, height: 6, borderRadius: "50%", background: C.primary }} />
-            <span style={{ fontSize: 10, fontWeight: 700, color: C.primary, textTransform: "uppercase", letterSpacing: "0.08em" }}>{t("Dashboard", lang)}</span>
-          </div>
-          <h1 style={{ fontSize: 22, fontWeight: 700, color: C.text, margin: 0, letterSpacing: "-0.4px" }}>{t("Institute Overview", lang)}</h1>
-          <p style={{ fontSize: 13, color: C.textSub, margin: "4px 0 0" }}>Annual Report 2026 — real-time progress</p>
-        </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <button style={{ background: C.primaryLt, border: `0.5px solid ${C.border}`, color: C.textMid,
-            borderRadius: 8, padding: "8px 14px", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>
-            {t("Export", lang)}
-          </button>
-          <button style={{ background: C.primary, border: "none", color: "#fff",
-            borderRadius: 8, padding: "8px 16px", fontSize: 11, fontWeight: 600, cursor: "pointer",
-            boxShadow: "0 2px 8px rgba(99,102,241,0.3)" }}>
-            ✦ {t("New Report", lang)}
-          </button>
-        </div>
-      </div>
-=======
       <PageHeader
         breadcrumb={[t("Home", lang), t("Institution", lang), t("Dashboard", lang)]}
         title={t("Institute Overview", lang)}
@@ -143,7 +104,6 @@ export default function InstitutionAdminOverviewPage() {
           </>
         }
       />
->>>>>>> 2dfc12740a97cede23f7be06dd88218fc7713123
 
       {/* Stat cards */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 10 }}>

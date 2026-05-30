@@ -1,16 +1,6 @@
 import React, { useState, useCallback } from "react";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { t } from "../../../i18n/translations";
-<<<<<<< HEAD
-
-const C = {
-  primary:   "#059669",
-  primaryLt: "#d1fae5",
-  text:      "#052e16",
-  textSub:   "#6b7280",
-  border:    "rgba(5,150,105,0.12)",
-  bg:        "#f0fdf4",
-=======
 import PageHeader from "../../../components/shared/PageHeader";
 import { S } from "../../../components/shared/formUtils";
 
@@ -21,7 +11,6 @@ const C = {
   textSub:   "#64748b",
   border:    "rgba(37,99,235,0.12)",
   bg:        "#f8f9fb",
->>>>>>> 2dfc12740a97cede23f7be06dd88218fc7713123
   surface:   "#ffffff",
 };
 
@@ -60,14 +49,7 @@ function ReassignModal({ task, onClose, onReassign }) {
         <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#64748b",
           textTransform: "uppercase", letterSpacing: 0.7, marginBottom: 6 }}>{t("Assign To", lang)}</label>
         <select value={newAssignee} onChange={e => setNewAssignee(e.target.value)}
-<<<<<<< HEAD
-          style={{ width: "100%", padding: "9px 12px", border: "1.5px solid #e2e8f0",
-            borderRadius: 9, fontSize: 13, color: "#1e293b", outline: "none",
-            background: "#fff", fontFamily: "'Plus Jakarta Sans', sans-serif",
-            appearance: "none", boxSizing: "border-box", cursor: "pointer" }}>
-=======
           style={S.select(false)}>
->>>>>>> 2dfc12740a97cede23f7be06dd88218fc7713123
           {DEPT_USERS.map(u => <option key={u} value={u}>{u}</option>)}
         </select>
         <div style={{ display: "flex", gap: 8, marginTop: 20, justifyContent: "flex-end" }}>
@@ -136,26 +118,6 @@ export default function TaskOverviewPage() {
       )}
 
       {/* Header */}
-<<<<<<< HEAD
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 20 }}>
-        <div>
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 6,
-            background: C.primaryLt, borderRadius: 6, padding: "3px 11px", marginBottom: 8 }}>
-            <span style={{ width: 6, height: 6, borderRadius: "50%", background: C.primary }} />
-            <span style={{ fontSize: 10, fontWeight: 700, color: C.primary, textTransform: "uppercase", letterSpacing: "0.08em" }}>{t("Task Overview", lang)}</span>
-          </div>
-          <h1 style={{ fontSize: 22, fontWeight: 700, color: C.text, margin: 0, letterSpacing: "-0.4px" }}>{t("Department Task Overview", lang)}</h1>
-          <p style={{ fontSize: 13, color: C.textSub, margin: "4px 0 0" }}>All section assignments, statuses and deadlines for Samhita Siddhanta</p>
-        </div>
-        {overdueCount > 0 && (
-          <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "8px 14px",
-            background: "#fff1f2", border: "0.5px solid #fecdd3", borderRadius: 9 }}>
-            <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#dc2626" }} />
-            <span style={{ fontSize: 12, fontWeight: 600, color: "#991b1b" }}>{overdueCount} overdue task{overdueCount > 1 ? "s" : ""}</span>
-          </div>
-        )}
-      </div>
-=======
       <PageHeader
         breadcrumb={[t("Home", lang), t("Department", lang), t("Task Workflow", lang)]}
         title={t("Department Task Overview", lang)}
@@ -170,7 +132,6 @@ export default function TaskOverviewPage() {
           )
         }
       />
->>>>>>> 2dfc12740a97cede23f7be06dd88218fc7713123
 
       {/* Filters */}
       <div style={{ display: "flex", gap: 10, marginBottom: 16, background: C.surface,
@@ -180,24 +141,12 @@ export default function TaskOverviewPage() {
           style={{ flex: 1, padding: "7px 12px", borderRadius: 8, border: `1px solid ${C.border}`,
             outline: "none", fontSize: 13, color: C.text, fontFamily: "'Plus Jakarta Sans', sans-serif" }} />
         <select value={filters.assignee} onChange={e => setFilters(f => ({ ...f, assignee: e.target.value }))}
-<<<<<<< HEAD
-          style={{ padding: "7px 28px 7px 12px", borderRadius: 8, border: `1px solid ${C.border}`,
-            outline: "none", fontSize: 13, color: C.text, background: "#fff",
-            fontFamily: "'Plus Jakarta Sans', sans-serif", appearance: "none", cursor: "pointer" }}>
-=======
           style={{ ...S.select(false), width: "auto", minWidth: 160 }}>
->>>>>>> 2dfc12740a97cede23f7be06dd88218fc7713123
           <option value="">{t("All Assignees", lang)}</option>
           {DEPT_USERS.map(u => <option key={u} value={u}>{u}</option>)}
         </select>
         <select value={filters.status} onChange={e => setFilters(f => ({ ...f, status: e.target.value }))}
-<<<<<<< HEAD
-          style={{ padding: "7px 28px 7px 12px", borderRadius: 8, border: `1px solid ${C.border}`,
-            outline: "none", fontSize: 13, color: C.text, background: "#fff",
-            fontFamily: "'Plus Jakarta Sans', sans-serif", appearance: "none", cursor: "pointer" }}>
-=======
           style={{ ...S.select(false), width: "auto", minWidth: 160 }}>
->>>>>>> 2dfc12740a97cede23f7be06dd88218fc7713123
           <option value="">{t("All Statuses", lang)}</option>
           <option value="In Progress">{t("In Progress", lang)}</option>
           <option value="Under Review">{t("Under Review", lang)}</option>

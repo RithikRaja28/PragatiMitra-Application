@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { FileText, Archive, Search } from "lucide-react";
 import { useApi } from "../../hooks/useApi";
+import { useAuth } from "../../store/AuthContext";
 import { Toast, isAuthError } from "../../components/shared/formUtils";
 import PageHeader from "../../components/shared/PageHeader";
 import { ActionButton as StdActionButton, ActionButtonGroup } from "../../components/shared/ActionButtons";
@@ -71,6 +72,21 @@ function IconSearch() {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+    </svg>
+  );
+}
+function IconDownload() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="8 17 12 21 16 17" /><line x1="12" y1="12" x2="12" y2="21" />
+      <path d="M20.88 18.09A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.29" />
+    </svg>
+  );
+}
+function IconChevronDown() {
+  return (
+    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="6 9 12 15 18 9" />
     </svg>
   );
 }
@@ -166,6 +182,97 @@ function ActionButton({ icon, label, onClick, title, disabled, iconOnly, variant
     >
       {label}
     </StdActionButton>
+  );
+}
+
+/* ── Export dropdown — CSV / Excel, scoped to this institution (all depts) ── */
+function ExportDropdown({ formName, accessToken }) {
+  const [open, setOpen]         = useState(false);
+  const [exporting, setExporting] = useState(null); // "csv" | "xlsx" | null
+
+  async function download(format) {
+    setOpen(false);
+    setExporting(format);
+    try {
+      const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
+      const res = await fetch(
+        `${API_BASE}/api/form-data/${formName}/export?format=${format}`,
+        { headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {} }
+      );
+      if (!res.ok) return;
+      const blob = await res.blob();
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement("a");
+      a.href     = url;
+      a.download = `${formName}_all.${format}`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Export error:", err);
+    } finally {
+      setExporting(null);
+    }
+  }
+
+  return (
+    <div style={{ position: "relative" }}>
+      <button
+        onClick={() => !exporting && setOpen((v) => !v)}
+        disabled={!!exporting}
+        title="Export all department records for this form"
+        style={{
+          display: "inline-flex", alignItems: "center", gap: 5,
+          background: exporting ? "#f1f5f9" : "#fff",
+          color: ACCENT, border: `1px solid ${ACCENT}40`,
+          borderRadius: 7, padding: "0 10px", height: 30,
+          fontSize: 11.5, fontWeight: 700, cursor: exporting ? "not-allowed" : "pointer",
+          opacity: exporting ? 0.7 : 1, whiteSpace: "nowrap",
+          transition: "background .15s, border-color .15s",
+        }}
+        onMouseEnter={(e) => { if (!exporting) { e.currentTarget.style.background = ACCENT + "12"; e.currentTarget.style.borderColor = ACCENT; }}}
+        onMouseLeave={(e) => { e.currentTarget.style.background = "#fff"; e.currentTarget.style.borderColor = ACCENT + "40"; }}
+      >
+        <IconDownload />
+        {exporting ? `Exporting…` : "Export"}
+        {!exporting && <IconChevronDown />}
+      </button>
+
+      {open && (
+        <>
+          <div style={{ position: "fixed", inset: 0, zIndex: 99 }} onClick={() => setOpen(false)} />
+          <div style={{
+            position: "absolute", top: "calc(100% + 5px)", right: 0, zIndex: 100,
+            background: "#fff", borderRadius: 9, border: "1px solid #e2e8f0",
+            boxShadow: "0 8px 24px rgba(0,0,0,0.10)", minWidth: 170, overflow: "hidden",
+          }}>
+            <div style={{ padding: "6px 12px 4px", fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.5 }}>
+              All departments
+            </div>
+            {[
+              { format: "csv",  label: "Download CSV" },
+              { format: "xlsx", label: "Download Excel" },
+            ].map(({ format, label }) => (
+              <button
+                key={format}
+                onClick={() => download(format)}
+                style={{
+                  display: "flex", alignItems: "center", gap: 8,
+                  width: "100%", padding: "9px 14px",
+                  background: "none", border: "none",
+                  textAlign: "left", fontSize: 12.5,
+                  color: "#1e293b", cursor: "pointer", fontWeight: 500,
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = "#f0f9ff")}
+                onMouseLeave={(e) => (e.currentTarget.style.background = "none")}
+              >
+                <IconDownload />
+                {label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 
@@ -361,7 +468,8 @@ function DeadlineModal({ form, onClose, onSaved, showToast }) {
    InstituteFormManagementPage
 ═══════════════════════════════════════════════════════════════════ */
 export default function InstituteFormManagementPage() {
-  const { apiFetch } = useApi();
+  const { apiFetch }    = useApi();
+  const { accessToken } = useAuth();
 
   const [view, setView]               = useState("list");
   const [builderMode, setBuilderMode] = useState(null);
@@ -684,6 +792,10 @@ export default function InstituteFormManagementPage() {
                             label="Deadline"
                             onClick={() => setDeadlineForm(form)}
                             title="Manage this form's deadline for your institution"
+                          />
+                          <ExportDropdown
+                            formName={form.form_name}
+                            accessToken={accessToken}
                           />
                           <ActionButton
                             icon={<IconEye />}

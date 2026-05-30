@@ -1,9 +1,6 @@
 "use client";
 import { useEffect, useRef, useState, useCallback } from "react";
-<<<<<<< HEAD
-=======
 import { AlertTriangle } from "lucide-react";
->>>>>>> 2dfc12740a97cede23f7be06dd88218fc7713123
 
 // ─── API base ─────────────────────────────────────────────────────────────────
 // Update this to match your backend PORT (default 3000)
@@ -341,11 +338,7 @@ function DbErrorScreen({ error, onRetry }) {
       border: "0.5px solid var(--color-border-tertiary)",
       borderRadius: "var(--border-radius-lg)",
     }}>
-<<<<<<< HEAD
-      <div style={{ fontSize: 36, marginBottom: 12 }}>⚠️</div>
-=======
       <AlertTriangle size={36} strokeWidth={1.6} color="#d97706" style={{ marginBottom: 12 }} />
->>>>>>> 2dfc12740a97cede23f7be06dd88218fc7713123
       <div style={{ fontSize: 17, fontWeight: 600, color: "var(--color-text-primary)", marginBottom: 8 }}>
         Cannot connect to backend
       </div>

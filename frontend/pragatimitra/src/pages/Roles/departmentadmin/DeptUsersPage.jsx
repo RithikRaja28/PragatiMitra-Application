@@ -1,12 +1,9 @@
 import React, { useState, useCallback } from "react";
 import FormScreen from "../../../components/shared/FormScreen";
 import { S, Toast } from "../../../components/shared/formUtils";
-<<<<<<< HEAD
-=======
 import PageHeader from "../../../components/shared/PageHeader";
 import { ActionButton, ActionButtonGroup } from "../../../components/shared/ActionButtons";
 import { StatusBadge } from "../../../components/shared/ui";
->>>>>>> 2dfc12740a97cede23f7be06dd88218fc7713123
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { t } from "../../../i18n/translations";
 
@@ -23,14 +20,6 @@ const C = {
 const DEPT_ROLES = ["department_nodal_officer", "contributor", "reviewer"];
 const DEPT_SECTIONS = ["Ayurvedic Principles", "Clinical Studies", "Research Publications", "Lab Reports", "Annual Statistics", "Patient Case Studies"];
 
-<<<<<<< HEAD
-const STATUS_STYLE = {
-  active:   { bg: "#d1fae5", color: "#065f46" },
-  inactive: { bg: "#f1f5f9", color: "#475569" },
-};
-
-=======
->>>>>>> 2dfc12740a97cede23f7be06dd88218fc7713123
 const ROLE_LABELS = {
   department_nodal_officer: "Nodal Officer",
   contributor: "Contributor",
@@ -256,29 +245,6 @@ function UserList({ users, onEdit, onDeactivate, filters, setFilters }) {
                     )}
                   </div>
                 </td>
-<<<<<<< HEAD
-                <td style={{ padding: "12px 16px", borderTop: i > 0 ? `0.5px solid ${C.border}` : "none" }}>
-                  <span style={{ fontSize: 10, fontWeight: 600, padding: "3px 9px", borderRadius: 20,
-                    background: STATUS_STYLE[u.status]?.bg, color: STATUS_STYLE[u.status]?.color }}>
-                    {u.status === "active" ? t("Active", lang) : t("Inactive", lang)}
-                  </span>
-                </td>
-                <td style={{ padding: "12px 16px", borderTop: i > 0 ? `0.5px solid ${C.border}` : "none" }}>
-                  <div style={{ display: "flex", gap: 6 }}>
-                    <button onClick={() => onEdit(u)}
-                      style={{ padding: "5px 12px", borderRadius: 7, border: `1px solid ${C.border}`,
-                        background: "#fff", color: C.primary, fontSize: 11, fontWeight: 600,
-                        cursor: "pointer" }}>
-                      {t("Edit", lang)}
-                    </button>
-                    <button onClick={() => onDeactivate(u.id)}
-                      style={{ padding: "5px 12px", borderRadius: 7, border: "1px solid #fee2e2",
-                        background: "#fff", color: "#dc2626", fontSize: 11, fontWeight: 600,
-                        cursor: "pointer" }}>
-                      {u.status === "active" ? t("Deactivate", lang) : t("Activate", lang)}
-                    </button>
-                  </div>
-=======
                 <td style={{ padding: "12px 16px", borderTop: i > 0 ? `0.5px solid ${C.border}` : "none", verticalAlign: "middle" }}>
                   <StatusBadge tone={u.status === "active" ? "active" : "inactive"}>
                     {u.status === "active" ? t("Active", lang) : t("Inactive", lang)}
@@ -296,7 +262,6 @@ function UserList({ users, onEdit, onDeactivate, filters, setFilters }) {
                       {u.status === "active" ? t("Deactivate", lang) : t("Activate", lang)}
                     </ActionButton>
                   </ActionButtonGroup>
->>>>>>> 2dfc12740a97cede23f7be06dd88218fc7713123
                 </td>
               </tr>
             ))}
@@ -364,31 +329,6 @@ export default function DeptUsersPage() {
     <div style={{ padding: "32px 36px", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
       {toast && <Toast message={toast.message} type={toast.type} />}
 
-<<<<<<< HEAD
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 28 }}>
-        <div>
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 8,
-            background: C.primaryLt, borderRadius: 8, padding: "4px 12px", marginBottom: 12 }}>
-            <div style={{ width: 7, height: 7, borderRadius: "50%", background: C.primary }} />
-            <span style={{ fontSize: 11, fontWeight: 600, color: C.primary, textTransform: "uppercase", letterSpacing: 1 }}>
-              {t("Department Admin", lang)}
-            </span>
-          </div>
-          <h1 style={{ fontSize: 24, fontWeight: 700, color: "#1e293b", letterSpacing: "-0.4px", marginBottom: 6 }}>
-            {t("Department Users", lang)}
-          </h1>
-          <p style={{ color: "#94a3b8", fontSize: 14 }}>
-            Manage user accounts, roles, and section assignments for Samhita Siddhanta.
-          </p>
-        </div>
-        <button onClick={() => setFormView({ mode: "create", entity: null })}
-          style={{ padding: "10px 20px", borderRadius: 10, border: "none", background: C.primary,
-            color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer",
-            boxShadow: "0 2px 8px rgba(5,150,105,0.3)", whiteSpace: "nowrap" }}>
-          {t("+ New User", lang)}
-        </button>
-      </div>
-=======
       <PageHeader
         breadcrumb={[t("Home", lang), t("Department", lang), t("Users", lang)]}
         title={t("Department Users", lang)}
@@ -403,7 +343,6 @@ export default function DeptUsersPage() {
           </ActionButton>
         }
       />
->>>>>>> 2dfc12740a97cede23f7be06dd88218fc7713123
 
       <UserList
         key={refreshKey}

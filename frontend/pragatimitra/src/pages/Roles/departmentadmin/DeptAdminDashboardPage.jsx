@@ -5,17 +5,6 @@ import {
 } from "recharts";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { t } from "../../../i18n/translations";
-<<<<<<< HEAD
-
-const C = {
-  primary:   "#059669",
-  primaryLt: "#d1fae5",
-  primaryMid:"#34d399",
-  text:      "#052e16",
-  textSub:   "#6b7280",
-  border:    "rgba(5,150,105,0.12)",
-  bg:        "#f0fdf4",
-=======
 import PageHeader from "../../../components/shared/PageHeader";
 
 const C = {
@@ -26,23 +15,15 @@ const C = {
   textSub:   "#64748b",
   border:    "rgba(37,99,235,0.12)",
   bg:        "#f8f9fb",
->>>>>>> 2dfc12740a97cede23f7be06dd88218fc7713123
   surface:   "#ffffff",
 };
 
 const card = {
   background: C.surface,
-<<<<<<< HEAD
-  border: `0.5px solid ${C.border}`,
-  borderRadius: 14,
-  padding: "16px 20px",
-  boxShadow: "0 1px 6px rgba(5,150,105,0.07)",
-=======
   border: `1px solid #e2e8f0`,
   borderRadius: 12,
   padding: "16px 20px",
   boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
->>>>>>> 2dfc12740a97cede23f7be06dd88218fc7713123
 };
 
 const SECTIONS = [
@@ -83,24 +64,6 @@ export default function DeptAdminDashboardPage() {
       display: "flex", flexDirection: "column", gap: 14, background: C.bg, minHeight: "100vh" }}>
 
       {/* Header */}
-<<<<<<< HEAD
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
-        <div>
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 6,
-            background: C.primaryLt, borderRadius: 6, padding: "3px 11px", marginBottom: 8 }}>
-            <span style={{ width: 6, height: 6, borderRadius: "50%", background: C.primary }} />
-            <span style={{ fontSize: 10, fontWeight: 700, color: C.primary, textTransform: "uppercase", letterSpacing: "0.08em" }}>{t("Department Admin", lang)}</span>
-          </div>
-          <h1 style={{ fontSize: 22, fontWeight: 700, color: C.text, margin: 0, letterSpacing: "-0.4px" }}>{t("Department Dashboard", lang)}</h1>
-          <p style={{ fontSize: 13, color: C.textSub, margin: "4px 0 0" }}>Annual Report 2026 — Samhita Siddhanta Dept.</p>
-        </div>
-        <button style={{ background: C.primary, border: "none", color: "#fff",
-          borderRadius: 8, padding: "9px 18px", fontSize: 12, fontWeight: 600, cursor: "pointer",
-          boxShadow: "0 2px 8px rgba(5,150,105,0.28)" }}>
-          {t("Export Report", lang)}
-        </button>
-      </div>
-=======
       <PageHeader
         breadcrumb={[t("Home", lang), t("Department", lang), t("Dashboard", lang)]}
         title={t("Department Dashboard", lang)}
@@ -113,7 +76,6 @@ export default function DeptAdminDashboardPage() {
           </button>
         }
       />
->>>>>>> 2dfc12740a97cede23f7be06dd88218fc7713123
 
       {/* Stat cards */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 10 }}>

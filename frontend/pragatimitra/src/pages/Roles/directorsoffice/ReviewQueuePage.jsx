@@ -1,8 +1,5 @@
 import React, { useState } from "react";
-<<<<<<< HEAD
-=======
 import { CheckCircle2, CornerUpLeft } from "lucide-react";
->>>>>>> 2dfc12740a97cede23f7be06dd88218fc7713123
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { t } from "../../../i18n/translations";
 
@@ -215,15 +212,11 @@ export default function ReviewQueuePage() {
 
           {submitted ? (
             <div style={{ textAlign: "center", padding: "48px 0" }}>
-<<<<<<< HEAD
-              <div style={{ fontSize: 32, marginBottom: 12 }}>{decision === "approve" ? "✅" : "↩️"}</div>
-=======
               <div style={{ marginBottom: 12 }}>
                 {decision === "approve"
                   ? <CheckCircle2 size={34} strokeWidth={1.7} color="#16a34a" />
                   : <CornerUpLeft size={34} strokeWidth={1.7} color="#dc2626" />}
               </div>
->>>>>>> 2dfc12740a97cede23f7be06dd88218fc7713123
               <div style={{ fontSize: 14, fontWeight: 700, color: decision === "approve" ? "#166534" : "#991b1b" }}>
                 {decision === "approve" ? t("Section Approved", lang) : t("Sent Back for Revision", lang)}
               </div>

@@ -32,11 +32,12 @@ const FIELD_TYPES = [
   { value: "document",    label: "Document (Upload)" },
 ];
 
-/* Language-conversion mode is derived automatically from the field type.
-   Mirrors the backend (translationService.js):
-     transliterate — phonetic, for names/cities/proper nouns
-     translate     — real sentence translation
-     none          — copy the value verbatim (numbers, dates, emails, files) */
+/* Language-conversion mode is derived automatically from the field type and is
+   never chosen by the admin. Mirrors the backend (translationService.js):
+     transliterate — phonetic, for names/cities/proper nouns (Divakar → दिवाकर)
+     translate     — real sentence translation (I am walking → मैं कॉलेज जा रहा हूँ)
+     none          — copy the value verbatim (numbers, dates, emails, files)
+   Kept in sync with the backend so existing `text` fields keep transliterating. */
 const DEFAULT_TRANSLATION_MODE = {
   text: "transliterate", textarea: "transliterate", description: "translate",
   number: "none", date: "none", boolean: "none",
@@ -187,13 +188,13 @@ function FieldRow({ field, index, total, isFixed, onChange, onRemove, onMoveUp, 
         </div>
       </div>
 
-      {/* expanded detail */}
+      {/* expanded detail — stop propagation so clicks inside don't toggle collapse */}
       {expanded && (
         <div
           style={{ padding: "0 16px 16px", borderTop: "1px solid #f1f5f9", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}
           onClick={(e) => e.stopPropagation()}
         >
-          {/* column_name */}
+          {/* column_name — accepts spaces; stored as snake_case */}
           <div>
             <label style={S.label}>Column Name *</label>
             {(() => {
@@ -238,7 +239,7 @@ function FieldRow({ field, index, total, isFixed, onChange, onRemove, onMoveUp, 
             </select>
           </div>
 
-          {/* language labels */}
+          {/* language labels — one input per supported language */}
           {languages.map((lang) => (
             <div key={lang.code}>
               <label style={S.label}>Label ({lang.name})</label>
@@ -291,7 +292,7 @@ const ghostBtn = {
 function blankField(order) {
   return {
     _key:        nextKey(),
-    isNew:       true,
+    isNew:       true,   // not yet saved to DB — safe to fully remove
     column_name: "",
     label:       {},
     type:        "text",
@@ -343,6 +344,7 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
   });
   const [basicsErrors, setBasicsErrors] = useState({});
 
+  /* derived identifier — e.g. "Student Records" → "student_records" */
   const identifier = isEdit || isAdapt
     ? (initialData?.form_name || "")
     : toIdentifier(basics.form_name);
@@ -358,9 +360,11 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
 
   /* ── Step 2 state ── */
   const [fields, setFields]               = useState([]);
+  // column names excluded from the active form (fixed toggles + any removed fields in edit mode)
   const [excludedFixed, setExcludedFixed] = useState(new Set());
   const [colsLoading, setColsLoading]     = useState(false);
   const [colsError, setColsError]         = useState("");
+  // column names ever used in this form's schema (prevents reuse of deleted columns)
   const [usedColumnNames, setUsedColumnNames] = useState(new Set());
 
   /* ── Submit state ── */
@@ -373,6 +377,7 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
 
     function applySchema(existingSchema, year) {
       if (!existingSchema?.fields) return;
+      // Deduplicate by normalised column name — old saves could have ghost duplicates
       const seen = new Set();
       const uniqueFields = existingSchema.fields.filter((f) => {
         const col = f.column_name?.trim().toLowerCase().replace(/\s+/g, "_");
@@ -381,6 +386,7 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
         return true;
       });
       setFields(uniqueFields.map((f, i) => ({ _key: nextKey(), ...f, order: i })));
+      // Populate excludedFixed from: explicit excluded_fixed_columns + legacy hidden:true fields
       const fromExcluded = existingSchema.excluded_fixed_columns || [];
       const fromHidden   = existingSchema.fields.filter((f) => f.hidden).map((f) => f.column_name);
       setExcludedFixed(new Set([...fromExcluded, ...fromHidden]));
@@ -391,6 +397,7 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
       }));
     }
 
+    // If initialData already carries a full schema object, use it directly
     if (initialData.schema?.fields) {
       applySchema(initialData.schema, initialData.year);
       if (initialData.used_column_names?.length) {
@@ -399,6 +406,7 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
       return;
     }
 
+    // Otherwise fetch the active schema from the API
     setColsLoading(true);
     setColsError("");
     apiFetch(`/api/forms/${initialData.form_name}/schema`)
@@ -470,9 +478,12 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
       const removed = prev[idx];
       const colName = removed.column_name?.trim().toLowerCase().replace(/\s+/g, "_");
       if (isEdit && colName && !removed.isNew) {
+        // Field came from the DB: keep it in fields[] so schema.fields stays
+        // complete; express exclusion only via excluded_fixed_columns.
         setExcludedFixed((ex) => { const n = new Set(ex); n.add(colName); return n; });
         return prev;
       }
+      // New field (never saved) or create/adapt mode: remove it entirely.
       return prev.filter((_, i) => i !== idx).map((f, i) => ({ ...f, order: i }));
     });
   }
@@ -504,9 +515,13 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
 
   /* ── Build schema object ── */
   function buildSchema() {
+    // All fields are kept in fields[] regardless of exclusion status.
+    // excluded_fixed_columns is the sole indicator of what is inactive.
     const allFields = fields.map((f, i) => {
-      const { _key, hidden, isNew, ...rest } = f;
+      const { _key, hidden, isNew, ...rest } = f; // strip internal flags
       return {
+        // translation_mode is always derived from the field type (never chosen
+        // by the admin); this explicit value overrides any older stored mode.
         ...rest,
         column_name: f.column_name.trim().toLowerCase().replace(/\s+/g, "_"),
         translation_mode: defaultTranslationMode(f.type),
@@ -590,6 +605,7 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
           outline: none;
         }
       `}</style>
+      {/* page header — full-width, top-left after the navbar; "Forms" crumb cancels back to the forms list */}
       <div style={{ padding: "0 28px" }}>
         <PageHeader
           breadcrumb={["Home", { label: "Forms", onClick: onBack }, modeLabel]}
@@ -627,6 +643,7 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
             />
             <div style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: 14 }}>
 
+              {/* Form name — human readable; identifier shown below */}
               <div>
                 <label style={S.label}>Form Name *</label>
                 <input
@@ -645,6 +662,7 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
                 {basicsErrors.form_name && <div style={S.errorText}>{basicsErrors.form_name}</div>}
               </div>
 
+              {/* description */}
               <div>
                 <label style={S.label}>Description</label>
                 <textarea
@@ -657,6 +675,7 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
                 <div style={hintStyle}>Helps your team understand the form's purpose at a glance.</div>
               </div>
 
+              {/* year */}
               <div style={{ maxWidth: 220 }}>
                 <label style={S.label}>Schema Year *</label>
                 <input
@@ -745,6 +764,7 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
                 </div>
               )}
 
+              {/* active fields list */}
               {activeFields.length === 0 && !isAdapt && (
                 <div style={{
                   textAlign: "center", padding: "32px 16px", color: "#94a3b8", fontSize: 13,
@@ -986,6 +1006,12 @@ const card = {
   overflow: "hidden",
 };
 
+const footerRow = {
+  padding: "12px 20px", display: "flex", justifyContent: "flex-end", gap: 10,
+  borderTop: "1px solid #eef2f6", marginTop: 4,
+};
+
+/* External step button bar — sits BELOW the card, not inside it */
 const stepBar = {
   marginTop: 14, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10,
 };
@@ -999,6 +1025,7 @@ const monoHint = {
   padding: "1px 6px", borderRadius: 4, fontSize: 10.5,
 };
 
+/* Secondary gray cancel button — muted red "X" glyph, gray label and border */
 function CancelFormButton({ onClick }) {
   return (
     <button

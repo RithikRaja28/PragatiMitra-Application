@@ -137,6 +137,7 @@ app.use("/api/notification-templates", notificationTemplatesRouter);
 app.use("/api/radiology",              radiologyRoutes);   // ← radiology mounted
 app.use("/api/forms",                  require("./routes/forms"));
 app.use("/api/form-data",              require("./routes/formData"));
+app.use("/api/form-data",              require("./routes/formimportexport"));
 /* ─── Global error handler (must be last) ───────────────────── */
 app.use(errorHandler);
 
