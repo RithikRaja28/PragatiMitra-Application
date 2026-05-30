@@ -587,7 +587,7 @@ function FormImportWizard({ formName, onClose, onDone, apiFetch, getToken }) {
 }
 
 /* ── Export dropdown with progress bar ── */
-function ExportDropdown({ formName, accessToken }) {
+function ExportDropdown({ formName, accessToken, language = "en" }) {
   const [open, setOpen]                   = useState(false);
   const [exporting, setExporting]         = useState(null);
   const [exportPercent, setExportPercent] = useState(0);
@@ -610,9 +610,10 @@ function ExportDropdown({ formName, accessToken }) {
     } catch (err) { clearInterval(interval); console.error("Export error:", err); setExporting(null); }
   }
 
+  const langTag = language !== "en" ? `_${language}` : "";
   const options = [
-    { key: "csv",  label: "Export as CSV",  action: () => download(`/api/form-data/${formName}/export?format=csv`,  `${formName}_export.csv`,  "csv")  },
-    { key: "xlsx", label: "Export as Excel", action: () => download(`/api/form-data/${formName}/export?format=xlsx`, `${formName}_export.xlsx`, "xlsx") },
+    { key: "csv",  label: "Export as CSV",  action: () => download(`/api/form-data/${formName}/export?format=csv&language=${language}`,  `${formName}${langTag}_export.csv`,  "csv")  },
+    { key: "xlsx", label: "Export as Excel", action: () => download(`/api/form-data/${formName}/export?format=xlsx&language=${language}`, `${formName}${langTag}_export.xlsx`, "xlsx") },
   ];
 
   return (
@@ -1230,21 +1231,6 @@ export default function FormDataPage() {
         );
       })()}
 
-      {/* ── Hindi / translated read-only banner ── */}
-      {viewingTranslated && !lockInfo.is_locked && (
-        <div style={{ display: "flex", alignItems: "center", gap: 12, background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 10, padding: "12px 18px", marginBottom: 20 }}>
-          <Globe size={18} color="#1e3a8a" strokeWidth={2} style={{ flexShrink: 0 }} />
-          <div>
-            <div style={{ fontSize: 13, fontWeight: 700, color: "#1e3a8a" }}>
-              हिंदी अनुवाद देखा जा रहा है — केवल देखने का मोड।
-            </div>
-            <div style={{ fontSize: 12, color: "#2563eb", marginTop: 2 }}>
-              रिकॉर्ड जोड़ने, संपादित करने या हटाने के लिए अंग्रेज़ी (EN) पर स्विच करें।
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* ── Page Header ── */}
       <PageHeader
         breadcrumb={[
@@ -1279,7 +1265,7 @@ export default function FormDataPage() {
               sortDir={sortDir}
               onSort={(dir) => { setSortDir(dir); setSortField("created_at"); setCurrentPage(1); setSelectedIds(new Set()); }}
             />
-            <ExportDropdown formName={selectedForm?.form_name} accessToken={accessToken} />
+            <ExportDropdown formName={selectedForm?.form_name} accessToken={accessToken} language={lang} />
             <button
               onClick={() => { if (!readOnly) setImportOpen(true); }}
               disabled={readOnly}

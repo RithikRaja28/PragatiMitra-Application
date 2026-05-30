@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { FileText, Archive, Search } from "lucide-react";
 import { useApi } from "../../hooks/useApi";
 import { useAuth } from "../../store/AuthContext";
+import { useLanguage } from "../../i18n/LanguageContext";
 import { Toast, isAuthError } from "../../components/shared/formUtils";
 import PageHeader from "../../components/shared/PageHeader";
 import { ActionButton as StdActionButton, ActionButtonGroup } from "../../components/shared/ActionButtons";
@@ -186,7 +187,7 @@ function ActionButton({ icon, label, onClick, title, disabled, iconOnly, variant
 }
 
 /* ── Export dropdown — CSV / Excel, scoped to this institution (all depts) ── */
-function ExportDropdown({ formName, accessToken }) {
+function ExportDropdown({ formName, accessToken, language = "en" }) {
   const [open, setOpen]         = useState(false);
   const [exporting, setExporting] = useState(null); // "csv" | "xlsx" | null
 
@@ -196,7 +197,7 @@ function ExportDropdown({ formName, accessToken }) {
     try {
       const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
       const res = await fetch(
-        `${API_BASE}/api/form-data/${formName}/export?format=${format}`,
+        `${API_BASE}/api/form-data/${formName}/export?format=${format}&language=${language}`,
         { headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {} }
       );
       if (!res.ok) return;
@@ -204,7 +205,8 @@ function ExportDropdown({ formName, accessToken }) {
       const url  = URL.createObjectURL(blob);
       const a    = document.createElement("a");
       a.href     = url;
-      a.download = `${formName}_all.${format}`;
+      const langTag  = language !== "en" ? `_${language}` : "";
+      a.download = `${formName}${langTag}_all.${format}`;
       a.click();
       URL.revokeObjectURL(url);
     } catch (err) {
@@ -470,6 +472,7 @@ function DeadlineModal({ form, onClose, onSaved, showToast }) {
 export default function InstituteFormManagementPage() {
   const { apiFetch }    = useApi();
   const { accessToken } = useAuth();
+  const { lang }        = useLanguage();
 
   const [view, setView]               = useState("list");
   const [builderMode, setBuilderMode] = useState(null);
@@ -796,6 +799,7 @@ export default function InstituteFormManagementPage() {
                           <ExportDropdown
                             formName={form.form_name}
                             accessToken={accessToken}
+                            language={lang}
                           />
                           <ActionButton
                             icon={<IconEye />}

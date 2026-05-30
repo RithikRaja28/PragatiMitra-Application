@@ -423,7 +423,7 @@ router.post("/:formName/import/execute", async (req, res) => {
 router.get("/:formName/export", async (req, res) => {
   const pool = req.app.locals.pool;
   const { formName } = req.params;
-  const { format = "csv", year } = req.query;
+  const { format = "csv", year, language = "en" } = req.query;
 
   if (!validateFormName(formName))
     return res.status(400).json({ success: false, message: "Invalid form name." });
@@ -441,12 +441,21 @@ router.get("/:formName/export", async (req, res) => {
     const fieldCols    = fields.map((f) => dbCol(f.column_name));
     const recordsTable = `${formName}_records`;
 
+    /* Build WHERE clause — scoped by role + language */
     let whereClause = "WHERE institution_id = $1";
     let queryParams = [ctx.institutionId];
 
     if (ctx.departmentId) {
       whereClause += " AND department_id = $2";
       queryParams.push(ctx.departmentId);
+    }
+
+    /* Language filter: English rows have language='en' or NULL; other languages are exact */
+    if (language === "en") {
+      whereClause += ` AND (language = 'en' OR language IS NULL)`;
+    } else {
+      whereClause += ` AND language = $${queryParams.length + 1}`;
+      queryParams.push(language);
     }
 
     const { rows: records } = await pool.query(
@@ -477,7 +486,8 @@ router.get("/:formName/export", async (req, res) => {
       }
       fields.forEach((f) => {
         const col   = dbCol(f.column_name);
-        const label = f.label?.en || f.column_name;
+        /* Use the label for the selected language; fall back to English then raw column name */
+        const label = f.label?.[language] || f.label?.en || f.column_name;
         row[label]  = rec[col] ?? "";
       });
       row["Created At"] = rec.created_at ? new Date(rec.created_at).toISOString().slice(0, 10) : "";
@@ -487,17 +497,19 @@ router.get("/:formName/export", async (req, res) => {
     const ws = XLSX.utils.json_to_sheet(exportRows.length ? exportRows : [{}]);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, formName);
-    const ts = new Date().toISOString().slice(0, 10);
+    const ts       = new Date().toISOString().slice(0, 10);
+    const langTag  = language !== "en" ? `_${language}` : "";
+    const baseName = `${formName}${langTag}_${ts}`;
 
     if (format === "xlsx") {
       const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
-      res.setHeader("Content-Disposition", `attachment; filename="${formName}_${ts}.xlsx"`);
+      res.setHeader("Content-Disposition", `attachment; filename="${baseName}.xlsx"`);
       res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
       return res.send(buf);
     }
 
     const csv = XLSX.utils.sheet_to_csv(ws);
-    res.setHeader("Content-Disposition", `attachment; filename="${formName}_${ts}.csv"`);
+    res.setHeader("Content-Disposition", `attachment; filename="${baseName}.csv"`);
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
     return res.send(csv);
   } catch (err) {
