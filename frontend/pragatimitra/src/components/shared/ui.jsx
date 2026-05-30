@@ -52,9 +52,9 @@ export function Card({ children, style, padding, ...rest }) {
     <div
       style={{
         background: "#fff",
-        border: "1px solid #e2e8f0",
-        borderRadius: 12,
-        boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
+        border: "1px solid #e6eaf0",
+        borderRadius: 14,
+        boxShadow: "0 1px 2px rgba(16,24,40,0.04), 0 4px 12px rgba(16,24,40,0.05)",
         ...(padding != null ? { padding } : null),
         ...style,
       }}
@@ -70,12 +70,12 @@ export function Card({ children, style, padding, ...rest }) {
    and row styling for every list table across the app.
 ════════════════════════════════════════════════════════════════ */
 
-/* Container card for a data table (white, hairline border, 12px radius). */
+/* Container card for a data table (white, hairline border, soft shadow). */
 export const tableCardStyle = {
   background: "#fff",
-  border: "1px solid #e2e8f0",
-  borderRadius: 12,
-  boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
+  border: "1px solid #e6eaf0",
+  borderRadius: 14,
+  boxShadow: "0 1px 2px rgba(16,24,40,0.04), 0 4px 12px rgba(16,24,40,0.05)",
   overflow: "hidden",
 };
 
@@ -85,15 +85,27 @@ export const tableHeadRowStyle = { background: "#f8fafc" };
 /* Header cell. Pass align "left" | "right" | "center". */
 export function tableHeadCellStyle(align = "left") {
   return {
-    padding: "11px 16px",
+    padding: "13px 18px",
     textAlign: align,
-    fontSize: 10.5,
+    fontSize: 11,
     fontWeight: 700,
     color: "#64748b",
     textTransform: "uppercase",
-    letterSpacing: 0.5,
-    borderBottom: "1px solid #e2e8f0",
+    letterSpacing: 0.6,
+    borderBottom: "1px solid #e6eaf0",
     whiteSpace: "nowrap",
+  };
+}
+
+/* Body-cell baseline — 56px rows via vertical padding, hairline divider. */
+export function tableCellStyle(align = "left") {
+  return {
+    padding: "16px 18px",
+    textAlign: align,
+    fontSize: 13.5,
+    color: "#334155",
+    borderBottom: "1px solid #f1f5f9",
+    verticalAlign: "middle",
   };
 }
 

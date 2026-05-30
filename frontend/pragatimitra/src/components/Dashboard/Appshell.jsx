@@ -32,7 +32,7 @@ const CSS = `
     --sh-topbar:    #0f172a;
     --sh-topbar-b:  rgba(255,255,255,0.07);
     --sh-sidebar:   #0b1324;
-    --sh-bg:        #f8f9fb;
+    --sh-bg:        #dfe3ec;
     --sh-border:    #e2e8f0;
     --sh-accent:    #2563eb;
     --sh-accent2:   #7c3aed;
@@ -49,7 +49,7 @@ const CSS = `
     --sh-side-hover:   rgba(255,255,255,0.06);
     --sh-side-active:  #1e3a8a;
     --sh-side-accent:  #60a5fa;
-    --sh-topbar-h:  60px;
+    --sh-topbar-h:  64px;
     --sh-side-open: 280px;
     --sh-side-col:  64px;
     --sh-font:      'Plus Jakarta Sans', sans-serif;
@@ -75,28 +75,28 @@ const CSS = `
   .sh-topbar {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 12px;
     padding: 0 16px;
     height: var(--sh-topbar-h);
     background: var(--sh-topbar);
     border-bottom: 1px solid rgba(255,255,255,0.05);
-    box-shadow: 0 2px 16px rgba(0,0,0,0.22);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.08);
     flex-shrink: 0;
     overflow: visible;
     z-index: 60;
   }
 
-  /* Logo mark + name */
+  /* Logo mark + name — left third of the 3-column header */
   .sh-logo {
     display: flex;
     align-items: center;
-    gap: 9px;
-    flex-shrink: 0;
+    gap: 12px;
+    flex: 1 1 0;
+    min-width: 0;
     text-decoration: none;
-    margin-right: 8px;
   }
   .sh-logo-mark {
-    width: 30px; height: 30px;
+    width: 32px; height: 32px;
     border-radius: 8px;
     background: linear-gradient(135deg, var(--sh-accent), var(--sh-accent2));
     display: flex; align-items: center; justify-content: center;
@@ -109,21 +109,14 @@ const CSS = `
   }
   @media (max-width: 640px) { .sh-logo-name { display: none; } }
 
-  /* Divider */
-  .sh-topbar-div {
-    width: 1px; height: 20px;
-    background: rgba(255,255,255,0.1);
-    flex-shrink: 0;
-    margin: 0 4px;
-  }
-  @media (max-width: 640px) { .sh-topbar-div { display: none; } }
-
-  /* Search wrapper — owns flex sizing + dropdown anchor */
+  /* Search wrapper — sits on the right, just before the action cluster */
   .sh-search-wrap {
     position: relative;
-    flex: 1;
-    max-width: 400px;
+    flex: 0 0 340px;
+    width: 340px;
+    max-width: 340px;
   }
+  @media (max-width: 900px) { .sh-search-wrap { flex: 1 1 auto; width: auto; } }
 
   /* Search bar */
   .sh-search {
@@ -131,11 +124,11 @@ const CSS = `
     align-items: center;
     gap: 8px;
     width: 100%;
-    background: rgba(255,255,255,0.07);
-    border: 1px solid rgba(255,255,255,0.10);
-    border-radius: 8px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 10px;
     padding: 0 12px;
-    height: 30px;
+    height: 38px;
     transition: border-color .15s, background .15s;
   }
   .sh-search:focus-within {
@@ -219,20 +212,18 @@ const CSS = `
     border-radius: 3px; padding: 1px 5px; color: #64748b;
   }
 
-  .sh-spacer { flex: 1; }
-
-  /* Action buttons */
-  .sh-actions { display: flex; align-items: center; gap: 4px; }
+  /* Action buttons — far right, after the search */
+  .sh-actions { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
 
   .sh-icon-btn {
     display: flex; align-items: center; justify-content: center;
-    width: 30px; height: 30px; border-radius: 8px;
-    border: 1px solid rgba(255,255,255,0.10);
+    width: 36px; height: 36px; border-radius: 10px;
+    border: 1px solid rgba(255,255,255,0.08);
     background: transparent; color: rgba(255,255,255,0.55);
     cursor: pointer; transition: background var(--sh-ease), color var(--sh-ease);
     position: relative; flex-shrink: 0;
   }
-  .sh-icon-btn:hover { background: rgba(255,255,255,0.09); color: #fff; }
+  .sh-icon-btn:hover { background: rgba(255,255,255,0.06); color: #fff; }
 
   .sh-badge {
     position: absolute; top: 5px; right: 5px;
@@ -242,21 +233,22 @@ const CSS = `
 
   /* Avatar pill */
   .sh-avatar {
-    display: flex; align-items: center; gap: 8px;
-    padding: 4px 10px 4px 4px; border-radius: 8px;
-    border: 1px solid rgba(255,255,255,0.10);
+    display: flex; align-items: center; gap: 10px;
+    padding: 4px 10px 4px 4px; border-radius: 10px;
+    border: 1px solid rgba(255,255,255,0.08);
     background: transparent; cursor: pointer;
     transition: background var(--sh-ease); flex-shrink: 0; margin-left: 2px;
   }
-  .sh-avatar:hover { background: rgba(255,255,255,0.08); }
+  .sh-avatar:hover { background: rgba(255,255,255,0.06); }
   .sh-avatar-circle {
-    width: 26px; height: 26px; border-radius: 7px;
+    width: 36px; height: 36px; border-radius: 50%;
     background: linear-gradient(135deg, var(--sh-accent), var(--sh-accent2));
     display: flex; align-items: center; justify-content: center;
-    font-size: 11px; font-weight: 700; color: #fff; flex-shrink: 0;
+    font-size: 13px; font-weight: 700; color: #fff; flex-shrink: 0;
   }
-  .sh-avatar-name { font-size: 12px; font-weight: 600; color: #e2e8f0; white-space: nowrap; }
-  .sh-avatar-org  { font-size: 10px; color: rgba(255,255,255,0.4); white-space: nowrap; }
+  .sh-avatar-info { display: flex; flex-direction: column; line-height: 1.25; }
+  .sh-avatar-name { font-size: 12.5px; font-weight: 600; color: #e2e8f0; white-space: nowrap; }
+  .sh-avatar-org  { font-size: 10.5px; color: rgba(255,255,255,0.45); white-space: nowrap; }
   @media (max-width: 520px) { .sh-avatar-info { display: none; } }
 
   /* Hamburger (mobile) */
@@ -455,16 +447,16 @@ const CSS = `
   .sh-lang-toggle {
     display: flex; align-items: center;
     border-radius: 20px;
-    border: 1px solid rgba(255,255,255,0.12);
+    border: 1px solid rgba(255,255,255,0.08);
     background: rgba(255,255,255,0.06);
     overflow: hidden; flex-shrink: 0;
-    height: 28px;
+    height: 36px; padding: 3px;
   }
   .sh-lang-opt {
     display: flex; align-items: center; justify-content: center;
-    padding: 0 10px; height: 100%;
-    font-family: var(--sh-font); font-size: 11px; font-weight: 700;
-    color: rgba(255,255,255,0.35); letter-spacing: 0.3px;
+    padding: 0 12px; height: 100%; border-radius: 16px;
+    font-family: var(--sh-font); font-size: 11.5px; font-weight: 700;
+    color: rgba(255,255,255,0.4); letter-spacing: 0.3px;
     cursor: pointer; border: none; background: transparent;
     transition: background var(--sh-ease), color var(--sh-ease);
   }
@@ -475,6 +467,14 @@ const CSS = `
   .sh-lang-opt:not(.on):hover {
     color: rgba(255,255,255,0.75);
     background: rgba(255,255,255,0.06);
+  }
+
+  /* ── Global form-field focus (unified blue accent) ── */
+  .sh-content input:not([type="checkbox"]):not([type="radio"]):focus,
+  .sh-content select:focus,
+  .sh-content textarea:focus {
+    border-color: var(--sh-accent) !important;
+    box-shadow: 0 0 0 3px rgba(37,99,235,0.12) !important;
   }
 `;
 
@@ -611,9 +611,6 @@ function Topbar({ appName, logo, user, onHamburger, onSearch, searchPlaceholder,
         <span className="sh-logo-name">{t(appName || "PragatiMitra", lang)}</span>
       </div>
 
-      {/* Divider */}
-      <div className="sh-topbar-div" />
-
       {/* Search */}
       <div className="sh-search-wrap" ref={searchRef}>
         <div className="sh-search">
@@ -685,14 +682,12 @@ function Topbar({ appName, logo, user, onHamburger, onSearch, searchPlaceholder,
         )}
       </div>
 
-      <div className="sh-spacer" />
-
       {/* Actions */}
       <div className="sh-actions">
         {headerActions}
 
         <button className="sh-icon-btn" aria-label="Notifications">
-          <Icons.Bell size={16} />
+          <Icons.Bell size={18} />
           {notificationCount > 0 && <span className="sh-badge" />}
         </button>
 
@@ -715,7 +710,7 @@ function Topbar({ appName, logo, user, onHamburger, onSearch, searchPlaceholder,
         </div>
 
         <button className="sh-icon-btn" aria-label="Settings">
-          <Icons.Settings size={16} />
+          <Icons.Settings size={18} />
         </button>
 
         {/* Avatar + dropdown */}

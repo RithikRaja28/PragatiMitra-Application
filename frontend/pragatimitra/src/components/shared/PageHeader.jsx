@@ -22,7 +22,7 @@ import React from "react";
  *   actions      React node rendered top-right of the title row (optional).
  */
 
-const ACCENT = "#0891b2";
+const ACCENT = "#2563eb";
 
 function Crumb({ item, last }) {
   const label = typeof item === "string" ? item : item.label;

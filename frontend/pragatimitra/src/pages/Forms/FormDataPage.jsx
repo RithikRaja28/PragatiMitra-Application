@@ -9,7 +9,7 @@ import { S, Toast, isAuthError, formatDate } from "../../components/shared/formU
 import PageHeader from "../../components/shared/PageHeader";
 import { tableCardStyle } from "../../components/shared/ui";
 
-const ACCENT = "#0891b2";
+const ACCENT = "#2563eb";
 const CHUNK_SIZE = 500;
 
 function dbCol(col) { return col.trim().toLowerCase().replace(/\s+/g, "_"); }
@@ -1017,7 +1017,7 @@ export default function FormDataPage() {
     const expiredForms = forms.filter(isExpired).length;
 
     const summary = [
-      { label: "Total Forms",      value: totalForms,   color: "#0891b2", bg: "#ecfeff", hint: "All accessible forms" },
+      { label: "Total Forms",      value: totalForms,   color: "#2563eb", bg: "#ecfeff", hint: "All accessible forms" },
       { label: "Active Forms",     value: activeForms,  color: "#16a34a", bg: "#f0fdf4", hint: "Open for submissions" },
       { label: "Pending Deadline", value: pendingForms, color: "#d97706", bg: "#fffbeb", hint: "Due within 7 days" },
       { label: "Expired Forms",    value: expiredForms, color: "#dc2626", bg: "#fef2f2", hint: "Past deadline" },

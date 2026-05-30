@@ -6,7 +6,7 @@ import { S, Toast, isAuthError, formatDate } from "../../components/shared/formU
 import PageHeader from "../../components/shared/PageHeader";
 import { tableCardStyle } from "../../components/shared/ui";
 
-const ACCENT = "#0891b2";
+const ACCENT = "#2563eb";
 
 /* ── helpers ── */
 function dbCol(col) {

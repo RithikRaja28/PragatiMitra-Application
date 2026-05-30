@@ -16,7 +16,7 @@ import PageHeader from "../../components/shared/PageHeader";
      onBack()    – called on cancel / back from step 1
 ════════════════════════════════════════════════════════════════════ */
 
-const ACCENT       = "#0891b2";
+const ACCENT       = "#2563eb";
 const CURRENT_YEAR = new Date().getFullYear();
 
 /* field types shown to user; "boolean" renders as "Yes / No" in UI */
@@ -156,7 +156,7 @@ function FieldRow({ field, index, total, isFixed, onChange, onRemove, onMoveUp, 
               {field.column_name || <span style={{ color: "#94a3b8", fontStyle: "italic", fontFamily: "inherit" }}>unnamed_field</span>}
             </span>
             {isFixed && (
-              <span style={{ fontSize: 10, fontWeight: 700, padding: "1px 7px", borderRadius: 20, background: "#0891b218", color: "#0891b2", textTransform: "uppercase" }}>Fixed</span>
+              <span style={{ fontSize: 10, fontWeight: 700, padding: "1px 7px", borderRadius: 20, background: "#2563eb18", color: "#2563eb", textTransform: "uppercase" }}>Fixed</span>
             )}
             {field.required && (
               <span style={{ fontSize: 10, fontWeight: 700, padding: "1px 7px", borderRadius: 20, background: "#fef3c718", color: "#d97706", textTransform: "uppercase" }}>Required</span>
@@ -341,6 +341,9 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
     description: "",
     share_table: false,
     year:        CURRENT_YEAR,
+    // Form-level Hindi translation toggle. Default ON (preserves behavior);
+    // for edit/adapt seed from the form's current value when available.
+    translate_to_hindi: (isEdit || isAdapt) ? (initialData?.translate_to_hindi ?? true) : true,
   });
   const [basicsErrors, setBasicsErrors] = useState({});
 
@@ -416,6 +419,9 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
           applySchema(data.schema.schema, data.schema.year);
           if (data.schema.used_column_names?.length) {
             setUsedColumnNames(new Set(data.schema.used_column_names));
+          }
+          if (typeof data.translate_to_hindi === "boolean") {
+            setBasics((b) => ({ ...b, translate_to_hindi: data.translate_to_hindi }));
           }
         } else {
           setColsError(data.message || "Could not load schema.");
@@ -571,7 +577,7 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
       if (isCreate) {
         res = await apiFetch("/api/forms", {
           method: "POST",
-          body: JSON.stringify({ form_name: identifier, share_table: basics.share_table, schema, year: basics.year }),
+          body: JSON.stringify({ form_name: identifier, share_table: basics.share_table, schema, year: basics.year, translate_to_hindi: basics.translate_to_hindi }),
         });
       } else if (isAdapt) {
         res = await apiFetch("/api/forms/adopt", {
@@ -581,7 +587,7 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
       } else {
         res = await apiFetch(`/api/forms/${initialData.form_name}/schema`, {
           method: "PUT",
-          body: JSON.stringify({ schema, year: initialData.year || basics.year }),
+          body: JSON.stringify({ schema, year: initialData.year || basics.year, translate_to_hindi: basics.translate_to_hindi }),
         });
       }
 
@@ -600,7 +606,7 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
     <div style={{ background: "#f8f9fb", minHeight: "100%", padding: "20px 0", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
       <style>{`
         .fb-input:focus, .fb-input:focus-visible {
-          border-color: #0891b2 !important;
+          border-color: #2563eb !important;
           box-shadow: 0 0 0 3px rgba(8, 145, 178, 0.14);
           outline: none;
         }
@@ -636,7 +642,7 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
         <>
           <div style={card}>
             <CardHeader
-              icon={<FileText size={18} color="#0891b2" strokeWidth={2} />}
+              icon={<FileText size={18} color="#2563eb" strokeWidth={2} />}
               title="Form Details"
               subtitle="Give your form a name and optional description"
               action={<CancelFormButton onClick={onBack} />}
@@ -717,7 +723,7 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
         <>
         <div style={card}>
           <CardHeader
-            icon={<Wrench size={18} color="#0891b2" strokeWidth={2} />}
+            icon={<Wrench size={18} color="#2563eb" strokeWidth={2} />}
             title="Define Schema"
             subtitle={isAdapt ? "Toggle fixed columns on/off, then add extra custom fields" : "Define the fields that will be collected by this form"}
             action={<CancelFormButton onClick={onBack} />}
@@ -876,7 +882,7 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
                     />
                     <div>
                       <div style={{ fontSize: 13, fontWeight: 600, color: "#0369a1" }}>Consent to share with other institutions</div>
-                      <div style={{ fontSize: 12, color: "#0891b2", marginTop: 3 }}>Enabling this allows other institutions to adopt and customise this form as a template.</div>
+                      <div style={{ fontSize: 12, color: "#2563eb", marginTop: 3 }}>Enabling this allows other institutions to adopt and customise this form as a template.</div>
                     </div>
                   </label>
                 </div>
@@ -906,7 +912,7 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
         <>
         <div style={card}>
           <CardHeader
-            icon={<CheckCircle2 size={18} color="#0891b2" strokeWidth={2} />}
+            icon={<CheckCircle2 size={18} color="#2563eb" strokeWidth={2} />}
             title="Review & Save"
             subtitle="Confirm the form details before saving"
             action={<CancelFormButton onClick={onBack} />}
@@ -921,6 +927,29 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
                 <ReviewRow label="Shared Template" value={basics.share_table ? "Yes — available to all institutions" : "No — private to this institution"} />
               )}
             </ReviewSection>
+
+            {/* Language Configuration — per-form Hindi translation toggle.
+                Hidden in adapt mode (the template's existing setting applies). */}
+            {!isAdapt && (
+              <ReviewSection title="Language Configuration">
+                <label style={{ display: "flex", alignItems: "flex-start", gap: 12, cursor: "pointer" }}>
+                  <input
+                    type="checkbox"
+                    checked={basics.translate_to_hindi}
+                    onChange={(e) => setBasics((b) => ({ ...b, translate_to_hindi: e.target.checked }))}
+                    style={{ accentColor: ACCENT, width: 16, height: 16, marginTop: 1, flexShrink: 0 }}
+                  />
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: "#1e293b" }}>Translate submitted data to Hindi</div>
+                    <div style={{ fontSize: 12, color: "#64748b", marginTop: 3, lineHeight: 1.5 }}>
+                      When enabled, submitted records will automatically create Hindi language records using the existing
+                      translation/transliteration system. When disabled, only the original English record is stored — no
+                      translation is performed.
+                    </div>
+                  </div>
+                </label>
+              </ReviewSection>
+            )}
 
             <ReviewSection title={`Schema Architecture Preview · ${activeFields.length} field${activeFields.length !== 1 ? "s" : ""}`}>
               {activeFields.length === 0 ? (
@@ -938,7 +967,7 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
                       <span style={{ marginLeft: "auto", fontSize: 11, color: "#94a3b8" }}>
                         {FIELD_TYPES.find((t) => t.value === f.type)?.label || f.type}
                       </span>
-                      {f.is_fixed && <span style={{ fontSize: 10, color: "#0891b2", fontWeight: 700, background: "#e0f2fe", padding: "1px 7px", borderRadius: 20 }}>FIXED</span>}
+                      {f.is_fixed && <span style={{ fontSize: 10, color: "#2563eb", fontWeight: 700, background: "#e0f2fe", padding: "1px 7px", borderRadius: 20 }}>FIXED</span>}
                       {f.required && <span style={{ fontSize: 10, color: "#d97706", fontWeight: 700, background: "#fef3c7", padding: "1px 7px", borderRadius: 20 }}>REQ</span>}
                     </div>
                   ))}

@@ -59,6 +59,7 @@ router.get("/institution-forms", async (req, res) => {
       // Super admin has no single institution context — deadlines are per-institution.
       ({ rows } = await pool.query(
         `SELECT id, form_name, institute_access, share_table, created_by, created_at, updated_at,
+                COALESCE(translate_to_hindi, true) AS translate_to_hindi,
                 NULL::timestamptz AS deadline_at, false AS auto_locked,
                 false AS is_locked, NULL AS locked_by, NULL AS locked_at
          FROM table_list
@@ -68,6 +69,7 @@ router.get("/institution-forms", async (req, res) => {
       // Deadline + lock state come from this institution's form_lock_config row.
       ({ rows } = await pool.query(
         `SELECT tl.id, tl.form_name, tl.institute_access, tl.share_table, tl.created_by, tl.created_at, tl.updated_at,
+                COALESCE(tl.translate_to_hindi, true) AS translate_to_hindi,
                 flc.deadline_at,
                 COALESCE(flc.auto_locked, false) AS auto_locked,
                 COALESCE(flc.is_locked, false) AS is_locked,
@@ -134,10 +136,11 @@ router.get("/my-forms", async (req, res) => {
     if (isSuperAdmin) {
       const { rows } = await pool.query(
         `SELECT tl.id, tl.form_name, tl.share_table, tl.institute_access, tl.created_at,
+                COALESCE(tl.translate_to_hindi, true) AS translate_to_hindi,
                 COUNT(cfs.id)::int AS schema_count
          FROM table_list tl
          LEFT JOIN custom_field_schemas cfs ON cfs.form_name = tl.form_name
-         GROUP BY tl.id, tl.form_name, tl.share_table, tl.institute_access, tl.created_at
+         GROUP BY tl.id, tl.form_name, tl.share_table, tl.institute_access, tl.created_at, tl.translate_to_hindi
          ORDER BY tl.form_name`
       );
       return res.json({ success: true, forms: rows });
@@ -150,6 +153,7 @@ router.get("/my-forms", async (req, res) => {
       `SELECT cfs.id, cfs.form_name, cfs.institution_id, cfs.year,
               cfs.schema, cfs.is_active, cfs.created_at,
               tl.share_table,
+              COALESCE(tl.translate_to_hindi, true) AS translate_to_hindi,
               COALESCE(flc.is_locked, false) AS is_locked,
               flc.locked_by,
               flc.locked_at
@@ -227,7 +231,15 @@ router.get("/:formName/schema", async (req, res) => {
     if (!rows.length) {
       return res.status(404).json({ success: false, message: "Schema not found." });
     }
-    return res.json({ success: true, schema: rows[0] });
+
+    // Form-level Hindi translation toggle lives on table_list (per form).
+    const { rows: tlRows } = await pool.query(
+      `SELECT COALESCE(translate_to_hindi, true) AS translate_to_hindi FROM table_list WHERE form_name = $1`,
+      [formName]
+    );
+    const translateToHindi = tlRows[0] ? tlRows[0].translate_to_hindi : true;
+
+    return res.json({ success: true, schema: rows[0], translate_to_hindi: translateToHindi });
   } catch (err) {
     logger.error("GET /api/forms/:formName/schema", { stack: err.stack });
     return res.status(500).json({ success: false, message: "Failed to fetch schema." });
@@ -290,7 +302,9 @@ router.post(
   requireRole(["super_admin", "institute_admin"]),
   async (req, res) => {
     const pool = req.app.locals.pool;
-    const { form_name, share_table = false, schema, year } = req.body;
+    const { form_name, share_table = false, schema, year, translate_to_hindi } = req.body;
+    // Form-level Hindi translation toggle — defaults to TRUE (preserves behavior).
+    const translateToHindi = translate_to_hindi === false ? false : true;
 
     if (!form_name || !String(form_name).trim()) {
       return res.status(400).json({ success: false, message: "form_name is required." });
@@ -320,10 +334,10 @@ router.post(
 
         // 1. Register in table_list (no deadline here — deadlines are per-institution)
         await client.query(
-          `INSERT INTO table_list (form_name, share_table, institute_access, created_by)
-           VALUES ($1, $2, ARRAY[$3::uuid], $4)
+          `INSERT INTO table_list (form_name, share_table, institute_access, created_by, translate_to_hindi)
+           VALUES ($1, $2, ARRAY[$3::uuid], $4, $5)
            ON CONFLICT (form_name) DO NOTHING`,
-          [normalizedName, share_table, institutionId, req.user.userId]
+          [normalizedName, share_table, institutionId, req.user.userId, translateToHindi]
         );
 
         const isSuperAdmin = (req.user.roles || []).includes("super_admin");
@@ -503,7 +517,7 @@ router.put(
   async (req, res) => {
     const pool = req.app.locals.pool;
     const { formName } = req.params;
-    const { schema, year } = req.body;
+    const { schema, year, translate_to_hindi } = req.body;
 
     if (!schema) return res.status(400).json({ success: false, message: "schema is required." });
 
@@ -573,6 +587,15 @@ router.put(
            RETURNING id`,
           [JSON.stringify(schema), mergedUsed, req.user.userId, formName, institutionId, formYear]
         );
+
+        // Update the form-level Hindi translation toggle (table_list) when provided.
+        if (typeof translate_to_hindi === "boolean") {
+          await client.query(
+            `UPDATE table_list SET translate_to_hindi = $1, updated_by = $2, updated_at = now()
+             WHERE form_name = $3`,
+            [translate_to_hindi, req.user.userId, formName]
+          );
+        }
 
         // ADD COLUMN only for fields that are active (not excluded) and genuinely new
         const visibleNewFields = incomingFields.filter(

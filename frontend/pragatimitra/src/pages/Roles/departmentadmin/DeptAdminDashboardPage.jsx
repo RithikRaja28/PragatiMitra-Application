@@ -40,7 +40,7 @@ const BAR_DATA = SECTIONS.map(s => ({ name: s.name.split(" ")[0], pct: s.pct }))
 const PIE_DATA = [
   { name: "Completed",    value: 1, color: "#059669" },
   { name: "In Progress",  value: 2, color: "#34d399" },
-  { name: "Under Review", value: 1, color: "#0891b2" },
+  { name: "Under Review", value: 1, color: "#2563eb" },
   { name: "Overdue",      value: 2, color: "#dc2626" },
 ];
 
@@ -81,7 +81,7 @@ export default function DeptAdminDashboardPage() {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 10 }}>
         {[
           { label: "Total Sections",  value: 6, sub: "Assigned to dept",   color: C.primary, bar: 100 },
-          { label: "In Progress",     value: 2, sub: "Being worked on",    color: "#0891b2", bar: 33  },
+          { label: "In Progress",     value: 2, sub: "Being worked on",    color: "#2563eb", bar: 33  },
           { label: "Completed",       value: 1, sub: "Submitted & closed", color: "#059669", bar: 17  },
           { label: "Overdue",         value: 2, sub: "Need attention",     color: "#dc2626", bar: 33  },
         ].map(s => (

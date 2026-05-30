@@ -43,7 +43,7 @@ const STATS = [
   { label: "Assigned",     value: 4,  sub: "Total sections",          color: C.primary, bar: 100 },
   { label: "Submitted",    value: 1,  sub: "Pending review",          color: "#059669", bar: 25  },
   { label: "Sent Back",    value: 1,  sub: "Need revision",           color: "#dc2626", bar: 25  },
-  { label: "In Progress",  value: 2,  sub: "Being worked on",         color: "#0891b2", bar: 50  },
+  { label: "In Progress",  value: 2,  sub: "Being worked on",         color: "#2563eb", bar: 50  },
 ];
 
 export default function NodalDashboardPage() {
