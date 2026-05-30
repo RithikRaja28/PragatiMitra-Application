@@ -219,22 +219,22 @@ function ExportDropdown({ formName, accessToken }) {
       <button
         onClick={() => !exporting && setOpen((v) => !v)}
         disabled={!!exporting}
-        title="Export all department records for this form"
+        title="Export"
+        aria-label="Export"
         style={{
-          display: "inline-flex", alignItems: "center", gap: 5,
-          background: exporting ? "#f1f5f9" : "#fff",
-          color: ACCENT, border: `1px solid ${ACCENT}40`,
-          borderRadius: 7, padding: "0 10px", height: 30,
-          fontSize: 11.5, fontWeight: 700, cursor: exporting ? "not-allowed" : "pointer",
-          opacity: exporting ? 0.7 : 1, whiteSpace: "nowrap",
+          display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 3,
+          background: exporting ? "#f8fafc" : "#fff",
+          color: "#334155", border: "1px solid #cbd5e1",
+          borderRadius: 8, padding: "0 9px", height: 40, minHeight: 40,
+          cursor: exporting ? "not-allowed" : "pointer",
+          opacity: exporting ? 0.6 : 1, whiteSpace: "nowrap",
           transition: "background .15s, border-color .15s",
         }}
-        onMouseEnter={(e) => { if (!exporting) { e.currentTarget.style.background = ACCENT + "12"; e.currentTarget.style.borderColor = ACCENT; }}}
-        onMouseLeave={(e) => { e.currentTarget.style.background = "#fff"; e.currentTarget.style.borderColor = ACCENT + "40"; }}
+        onMouseEnter={(e) => { if (!exporting) e.currentTarget.style.background = "#f8fafc"; }}
+        onMouseLeave={(e) => { e.currentTarget.style.background = "#fff"; }}
       >
         <IconDownload />
-        {exporting ? `Exporting…` : "Export"}
-        {!exporting && <IconChevronDown />}
+        <IconChevronDown />
       </button>
 
       {open && (
@@ -801,13 +801,13 @@ export default function InstituteFormManagementPage() {
                             icon={<IconEye />}
                             iconOnly
                             onClick={() => openRecords(form)}
-                            title="View all department records for this form"
+                            title="View Records"
                           />
                           <ActionButton
                             icon={<IconSettings />}
-                            label="Manage"
+                            iconOnly
                             onClick={() => openManage(form)}
-                            title="Edit this form's field schema"
+                            title="Manage Form"
                           />
                           <ActionButton
                             icon={form.is_locked ? <IconLock /> : <IconUnlock />}
@@ -815,7 +815,7 @@ export default function InstituteFormManagementPage() {
                             variant={form.is_locked ? "danger" : "success"}
                             onClick={() => handleToggleLock(form)}
                             disabled={lockBusy}
-                            title={form.is_locked ? "Locked — click to unlock" : "Open — click to lock"}
+                            title={form.is_locked ? "Unlock Form" : "Lock Form"}
                           />
                         </ActionButtonGroup>
                       </td>
