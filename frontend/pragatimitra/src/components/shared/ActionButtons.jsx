@@ -17,8 +17,8 @@ const VARIANTS = {
   /* white / outline neutral — Edit, View, Manage, Import, Export */
   default: { border: "1px solid #cbd5e1", background: "#fff", color: "#334155" },
   /* solid cyan — Create / primary actions */
-  primary: { border: "none", background: "#0891b2", color: "#fff" },
-  accent:  { border: "none", background: "#0891b2", color: "#fff" },
+  primary: { border: "none", background: "#2563eb", color: "#fff" },
+  accent:  { border: "none", background: "#2563eb", color: "#fff" },
   /* outline green — Activate / Unlock */
   success: { border: "1px solid #22c55e", background: "#fff", color: "#16a34a" },
   /* outline red — Deactivate / Lock */

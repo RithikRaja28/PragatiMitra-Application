@@ -10,7 +10,7 @@ import { StatusBadge, tableCardStyle } from "../../components/shared/ui";
 import FormBuilderPage from "./FormBuilderPage";
 import InstituteFormRecordsPage from "./InstituteFormRecordsPage";
 
-const ACCENT = "#0891b2";
+const ACCENT = "#2563eb";
 
 /* ── Icons ── */
 function IconPlus() {
@@ -448,7 +448,7 @@ function DeadlineModal({ form, onClose, onSaved, showToast }) {
                 disabled={saving || !dateVal}
                 style={{
                   padding: "9px 22px", borderRadius: 9, border: "none",
-                  background: saving || !dateVal ? "#7dd3e8" : ACCENT,
+                  background: saving || !dateVal ? "#93c5fd" : ACCENT,
                   fontSize: 13, fontWeight: 700, color: "#fff",
                   cursor: saving || !dateVal ? "not-allowed" : "pointer",
                 }}

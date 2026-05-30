@@ -16,7 +16,7 @@ import PageHeader from "../../components/shared/PageHeader";
      onBack()    – called on cancel / back from step 1
 ════════════════════════════════════════════════════════════════════ */
 
-const ACCENT       = "#0891b2";
+const ACCENT       = "#2563eb";
 const CURRENT_YEAR = new Date().getFullYear();
 
 /* field types shown to user; "boolean" renders as "Yes / No" in UI */
@@ -156,7 +156,7 @@ function FieldRow({ field, index, total, isFixed, onChange, onRemove, onMoveUp, 
               {field.column_name || <span style={{ color: "#94a3b8", fontStyle: "italic", fontFamily: "inherit" }}>unnamed_field</span>}
             </span>
             {isFixed && (
-              <span style={{ fontSize: 10, fontWeight: 700, padding: "1px 7px", borderRadius: 20, background: "#0891b218", color: "#0891b2", textTransform: "uppercase" }}>Fixed</span>
+              <span style={{ fontSize: 10, fontWeight: 700, padding: "1px 7px", borderRadius: 20, background: "#2563eb18", color: "#2563eb", textTransform: "uppercase" }}>Fixed</span>
             )}
             {field.required && (
               <span style={{ fontSize: 10, fontWeight: 700, padding: "1px 7px", borderRadius: 20, background: "#fef3c718", color: "#d97706", textTransform: "uppercase" }}>Required</span>
@@ -600,7 +600,7 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
     <div style={{ background: "#f8f9fb", minHeight: "100%", padding: "20px 0", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
       <style>{`
         .fb-input:focus, .fb-input:focus-visible {
-          border-color: #0891b2 !important;
+          border-color: #2563eb !important;
           box-shadow: 0 0 0 3px rgba(8, 145, 178, 0.14);
           outline: none;
         }
@@ -636,7 +636,7 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
         <>
           <div style={card}>
             <CardHeader
-              icon={<FileText size={18} color="#0891b2" strokeWidth={2} />}
+              icon={<FileText size={18} color="#2563eb" strokeWidth={2} />}
               title="Form Details"
               subtitle="Give your form a name and optional description"
               action={<CancelFormButton onClick={onBack} />}
@@ -717,7 +717,7 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
         <>
         <div style={card}>
           <CardHeader
-            icon={<Wrench size={18} color="#0891b2" strokeWidth={2} />}
+            icon={<Wrench size={18} color="#2563eb" strokeWidth={2} />}
             title="Define Schema"
             subtitle={isAdapt ? "Toggle fixed columns on/off, then add extra custom fields" : "Define the fields that will be collected by this form"}
             action={<CancelFormButton onClick={onBack} />}
@@ -876,7 +876,7 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
                     />
                     <div>
                       <div style={{ fontSize: 13, fontWeight: 600, color: "#0369a1" }}>Consent to share with other institutions</div>
-                      <div style={{ fontSize: 12, color: "#0891b2", marginTop: 3 }}>Enabling this allows other institutions to adopt and customise this form as a template.</div>
+                      <div style={{ fontSize: 12, color: "#2563eb", marginTop: 3 }}>Enabling this allows other institutions to adopt and customise this form as a template.</div>
                     </div>
                   </label>
                 </div>
@@ -906,7 +906,7 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
         <>
         <div style={card}>
           <CardHeader
-            icon={<CheckCircle2 size={18} color="#0891b2" strokeWidth={2} />}
+            icon={<CheckCircle2 size={18} color="#2563eb" strokeWidth={2} />}
             title="Review & Save"
             subtitle="Confirm the form details before saving"
             action={<CancelFormButton onClick={onBack} />}
@@ -938,7 +938,7 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
                       <span style={{ marginLeft: "auto", fontSize: 11, color: "#94a3b8" }}>
                         {FIELD_TYPES.find((t) => t.value === f.type)?.label || f.type}
                       </span>
-                      {f.is_fixed && <span style={{ fontSize: 10, color: "#0891b2", fontWeight: 700, background: "#e0f2fe", padding: "1px 7px", borderRadius: 20 }}>FIXED</span>}
+                      {f.is_fixed && <span style={{ fontSize: 10, color: "#2563eb", fontWeight: 700, background: "#e0f2fe", padding: "1px 7px", borderRadius: 20 }}>FIXED</span>}
                       {f.required && <span style={{ fontSize: 10, color: "#d97706", fontWeight: 700, background: "#fef3c7", padding: "1px 7px", borderRadius: 20 }}>REQ</span>}
                     </div>
                   ))}

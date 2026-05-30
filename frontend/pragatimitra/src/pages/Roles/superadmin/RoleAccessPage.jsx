@@ -37,7 +37,7 @@ const CAPABILITY_GROUPS = [
   {
     label: "Form Access",
     icon: FileText,
-    color: "#0891b2",
+    color: "#2563eb",
     colorBg: "#e0f2fe",
     caps: [
       {

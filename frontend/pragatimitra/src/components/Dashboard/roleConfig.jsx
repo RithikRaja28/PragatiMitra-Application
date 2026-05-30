@@ -16,6 +16,7 @@
  */
 
 import React from "react";
+import { FileText } from "lucide-react";
 
 /* ── Super Admin page imports ───────────────────────────────── */
 import UserManagementPage        from "../../pages/Roles/superadmin/UserManagementPage";
@@ -74,8 +75,9 @@ export function PlaceholderPage({ title, subtitle, color = "#2563eb" }) {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 16, marginBottom: 28 }}>
         {["Total", "Active", "Pending", "Resolved"].map((label, i) => (
           <div key={label} style={{
-            background: "#fff", border: "1px solid rgba(0,0,0,0.07)",
-            borderRadius: 12, padding: "20px 22px", boxShadow: "0 1px 4px rgba(0,0,0,0.05)",
+            background: "#fff", border: "1px solid #e6eaf0",
+            borderRadius: 14, padding: "20px 22px",
+            boxShadow: "0 1px 2px rgba(16,24,40,0.04), 0 4px 12px rgba(16,24,40,0.05)",
           }}>
             <div style={{ fontSize: 11, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 10 }}>
               {label}
@@ -83,7 +85,7 @@ export function PlaceholderPage({ title, subtitle, color = "#2563eb" }) {
             <div style={{ fontSize: 30, fontWeight: 700, color: "#1e293b", letterSpacing: "-1px" }}>
               {(i + 1) * 148 + 17}
             </div>
-            <div style={{ fontSize: 12, color, marginTop: 6, fontWeight: 500 }}>
+            <div style={{ fontSize: 12, color: "#16a34a", marginTop: 6, fontWeight: 600 }}>
               ↑ {((i + 1) * 2.3).toFixed(1)}% this month
             </div>
           </div>
@@ -91,30 +93,37 @@ export function PlaceholderPage({ title, subtitle, color = "#2563eb" }) {
       </div>
 
       <div style={{
-        background: "#fff", border: "1px solid rgba(0,0,0,0.07)",
-        borderRadius: 12, overflow: "hidden", boxShadow: "0 1px 4px rgba(0,0,0,0.05)",
+        background: "#fff", border: "1px solid #e6eaf0",
+        borderRadius: 14, overflow: "hidden",
+        boxShadow: "0 1px 2px rgba(16,24,40,0.04), 0 4px 12px rgba(16,24,40,0.05)",
       }}>
         <div style={{
-          padding: "16px 22px", borderBottom: "1px solid rgba(0,0,0,0.06)",
+          padding: "16px 22px", borderBottom: "1px solid #f1f5f9",
           display: "flex", alignItems: "center", justifyContent: "space-between",
         }}>
-          <span style={{ fontWeight: 600, fontSize: 14, color: "#1e293b" }}>Recent Activity</span>
-          <span style={{ fontSize: 12, color, cursor: "pointer", fontWeight: 500 }}>View all →</span>
+          <span style={{ fontWeight: 700, fontSize: 14, color: "#1e293b" }}>Recent Activity</span>
+          <span style={{ fontSize: 12.5, color: "#2563eb", cursor: "pointer", fontWeight: 600 }}>View all</span>
         </div>
         {[1, 2, 3, 4, 5].map((i) => (
           <div key={i} style={{
-            display: "flex", alignItems: "center", gap: 14, padding: "13px 22px",
-            borderBottom: i < 5 ? "1px solid rgba(0,0,0,0.04)" : "none",
+            display: "flex", alignItems: "center", gap: 14, padding: "14px 22px",
+            borderBottom: i < 5 ? "1px solid #f1f5f9" : "none",
           }}>
-            <div style={{ width: 34, height: 34, borderRadius: 9, background: `hsl(${i * 53 + 200}, 55%, 88%)`, flexShrink: 0 }} />
+            <div style={{
+              width: 36, height: 36, borderRadius: 9, background: "#eef2f7",
+              border: "1px solid #e6eaf0", flexShrink: 0,
+              display: "flex", alignItems: "center", justifyContent: "center", color: "#64748b",
+            }}>
+              <FileText size={17} strokeWidth={1.8} />
+            </div>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 13, fontWeight: 500, color: "#1e293b", marginBottom: 2 }}>Record #{i * 100 + 43}</div>
-              <div style={{ fontSize: 11, color: "#94a3b8" }}>Updated {i} hour{i > 1 ? "s" : ""} ago</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: "#1e293b", marginBottom: 2 }}>Record #{i * 100 + 43}</div>
+              <div style={{ fontSize: 11.5, color: "#94a3b8" }}>Updated {i} hour{i > 1 ? "s" : ""} ago</div>
             </div>
             <div style={{
-              padding: "3px 10px", borderRadius: 20, fontSize: 11, fontWeight: 600,
-              background: i % 2 === 0 ? color + "18" : "#10b98118",
-              color: i % 2 === 0 ? color : "#10b981",
+              padding: "3px 11px", borderRadius: 20, fontSize: 11, fontWeight: 600,
+              background: i % 2 === 0 ? "#eff6ff" : "#dcfce7",
+              color: i % 2 === 0 ? "#2563eb" : "#16a34a",
             }}>
               {i % 2 === 0 ? "Active" : "Done"}
             </div>
@@ -127,14 +136,14 @@ export function PlaceholderPage({ title, subtitle, color = "#2563eb" }) {
 
 /* ── Super Admin placeholders ───────────────────────────────── */
 const SuperAdminOverviewPage   = () => <PlaceholderPage title="Overview"    subtitle="Platform-wide summary and key metrics"                color="#2563eb" />;
-const SuperAdminMasterDataPage = () => <PlaceholderPage title="Master Data" subtitle="Manage lookup values, categories, and reference data" color="#059669" />;
+const SuperAdminMasterDataPage = () => <PlaceholderPage title="Master Data" subtitle="Manage lookup values, categories, and reference data" color="#2563eb" />;
 
 /* ── Institute Admin placeholders ───────────────────────────── */
-const SectionsPage       = () => <PlaceholderPage title="Sections"        subtitle="Manage academic sections and groupings"         color="#0891b2" />;
-const WorkflowPage       = () => <PlaceholderPage title="Workflow"        subtitle="Define and oversee institutional workflows"     color="#0891b2" />;
-const TaskWorkflowPage   = () => <PlaceholderPage title="Task Workflow"   subtitle="Assign and track task-level workflow stages"    color="#0891b2" />;
-const VersionControlPage = () => <PlaceholderPage title="Version Control" subtitle="Manage document versions and change history"    color="#0891b2" />;
-const SystemPage         = () => <PlaceholderPage title="System"          subtitle="Institution system settings and configurations" color="#0891b2" />;
+const SectionsPage       = () => <PlaceholderPage title="Sections"        subtitle="Manage academic sections and groupings"         color="#2563eb" />;
+const WorkflowPage       = () => <PlaceholderPage title="Workflow"        subtitle="Define and oversee institutional workflows"     color="#2563eb" />;
+const TaskWorkflowPage   = () => <PlaceholderPage title="Task Workflow"   subtitle="Assign and track task-level workflow stages"    color="#2563eb" />;
+const VersionControlPage = () => <PlaceholderPage title="Version Control" subtitle="Manage document versions and change history"    color="#2563eb" />;
+const SystemPage         = () => <PlaceholderPage title="System"          subtitle="Institution system settings and configurations" color="#2563eb" />;
 
 /* ══════════════════════════════════════════════════════════════
    ROLE CONFIG MAP

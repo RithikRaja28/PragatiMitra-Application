@@ -149,34 +149,39 @@ export default function FormWizard({
 /* ── Numbered step progress indicator ── */
 function Stepper({ steps, current }) {
   return (
-    <div style={{ display: "flex", alignItems: "flex-start", padding: "18px 28px", background: "#f8fafc", borderBottom: "1px solid #f1f5f9" }}>
+    <div style={{
+      display: "flex", alignItems: "flex-start",
+      padding: "20px 28px", background: "#f8fafc", borderBottom: "1px solid #e2e8f0",
+    }}>
       {steps.map((label, i) => {
         const done = i < current;
         const active = i === current;
         return (
           <React.Fragment key={label}>
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 7, flexShrink: 0, minWidth: 92 }}>
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, flexShrink: 0, minWidth: 96 }}>
               <div style={{
-                width: 30, height: 30, borderRadius: "50%",
+                width: 32, height: 32, borderRadius: "50%",
                 display: "flex", alignItems: "center", justifyContent: "center",
                 fontSize: 13, fontWeight: 700,
-                background: done ? "#0891b2" : active ? "#0891b2" : "#fff",
+                background: done ? "#2563eb" : active ? "#2563eb" : "#fff",
                 color: done || active ? "#fff" : "#94a3b8",
                 border: done || active ? "none" : "1.5px solid #cbd5e1",
+                boxShadow: active ? "0 0 0 4px rgba(37,99,235,0.15)" : "none",
                 transition: "all .15s",
               }}>
-                {done ? <Check size={15} strokeWidth={3} /> : i + 1}
+                {done ? <Check size={16} strokeWidth={3} /> : i + 1}
               </div>
               <div style={{
                 fontSize: 11.5, fontWeight: active ? 700 : 600,
-                color: active ? "#0e7490" : done ? "#334155" : "#94a3b8",
+                color: active ? "#1d4ed8" : done ? "#1e293b" : "#94a3b8",
                 textAlign: "center", whiteSpace: "nowrap",
+                letterSpacing: 0.1,
               }}>
                 {label}
               </div>
             </div>
             {i < steps.length - 1 && (
-              <div style={{ flex: 1, height: 2, background: i < current ? "#0891b2" : "#e2e8f0", margin: "14px 4px 0", borderRadius: 2 }} />
+              <div style={{ flex: 1, height: 2, background: i < current ? "#2563eb" : "#e2e8f0", margin: "16px 6px 0", borderRadius: 2, transition: "background .2s" }} />
             )}
           </React.Fragment>
         );

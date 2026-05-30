@@ -338,7 +338,7 @@ export default function FormManagementPage({ isSuperAdmin = false }) {
                   <td style={{ padding: "14px 20px" }}>
                     <Badge
                       label={`${(tpl.institute_access || []).length} institution${(tpl.institute_access || []).length !== 1 ? "s" : ""}`}
-                      color="#0891b2"
+                      color="#2563eb"
                     />
                   </td>
                   <td style={{ padding: "14px 20px", fontSize: 12, color: "#64748b" }}>
@@ -435,7 +435,7 @@ export default function FormManagementPage({ isSuperAdmin = false }) {
                   </td>
                   <td style={{ padding: "14px 20px" }}>
                     {form.share_table ? (
-                      <Badge label="Shared" color="#0891b2" />
+                      <Badge label="Shared" color="#2563eb" />
                     ) : (
                       <Badge label="Private" color="#64748b" />
                     )}
