@@ -16,9 +16,7 @@ function dbCol(col) {
 }
 
 /* ════════════════════════════════════════════════════════════════
-   resolveUserContext — same logic as form-import-export.js
-   Returns { institutionId, departmentId, role }
-
+   resolveUserContext
    - institute_admin → departmentId = null  (sees ALL dept records)
    - department_admin → departmentId = theirs (sees ONLY their dept)
    - super_admin     → reads from body/query
@@ -74,24 +72,17 @@ function activeFields(schemaRow) {
 
 /* ─────────────────────────────────────────────────────────────────────
    GET /api/form-data/:formName/records
-
    SCOPING:
-   - dept admin   → WHERE institution_id=$1 AND (department_id=$2 OR department_id IS NULL)
-   - inst admin   → WHERE institution_id=$1  (all departments)
-   - super admin  → WHERE institution_id=$1
-
-   NOTE: We also include rows where department_id IS NULL for dept admin
-   so manually-added records (which have no dept tag) are still visible.
-   Only records imported under a DIFFERENT department are hidden.
+   - dept admin  → institution_id + (department_id = theirs OR IS NULL)
+   - inst/super  → institution_id only (all departments)
 ─────────────────────────────────────────────────────────────────────── */
 router.get("/:formName/records", async (req, res) => {
   const pool = req.app.locals.pool;
   const { formName } = req.params;
   const { year } = req.query;
 
-  if (!validateFormName(formName)) {
+  if (!validateFormName(formName))
     return res.status(400).json({ success: false, message: "Invalid form name." });
-  }
 
   try {
     const ctx = await resolveUserContext(pool, req);
@@ -102,26 +93,16 @@ router.get("/:formName/records", async (req, res) => {
     if (!schema)
       return res.status(404).json({ success: false, message: "No active schema found for this form." });
 
-    /* Build WHERE clause based on role */
     let whereClause = "WHERE institution_id = $1";
     const queryParams = [ctx.institutionId];
 
     if (ctx.role === "department_admin" && ctx.departmentId) {
-      /*
-        Dept admin sees:
-        1. Records tagged to their own department
-        2. Records with no department tag (institution-wide records, e.g. manually added)
-        They do NOT see records tagged to other departments.
-      */
       whereClause += " AND (department_id = $2 OR department_id IS NULL)";
       queryParams.push(ctx.departmentId);
     }
-    /* inst admin / super admin: no dept filter → sees everything */
 
     const { rows: records } = await pool.query(
-      `SELECT * FROM ${formName}_records
-       ${whereClause}
-       ORDER BY created_at DESC`,
+      `SELECT * FROM ${formName}_records ${whereClause} ORDER BY created_at DESC`,
       queryParams
     );
 
@@ -134,20 +115,17 @@ router.get("/:formName/records", async (req, res) => {
 
 /* ─────────────────────────────────────────────────────────────────────
    POST /api/form-data/:formName/records
-   Insert a new record manually (not via import).
-   Tags the record with the user's department_id automatically.
+   Insert a new record manually. Tags department_id from user context.
 ─────────────────────────────────────────────────────────────────────── */
 router.post("/:formName/records", async (req, res) => {
   const pool = req.app.locals.pool;
   const { formName } = req.params;
   const { data, year, language = "en" } = req.body;
 
-  if (!validateFormName(formName)) {
+  if (!validateFormName(formName))
     return res.status(400).json({ success: false, message: "Invalid form name." });
-  }
-  if (!data || typeof data !== "object") {
+  if (!data || typeof data !== "object")
     return res.status(400).json({ success: false, message: "data is required." });
-  }
 
   try {
     const ctx = await resolveUserContext(pool, req);
@@ -162,13 +140,10 @@ router.post("/:formName/records", async (req, res) => {
     const fieldCols = fields.map((f) => dbCol(f.column_name));
     const formYear  = Number(year) || schema.year;
 
-    /* Stamp department_id from user context so manual adds are also dept-scoped */
     const stdCols = ["form_name", "institution_id", "department_id", "year", "schema_id", "language"];
     const stdVals = [formName, ctx.institutionId, ctx.departmentId, formYear, schema.id, language];
-    const fieldVals = fieldCols.map((col) => data[col] ?? null);
-
     const allCols = [...stdCols, ...fieldCols];
-    const allVals = [...stdVals, ...fieldVals];
+    const allVals = [...stdVals, ...fieldCols.map((col) => data[col] ?? null)];
     const placeholders = allVals.map((_, i) => `$${i + 1}`).join(", ");
 
     const { rows } = await pool.query(
@@ -185,19 +160,17 @@ router.post("/:formName/records", async (req, res) => {
 
 /* ─────────────────────────────────────────────────────────────────────
    PUT /api/form-data/:formName/records/:id
-   Dept admin can only update records belonging to their department.
+   Dept admin can only update records in their own department.
 ─────────────────────────────────────────────────────────────────────── */
 router.put("/:formName/records/:id", async (req, res) => {
   const pool = req.app.locals.pool;
   const { formName, id } = req.params;
   const { data } = req.body;
 
-  if (!validateFormName(formName)) {
+  if (!validateFormName(formName))
     return res.status(400).json({ success: false, message: "Invalid form name." });
-  }
-  if (!data || typeof data !== "object") {
+  if (!data || typeof data !== "object")
     return res.status(400).json({ success: false, message: "data is required." });
-  }
 
   try {
     const ctx = await resolveUserContext(pool, req);
@@ -214,7 +187,6 @@ router.put("/:formName/records/:id", async (req, res) => {
     let idx = 1;
     const setClauses = [...fieldCols.map((col) => `${col} = $${idx++}`), `updated_at = now()`];
 
-    /* Dept admin: only allow update on their own dept records */
     let whereClause = `institution_id = $${idx++} AND id = $${idx++}`;
     const whereVals = [ctx.institutionId, id];
 
@@ -226,8 +198,7 @@ router.put("/:formName/records/:id", async (req, res) => {
     const vals = [...fieldCols.map((col) => data[col] ?? null), ...whereVals];
 
     const { rows } = await pool.query(
-      `UPDATE ${formName}_records SET ${setClauses.join(", ")}
-       WHERE ${whereClause} RETURNING *`,
+      `UPDATE ${formName}_records SET ${setClauses.join(", ")} WHERE ${whereClause} RETURNING *`,
       vals
     );
 
@@ -242,16 +213,96 @@ router.put("/:formName/records/:id", async (req, res) => {
 });
 
 /* ─────────────────────────────────────────────────────────────────────
-   DELETE /api/form-data/:formName/records/:id
-   Dept admin can only delete their own dept records.
+   DELETE /api/form-data/:formName/records/bulk-delete
+   Body: { ids: string[] }  — up to 5 000 UUIDs
+
+   ⚠️  REGISTERED BEFORE /:formName/records/:id  — critical ordering.
+       If the single-delete route came first, Express would match
+       "bulk-delete" as the :id param and this route would never run.
+
+   One SQL statement deletes all IDs:
+     DELETE … WHERE id = ANY($1::uuid[]) AND institution_id = $2
+   No loops, no N+1 queries, scales to thousands of records.
+─────────────────────────────────────────────────────────────────────── */
+router.delete("/:formName/records/bulk-delete", async (req, res) => {
+  const pool = req.app.locals.pool;
+  const { formName } = req.params;
+  const { ids } = req.body;
+
+  if (!validateFormName(formName))
+    return res.status(400).json({ success: false, message: "Invalid form name." });
+
+  if (!Array.isArray(ids) || ids.length === 0)
+    return res.status(400).json({ success: false, message: "ids must be a non-empty array." });
+
+  if (ids.length > 5000)
+    return res.status(400).json({
+      success: false,
+      message: "Cannot bulk-delete more than 5 000 records at once. Split into smaller batches.",
+    });
+
+  /* Validate UUID format before touching the DB */
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const badIds  = ids.filter(id => !UUID_RE.test(id));
+  if (badIds.length > 0)
+    return res.status(400).json({ success: false, message: `${badIds.length} invalid ID(s) in request.` });
+
+  try {
+    const ctx = await resolveUserContext(pool, req);
+    if (!ctx.institutionId)
+      return res.status(400).json({ success: false, message: "Institution ID required." });
+
+    /*
+      Security scoping — mirrors the single-delete rules:
+      - dept admin : only their dept rows (+ institution-wide rows where dept IS NULL)
+      - inst/super : whole institution
+    */
+    let whereClause   = "id = ANY($1::uuid[]) AND institution_id = $2";
+    const queryParams = [ids, ctx.institutionId];
+
+    if (ctx.role === "department_admin" && ctx.departmentId) {
+      whereClause += " AND (department_id = $3 OR department_id IS NULL)";
+      queryParams.push(ctx.departmentId);
+    }
+
+    const { rowCount } = await pool.query(
+      `DELETE FROM ${formName}_records WHERE ${whereClause}`,
+      queryParams
+    );
+
+    const deleted = rowCount ?? 0;
+    const failed  = ids.length - deleted; // IDs that didn't match (wrong inst/dept or already gone)
+
+    logger.info(`Bulk delete ${formName}: ${deleted} deleted, ${failed} not matched`, {
+      institutionId: ctx.institutionId,
+      departmentId:  ctx.departmentId,
+      requested:     ids.length,
+    });
+
+    return res.json({
+      success: true,
+      deleted,
+      failed,
+      message: failed === 0
+        ? `${deleted} record${deleted !== 1 ? "s" : ""} deleted successfully.`
+        : `${deleted} deleted, ${failed} could not be deleted (not found or no permission).`,
+    });
+  } catch (err) {
+    logger.error(`DELETE /api/form-data/${formName}/records/bulk-delete`, { stack: err.stack });
+    return res.status(500).json({ success: false, message: "Bulk delete failed." });
+  }
+});
+
+/* ─────────────────────────────────────────────────────────────────────
+   DELETE /api/form-data/:formName/records/:id   (single record)
+   ⚠️  Must stay AFTER the bulk-delete route above.
 ─────────────────────────────────────────────────────────────────────── */
 router.delete("/:formName/records/:id", async (req, res) => {
   const pool = req.app.locals.pool;
   const { formName, id } = req.params;
 
-  if (!validateFormName(formName)) {
+  if (!validateFormName(formName))
     return res.status(400).json({ success: false, message: "Invalid form name." });
-  }
 
   try {
     const ctx = await resolveUserContext(pool, req);
