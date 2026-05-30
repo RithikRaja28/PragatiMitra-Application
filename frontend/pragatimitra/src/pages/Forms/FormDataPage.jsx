@@ -1,10 +1,14 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { createPortal } from "react-dom";
+import { Trash2, FileText, FilePlus, Lock, Clock, Globe, SearchX } from "lucide-react";
 import { useApi } from "../../hooks/useApi";
 import { useAuth } from "../../store/AuthContext";
 import { useLanguage } from "../../i18n/LanguageContext";
 import { S, Toast, isAuthError, formatDate } from "../../components/shared/formUtils";
+import PageHeader from "../../components/shared/PageHeader";
+import { tableCardStyle } from "../../components/shared/ui";
 
-const ACCENT = "#2563eb";
+const ACCENT = "#0891b2";
 
 /* ── helpers ── */
 function dbCol(col) {
@@ -54,13 +58,6 @@ function IcoTrash() {
   return (
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14H6L5 6" /><path d="M10 11v6M14 11v6" /><path d="M9 6V4h6v2" />
-    </svg>
-  );
-}
-function IcoBack() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-      <polyline points="15 18 9 12 15 6" />
     </svg>
   );
 }
@@ -351,7 +348,7 @@ function RecordModal({ fields, record, onSave, onClose, saving, error, getToken 
     onSave(formData);
   }
 
-  return (
+  return createPortal(
     <div style={{
       position: "fixed", inset: 0, zIndex: 1000,
       background: "rgba(15,23,42,0.45)", display: "flex",
@@ -415,13 +412,14 @@ function RecordModal({ fields, record, onSave, onClose, saving, error, getToken 
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
 /* ── Delete confirm modal ── */
 function DeleteModal({ onConfirm, onClose, deleting }) {
-  return (
+  return createPortal(
     <div style={{
       position: "fixed", inset: 0, zIndex: 1000,
       background: "rgba(15,23,42,0.45)", display: "flex",
@@ -433,7 +431,13 @@ function DeleteModal({ onConfirm, onClose, deleting }) {
         background: "#fff", borderRadius: 14, width: 380, padding: "28px 24px",
         boxShadow: "0 20px 48px rgba(0,0,0,0.16)", textAlign: "center",
       }}>
-        <div style={{ fontSize: 36, marginBottom: 12 }}>🗑️</div>
+        <div style={{
+          width: 52, height: 52, borderRadius: 14, margin: "0 auto 14px",
+          background: "#fef2f2", border: "1px solid #fecaca",
+          display: "flex", alignItems: "center", justifyContent: "center",
+        }}>
+          <Trash2 size={24} strokeWidth={1.8} color="#dc2626" />
+        </div>
         <div style={{ fontSize: 15, fontWeight: 700, color: "#1e293b", marginBottom: 6 }}>Delete Record?</div>
         <div style={{ fontSize: 13, color: "#64748b", marginBottom: 24 }}>This action cannot be undone.</div>
         <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
@@ -447,7 +451,8 @@ function DeleteModal({ onConfirm, onClose, deleting }) {
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -654,107 +659,212 @@ export default function FormDataPage() {
      VIEW 1 — Form selection grid
   ══════════════════════════════════════════════════════ */
   if (view === "forms") {
+    /* Department summary stats — derived from existing forms data, no backend change */
+    const now = Date.now();
+    const isExpired = (f) => f.deadline_at && new Date(f.deadline_at).getTime() <= now;
+    const totalForms   = forms.length;
+    const activeForms  = forms.filter((f) => !f.is_locked && !isExpired(f)).length;
+    const pendingForms = forms.filter((f) => {
+      if (!f.deadline_at) return false;
+      const ms = new Date(f.deadline_at).getTime() - now;
+      return ms > 0 && ms <= 7 * 24 * 3600 * 1000;
+    }).length;
+    const expiredForms = forms.filter(isExpired).length;
+
+    const summary = [
+      { label: "Total Forms",      value: totalForms,   color: "#0891b2", bg: "#ecfeff", hint: "All accessible forms" },
+      { label: "Active Forms",     value: activeForms,  color: "#16a34a", bg: "#f0fdf4", hint: "Open for submissions" },
+      { label: "Pending Deadline", value: pendingForms, color: "#d97706", bg: "#fffbeb", hint: "Due within 7 days" },
+      { label: "Expired Forms",    value: expiredForms, color: "#dc2626", bg: "#fef2f2", hint: "Past deadline" },
+    ];
+
     return (
-      <div style={{ padding: "32px 36px", fontFamily: "'Plus Jakarta Sans', sans-serif", minHeight: "100%" }}>
+      <div style={{ padding: "20px 28px", fontFamily: "'Plus Jakarta Sans', sans-serif", minHeight: "100%", maxWidth: 1440 }}>
         {toast && <Toast message={toast.message} type={toast.type} />}
 
-        <div style={{ marginBottom: 28 }}>
-          <div style={{
-            display: "inline-flex", alignItems: "center", gap: 7,
-            background: ACCENT + "12", borderRadius: 8, padding: "4px 12px", marginBottom: 10,
-          }}>
-            <div style={{ width: 6, height: 6, borderRadius: "50%", background: ACCENT }} />
-            <span style={{ fontSize: 11, fontWeight: 700, color: ACCENT, textTransform: "uppercase", letterSpacing: 1 }}>
-              Data Entry
-            </span>
-          </div>
-          <h1 style={{ fontSize: 24, fontWeight: 700, color: "#1e293b", letterSpacing: "-0.4px", margin: "0 0 6px" }}>
-            Forms
-          </h1>
-          <p style={{ fontSize: 13, color: "#94a3b8", margin: 0 }}>
-            Select a form to view, add, or manage its records.
-          </p>
-        </div>
+        {/* Page header */}
+        <PageHeader
+          breadcrumb={["Home", "Department", "Forms & Data Entry"]}
+          title="Forms & Data Entry Center"
+          description="Access all department forms, monitor deadlines, and manage records in one place."
+        />
 
         {formsError && (
-          <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 10, padding: "12px 16px", fontSize: 13, color: "#b91c1c", marginBottom: 20 }}>
+          <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 10, padding: "10px 14px", fontSize: 12.5, color: "#b91c1c", marginBottom: 14 }}>
             {formsError}
           </div>
         )}
 
-        {formsLoading ? (
-          <div style={{ textAlign: "center", padding: "60px 24px", color: "#94a3b8", fontSize: 13 }}>
-            Loading forms…
-          </div>
-        ) : forms.length === 0 ? (
-          <div style={{ textAlign: "center", padding: "60px 24px", color: "#94a3b8" }}>
-            <div style={{ fontSize: 40, marginBottom: 14 }}>📋</div>
-            <div style={{ fontSize: 14, fontWeight: 600, color: "#64748b", marginBottom: 6 }}>No forms available</div>
-            <div style={{ fontSize: 13 }}>Your institution doesn't have access to any forms yet.</div>
-          </div>
-        ) : (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 16 }}>
-            {forms.map((form) => (
-              <button
-                key={form.id}
-                onClick={() => openForm(form)}
-                style={{
-                  background: "#fff", border: "1px solid rgba(0,0,0,0.08)",
-                  borderRadius: 14, padding: "22px 20px", textAlign: "left",
-                  cursor: "pointer", transition: "all .15s",
-                  boxShadow: "0 1px 4px rgba(0,0,0,0.05)",
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.borderColor = ACCENT + "60";
-                  e.currentTarget.style.boxShadow = `0 4px 16px ${ACCENT}18`;
-                  e.currentTarget.style.transform = "translateY(-1px)";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.borderColor = "rgba(0,0,0,0.08)";
-                  e.currentTarget.style.boxShadow = "0 1px 4px rgba(0,0,0,0.05)";
-                  e.currentTarget.style.transform = "";
-                }}
-              >
-                <div style={{
-                  width: 42, height: 42, borderRadius: 11,
-                  background: ACCENT + "14", color: ACCENT,
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  marginBottom: 14,
-                }}>
-                  <IcoForm />
+        {/* Summary cards */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12, marginBottom: 18 }}>
+          {summary.map((s) => (
+            <div key={s.label} style={{
+              background: "#fff", border: "1px solid rgba(0,0,0,0.07)",
+              borderRadius: 12, padding: "12px 14px",
+              boxShadow: "0 1px 4px rgba(0,0,0,0.04)",
+              display: "flex", alignItems: "center", gap: 12,
+            }}>
+              <div style={{
+                width: 40, height: 40, borderRadius: 10,
+                background: s.bg, color: s.color,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: 17, fontWeight: 800, flexShrink: 0, letterSpacing: -0.3,
+              }}>
+                {s.value}
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 10.5, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.5 }}>
+                  {s.label}
                 </div>
-                <div style={{ fontSize: 14, fontWeight: 700, color: "#1e293b", marginBottom: 4 }}>
-                  {form.form_name.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
+                <div style={{ fontSize: 11.5, color: "#64748b", marginTop: 1 }}>
+                  {s.hint}
                 </div>
-                <div style={{ fontSize: 11, color: "#94a3b8", fontFamily: "monospace" }}>
-                  {form.form_name}
-                </div>
+              </div>
+            </div>
+          ))}
+        </div>
 
-                {/* deadline + status (DB-driven) */}
-                {(() => {
-                  const { dateText, badge } = formStatus(form);
-                  return (
-                    <div style={{ marginTop: 14, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-                      <span style={{ fontSize: 11, color: "#64748b", display: "inline-flex", alignItems: "center", gap: 5 }}>
-                        <IcoClock /> {dateText}
-                      </span>
-                      <span style={{
-                        fontSize: 10, fontWeight: 700, color: badge.color, background: badge.bg,
-                        padding: "2px 9px", borderRadius: 20,
-                      }}>
-                        {badge.label}
-                      </span>
-                    </div>
-                  );
-                })()}
-
-                <div style={{ marginTop: 12, fontSize: 11, color: ACCENT, fontWeight: 600 }}>
-                  Open →
-                </div>
-              </button>
-            ))}
+        {/* Available Forms table */}
+        <div style={tableCardStyle}>
+          <div style={{
+            padding: "12px 16px", borderBottom: "1px solid #eef2f6",
+            display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
+          }}>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "#1e293b" }}>Available Forms</div>
+              <div style={{ fontSize: 11.5, color: "#94a3b8", marginTop: 1 }}>
+                {formsLoading ? "Loading…" : `${forms.length} form${forms.length !== 1 ? "s" : ""} accessible to your department`}
+              </div>
+            </div>
           </div>
-        )}
+
+          {formsLoading ? (
+            <div style={{ padding: "48px 24px", textAlign: "center", color: "#94a3b8", fontSize: 13 }}>
+              Loading forms…
+            </div>
+          ) : forms.length === 0 ? (
+            <div style={{ textAlign: "center", padding: "48px 24px", color: "#94a3b8" }}>
+              <div style={{
+                width: 56, height: 56, borderRadius: 14, margin: "0 auto 16px",
+                background: "#f1f5f9", border: "1px solid #e2e8f0",
+                display: "flex", alignItems: "center", justifyContent: "center",
+              }}>
+                <FileText size={26} strokeWidth={1.6} color="#94a3b8" />
+              </div>
+              <div style={{ fontSize: 13.5, fontWeight: 600, color: "#64748b", marginBottom: 4 }}>No forms available</div>
+              <div style={{ fontSize: 12.5 }}>Your institution hasn't shared any forms with your department yet.</div>
+            </div>
+          ) : (
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 820 }}>
+                <thead>
+                  <tr style={{ background: "#f8fafc" }}>
+                    {["Form", "Form Name & Description", "Deadline", "Status", "Actions"].map((h) => (
+                      <th key={h} style={{
+                        padding: "8px 14px", textAlign: h === "Actions" ? "right" : "left",
+                        fontSize: 10.5, fontWeight: 700, color: "#94a3b8",
+                        textTransform: "uppercase", letterSpacing: 0.5,
+                        borderBottom: "1px solid #eef2f6", whiteSpace: "nowrap",
+                      }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {forms.map((form) => {
+                    const expired = form.deadline_at && new Date(form.deadline_at).getTime() <= now;
+                    const locked  = form.is_locked;
+                    const statusBadge = locked
+                      ? { label: "LOCKED",  color: "#dc2626" }
+                      : expired
+                        ? { label: "EXPIRED", color: "#dc2626" }
+                        : { label: "OPEN",    color: "#16a34a" };
+                    const deadlineText = form.deadline_at
+                      ? new Date(form.deadline_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })
+                      : "—";
+                    let deadlineSubBadge = null;
+                    if (form.deadline_at) {
+                      if (expired) {
+                        deadlineSubBadge = { label: "EXPIRED", color: "#dc2626" };
+                      } else {
+                        const daysLeft = Math.ceil((new Date(form.deadline_at).getTime() - now) / (24 * 3600 * 1000));
+                        deadlineSubBadge = { label: `${daysLeft} DAY${daysLeft !== 1 ? "S" : ""} LEFT`, color: daysLeft <= 3 ? "#d97706" : "#16a34a" };
+                      }
+                    }
+                    return (
+                      <tr key={form.id}
+                        style={{ borderBottom: "1px solid #f1f5f9", transition: "background .1s", cursor: "pointer" }}
+                        onClick={() => openForm(form)}
+                        onMouseEnter={(e) => (e.currentTarget.style.background = "#f8fafc")}
+                        onMouseLeave={(e) => (e.currentTarget.style.background = "")}
+                      >
+                        <td style={{ padding: "8px 14px" }}>
+                          <div style={{
+                            width: 30, height: 30, borderRadius: 8,
+                            background: ACCENT + "18",
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                            fontSize: 11, color: ACCENT, fontWeight: 800, letterSpacing: 0.3,
+                          }}>
+                            {form.form_name.slice(0, 2).toUpperCase()}
+                          </div>
+                        </td>
+                        <td style={{ padding: "8px 14px" }}>
+                          <div style={{ fontSize: 12.5, fontWeight: 700, color: "#1e293b", letterSpacing: 0.2 }}>
+                            {form.form_name.toUpperCase()}
+                          </div>
+                          <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 1, fontFamily: "monospace" }}>
+                            {form.form_name}
+                          </div>
+                        </td>
+                        <td style={{ padding: "8px 14px" }}>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                            <span style={{ fontSize: 12.5, color: "#475569", fontWeight: 600 }}>{deadlineText}</span>
+                            {deadlineSubBadge && (
+                              <span style={{
+                                display: "inline-flex", alignItems: "center", gap: 4,
+                                padding: "2px 8px", borderRadius: 20, fontSize: 10, fontWeight: 700,
+                                background: deadlineSubBadge.color + "18", color: deadlineSubBadge.color,
+                                alignSelf: "flex-start", whiteSpace: "nowrap", letterSpacing: 0.3,
+                              }}>
+                                {deadlineSubBadge.label}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td style={{ padding: "8px 14px" }}>
+                          <span style={{
+                            display: "inline-flex", alignItems: "center", gap: 5,
+                            padding: "3px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700,
+                            background: statusBadge.color + "18", color: statusBadge.color,
+                            letterSpacing: 0.3, whiteSpace: "nowrap",
+                          }}>
+                            <span style={{ width: 6, height: 6, borderRadius: "50%", background: statusBadge.color, display: "inline-block" }} />
+                            {statusBadge.label}
+                          </span>
+                        </td>
+                        <td style={{ padding: "6px 14px", textAlign: "right" }}>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); openForm(form); }}
+                            style={{
+                              display: "inline-flex", alignItems: "center", gap: 5,
+                              background: "#fff", color: ACCENT, border: `1px solid ${ACCENT}40`,
+                              borderRadius: 7, padding: "0 12px", height: 30, fontSize: 11.5, fontWeight: 700,
+                              cursor: "pointer", whiteSpace: "nowrap",
+                              transition: "background .15s, border-color .15s",
+                            }}
+                            onMouseEnter={(e) => { e.currentTarget.style.background = ACCENT + "12"; e.currentTarget.style.borderColor = ACCENT; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.background = "#fff"; e.currentTarget.style.borderColor = ACCENT + "40"; }}
+                          >
+                            Open <span style={{ fontSize: 12 }}>→</span>
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       </div>
     );
   }
@@ -763,7 +873,7 @@ export default function FormDataPage() {
      VIEW 2 — Records table for selected form
   ══════════════════════════════════════════════════════ */
   return (
-    <div style={{ padding: "32px 36px", fontFamily: "'Plus Jakarta Sans', sans-serif", minHeight: "100%" }}>
+    <div style={{ padding: "20px 28px", fontFamily: "'Plus Jakarta Sans', sans-serif", minHeight: "100%", maxWidth: 1440 }}>
       {toast && <Toast message={toast.message} type={toast.type} />}
 
       {/* modals */}
@@ -797,7 +907,9 @@ export default function FormDataPage() {
             background: "#fef2f2", border: "1px solid #fecaca",
             borderRadius: 10, padding: "12px 18px", marginBottom: 20,
           }}>
-            <span style={{ fontSize: 18 }}>{deadlineExpired ? "⏰" : "🔒"}</span>
+            {deadlineExpired
+              ? <Clock size={18} color="#b91c1c" strokeWidth={2} style={{ flexShrink: 0 }} />
+              : <Lock size={18} color="#b91c1c" strokeWidth={2} style={{ flexShrink: 0 }} />}
             <div>
               <div style={{ fontSize: 13, fontWeight: 700, color: "#b91c1c" }}>
                 {deadlineExpired
@@ -819,7 +931,7 @@ export default function FormDataPage() {
           background: "#eff6ff", border: "1px solid #bfdbfe",
           borderRadius: 10, padding: "12px 18px", marginBottom: 20,
         }}>
-          <span style={{ fontSize: 18 }}>🌐</span>
+          <Globe size={18} color="#1e3a8a" strokeWidth={2} style={{ flexShrink: 0 }} />
           <div>
             <div style={{ fontSize: 13, fontWeight: 700, color: "#1e3a8a" }}>
               हिंदी अनुवाद देखा जा रहा है — केवल देखने का मोड।
@@ -832,31 +944,30 @@ export default function FormDataPage() {
       )}
 
       {/* header */}
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 28 }}>
-        <div>
-          <button
-            onClick={backToForms}
-            style={{
-              display: "inline-flex", alignItems: "center", gap: 5,
-              background: "none", border: "none", fontSize: 13, fontWeight: 600,
-              color: ACCENT, cursor: "pointer", padding: 0, marginBottom: 12,
-            }}
-          >
-            <IcoBack /> Back to Forms
-          </button>
-          <h1 style={{ fontSize: 22, fontWeight: 700, color: "#1e293b", letterSpacing: "-0.3px", margin: "0 0 4px" }}>
+      <PageHeader
+        breadcrumb={[
+          "Home",
+          "Department",
+          { label: "Forms & Data Entry", onClick: backToForms },
+          selectedForm?.form_name.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+        ]}
+        title={
+          <>
             {selectedForm?.form_name.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
             {lockInfo.is_locked && (
               <span style={{
                 marginLeft: 10, fontSize: 13, fontWeight: 600, color: "#dc2626",
                 background: "#fef2f2", border: "1px solid #fecaca",
                 borderRadius: 6, padding: "2px 8px", verticalAlign: "middle",
+                display: "inline-flex", alignItems: "center", gap: 5,
               }}>
-                🔒 Locked
+                <Lock size={13} strokeWidth={2.2} /> Locked
               </span>
             )}
-          </h1>
-          <p style={{ fontSize: 13, color: "#94a3b8", margin: 0 }}>
+          </>
+        }
+        description={
+          <>
             {recsLoading
               ? "Loading…"
               : searchTerm
@@ -867,30 +978,32 @@ export default function FormDataPage() {
                 · {schema.year}
               </span>
             )}
-          </p>
-        </div>
-        <button
-          onClick={() => { if (!readOnly) { setEditRecord(null); setModalError(""); setModalOpen(true); } }}
-          disabled={readOnly}
-          title={
-            lockInfo.is_locked
-              ? "Form is locked — contact your institution admin"
-              : viewingTranslated
-                ? "Switch to English (EN) to add records"
-                : ""
-          }
-          style={{
-            display: "inline-flex", alignItems: "center", gap: 7,
-            background: readOnly ? "#94a3b8" : ACCENT,
-            color: "#fff", border: "none", borderRadius: 10,
-            padding: "10px 18px", fontSize: 13, fontWeight: 700,
-            cursor: readOnly ? "not-allowed" : "pointer",
-            boxShadow: readOnly ? "none" : `0 2px 8px ${ACCENT}40`,
-          }}
-        >
-          <IcoPlus /> Add Record
-        </button>
-      </div>
+          </>
+        }
+        actions={
+          <button
+            onClick={() => { if (!readOnly) { setEditRecord(null); setModalError(""); setModalOpen(true); } }}
+            disabled={readOnly}
+            title={
+              lockInfo.is_locked
+                ? "Form is locked — contact your institution admin"
+                : viewingTranslated
+                  ? "Switch to English (EN) to add records"
+                  : ""
+            }
+            style={{
+              display: "inline-flex", alignItems: "center", gap: 7,
+              background: readOnly ? "#94a3b8" : ACCENT,
+              color: "#fff", border: "none", borderRadius: 10,
+              padding: "0 16px", height: 34, fontSize: 12.5, fontWeight: 700,
+              cursor: readOnly ? "not-allowed" : "pointer",
+              boxShadow: readOnly ? "none" : `0 2px 8px ${ACCENT}40`,
+            }}
+          >
+            <IcoPlus /> Add Record
+          </button>
+        }
+      />
 
       {recsError && (
         <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 10, padding: "12px 16px", fontSize: 13, color: "#b91c1c", marginBottom: 20 }}>
@@ -899,10 +1012,7 @@ export default function FormDataPage() {
       )}
 
       {/* records card */}
-      <div style={{
-        background: "#fff", borderRadius: 16, border: "1px solid rgba(0,0,0,0.07)",
-        boxShadow: "0 1px 6px rgba(0,0,0,0.05)", overflow: "hidden",
-      }}>
+      <div style={tableCardStyle}>
         {/* Toolbar: search bar */}
         {!recsLoading && records.length > 0 && (
           <div style={{
@@ -958,13 +1068,25 @@ export default function FormDataPage() {
           </div>
         ) : records.length === 0 ? (
           <div style={{ textAlign: "center", padding: "56px 24px", color: "#94a3b8" }}>
-            <div style={{ fontSize: 36, marginBottom: 12 }}>📝</div>
+            <div style={{
+              width: 56, height: 56, borderRadius: 14, margin: "0 auto 16px",
+              background: "#f1f5f9", border: "1px solid #e2e8f0",
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}>
+              <FilePlus size={26} strokeWidth={1.6} color="#94a3b8" />
+            </div>
             <div style={{ fontSize: 14, fontWeight: 600, color: "#64748b", marginBottom: 6 }}>No records yet</div>
             <div style={{ fontSize: 13 }}>Click "Add Record" to create the first entry.</div>
           </div>
         ) : filteredRecords.length === 0 ? (
           <div style={{ textAlign: "center", padding: "56px 24px", color: "#94a3b8" }}>
-            <div style={{ fontSize: 36, marginBottom: 12 }}>🔍</div>
+            <div style={{
+              width: 56, height: 56, borderRadius: 14, margin: "0 auto 16px",
+              background: "#f1f5f9", border: "1px solid #e2e8f0",
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}>
+              <SearchX size={26} strokeWidth={1.6} color="#94a3b8" />
+            </div>
             <div style={{ fontSize: 14, fontWeight: 600, color: "#64748b", marginBottom: 6 }}>No matching records</div>
             <div style={{ fontSize: 13 }}>Try a different search term or clear the search to see all records.</div>
           </div>
@@ -1017,7 +1139,7 @@ export default function FormDataPage() {
                       <span style={{ fontSize: 12, color: "#64748b" }}>{formatDate(rec.created_at)}</span>
                     </td>
                     <td style={{ ...tdStyle, textAlign: "right" }}>
-                      <div style={{ display: "inline-flex", gap: 6 }}>
+                      <div style={{ display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "nowrap" }}>
                         <button
                           onClick={() => { if (!readOnly) { setEditRecord(rec); setModalError(""); setModalOpen(true); } }}
                           disabled={readOnly}
@@ -1059,18 +1181,19 @@ export default function FormDataPage() {
 
 /* ── table styles ── */
 const thStyle = {
-  padding: "10px 16px", textAlign: "left", fontSize: 11,
+  padding: "8px 14px", textAlign: "left", fontSize: 10.5,
   fontWeight: 700, color: "#94a3b8", textTransform: "uppercase",
-  letterSpacing: 0.6, borderBottom: "1px solid #f1f5f9",
+  letterSpacing: 0.5, borderBottom: "1px solid #eef2f6",
   whiteSpace: "nowrap",
 };
 
 const tdStyle = {
-  padding: "13px 16px", verticalAlign: "middle",
+  padding: "9px 14px", verticalAlign: "middle",
 };
 
 const actionBtn = {
-  background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 7,
-  width: 30, height: 30, display: "inline-flex", alignItems: "center",
+  background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8,
+  width: 36, height: 36, minHeight: 36, display: "inline-flex", alignItems: "center",
   justifyContent: "center", cursor: "pointer", color: "#475569",
+  whiteSpace: "nowrap", flexShrink: 0,
 };

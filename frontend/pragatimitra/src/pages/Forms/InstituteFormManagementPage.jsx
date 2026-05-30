@@ -1,6 +1,11 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
+import { createPortal } from "react-dom";
+import { FileText, Archive, Search } from "lucide-react";
 import { useApi } from "../../hooks/useApi";
 import { Toast, isAuthError } from "../../components/shared/formUtils";
+import PageHeader from "../../components/shared/PageHeader";
+import { ActionButton as StdActionButton, ActionButtonGroup } from "../../components/shared/ActionButtons";
+import { StatusBadge, tableCardStyle } from "../../components/shared/ui";
 import FormBuilderPage from "./FormBuilderPage";
 import InstituteFormRecordsPage from "./InstituteFormRecordsPage";
 
@@ -16,7 +21,7 @@ function IconPlus() {
 }
 function IconSettings() {
   return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="12" cy="12" r="3" />
       <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
     </svg>
@@ -32,7 +37,7 @@ function IconRefresh() {
 }
 function IconLock() {
   return (
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
       <path d="M7 11V7a5 5 0 0 1 10 0v4" />
     </svg>
@@ -40,7 +45,7 @@ function IconLock() {
 }
 function IconUnlock() {
   return (
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
       <path d="M7 11V7a5 5 0 0 1 9.9-1" />
     </svg>
@@ -48,7 +53,7 @@ function IconUnlock() {
 }
 function IconEye() {
   return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
       <circle cx="12" cy="12" r="3" />
     </svg>
@@ -56,13 +61,35 @@ function IconEye() {
 }
 function IconCalendar() {
   return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
       <line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" />
     </svg>
   );
 }
-
+function IconSearch() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+    </svg>
+  );
+}
+function IconShare() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" />
+      <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" /><line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+    </svg>
+  );
+}
+function IconLockMini() {
+  return (
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+    </svg>
+  );
+}
 /* Returns deadline display info: formatted date + status badge props. */
 function deadlineInfo(form) {
   if (!form.deadline_at) {
@@ -75,34 +102,95 @@ function deadlineInfo(form) {
   const expired = msLeft <= 0;
 
   if (expired) {
-    return { dateText, status: { label: "Expired", color: "#dc2626" } };
+    return { dateText, status: { label: "EXPIRED", color: "#dc2626" } };
   }
   const daysLeft = Math.ceil(msLeft / (1000 * 60 * 60 * 24));
+  const label = `${daysLeft} DAY${daysLeft !== 1 ? "S" : ""} LEFT`;
   if (daysLeft <= 3) {
-    return { dateText, status: { label: `${daysLeft}d left`, color: "#d97706" } };
+    return { dateText, status: { label, color: "#d97706" } };
   }
-  return { dateText, status: { label: `${daysLeft}d left`, color: "#16a34a" } };
+  return { dateText, status: { label, color: "#16a34a" } };
 }
 
+/* readable title from snake_case form_name */
+function titleOf(form_name) {
+  return form_name.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+/* short label that summarises the associated institutions */
+function institutionsLabel(form) {
+  const names = form.institution_names || [];
+  if (names.length === 1) return names[0];
+  if (names.length > 1) return `${names.length} institutions`;
+  const count = (form.institute_access || []).length;
+  return count ? `${count} institution${count !== 1 ? "s" : ""}` : "—";
+}
+
+/* ── Status-dot badge (deadline / access status) ── */
 function Badge({ label, color }) {
   return (
     <span style={{
-      display: "inline-flex", alignItems: "center", gap: 4,
-      padding: "2px 10px", borderRadius: 20, fontSize: 11, fontWeight: 600,
-      background: color + "18", color,
+      display: "inline-flex", alignItems: "center", gap: 5,
+      padding: "3px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700,
+      background: color + "18", color, letterSpacing: 0.3, whiteSpace: "nowrap",
     }}>
-      <span style={{ width: 5, height: 5, borderRadius: "50%", background: color, display: "inline-block" }} />
+      <span style={{ width: 6, height: 6, borderRadius: "50%", background: color, display: "inline-block" }} />
       {label}
     </span>
   );
 }
 
-function EmptyState() {
+/* ── Visibility badge with icon (private / shared) ── */
+function VisibilityBadge({ shared }) {
   return (
-    <div style={{ textAlign: "center", padding: "56px 24px", color: "#94a3b8" }}>
-      <div style={{ fontSize: 40, marginBottom: 14 }}>📋</div>
-      <div style={{ fontSize: 14, fontWeight: 600, color: "#64748b", marginBottom: 6 }}>No forms available</div>
-      <div style={{ fontSize: 13 }}>Create a new form or contact your super admin to share one with your institution.</div>
+    <StatusBadge
+      tone={shared ? "shared" : "private"}
+      dot={false}
+      icon={shared ? <IconShare /> : <IconLockMini />}
+      style={{ fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.4 }}
+    >
+      {shared ? "Shared" : "Private"}
+    </StatusBadge>
+  );
+}
+
+/* ── Compact single-line action button — delegates to the shared 34px button ── */
+function ActionButton({ icon, label, onClick, title, disabled, iconOnly, variant }) {
+  return (
+    <StdActionButton
+      icon={icon}
+      onClick={onClick}
+      title={title}
+      disabled={disabled}
+      iconOnly={iconOnly}
+      variant={variant}
+    >
+      {label}
+    </StdActionButton>
+  );
+}
+
+function EmptyState({ archived, searching }) {
+  const Icon = searching ? Search : archived ? Archive : FileText;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", padding: "56px 24px" }}>
+      <div style={{
+        width: 56, height: 56, borderRadius: 14, marginBottom: 16,
+        background: "#f1f5f9", border: "1px solid #e2e8f0",
+        display: "flex", alignItems: "center", justifyContent: "center",
+      }}>
+        <Icon size={26} strokeWidth={1.6} color="#94a3b8" />
+      </div>
+      <div style={{ fontSize: 14, fontWeight: 600, color: "#1e293b", marginBottom: 6 }}>
+        {searching ? "No forms match your search" : archived ? "No archived forms" : "No forms available"}
+      </div>
+      <div style={{ fontSize: 13, color: "#94a3b8", maxWidth: 380 }}>
+        {searching
+          ? "Try a different name or clear the search."
+          : archived
+            ? "Forms you archive will appear here and can be restored anytime."
+            : "Create a new form or contact your super admin to share one with your institution."}
+      </div>
     </div>
   );
 }
@@ -159,12 +247,12 @@ function DeadlineModal({ form, onClose, onSaved, showToast }) {
     }
   }
 
-  const formTitle = form.form_name.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  const formTitle = titleOf(form.form_name);
   const todayStr  = new Date().toISOString().slice(0, 10);
   const hasDeadline = !!current.deadline_at;
   const expired   = hasDeadline && new Date(current.deadline_at).getTime() <= Date.now();
 
-  return (
+  return createPortal(
     <div
       style={{ position: "fixed", inset: 0, zIndex: 1000, background: "rgba(15,23,42,0.45)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
@@ -254,7 +342,7 @@ function DeadlineModal({ form, onClose, onSaved, showToast }) {
                 disabled={saving || !dateVal}
                 style={{
                   padding: "9px 22px", borderRadius: 9, border: "none",
-                  background: saving || !dateVal ? "#93c5fd" : ACCENT,
+                  background: saving || !dateVal ? "#7dd3e8" : ACCENT,
                   fontSize: 13, fontWeight: 700, color: "#fff",
                   cursor: saving || !dateVal ? "not-allowed" : "pointer",
                 }}
@@ -265,14 +353,15 @@ function DeadlineModal({ form, onClose, onSaved, showToast }) {
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
 /* ═══════════════════════════════════════════════════════════════════
    InstituteFormManagementPage
    Lists forms from table_list that this institution has access to.
-   Provides "Manage" to edit field schema and "Create Form" button.
+   Active / Archived tabs, search, deadline + lock + archive controls.
 ═══════════════════════════════════════════════════════════════════ */
 export default function InstituteFormManagementPage() {
   const { apiFetch } = useApi();
@@ -287,6 +376,9 @@ export default function InstituteFormManagementPage() {
   const [toast, setToast]     = useState(null);
   const [lockTogglingForm, setLockTogglingForm] = useState(null);
   const [deadlineForm, setDeadlineForm] = useState(null); // form whose deadline modal is open
+
+  const [tab, setTab]       = useState("active"); // "active" | "archived"
+  const [search, setSearch] = useState("");
 
   const showToast = (message, type = "success") => {
     setToast({ message, type });
@@ -309,6 +401,20 @@ export default function InstituteFormManagementPage() {
   }, [apiFetch]);
 
   useEffect(() => { load(); }, [load]);
+
+  const visibleForms = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return forms
+      .filter((f) => (tab === "archived" ? f.archived : !f.archived))
+      .filter((f) => {
+        if (!q) return true;
+        return (
+          titleOf(f.form_name).toLowerCase().includes(q) ||
+          f.form_name.toLowerCase().includes(q) ||
+          (f.description || "").toLowerCase().includes(q)
+        );
+      });
+  }, [forms, tab, search]);
 
   async function handleToggleLock(form) {
     const action = form.is_locked ? "unlock" : "lock";
@@ -390,8 +496,10 @@ export default function InstituteFormManagementPage() {
     );
   }
 
+  const searching = search.trim().length > 0;
+
   return (
-    <div style={{ padding: "32px 36px", fontFamily: "'Plus Jakarta Sans', sans-serif", minHeight: "100%" }}>
+    <div style={{ padding: "20px 28px", fontFamily: "'Plus Jakarta Sans', sans-serif", minHeight: "100%", maxWidth: 1440 }}>
       {toast && <Toast message={toast.message} type={toast.type} />}
 
       {deadlineForm && (
@@ -404,49 +512,37 @@ export default function InstituteFormManagementPage() {
       )}
 
       {/* Page header */}
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 32 }}>
-        <div>
-          <div style={{
-            display: "inline-flex", alignItems: "center", gap: 7,
-            background: ACCENT + "12", borderRadius: 8, padding: "4px 12px", marginBottom: 10,
-          }}>
-            <div style={{ width: 6, height: 6, borderRadius: "50%", background: ACCENT }} />
-            <span style={{ fontSize: 11, fontWeight: 700, color: ACCENT, textTransform: "uppercase", letterSpacing: 1 }}>
-              Form Management
-            </span>
-          </div>
-          <h1 style={{ fontSize: 24, fontWeight: 700, color: "#1e293b", letterSpacing: "-0.4px", margin: "0 0 6px" }}>
-            Institution Forms
-          </h1>
-          <p style={{ fontSize: 13, color: "#94a3b8", margin: 0 }}>
-            Manage data collection forms available to your institution.
-          </p>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <button
-            onClick={load}
-            style={{
-              display: "inline-flex", alignItems: "center", gap: 6,
-              background: "#f8fafc", color: "#475569", border: "1px solid #e2e8f0",
-              borderRadius: 10, padding: "10px 16px", fontSize: 13, fontWeight: 600,
-              cursor: "pointer",
-            }}
-          >
-            <IconRefresh /> Refresh
-          </button>
-          <button
-            onClick={openCreate}
-            style={{
-              display: "inline-flex", alignItems: "center", gap: 7,
-              background: ACCENT, color: "#fff", border: "none", borderRadius: 10,
-              padding: "10px 18px", fontSize: 13, fontWeight: 700, cursor: "pointer",
-              boxShadow: `0 2px 8px ${ACCENT}40`,
-            }}
-          >
-            <IconPlus /> Create Form
-          </button>
-        </div>
-      </div>
+      <PageHeader
+        breadcrumb={["Home", "Forms", "Institution Forms"]}
+        title="Institution Forms"
+        description="Comprehensive control panel for all institutional form-based data collection."
+        actions={
+          <>
+            <button
+              onClick={load}
+              style={{
+                display: "inline-flex", alignItems: "center", gap: 7,
+                background: "#fff", color: "#475569", border: "1px solid #e2e8f0",
+                borderRadius: 8, padding: "0 14px", height: 34, fontSize: 12.5, fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              <IconRefresh /> Refresh List
+            </button>
+            <button
+              onClick={openCreate}
+              style={{
+                display: "inline-flex", alignItems: "center", gap: 7,
+                background: ACCENT, color: "#fff", border: "none", borderRadius: 8,
+                padding: "0 16px", height: 34, fontSize: 12.5, fontWeight: 700, cursor: "pointer",
+                boxShadow: `0 2px 8px ${ACCENT}40`,
+              }}
+            >
+              <IconPlus /> Create New Form
+            </button>
+          </>
+        }
+      />
 
       {error && (
         <div style={{
@@ -458,19 +554,48 @@ export default function InstituteFormManagementPage() {
       )}
 
       {/* Forms table card */}
-      <div style={{
-        background: "#fff", borderRadius: 16, border: "1px solid rgba(0,0,0,0.07)",
-        boxShadow: "0 1px 6px rgba(0,0,0,0.05)", overflow: "hidden",
-      }}>
+      <div style={tableCardStyle}>
+        {/* toolbar: search + tabs */}
         <div style={{
-          padding: "18px 24px", borderBottom: "1px solid #f1f5f9",
-          display: "flex", alignItems: "center", justifyContent: "space-between",
+          padding: "12px 16px", borderBottom: "1px solid #eef2f6",
+          display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap",
         }}>
-          <div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: "#1e293b" }}>Available Forms</div>
-            <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 2 }}>
-              {loading ? "Loading…" : `${forms.length} form${forms.length !== 1 ? "s" : ""} accessible to your institution`}
-            </div>
+          <div style={{ position: "relative", flex: "0 1 260px", maxWidth: 260 }}>
+            <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "#94a3b8", display: "flex" }}>
+              <IconSearch />
+            </span>
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search forms…"
+              style={{
+                width: "100%", padding: "6px 10px 6px 30px", border: "1px solid #e2e8f0",
+                borderRadius: 8, fontSize: 12.5, color: "#1e293b", outline: "none", boxSizing: "border-box",
+                background: "#f8fafc", height: 32,
+              }}
+            />
+          </div>
+          <div style={{ display: "inline-flex", border: "1px solid #e2e8f0", borderRadius: 9, padding: 3, gap: 2, background: "#fff" }}>
+            {[
+              { key: "active",   label: "Active" },
+              { key: "archived", label: "Archived" },
+            ].map((t) => {
+              const on = tab === t.key;
+              return (
+                <button
+                  key={t.key}
+                  onClick={() => setTab(t.key)}
+                  style={{
+                    border: "none", borderRadius: 7, padding: "6px 16px",
+                    fontSize: 13, fontWeight: 600, cursor: "pointer",
+                    background: on ? "#f1f5f9" : "transparent",
+                    color: on ? "#1e293b" : "#94a3b8",
+                  }}
+                >
+                  {t.label}
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -478,155 +603,123 @@ export default function InstituteFormManagementPage() {
           <div style={{ padding: "48px 24px", textAlign: "center", color: "#94a3b8", fontSize: 13 }}>
             Loading forms…
           </div>
-        ) : forms.length === 0 ? (
-          <EmptyState />
+        ) : visibleForms.length === 0 ? (
+          <EmptyState archived={tab === "archived"} searching={searching} />
         ) : (
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr style={{ background: "#f8fafc" }}>
-                {["Form Name", "Visibility", "Institutions", "Deadline", "Lock Status", "Action"].map((h) => (
-                  <th key={h} style={{
-                    padding: "10px 20px", textAlign: h === "Action" ? "right" : "left",
-                    fontSize: 11, fontWeight: 700, color: "#94a3b8",
-                    textTransform: "uppercase", letterSpacing: 0.6,
-                    borderBottom: "1px solid #f1f5f9",
-                  }}>
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {forms.map((form, i) => (
-                <tr
-                  key={form.id}
-                  style={{
-                    borderBottom: i < forms.length - 1 ? "1px solid #f8fafc" : "none",
-                    transition: "background .1s",
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = "#f8fafc")}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = "")}
-                >
-                  <td style={{ padding: "14px 20px" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <div style={{
-                        width: 36, height: 36, borderRadius: 9,
-                        background: ACCENT + "18",
-                        display: "flex", alignItems: "center", justifyContent: "center",
-                        fontSize: 15, color: ACCENT, fontWeight: 700, flexShrink: 0,
-                      }}>
-                        {form.form_name.charAt(0).toUpperCase()}
-                      </div>
-                      <div>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: "#1e293b" }}>
-                          {form.form_name.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1080 }}>
+              <thead>
+                <tr style={{ background: "#f8fafc" }}>
+                  {["Form", "Form Name & Description", "Visibility", "Associated Institutions", "Deadline Status", "Access Status", "Actions"].map((h) => (
+                    <th key={h} style={{
+                      padding: "8px 14px", textAlign: h === "Actions" ? "right" : "left",
+                      fontSize: 10.5, fontWeight: 700, color: "#94a3b8",
+                      textTransform: "uppercase", letterSpacing: 0.5,
+                      borderBottom: "1px solid #eef2f6", whiteSpace: "nowrap",
+                    }}>
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {visibleForms.map((form, i) => {
+                  const { dateText, status } = deadlineInfo(form);
+                  const lockBusy = lockTogglingForm === form.form_name;
+                  return (
+                    <tr
+                      key={form.id}
+                      style={{
+                        borderBottom: "1px solid #f1f5f9",
+                        transition: "background .1s",
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = "#f8fafc")}
+                      onMouseLeave={(e) => (e.currentTarget.style.background = "")}
+                    >
+                      {/* Form avatar */}
+                      <td style={{ padding: "8px 14px" }}>
+                        <div style={{
+                          width: 30, height: 30, borderRadius: 8,
+                          background: ACCENT + "18",
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          fontSize: 11, color: ACCENT, fontWeight: 800, letterSpacing: 0.3,
+                        }}>
+                          {form.form_name.slice(0, 2).toUpperCase()}
                         </div>
-                        <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 1 }}>
-                          {form.form_name}
+                      </td>
+
+                      {/* Name & description */}
+                      <td style={{ padding: "8px 14px" }}>
+                        <div style={{ fontSize: 12.5, fontWeight: 700, color: "#1e293b", letterSpacing: 0.2 }}>
+                          {form.form_name.toUpperCase()}
                         </div>
-                      </div>
-                    </div>
-                  </td>
-                  <td style={{ padding: "14px 20px" }}>
-                    {form.share_table ? (
-                      <Badge label="Shared" color="#0891b2" />
-                    ) : (
-                      <Badge label="Private" color="#64748b" />
-                    )}
-                  </td>
-                  <td style={{ padding: "14px 20px" }}>
-                    <span style={{ fontSize: 13, color: "#475569" }}>
-                      {(form.institute_access || []).length} institution{(form.institute_access || []).length !== 1 ? "s" : ""}
-                    </span>
-                  </td>
-                  <td style={{ padding: "14px 20px" }}>
-                    {(() => {
-                      const { dateText, status } = deadlineInfo(form);
-                      return (
+                        <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 1, maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {form.description || titleOf(form.form_name)}
+                        </div>
+                      </td>
+
+                      {/* Visibility */}
+                      <td style={{ padding: "8px 14px" }}>
+                        <VisibilityBadge shared={!!form.share_table} />
+                      </td>
+
+                      {/* Associated institutions */}
+                      <td style={{ padding: "8px 14px" }}>
+                        <span style={{ fontSize: 13, color: "#475569" }}>{institutionsLabel(form)}</span>
+                      </td>
+
+                      {/* Deadline status */}
+                      <td style={{ padding: "8px 14px" }}>
                         <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                          <span style={{ fontSize: 12, color: "#475569", fontWeight: 600 }}>{dateText}</span>
+                          <span style={{ fontSize: 12.5, color: "#475569", fontWeight: 600 }}>{dateText}</span>
                           {status && <Badge label={status.label} color={status.color} />}
                         </div>
-                      );
-                    })()}
-                  </td>
-                  <td style={{ padding: "14px 20px" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      {form.is_locked ? (
-                        <Badge label="Locked" color="#dc2626" />
-                      ) : (
-                        <Badge label="Open" color="#16a34a" />
-                      )}
-                      <button
-                        onClick={() => handleToggleLock(form)}
-                        disabled={lockTogglingForm === form.form_name}
-                        title={form.is_locked ? "Unlock this form" : "Lock this form"}
-                        style={{
-                          display: "inline-flex", alignItems: "center", gap: 5,
-                          background: form.is_locked ? "#fef2f2" : "#f0fdf4",
-                          color: form.is_locked ? "#dc2626" : "#16a34a",
-                          border: `1px solid ${form.is_locked ? "#fecaca" : "#bbf7d0"}`,
-                          borderRadius: 7, padding: "5px 10px", fontSize: 11, fontWeight: 700,
-                          cursor: lockTogglingForm === form.form_name ? "not-allowed" : "pointer",
-                          opacity: lockTogglingForm === form.form_name ? 0.6 : 1,
-                        }}
-                      >
-                        {form.is_locked ? <><IconUnlock /> Unlock</> : <><IconLock /> Lock</>}
-                      </button>
-                    </div>
-                  </td>
-                  <td style={{ padding: "14px 20px", textAlign: "right" }}>
-                    <div style={{ display: "inline-flex", gap: 8, justifyContent: "flex-end", flexWrap: "wrap" }}>
-                      <button
-                        onClick={() => setDeadlineForm(form)}
-                        title="Manage this form's deadline for your institution"
-                        style={{
-                          display: "inline-flex", alignItems: "center", gap: 6,
-                          background: "#fffbeb", color: "#d97706",
-                          border: "1px solid #fde68a", borderRadius: 8,
-                          padding: "7px 14px", fontSize: 12, fontWeight: 700,
-                          cursor: "pointer", transition: "background .15s",
-                        }}
-                        onMouseEnter={(e) => (e.currentTarget.style.background = "#fef3c7")}
-                        onMouseLeave={(e) => (e.currentTarget.style.background = "#fffbeb")}
-                      >
-                        <IconCalendar /> Deadline
-                      </button>
-                      <button
-                        onClick={() => openRecords(form)}
-                        title="View all department records for this form"
-                        style={{
-                          display: "inline-flex", alignItems: "center", gap: 6,
-                          background: "#f5f3ff", color: "#7c3aed",
-                          border: "1px solid #ddd6fe", borderRadius: 8,
-                          padding: "7px 14px", fontSize: 12, fontWeight: 700,
-                          cursor: "pointer", transition: "background .15s",
-                        }}
-                        onMouseEnter={(e) => (e.currentTarget.style.background = "#ede9fe")}
-                        onMouseLeave={(e) => (e.currentTarget.style.background = "#f5f3ff")}
-                      >
-                        <IconEye /> View Records
-                      </button>
-                      <button
-                        onClick={() => openManage(form)}
-                        style={{
-                          display: "inline-flex", alignItems: "center", gap: 6,
-                          background: "#f0f9ff", color: ACCENT,
-                          border: `1px solid ${ACCENT}30`, borderRadius: 8,
-                          padding: "7px 14px", fontSize: 12, fontWeight: 700,
-                          cursor: "pointer", transition: "background .15s",
-                        }}
-                        onMouseEnter={(e) => (e.currentTarget.style.background = ACCENT + "18")}
-                        onMouseLeave={(e) => (e.currentTarget.style.background = "#f0f9ff")}
-                      >
-                        <IconSettings /> Manage
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                      </td>
+
+                      {/* Access status */}
+                      <td style={{ padding: "8px 14px" }}>
+                        {form.is_locked
+                          ? <StatusBadge tone="locked">LOCKED</StatusBadge>
+                          : <StatusBadge tone="open">OPEN</StatusBadge>}
+                      </td>
+
+                      {/* Actions */}
+                      <td style={{ padding: "6px 14px", verticalAlign: "middle" }}>
+                        <ActionButtonGroup justify="flex-end">
+                          <ActionButton
+                            icon={<IconCalendar />}
+                            label="Deadline"
+                            onClick={() => setDeadlineForm(form)}
+                            title="Manage this form's deadline for your institution"
+                          />
+                          <ActionButton
+                            icon={<IconEye />}
+                            iconOnly
+                            onClick={() => openRecords(form)}
+                            title="View all department records for this form"
+                          />
+                          <ActionButton
+                            icon={<IconSettings />}
+                            label="Manage"
+                            onClick={() => openManage(form)}
+                            title="Edit this form's field schema"
+                          />
+                          <ActionButton
+                            icon={form.is_locked ? <IconLock /> : <IconUnlock />}
+                            iconOnly
+                            variant={form.is_locked ? "danger" : "success"}
+                            onClick={() => handleToggleLock(form)}
+                            disabled={lockBusy}
+                            title={form.is_locked ? "Locked — click to unlock" : "Open — click to lock"}
+                          />
+                        </ActionButtonGroup>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
     </div>

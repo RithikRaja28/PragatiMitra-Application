@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { FileText, FolderOpen, CheckCircle2, AlertTriangle, Upload } from "lucide-react";
 import { useAuth } from "../../store/AuthContext";
 import { useApi } from "../../hooks/useApi";
 import { S as FS } from "./formUtils";
@@ -66,7 +67,7 @@ function ErrorDetailsModal({ errors, onClose }) {
   const totalPages = Math.ceil(errors.length / PAGE_SIZE);
   const pageErrors = errors.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 2000, background: "rgba(15,23,42,0.65)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+    <div style={{ position: "fixed", inset: 0, zIndex: 2000, background: "rgba(15,23,42,0.65)", backdropFilter: "blur(2px)", WebkitBackdropFilter: "blur(2px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
       <div style={{ background: "#fff", borderRadius: 14, width: "100%", maxWidth: 680, padding: "28px 28px 24px", boxShadow: "0 24px 80px rgba(0,0,0,0.28)", maxHeight: "80vh", display: "flex", flexDirection: "column" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
           <div>
@@ -153,14 +154,14 @@ function Step1Configure({ file, settings, onFileChange, onSettingsChange, onNext
           onChange={(e) => e.target.files[0] && onFileChange(e.target.files[0])} />
         {file ? (
           <div>
-            <div style={{ fontSize: 32, marginBottom: 8 }}>📄</div>
+            <FileText size={32} strokeWidth={1.5} color="#10b981" style={{ marginBottom: 8 }} />
             <div style={{ fontSize: 14, fontWeight: 700, color: "#1e293b" }}>{file.name}</div>
             <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>{formatSize(file.size)}</div>
             <div style={{ fontSize: 12, color: "#10b981", marginTop: 6, fontWeight: 600 }}>✓ File selected — click to change</div>
           </div>
         ) : (
           <div>
-            <div style={{ fontSize: 36, marginBottom: 10 }}>📂</div>
+            <FolderOpen size={36} strokeWidth={1.4} color="#94a3b8" style={{ marginBottom: 10 }} />
             <div style={{ fontSize: 14, fontWeight: 600, color: "#475569" }}>Drag & drop your file here</div>
             <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 6 }}>or click to browse</div>
           </div>
@@ -304,7 +305,11 @@ function Step3Preview({ entityLabel, systemFields, mapping, parsedData, validati
     return (
       <div>
         <div style={{ textAlign: "center", marginBottom: 28 }}>
-          <div style={{ fontSize: 40, marginBottom: 10 }}>{importResult.failed === 0 ? "🎉" : "⚠️"}</div>
+          <div style={{ marginBottom: 10 }}>
+            {importResult.failed === 0
+              ? <CheckCircle2 size={40} strokeWidth={1.6} color="#16a34a" />
+              : <AlertTriangle size={40} strokeWidth={1.6} color="#d97706" />}
+          </div>
           <h3 style={{ fontSize: 18, fontWeight: 700, color: "#1e293b", marginBottom: 6 }}>
             Import {importResult.failed === 0 ? "Complete!" : "Finished with some errors"}
           </h3>
@@ -464,7 +469,7 @@ function Step3Preview({ entityLabel, systemFields, mapping, parsedData, validati
  * Props:
  *   apiPath       — e.g. "/api/users" or "/api/institutions"
  *   entityLabel   — e.g. "Users" or "Institutions"
- *   entityIcon    — emoji for the card header (default "📥")
+ *   entityIcon    — ReactNode for the card header (default Upload icon)
  *   extraSettingsSlot — optional React node rendered inside the settings box
  *   extraImportBody   — optional object merged into the execute POST body
  *   onBack        — navigate back to the list
@@ -473,7 +478,7 @@ function Step3Preview({ entityLabel, systemFields, mapping, parsedData, validati
 export default function ImportWizard({
   apiPath      = "/api/users",
   entityLabel  = "Records",
-  entityIcon   = "📥",
+  entityIcon   = <Upload size={22} strokeWidth={1.8} color="#2563eb" />,
   extraSettingsSlot = null,
   extraImportBody   = {},
   onBack,

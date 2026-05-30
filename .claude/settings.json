@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node -e ' *)",
+      "Bash(node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\);process.stdin.on\\('end',\\(\\)=>{const lines=d.split\\('\\\\n'\\);const out=lines.filter\\(l=>/error|Error|✓ built|fail|Could not|not exported|is not defined/i.test\\(l\\)\\);console.log\\(out.slice\\(-20\\).join\\('\\\\n'\\)\\)}\\)\")",
+      "Bash(node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\);process.stdin.on\\('end',\\(\\)=>{const lines=d.split\\('\\\\n'\\);const out=lines.filter\\(l=>/error|Error|✓ built|fail|Could not|not exported|is not defined|Unexpected/i.test\\(l\\)\\);console.log\\(out.slice\\(-20\\).join\\('\\\\n'\\)\\)}\\)\")",
+      "Bash(node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\);process.stdin.on\\('end',\\(\\)=>{const lines=d.split\\('\\\\n'\\);const out=lines.filter\\(l=>/error|Error|✓ built|fail|not exported|is not defined|Unexpected/i.test\\(l\\)\\);console.log\\(out.slice\\(-15\\).join\\('\\\\n'\\)\\)}\\)\")"
+    ]
+  }
+}

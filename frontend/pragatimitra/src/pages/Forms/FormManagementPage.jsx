@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback } from "react";
+import { FileText, FilePlus } from "lucide-react";
 import { useApi } from "../../hooks/useApi";
 import { S, Toast, isAuthError, formatDate } from "../../components/shared/formUtils";
+import { tableCardStyle } from "../../components/shared/ui";
 import FormBuilderPage from "./FormBuilderPage";
 
 /* ── icons ── */
@@ -78,7 +80,13 @@ function Badge({ label, color }) {
 function EmptyState({ icon, title, subtitle }) {
   return (
     <div style={{ textAlign: "center", padding: "48px 24px", color: "#94a3b8" }}>
-      <div style={{ fontSize: 36, marginBottom: 12 }}>{icon}</div>
+      <div style={{
+        width: 56, height: 56, borderRadius: 14, margin: "0 auto 16px",
+        background: "#f1f5f9", border: "1px solid #e2e8f0",
+        display: "flex", alignItems: "center", justifyContent: "center",
+      }}>
+        {icon}
+      </div>
       <div style={{ fontSize: 14, fontWeight: 600, color: "#64748b", marginBottom: 6 }}>{title}</div>
       <div style={{ fontSize: 13 }}>{subtitle}</div>
     </div>
@@ -88,10 +96,7 @@ function EmptyState({ icon, title, subtitle }) {
 /* ── Section card ── */
 function SectionCard({ title, subtitle, icon, action, children }) {
   return (
-    <div style={{
-      background: "#fff", borderRadius: 16, border: "1px solid rgba(0,0,0,0.07)",
-      boxShadow: "0 1px 6px rgba(0,0,0,0.05)", overflow: "hidden", marginBottom: 28,
-    }}>
+    <div style={{ ...tableCardStyle, marginBottom: 28 }}>
       <div style={{
         padding: "18px 24px", borderBottom: "1px solid #f1f5f9",
         display: "flex", alignItems: "center", justifyContent: "space-between",
@@ -283,7 +288,7 @@ export default function FormManagementPage({ isSuperAdmin = false }) {
           </div>
         ) : templates.length === 0 ? (
           <EmptyState
-            icon="📋"
+            icon={<FileText size={26} strokeWidth={1.6} color="#94a3b8" />}
             title="No shared templates"
             subtitle="Shared forms from other institutions will appear here"
           />
@@ -371,7 +376,7 @@ export default function FormManagementPage({ isSuperAdmin = false }) {
           </div>
         ) : myForms.length === 0 ? (
           <EmptyState
-            icon="📝"
+            icon={<FilePlus size={26} strokeWidth={1.6} color="#94a3b8" />}
             title="No forms yet"
             subtitle='Click "New Form" to create your first form schema'
           />

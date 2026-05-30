@@ -1,7 +1,10 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useApi } from "../../hooks/useApi";
 import { useLanguage } from "../../i18n/LanguageContext";
-import { Toast, isAuthError, formatDate } from "../../components/shared/formUtils";
+import { Lock, Inbox } from "lucide-react";
+import { S, Toast, isAuthError, formatDate } from "../../components/shared/formUtils";
+import PageHeader from "../../components/shared/PageHeader";
+import { tableCardStyle } from "../../components/shared/ui";
 
 const ACCENT = "#0891b2";
 
@@ -14,13 +17,6 @@ function displayCol(col) {
 }
 
 /* ── Icons ── */
-function IconBack() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-      <polyline points="15 18 9 12 15 6" />
-    </svg>
-  );
-}
 function IconSearch() {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -244,7 +240,7 @@ export default function InstituteFormRecordsPage({ form, onBack }) {
   const formTitle = form.form_name.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 
   return (
-    <div style={{ padding: "32px 36px", fontFamily: "'Plus Jakarta Sans', sans-serif", minHeight: "100%" }}>
+    <div style={{ padding: "20px 28px", fontFamily: "'Plus Jakarta Sans', sans-serif", minHeight: "100%", maxWidth: 1440 }}>
       {toast && <Toast message={toast.message} type={toast.type} />}
 
       {/* View-only banner */}
@@ -262,19 +258,14 @@ export default function InstituteFormRecordsPage({ form, onBack }) {
       </div>
 
       {/* header */}
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, marginBottom: 20 }}>
-        <div>
-          <button
-            onClick={onBack}
-            style={{
-              display: "inline-flex", alignItems: "center", gap: 5,
-              background: "none", border: "none", fontSize: 13, fontWeight: 600,
-              color: ACCENT, cursor: "pointer", padding: 0, marginBottom: 12,
-            }}
-          >
-            <IconBack /> {lang === "hi" ? "फॉर्म प्रबंधन पर वापस" : "Back to Form Management"}
-          </button>
-          <h1 style={{ fontSize: 22, fontWeight: 700, color: "#1e293b", letterSpacing: "-0.3px", margin: "0 0 4px" }}>
+      <PageHeader
+        breadcrumb={[
+          lang === "hi" ? "होम" : "Home",
+          { label: lang === "hi" ? "फॉर्म प्रबंधन" : "Form Management", onClick: onBack },
+          lang === "hi" ? "रिकॉर्ड देखें" : "View Records",
+        ]}
+        title={
+          <>
             {formTitle}
             <span style={{
               marginLeft: 10, fontSize: 12, fontWeight: 600,
@@ -292,39 +283,39 @@ export default function InstituteFormRecordsPage({ form, onBack }) {
                 ? (lang === "hi" ? "लॉक है" : "Locked")
                 : (lang === "hi" ? "खुला" : "Open")}
             </span>
-          </h1>
-          <p style={{ fontSize: 13, color: "#94a3b8", margin: 0 }}>
-            {loading
-              ? (lang === "hi" ? "लोड हो रहा है…" : "Loading…")
-              : `${totalRecords} ${lang === "hi" ? "रिकॉर्ड" : "record"}${totalRecords !== 1 ? (lang === "hi" ? "" : "s") : ""} ${lang === "hi" ? "में से" : "across"} ${departments.length} ${lang === "hi" ? "विभाग" : "department"}${departments.length !== 1 ? (lang === "hi" ? "" : "s") : ""}`}
-          </p>
-        </div>
-
-        {/* Lock / Unlock control */}
-        <button
-          onClick={handleToggleLock}
-          disabled={lockToggling || loading}
-          title={lockInfo.is_locked
-            ? (lang === "hi" ? "इस फॉर्म को अनलॉक करें" : "Unlock this form")
-            : (lang === "hi" ? "इस फॉर्म को लॉक करें" : "Lock this form")}
-          style={{
-            display: "inline-flex", alignItems: "center", gap: 7,
-            background: lockInfo.is_locked ? "#16a34a" : "#dc2626",
-            color: "#fff", border: "none", borderRadius: 10,
-            padding: "10px 18px", fontSize: 13, fontWeight: 700,
-            cursor: lockToggling || loading ? "not-allowed" : "pointer",
-            opacity: lockToggling || loading ? 0.7 : 1,
-            boxShadow: `0 2px 8px ${lockInfo.is_locked ? "#16a34a40" : "#dc262640"}`,
-            flexShrink: 0, alignSelf: "flex-start",
-          }}
-        >
-          {lockToggling
-            ? (lang === "hi" ? "कृपया प्रतीक्षा करें…" : "Please wait…")
-            : lockInfo.is_locked
-              ? <><IconUnlock /> {lang === "hi" ? "फॉर्म अनलॉक करें" : "Unlock Form"}</>
-              : <><IconLock /> {lang === "hi" ? "फॉर्म लॉक करें" : "Lock Form"}</>}
-        </button>
-      </div>
+          </>
+        }
+        description={
+          loading
+            ? (lang === "hi" ? "लोड हो रहा है…" : "Loading…")
+            : `${totalRecords} ${lang === "hi" ? "रिकॉर्ड" : "record"}${totalRecords !== 1 ? (lang === "hi" ? "" : "s") : ""} ${lang === "hi" ? "में से" : "across"} ${departments.length} ${lang === "hi" ? "विभाग" : "department"}${departments.length !== 1 ? (lang === "hi" ? "" : "s") : ""}`
+        }
+        actions={
+          <button
+            onClick={handleToggleLock}
+            disabled={lockToggling || loading}
+            title={lockInfo.is_locked
+              ? (lang === "hi" ? "इस फॉर्म को अनलॉक करें" : "Unlock this form")
+              : (lang === "hi" ? "इस फॉर्म को लॉक करें" : "Lock this form")}
+            style={{
+              display: "inline-flex", alignItems: "center", gap: 7,
+              background: lockInfo.is_locked ? "#16a34a" : "#dc2626",
+              color: "#fff", border: "none", borderRadius: 10,
+              padding: "0 16px", height: 34, fontSize: 12.5, fontWeight: 700,
+              cursor: lockToggling || loading ? "not-allowed" : "pointer",
+              opacity: lockToggling || loading ? 0.7 : 1,
+              boxShadow: `0 2px 8px ${lockInfo.is_locked ? "#16a34a40" : "#dc262640"}`,
+              flexShrink: 0, alignSelf: "flex-start",
+            }}
+          >
+            {lockToggling
+              ? (lang === "hi" ? "कृपया प्रतीक्षा करें…" : "Please wait…")
+              : lockInfo.is_locked
+                ? <><IconUnlock /> {lang === "hi" ? "फॉर्म अनलॉक करें" : "Unlock Form"}</>
+                : <><IconLock /> {lang === "hi" ? "फॉर्म लॉक करें" : "Lock Form"}</>}
+          </button>
+        }
+      />
 
       {/* Locked banner */}
       {lockInfo.is_locked && (
@@ -333,7 +324,7 @@ export default function InstituteFormRecordsPage({ form, onBack }) {
           background: "#fef2f2", border: "1px solid #fecaca",
           borderRadius: 10, padding: "10px 16px", marginBottom: 18,
         }}>
-          <span style={{ fontSize: 16 }}>🔒</span>
+          <Lock size={16} color="#b91c1c" strokeWidth={2} style={{ flexShrink: 0 }} />
           <div style={{ fontSize: 12, color: "#b91c1c", fontWeight: 600 }}>
             {lang === "hi"
               ? "यह फॉर्म लॉक है। विभाग के उपयोगकर्ता रिकॉर्ड नहीं जोड़, संपादित या हटा सकते।"
@@ -352,10 +343,7 @@ export default function InstituteFormRecordsPage({ form, onBack }) {
       )}
 
       {/* ── ONE unified card with one toolbar + one table + one pagination ── */}
-      <div style={{
-        background: "#fff", borderRadius: 14, border: "1px solid rgba(0,0,0,0.07)",
-        boxShadow: "0 1px 6px rgba(0,0,0,0.05)", overflow: "hidden",
-      }}>
+      <div style={tableCardStyle}>
         {/* Toolbar: department filter + global search */}
         <div style={{
           padding: "14px 20px", borderBottom: "1px solid #f1f5f9",
@@ -371,15 +359,7 @@ export default function InstituteFormRecordsPage({ form, onBack }) {
             <select
               value={deptFilter}
               onChange={(e) => setDeptFilter(e.target.value)}
-              style={{
-                padding: "7px 28px 7px 12px", fontSize: 12, color: "#1e293b",
-                border: "1px solid #e2e8f0", borderRadius: 8, outline: "none",
-                background:
-                  "#fff url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 12 8'%3E%3Cpath fill='%2394a3b8' d='M6 8L0 0h12z'/%3E%3C/svg%3E\") no-repeat right 10px center",
-                appearance: "none",
-                fontWeight: 600,
-                minWidth: 180,
-              }}
+              style={{ ...S.select(false), width: "auto", minWidth: 180, height: 36, padding: "0 32px 0 12px", fontSize: 12 }}
             >
               <option value="__all__">
                 {lang === "hi" ? "सभी विभाग" : "All departments"} ({totalRecords})
@@ -419,7 +399,13 @@ export default function InstituteFormRecordsPage({ form, onBack }) {
           </div>
         ) : filteredRows.length === 0 ? (
           <div style={{ padding: "60px 24px", textAlign: "center", color: "#94a3b8" }}>
-            <div style={{ fontSize: 36, marginBottom: 12 }}>📭</div>
+            <div style={{
+              width: 56, height: 56, borderRadius: 14, margin: "0 auto 16px",
+              background: "#f1f5f9", border: "1px solid #e2e8f0",
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}>
+              <Inbox size={26} strokeWidth={1.6} color="#94a3b8" />
+            </div>
             <div style={{ fontSize: 14, fontWeight: 600, color: "#64748b", marginBottom: 6 }}>
               {search || deptFilter !== "__all__"
                 ? (lang === "hi" ? "कोई मेल नहीं मिला" : "No matching records")
@@ -551,13 +537,13 @@ export default function InstituteFormRecordsPage({ form, onBack }) {
 
 /* ── table styles ── */
 const thStyle = {
-  padding: "10px 16px", textAlign: "left", fontSize: 11,
+  padding: "8px 14px", textAlign: "left", fontSize: 10.5,
   fontWeight: 700, color: "#94a3b8", textTransform: "uppercase",
-  letterSpacing: 0.6, borderBottom: "1px solid #f1f5f9",
+  letterSpacing: 0.5, borderBottom: "1px solid #eef2f6",
   whiteSpace: "nowrap",
 };
 const tdStyle = {
-  padding: "13px 16px", verticalAlign: "middle",
+  padding: "9px 14px", verticalAlign: "middle",
 };
 const pagerBtn = (disabled) => ({
   background: disabled ? "#f8fafc" : "#fff",

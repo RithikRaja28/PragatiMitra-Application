@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from "react";
+import { FileText, Wrench, CheckCircle2 } from "lucide-react";
 import { useApi } from "../../hooks/useApi";
 import { S, isAuthError } from "../../components/shared/formUtils";
+import PageHeader from "../../components/shared/PageHeader";
 
 /* ════════════════════════════════════════════════════════════════════
    FormBuilderPage — 3-step wizard for creating / adapting / editing
@@ -14,7 +16,7 @@ import { S, isAuthError } from "../../components/shared/formUtils";
      onBack()    – called on cancel / back from step 1
 ════════════════════════════════════════════════════════════════════ */
 
-const ACCENT       = "#2563eb";
+const ACCENT       = "#0891b2";
 const CURRENT_YEAR = new Date().getFullYear();
 
 /* field types shown to user; "boolean" renders as "Yes / No" in UI */
@@ -85,25 +87,25 @@ function IcoPlus() {
 function StepBar({ step }) {
   const steps = ["Form Basics", "Schema Builder", "Review & Save"];
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 0, marginBottom: 32 }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 0, marginBottom: 22 }}>
       {steps.map((label, i) => {
         const idx    = i + 1;
         const done   = idx < step;
         const active = idx === step;
         return (
           <React.Fragment key={idx}>
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5 }}>
               <div style={{
-                width: 32, height: 32, borderRadius: "50%", display: "flex",
+                width: 26, height: 26, borderRadius: "50%", display: "flex",
                 alignItems: "center", justifyContent: "center",
                 background: done ? "#10b981" : active ? ACCENT : "#e2e8f0",
                 color: done || active ? "#fff" : "#94a3b8",
-                fontSize: 13, fontWeight: 700, transition: "all .2s",
+                fontSize: 12, fontWeight: 700, transition: "all .2s",
               }}>
                 {done ? "✓" : idx}
               </div>
               <span style={{
-                fontSize: 11, fontWeight: 600, whiteSpace: "nowrap",
+                fontSize: 10.5, fontWeight: 600, whiteSpace: "nowrap",
                 color: active ? ACCENT : done ? "#10b981" : "#94a3b8",
               }}>
                 {label}
@@ -111,7 +113,7 @@ function StepBar({ step }) {
             </div>
             {i < steps.length - 1 && (
               <div style={{
-                flex: 1, height: 2, margin: "0 8px", marginBottom: 20,
+                flex: 1, height: 2, margin: "0 8px", marginBottom: 18,
                 background: done ? "#10b981" : "#e2e8f0", transition: "background .2s",
               }} />
             )}
@@ -136,14 +138,14 @@ function FieldRow({ field, index, total, isFixed, onChange, onRemove, onMoveUp, 
     }}>
       {/* header row — clicking toggles expansion */}
       <div
-        style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 16px", cursor: "pointer" }}
+        style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", cursor: "pointer" }}
         onClick={() => setExpanded((x) => !x)}
       >
         <div style={{
-          width: 28, height: 28, borderRadius: 7, flexShrink: 0,
-          background: isFixed ? "#bae6fd" : "#dbeafe",
+          width: 22, height: 22, borderRadius: 6, flexShrink: 0,
+          background: isFixed ? "#bae6fd" : "#cffafe",
           display: "flex", alignItems: "center", justifyContent: "center",
-          fontSize: 11, fontWeight: 700, color: isFixed ? "#0369a1" : ACCENT,
+          fontSize: 10.5, fontWeight: 700, color: isFixed ? "#0369a1" : ACCENT,
         }}>
           {index + 1}
         </div>
@@ -330,7 +332,7 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
   const isCreate = mode === "create";
   const isAdapt  = mode === "adapt";
   const isEdit   = mode === "edit";
-  const modeLabel = isCreate ? "New Form" : isAdapt ? "Adapt Template" : "Edit Schema";
+  const modeLabel = isCreate ? "Create New Form" : isAdapt ? "Adapt Template" : "Edit Schema";
 
   /* ── Step 1 state ── */
   const [step, setStep]     = useState(1);
@@ -595,102 +597,130 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
 
   /* ══════════════ RENDER ══════════════ */
   return (
-    <div style={{ padding: "32px 36px", fontFamily: "'Plus Jakarta Sans', sans-serif", minHeight: "100%", maxWidth: 900 }}>
-      {/* back nav */}
-      <button type="button" onClick={step === 1 ? onBack : () => setStep((s) => s - 1)} style={{
-        display: "inline-flex", alignItems: "center", gap: 6, background: "none", border: "none",
-        fontSize: 13, fontWeight: 600, color: ACCENT, cursor: "pointer", padding: 0, marginBottom: 24,
-      }}>
-        ← {step === 1 ? "Back to Forms" : "Previous Step"}
-      </button>
-
-      {/* page title */}
-      <div style={{ marginBottom: 28 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 700, color: "#1e293b", letterSpacing: "-0.3px", margin: "0 0 4px" }}>
-          {modeLabel}
-          {(isAdapt || isEdit) && initialData?.form_name && (
-            <span style={{ fontSize: 15, color: "#94a3b8", fontWeight: 500, marginLeft: 10 }}>
-              · {initialData.form_name}
-            </span>
-          )}
-        </h1>
-        <p style={{ fontSize: 13, color: "#94a3b8", margin: 0 }}>
-          {isCreate && "Define a new form with a custom field schema."}
-          {isAdapt  && "Customise this shared template for your institution."}
-          {isEdit   && "Revise the field schema. A new version will be created."}
-        </p>
+    <div style={{ background: "#f8f9fb", minHeight: "100%", padding: "20px 0", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+      <style>{`
+        .fb-input:focus, .fb-input:focus-visible {
+          border-color: #0891b2 !important;
+          box-shadow: 0 0 0 3px rgba(8, 145, 178, 0.14);
+          outline: none;
+        }
+      `}</style>
+      {/* page header — full-width, top-left after the navbar; "Forms" crumb cancels back to the forms list */}
+      <div style={{ padding: "0 28px" }}>
+        <PageHeader
+          breadcrumb={["Home", { label: "Forms", onClick: onBack }, modeLabel]}
+          title={
+            <>
+              {modeLabel}
+              {(isAdapt || isEdit) && initialData?.form_name && (
+                <span style={{ fontSize: 13.5, color: "#94a3b8", fontWeight: 500, marginLeft: 10 }}>
+                  · {initialData.form_name}
+                </span>
+              )}
+            </>
+          }
+          description={
+            isCreate ? "Define a new form with a custom field schema."
+            : isAdapt ? "Customise this shared template for your institution."
+            : isEdit  ? "Revise the field schema. A new version will be created."
+            : ""
+          }
+        />
       </div>
 
+      <div style={{ maxWidth: 880, margin: "0 auto", padding: "0 28px" }}>
       <StepBar step={step} />
 
       {/* ─── Step 1: Basics ─── */}
       {step === 1 && (
-        <div style={card}>
-          <CardHeader icon="📋" title="Form Details" subtitle="Give your form a name and optional description" />
-          <div style={{ padding: "24px 28px", display: "flex", flexDirection: "column", gap: 18 }}>
+        <>
+          <div style={card}>
+            <CardHeader
+              icon={<FileText size={18} color="#0891b2" strokeWidth={2} />}
+              title="Form Details"
+              subtitle="Give your form a name and optional description"
+              action={<CancelFormButton onClick={onBack} />}
+            />
+            <div style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: 14 }}>
 
-            {/* Form name — human readable; identifier shown below */}
-            <div>
-              <label style={S.label}>Form Name *</label>
-              <input
-                style={S.input(!!basicsErrors.form_name)}
-                value={basics.form_name}
-                readOnly={isEdit || isAdapt}
-                onChange={(e) => {
-                  const val = e.target.value.replace(/[^a-zA-Z0-9\s]/g, "");
-                  setBasics((b) => ({ ...b, form_name: val }));
-                  if (basicsErrors.form_name) setBasicsErrors((er) => ({ ...er, form_name: "" }));
-                }}
-                placeholder="e.g. Student Records"
-              />
-              {basicsErrors.form_name && <div style={S.errorText}>{basicsErrors.form_name}</div>}
+              {/* Form name — human readable; identifier shown below */}
+              <div>
+                <label style={S.label}>Form Name *</label>
+                <input
+                  className="fb-input"
+                  style={S.input(!!basicsErrors.form_name)}
+                  value={basics.form_name}
+                  readOnly={isEdit || isAdapt}
+                  onChange={(e) => {
+                    const val = e.target.value.replace(/[^a-zA-Z0-9\s]/g, "");
+                    setBasics((b) => ({ ...b, form_name: val }));
+                    if (basicsErrors.form_name) setBasicsErrors((er) => ({ ...er, form_name: "" }));
+                  }}
+                  placeholder="e.g. Student Records"
+                />
+                <div style={hintStyle}>A short, descriptive name. Stored as <span style={monoHint}>{identifier || "your_form_id"}</span>.</div>
+                {basicsErrors.form_name && <div style={S.errorText}>{basicsErrors.form_name}</div>}
+              </div>
+
+              {/* description */}
+              <div>
+                <label style={S.label}>Description</label>
+                <textarea
+                  className="fb-input"
+                  style={{ ...S.input(false), resize: "vertical", minHeight: 72 }}
+                  value={basics.description}
+                  onChange={(e) => setBasics((b) => ({ ...b, description: e.target.value }))}
+                  placeholder="What is this form used for?"
+                />
+                <div style={hintStyle}>Helps your team understand the form's purpose at a glance.</div>
+              </div>
+
+              {/* year */}
+              <div style={{ maxWidth: 220 }}>
+                <label style={S.label}>Schema Year *</label>
+                <input
+                  className="fb-input"
+                  type="number"
+                  style={S.input(!!basicsErrors.year)}
+                  value={basics.year}
+                  onChange={(e) => {
+                    setBasics((b) => ({ ...b, year: Number(e.target.value) }));
+                    if (basicsErrors.year) setBasicsErrors((er) => ({ ...er, year: "" }));
+                  }}
+                  min={2020} max={2100}
+                />
+                <div style={hintStyle}>The academic / fiscal year this schema applies to.</div>
+                {basicsErrors.year && <div style={S.errorText}>{basicsErrors.year}</div>}
+              </div>
+
             </div>
-
-            {/* description */}
-            <div>
-              <label style={S.label}>Description</label>
-              <textarea
-                style={{ ...S.input(false), resize: "vertical", minHeight: 72 }}
-                value={basics.description}
-                onChange={(e) => setBasics((b) => ({ ...b, description: e.target.value }))}
-                placeholder="What is this form used for?"
-              />
-            </div>
-
-            {/* year */}
-            <div style={{ maxWidth: 200 }}>
-              <label style={S.label}>Schema Year *</label>
-              <input
-                type="number"
-                style={S.input(!!basicsErrors.year)}
-                value={basics.year}
-                onChange={(e) => {
-                  setBasics((b) => ({ ...b, year: Number(e.target.value) }));
-                  if (basicsErrors.year) setBasicsErrors((er) => ({ ...er, year: "" }));
-                }}
-                min={2020} max={2100}
-              />
-              {basicsErrors.year && <div style={S.errorText}>{basicsErrors.year}</div>}
-            </div>
-
           </div>
 
-          <div style={footerRow}>
-            <button type="button" onClick={onBack} style={S.btnGhost}>Cancel</button>
+          <div style={stepBar}>
+            <button type="button" disabled style={{
+              display: "inline-flex", alignItems: "center", gap: 5,
+              background: "#e2e8f0", color: "#94a3b8", border: "none",
+              borderRadius: 8, padding: "0 16px", height: 34, fontSize: 12.5, fontWeight: 700,
+              cursor: "not-allowed", whiteSpace: "nowrap",
+            }}>
+              ← Previous Step
+            </button>
             <button type="button" onClick={() => { if (validateBasics()) setStep(2); }} style={S.btnPrimary(false)}>
               Next: Schema Builder →
             </button>
           </div>
-        </div>
+        </>
       )}
 
       {/* ─── Step 2: Schema Builder ─── */}
       {step === 2 && (
+        <>
         <div style={card}>
           <CardHeader
-            icon="🔧"
-            title="Schema Builder"
+            icon={<Wrench size={18} color="#0891b2" strokeWidth={2} />}
+            title="Define Schema"
             subtitle={isAdapt ? "Toggle fixed columns on/off, then add extra custom fields" : "Define the fields that will be collected by this form"}
+            action={<CancelFormButton onClick={onBack} />}
           />
 
           {colsLoading && (
@@ -705,7 +735,7 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
           )}
 
           {!colsLoading && (
-            <div style={{ padding: "20px 28px" }}>
+            <div style={{ padding: "14px 20px" }}>
 
               {/* adapt mode: fixed column toggles */}
               {isAdapt && fields.filter((f) => f.is_fixed).length > 0 && (
@@ -721,9 +751,9 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
                           display: "inline-flex", alignItems: "center", gap: 6,
                           padding: "6px 14px", borderRadius: 20, fontSize: 12, fontWeight: 600,
                           cursor: "pointer", transition: "all .15s",
-                          background: excluded ? "#f1f5f9" : "#dbeafe",
+                          background: excluded ? "#f1f5f9" : "#cffafe",
                           color:      excluded ? "#94a3b8"  : ACCENT,
-                          border:     `1.5px solid ${excluded ? "#e2e8f0" : "#bfdbfe"}`,
+                          border:     `1.5px solid ${excluded ? "#e2e8f0" : "#a5f3fc"}`,
                           textDecoration: excluded ? "line-through" : "none",
                         }}>
                           {excluded ? "✕" : "✓"} {f.column_name}
@@ -779,7 +809,7 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
               <button type="button" onClick={addField} style={{
                 display: "inline-flex", alignItems: "center", gap: 7,
                 background: "#f8fafc", color: "#475569", border: "1.5px dashed #cbd5e1",
-                borderRadius: 10, padding: "10px 18px", fontSize: 13, fontWeight: 600,
+                borderRadius: 8, padding: "0 16px", height: 34, fontSize: 12.5, fontWeight: 600,
                 cursor: "pointer", width: "100%", justifyContent: "center",
               }}>
                 <IcoPlus /> Add Custom Field
@@ -836,7 +866,7 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
 
               {/* consent to share — create mode only */}
               {isCreate && (
-                <div style={{ marginTop: 20, background: "#f0f9ff", border: "1px solid #bae6fd", borderRadius: 10, padding: "14px 18px" }}>
+                <div style={{ marginTop: 20, background: "#f0fdfa", border: "1px solid #99f6e4", borderRadius: 10, padding: "14px 18px" }}>
                   <label style={{ display: "flex", alignItems: "flex-start", gap: 12, cursor: "pointer" }}>
                     <input
                       type="checkbox"
@@ -860,31 +890,39 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
             </div>
           )}
 
-          <div style={footerRow}>
-            <button type="button" onClick={() => setStep(1)} style={S.btnGhost}>← Previous</button>
-            <button type="button" onClick={() => { if (validateFields()) setStep(3); }} style={S.btnPrimary(false)}>
-              Next: Review →
-            </button>
-          </div>
         </div>
+
+        <div style={stepBar}>
+          <button type="button" onClick={() => setStep(1)} style={S.btnGhost}>← Previous Step</button>
+          <button type="button" onClick={() => { if (validateFields()) setStep(3); }} style={S.btnPrimary(false)}>
+            Next: Review & Save →
+          </button>
+        </div>
+        </>
       )}
 
       {/* ─── Step 3: Review & Save ─── */}
       {step === 3 && (
+        <>
         <div style={card}>
-          <CardHeader icon="✅" title="Review & Save" subtitle="Confirm the form details before saving" />
+          <CardHeader
+            icon={<CheckCircle2 size={18} color="#0891b2" strokeWidth={2} />}
+            title="Review & Save"
+            subtitle="Confirm the form details before saving"
+            action={<CancelFormButton onClick={onBack} />}
+          />
 
-          <div style={{ padding: "24px 28px", display: "flex", flexDirection: "column", gap: 20 }}>
-            <ReviewSection title="Form Details">
+          <div style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: 14 }}>
+            <ReviewSection title="Form Metadata Review">
               <ReviewRow label="Form Name"       value={basics.form_name || initialData?.form_name} />
-              <ReviewRow label="Year"            value={String(basics.year)} />
+              <ReviewRow label="Schema Year"     value={String(basics.year)} />
               {basics.description && <ReviewRow label="Description" value={basics.description} />}
               {isSuperAdmin && isCreate && (
                 <ReviewRow label="Shared Template" value={basics.share_table ? "Yes — available to all institutions" : "No — private to this institution"} />
               )}
             </ReviewSection>
 
-            <ReviewSection title={`Fields (${activeFields.length})`}>
+            <ReviewSection title={`Schema Architecture Preview · ${activeFields.length} field${activeFields.length !== 1 ? "s" : ""}`}>
               {activeFields.length === 0 ? (
                 <div style={{ fontSize: 13, color: "#94a3b8", fontStyle: "italic" }}>No fields defined.</div>
               ) : (
@@ -927,14 +965,35 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
             )}
           </div>
 
-          <div style={footerRow}>
-            <button type="button" onClick={() => setStep(2)} style={S.btnGhost} disabled={submitting}>← Previous</button>
-            <button type="button" onClick={handleSubmit} disabled={submitting} style={S.btnPrimary(submitting)}>
-              {submitting ? "Saving…" : isEdit ? "Save New Version" : isAdapt ? "Adopt Template" : "Create Form"}
-            </button>
-          </div>
         </div>
+
+        <div style={stepBar}>
+          <button type="button" onClick={() => setStep(2)} style={S.btnGhost} disabled={submitting}>← Back to Schema</button>
+          <button
+            type="button"
+            onClick={handleSubmit}
+            disabled={submitting}
+            style={{
+              display: "inline-flex", alignItems: "center", gap: 7,
+              background: submitting ? "#86efac" : "#16a34a",
+              color: "#fff", border: "none", borderRadius: 8,
+              padding: "0 18px", height: 34, fontSize: 12.5, fontWeight: 700,
+              cursor: submitting ? "not-allowed" : "pointer",
+              boxShadow: submitting ? "none" : "0 2px 8px rgba(22,163,74,0.30)",
+              whiteSpace: "nowrap",
+            }}
+          >
+            <span style={{
+              display: "inline-flex", alignItems: "center", justifyContent: "center",
+              width: 16, height: 16, borderRadius: 4, background: "rgba(255,255,255,0.22)",
+              fontSize: 11, fontWeight: 700, lineHeight: 1,
+            }}>✓</span>
+            {submitting ? "Publishing…" : isEdit ? "Save New Version" : isAdapt ? "Adopt Template" : "Finalize & Publish Form"}
+          </button>
+        </div>
+        </>
       )}
+      </div>
     </div>
   );
 }
@@ -942,25 +1001,69 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
 /* ── shared layout sub-components ── */
 
 const card = {
-  background: "#fff", borderRadius: 16, border: "1px solid rgba(0,0,0,0.07)",
-  boxShadow: "0 2px 16px rgba(0,0,0,0.06)", overflow: "hidden",
+  background: "#fff", borderRadius: 14, border: "1px solid rgba(15,23,42,0.06)",
+  boxShadow: "0 8px 28px rgba(15,23,42,0.07), 0 2px 6px rgba(15,23,42,0.04)",
+  overflow: "hidden",
 };
 
 const footerRow = {
-  padding: "20px 28px", display: "flex", justifyContent: "flex-end", gap: 10,
-  borderTop: "1px solid #f1f5f9", marginTop: 8,
+  padding: "12px 20px", display: "flex", justifyContent: "flex-end", gap: 10,
+  borderTop: "1px solid #eef2f6", marginTop: 4,
 };
 
-function CardHeader({ icon, title, subtitle }) {
+/* External step button bar — sits BELOW the card, not inside it */
+const stepBar = {
+  marginTop: 14, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10,
+};
+
+const hintStyle = {
+  fontSize: 11, color: "#94a3b8", marginTop: 4, lineHeight: 1.4,
+};
+
+const monoHint = {
+  fontFamily: "monospace", color: "#64748b", background: "#f1f5f9",
+  padding: "1px 6px", borderRadius: 4, fontSize: 10.5,
+};
+
+/* Secondary gray cancel button — muted red "X" glyph, gray label and border */
+function CancelFormButton({ onClick }) {
   return (
-    <div style={{ padding: "22px 28px 18px", borderBottom: "1px solid #f1f5f9", display: "flex", alignItems: "center", gap: 14 }}>
-      <div style={{ width: 42, height: 42, borderRadius: 11, background: "#eff6ff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>
-        {icon}
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        display: "inline-flex", alignItems: "center", gap: 6,
+        background: "#fff", color: "#475569", border: "1px solid #cbd5e1",
+        borderRadius: 8, padding: "0 12px", height: 30, fontSize: 11.5, fontWeight: 600,
+        cursor: "pointer", whiteSpace: "nowrap",
+        transition: "background .15s, border-color .15s",
+      }}
+      onMouseEnter={(e) => { e.currentTarget.style.background = "#f1f5f9"; e.currentTarget.style.borderColor = "#94a3b8"; }}
+      onMouseLeave={(e) => { e.currentTarget.style.background = "#fff"; e.currentTarget.style.borderColor = "#cbd5e1"; }}
+    >
+      <span style={{
+        display: "inline-flex", alignItems: "center", justifyContent: "center",
+        width: 14, height: 14, borderRadius: 4, background: "#fee2e2",
+        color: "#dc2626", fontSize: 10, fontWeight: 700, lineHeight: 1,
+      }}>✕</span>
+      Cancel Form
+    </button>
+  );
+}
+
+function CardHeader({ icon, title, subtitle, action }) {
+  return (
+    <div style={{ padding: "12px 18px 12px 16px", borderBottom: "1px solid #eef2f6", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+        <div style={{ width: 32, height: 32, borderRadius: 8, background: "#ecfeff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>
+          {icon}
+        </div>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: "#1e293b" }}>{title}</div>
+          {subtitle && <div style={{ fontSize: 11.5, color: "#94a3b8", marginTop: 1 }}>{subtitle}</div>}
+        </div>
       </div>
-      <div>
-        <div style={{ fontSize: 16, fontWeight: 700, color: "#1e293b" }}>{title}</div>
-        {subtitle && <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 2 }}>{subtitle}</div>}
-      </div>
+      {action}
     </div>
   );
 }

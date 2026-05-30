@@ -1,5 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
+import { Users, FileText, BarChart3, Wallet, ShieldCheck } from "lucide-react";
 import { useApi } from "../../../hooks/useApi";
+import PageHeader from "../../../components/shared/PageHeader";
+import { ActionButton } from "../../../components/shared/ActionButtons";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { t } from "../../../i18n/translations";
 
@@ -9,7 +12,7 @@ import { t } from "../../../i18n/translations";
 const CAPABILITY_GROUPS = [
   {
     label: "User Management",
-    icon: "👤",
+    icon: Users,
     color: "#7c3aed",
     colorBg: "#ede9fe",
     caps: [
@@ -33,7 +36,7 @@ const CAPABILITY_GROUPS = [
   },
   {
     label: "Form Access",
-    icon: "📋",
+    icon: FileText,
     color: "#0891b2",
     colorBg: "#e0f2fe",
     caps: [
@@ -51,7 +54,7 @@ const CAPABILITY_GROUPS = [
   },
   {
     label: "Report",
-    icon: "📊",
+    icon: BarChart3,
     color: "#d97706",
     colorBg: "#fef3c7",
     caps: [
@@ -98,7 +101,7 @@ const CAPABILITY_GROUPS = [
   },
   {
     label: "Finance",
-    icon: "💰",
+    icon: Wallet,
     color: "#059669",
     colorBg: "#d1fae5",
     caps: [
@@ -118,7 +121,7 @@ const CAPABILITY_GROUPS = [
   },
   {
     label: "Administration & Audit",
-    icon: "🛡️",
+    icon: ShieldCheck,
     color: "#dc2626",
     colorBg: "#fee2e2",
     caps: [
@@ -241,37 +244,6 @@ function FieldLabel({ children }) {
     >
       {children}
     </label>
-  );
-}
-
-function PageBadge({ color, label }) {
-  return (
-    <div
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 8,
-        background: color + "14",
-        borderRadius: 8,
-        padding: "4px 12px",
-        marginBottom: 12,
-      }}
-    >
-      <div
-        style={{ width: 7, height: 7, borderRadius: "50%", background: color }}
-      />
-      <span
-        style={{
-          fontSize: 11,
-          fontWeight: 600,
-          color,
-          textTransform: "uppercase",
-          letterSpacing: 1,
-        }}
-      >
-        {label}
-      </span>
-    </div>
   );
 }
 
@@ -1344,52 +1316,16 @@ function RoleList({ roles, onEdit, onDelete, onCreate, deleting }) {
   return (
     <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
       {/* Header */}
-      <div style={{ marginBottom: 28 }}>
-        <PageBadge color="#0891b2" label={t("Role & Access Control", lang)} />
-        <div
-          style={{
-            display: "flex",
-            alignItems: "flex-end",
-            justifyContent: "space-between",
-          }}
-        >
-          <div>
-            <h1
-              style={{
-                fontSize: 24,
-                fontWeight: 700,
-                color: "#1e293b",
-                letterSpacing: "-0.4px",
-                marginBottom: 6,
-              }}
-            >
-              {t("Roles & Permissions", lang)}
-            </h1>
-            <p style={{ color: "#94a3b8", fontSize: 14 }}>
-              Define what each role can access and do across the platform.
-            </p>
-          </div>
-          <button
-            onClick={onCreate}
-            style={{
-              padding: "10px 22px",
-              borderRadius: 10,
-              border: "none",
-              background: "#2563eb",
-              fontSize: 13,
-              fontWeight: 700,
-              color: "#fff",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-              fontFamily: "'Plus Jakarta Sans', sans-serif",
-            }}
-          >
+      <PageHeader
+        breadcrumb={[t("Home", lang), t("Role & Access Control", lang), t("Roles & Permissions", lang)]}
+        title={t("Roles & Permissions", lang)}
+        description="Define what each role can access and do across the platform."
+        actions={
+          <ActionButton variant="primary" onClick={onCreate} style={{ height: 38 }}>
             {t("+ Create Role", lang)}
-          </button>
-        </div>
-      </div>
+          </ActionButton>
+        }
+      />
 
       {/* Stat row — minimal, no colour fills */}
       <div style={{ display: "flex", gap: 12, marginBottom: 24 }}>

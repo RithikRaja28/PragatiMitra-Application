@@ -23,7 +23,22 @@
       "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\LENOVO\\\\Documents\\\\cloned Project\\\\PragatiMitra-Application\\\\backend\" -Directory)",
       "PowerShell(ls -Recurse \"c:\\\\Users\\\\LENOVO\\\\Documents\\\\cloned Project\\\\PragatiMitra-Application\\\\backend\" -Exclude node_modules -File | Where-Object { $_.Extension -eq \".js\" } | Select-Object FullName)",
       "PowerShell(head -20)",
-      "Bash(node -e ' *)"
+      "Bash(node -e ' *)",
+      "Bash(grep -v \"react-hooks/purity\\\\|set-state-in-effect\\\\|Cannot call impure\\\\|setState synchronously\\\\|Effects are intended\\\\|Update external\\\\|Subscribe for\\\\|Calling setState\\\\|react.dev\\\\|^$\\\\|^\\\\s*\\\\*\\\\|^\\\\s*[0-9]* |^\\\\s*>\\\\|^\\\\s*\\\\^\")",
+      "Bash(npx vite *)",
+      "Bash(head -40 translations.js)",
+      "Bash(head -40 translations.jsx)",
+      "Bash(awk 'NR<220 || NR>391' DepartmentManagementPage.jsx)",
+      "Bash(mv _tmp_dm DepartmentManagementPage.jsx)",
+      "Bash(awk 'NR<344 || NR>528' InstitutionManagementPage.jsx)",
+      "Bash(mv _tmp_im InstitutionManagementPage.jsx)",
+      "Bash(awk 'NR<411 || NR>685' CommitteesManagementPage.jsx)",
+      "Bash(mv _tmp_cm CommitteesManagementPage.jsx)",
+      "Bash(awk 'NR<248 || NR>278' RoleAccessPage.jsx)",
+      "Bash(mv _tmp_ra RoleAccessPage.jsx)",
+      "Bash(node -e \"const fs=require\\('fs'\\);const f='components/shared/FormScreen.jsx';if\\(fs.existsSync\\(f\\)\\){const s=fs.readFileSync\\(f,'utf8'\\);const i=s.indexOf\\('icon'\\);console.log\\('FormScreen lines:',s.split\\('\\\\n'\\).length\\)}else console.log\\('no FormScreen'\\)\")",
+      "Bash(node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\);process.stdin.on\\('end',\\(\\)=>{const lines=d.split\\('\\\\n'\\);const out=lines.filter\\(l=>/error|Error|✓ built|transforming|fail/i.test\\(l\\)\\);console.log\\(out.slice\\(-15\\).join\\('\\\\n'\\)\\)}\\)\")",
+      "Bash(node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\);process.stdin.on\\('end',\\(\\)=>{const lines=d.split\\('\\\\n'\\);const out=lines.filter\\(l=>/error|Error|✓ built|fail/i.test\\(l\\)\\);console.log\\(out.slice\\(-15\\).join\\('\\\\n'\\)\\)}\\)\")"
     ]
   }
 }

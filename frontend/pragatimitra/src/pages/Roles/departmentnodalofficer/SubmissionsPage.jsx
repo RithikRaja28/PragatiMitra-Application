@@ -1,14 +1,16 @@
 import React, { useState } from "react";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { t } from "../../../i18n/translations";
+import PageHeader from "../../../components/shared/PageHeader";
+import { S } from "../../../components/shared/formUtils";
 
 const C = {
-  primary:   "#d97706",
-  primaryLt: "#fef3c7",
-  text:      "#1c1917",
-  textSub:   "#78716c",
-  border:    "rgba(217,119,6,0.13)",
-  bg:        "#fffbeb",
+  primary:   "#2563eb",
+  primaryLt: "#dbeafe",
+  text:      "#1e293b",
+  textSub:   "#64748b",
+  border:    "rgba(37,99,235,0.12)",
+  bg:        "#f8f9fb",
   surface:   "#ffffff",
 };
 
@@ -138,17 +140,11 @@ export default function SubmissionsPage() {
       background: C.bg, minHeight: "100vh" }}>
 
       {/* Header */}
-      <div style={{ marginBottom: 20 }}>
-        <div style={{ display: "inline-flex", alignItems: "center", gap: 6,
-          background: C.primaryLt, borderRadius: 6, padding: "3px 11px", marginBottom: 8 }}>
-          <span style={{ width: 6, height: 6, borderRadius: "50%", background: C.primary }} />
-          <span style={{ fontSize: 10, fontWeight: 700, color: C.primary, textTransform: "uppercase", letterSpacing: "0.08em" }}>{t("Submissions", lang)}</span>
-        </div>
-        <h1 style={{ fontSize: 22, fontWeight: 700, color: C.text, margin: 0, letterSpacing: "-0.4px" }}>{t("My Submissions", lang)}</h1>
-        <p style={{ fontSize: 13, color: C.textSub, margin: "4px 0 0" }}>
-          Track section submissions through the approval pipeline — hover a row to see the full timeline
-        </p>
-      </div>
+      <PageHeader
+        breadcrumb={[t("Home", lang), t("Department", lang), t("Submissions", lang)]}
+        title={t("My Submissions", lang)}
+        description="Track section submissions through the approval pipeline — hover a row to see the full timeline"
+      />
 
       {/* Stage progress legend */}
       <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 16,
@@ -172,16 +168,12 @@ export default function SubmissionsPage() {
       <div style={{ display: "flex", gap: 10, marginBottom: 16, background: C.surface,
         padding: "12px 16px", borderRadius: 10, border: `0.5px solid ${C.border}` }}>
         <select value={filters.stage} onChange={e => setFilters(f => ({ ...f, stage: e.target.value }))}
-          style={{ padding: "7px 28px 7px 12px", borderRadius: 8, border: `1px solid ${C.border}`,
-            outline: "none", fontSize: 13, color: C.text, background: "#fff",
-            fontFamily: "'Plus Jakarta Sans', sans-serif", appearance: "none", cursor: "pointer" }}>
+          style={{ ...S.select(false), width: "auto", minWidth: 160 }}>
           <option value="">{t("All Stages", lang)}</option>
           {STAGE_ORDER.slice(1).map(s => <option key={s} value={s}>{s}</option>)}
         </select>
         <select value={filters.status} onChange={e => setFilters(f => ({ ...f, status: e.target.value }))}
-          style={{ padding: "7px 28px 7px 12px", borderRadius: 8, border: `1px solid ${C.border}`,
-            outline: "none", fontSize: 13, color: C.text, background: "#fff",
-            fontFamily: "'Plus Jakarta Sans', sans-serif", appearance: "none", cursor: "pointer" }}>
+          style={{ ...S.select(false), width: "auto", minWidth: 160 }}>
           <option value="">{t("All Statuses", lang)}</option>
           <option value="In Review">{t("In Review", lang)}</option>
           <option value="Approved">{t("Approved", lang)}</option>

@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState, useCallback, useRef } from "react";
+import { FileText, AlertTriangle } from "lucide-react";
 
 // ─── API ──────────────────────────────────────────────────────────────────────
 const API = "http://localhost:3000/api/radiology";
@@ -313,7 +314,7 @@ function EmptyState() {
       textAlign: "center", padding: "3rem 1rem",
       color: "var(--color-text-tertiary)",
     }}>
-      <div style={{ fontSize: 32, marginBottom: 12 }}>📋</div>
+      <FileText size={32} strokeWidth={1.5} color="var(--color-text-tertiary)" style={{ marginBottom: 12 }} />
       <div style={{ fontSize: 15, fontWeight: 500, color: "var(--color-text-secondary)", marginBottom: 6 }}>
         No finalised reports yet
       </div>
@@ -387,8 +388,8 @@ export default function BalanceSheetPage() {
     return (
       <div style={{ padding: "1.5rem", maxWidth: 1000, fontFamily: "var(--font-sans)" }}>
         <Card>
-          <div style={{ fontSize: 17, fontWeight: 500, marginBottom: 8, color: "var(--color-text-primary)" }}>
-            ⚠️ Cannot load reports
+          <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 17, fontWeight: 500, marginBottom: 8, color: "var(--color-text-primary)" }}>
+            <AlertTriangle size={18} strokeWidth={2} color="#d97706" /> Cannot load reports
           </div>
           <div style={{ fontSize: 13, color: "var(--color-text-secondary)", marginBottom: 16 }}>
             {error}
