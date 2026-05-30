@@ -1,5 +1,9 @@
 import React from "react";
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
+<<<<<<< HEAD
+=======
+import { Flag } from "lucide-react";
+>>>>>>> 2dfc12740a97cede23f7be06dd88218fc7713123
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { t } from "../../../i18n/translations";
 
@@ -145,7 +149,11 @@ export default function DirectorsDashboardPage() {
 
           {/* Pending decisions */}
           <div style={{ ...card, background: "#fffbeb", border: "0.5px solid #fde68a" }}>
+<<<<<<< HEAD
             <div style={{ fontSize: 12, fontWeight: 700, color: "#92400e", marginBottom: 10 }}>⚑ {t("Pending decisions", lang)}</div>
+=======
+            <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 700, color: "#92400e", marginBottom: 10 }}><Flag size={13} strokeWidth={2.2} /> {t("Pending decisions", lang)}</div>
+>>>>>>> 2dfc12740a97cede23f7be06dd88218fc7713123
             {SECTIONS.filter(s => s.status === "Pending Review").map((s, i) => (
               <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 8,
                 padding: "6px 0", borderTop: i > 0 ? "0.5px solid #fde68a" : "none" }}>

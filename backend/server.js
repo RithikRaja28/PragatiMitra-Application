@@ -31,8 +31,6 @@ const lookupRoutes                = require("./routes/lookup");
 const auditLogRoutes              = require("./routes/auditLogs");
 const notificationTemplatesRouter = require("./routes/notificationTemplates");
 const radiologyRoutes             = require("./routes/radiology");   // ← radiology
-const formImportExport            = require("./routes/formimportexport");
-
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -101,6 +99,12 @@ pool.connect((err, client, release) => {
 // Make pool available to all route handlers via req.app.locals.pool
 app.locals.pool = pool;
 
+/* ── Form deadline auto-lock: ensure columns, then start periodic checker ── */
+const { ensureDeadlineColumns, startDeadlineScheduler } = require("./services/formDeadlineService");
+ensureDeadlineColumns(pool)
+  .then(() => startDeadlineScheduler(pool, 60 * 1000))
+  .catch((e) => logger.error("Failed to init form deadline scheduler", { stack: e.stack }));
+
 /* ── Import session cache: rows stored server-side after parse ───── */
 app.locals.importSessions = new Map();
 // Purge sessions older than 1 hour every 30 minutes
@@ -133,7 +137,6 @@ app.use("/api/notification-templates", notificationTemplatesRouter);
 app.use("/api/radiology",              radiologyRoutes);   // ← radiology mounted
 app.use("/api/forms",                  require("./routes/forms"));
 app.use("/api/form-data",              require("./routes/formData"));
-app.use("/api/form-data", formImportExport);
 /* ─── Global error handler (must be last) ───────────────────── */
 app.use(errorHandler);
 

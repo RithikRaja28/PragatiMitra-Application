@@ -1,6 +1,12 @@
 import React, { useState, useCallback } from "react";
 import FormScreen from "../../../components/shared/FormScreen";
 import { S, Toast } from "../../../components/shared/formUtils";
+<<<<<<< HEAD
+=======
+import PageHeader from "../../../components/shared/PageHeader";
+import { ActionButton, ActionButtonGroup } from "../../../components/shared/ActionButtons";
+import { StatusBadge } from "../../../components/shared/ui";
+>>>>>>> 2dfc12740a97cede23f7be06dd88218fc7713123
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { t } from "../../../i18n/translations";
 
@@ -17,11 +23,14 @@ const C = {
 const DEPT_ROLES = ["department_nodal_officer", "contributor", "reviewer"];
 const DEPT_SECTIONS = ["Ayurvedic Principles", "Clinical Studies", "Research Publications", "Lab Reports", "Annual Statistics", "Patient Case Studies"];
 
+<<<<<<< HEAD
 const STATUS_STYLE = {
   active:   { bg: "#d1fae5", color: "#065f46" },
   inactive: { bg: "#f1f5f9", color: "#475569" },
 };
 
+=======
+>>>>>>> 2dfc12740a97cede23f7be06dd88218fc7713123
 const ROLE_LABELS = {
   department_nodal_officer: "Nodal Officer",
   contributor: "Contributor",
@@ -247,6 +256,7 @@ function UserList({ users, onEdit, onDeactivate, filters, setFilters }) {
                     )}
                   </div>
                 </td>
+<<<<<<< HEAD
                 <td style={{ padding: "12px 16px", borderTop: i > 0 ? `0.5px solid ${C.border}` : "none" }}>
                   <span style={{ fontSize: 10, fontWeight: 600, padding: "3px 9px", borderRadius: 20,
                     background: STATUS_STYLE[u.status]?.bg, color: STATUS_STYLE[u.status]?.color }}>
@@ -268,6 +278,25 @@ function UserList({ users, onEdit, onDeactivate, filters, setFilters }) {
                       {u.status === "active" ? t("Deactivate", lang) : t("Activate", lang)}
                     </button>
                   </div>
+=======
+                <td style={{ padding: "12px 16px", borderTop: i > 0 ? `0.5px solid ${C.border}` : "none", verticalAlign: "middle" }}>
+                  <StatusBadge tone={u.status === "active" ? "active" : "inactive"}>
+                    {u.status === "active" ? t("Active", lang) : t("Inactive", lang)}
+                  </StatusBadge>
+                </td>
+                <td style={{ padding: "12px 16px", borderTop: i > 0 ? `0.5px solid ${C.border}` : "none", verticalAlign: "middle" }}>
+                  <ActionButtonGroup>
+                    <ActionButton onClick={() => onEdit(u)}>
+                      {t("Edit", lang)}
+                    </ActionButton>
+                    <ActionButton
+                      variant={u.status === "active" ? "danger" : "success"}
+                      onClick={() => onDeactivate(u.id)}
+                    >
+                      {u.status === "active" ? t("Deactivate", lang) : t("Activate", lang)}
+                    </ActionButton>
+                  </ActionButtonGroup>
+>>>>>>> 2dfc12740a97cede23f7be06dd88218fc7713123
                 </td>
               </tr>
             ))}
@@ -335,6 +364,7 @@ export default function DeptUsersPage() {
     <div style={{ padding: "32px 36px", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
       {toast && <Toast message={toast.message} type={toast.type} />}
 
+<<<<<<< HEAD
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 28 }}>
         <div>
           <div style={{ display: "inline-flex", alignItems: "center", gap: 8,
@@ -358,6 +388,22 @@ export default function DeptUsersPage() {
           {t("+ New User", lang)}
         </button>
       </div>
+=======
+      <PageHeader
+        breadcrumb={[t("Home", lang), t("Department", lang), t("Users", lang)]}
+        title={t("Department Users", lang)}
+        description="Manage user accounts, roles, and section assignments for Samhita Siddhanta."
+        actions={
+          <ActionButton
+            variant="primary"
+            onClick={() => setFormView({ mode: "create", entity: null })}
+            style={{ height: 38 }}
+          >
+            {t("+ New User", lang)}
+          </ActionButton>
+        }
+      />
+>>>>>>> 2dfc12740a97cede23f7be06dd88218fc7713123
 
       <UserList
         key={refreshKey}

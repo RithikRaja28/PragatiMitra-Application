@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { t } from "../../../i18n/translations";
+<<<<<<< HEAD
 
 const C = {
   primary:   "#d97706",
@@ -9,6 +10,18 @@ const C = {
   textSub:   "#78716c",
   border:    "rgba(217,119,6,0.13)",
   bg:        "#fffbeb",
+=======
+import PageHeader from "../../../components/shared/PageHeader";
+import { S } from "../../../components/shared/formUtils";
+
+const C = {
+  primary:   "#2563eb",
+  primaryLt: "#dbeafe",
+  text:      "#1e293b",
+  textSub:   "#64748b",
+  border:    "rgba(37,99,235,0.12)",
+  bg:        "#f8f9fb",
+>>>>>>> 2dfc12740a97cede23f7be06dd88218fc7713123
   surface:   "#ffffff",
 };
 
@@ -138,6 +151,7 @@ export default function SubmissionsPage() {
       background: C.bg, minHeight: "100vh" }}>
 
       {/* Header */}
+<<<<<<< HEAD
       <div style={{ marginBottom: 20 }}>
         <div style={{ display: "inline-flex", alignItems: "center", gap: 6,
           background: C.primaryLt, borderRadius: 6, padding: "3px 11px", marginBottom: 8 }}>
@@ -149,6 +163,13 @@ export default function SubmissionsPage() {
           Track section submissions through the approval pipeline — hover a row to see the full timeline
         </p>
       </div>
+=======
+      <PageHeader
+        breadcrumb={[t("Home", lang), t("Department", lang), t("Submissions", lang)]}
+        title={t("My Submissions", lang)}
+        description="Track section submissions through the approval pipeline — hover a row to see the full timeline"
+      />
+>>>>>>> 2dfc12740a97cede23f7be06dd88218fc7713123
 
       {/* Stage progress legend */}
       <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 16,
@@ -172,16 +193,24 @@ export default function SubmissionsPage() {
       <div style={{ display: "flex", gap: 10, marginBottom: 16, background: C.surface,
         padding: "12px 16px", borderRadius: 10, border: `0.5px solid ${C.border}` }}>
         <select value={filters.stage} onChange={e => setFilters(f => ({ ...f, stage: e.target.value }))}
+<<<<<<< HEAD
           style={{ padding: "7px 28px 7px 12px", borderRadius: 8, border: `1px solid ${C.border}`,
             outline: "none", fontSize: 13, color: C.text, background: "#fff",
             fontFamily: "'Plus Jakarta Sans', sans-serif", appearance: "none", cursor: "pointer" }}>
+=======
+          style={{ ...S.select(false), width: "auto", minWidth: 160 }}>
+>>>>>>> 2dfc12740a97cede23f7be06dd88218fc7713123
           <option value="">{t("All Stages", lang)}</option>
           {STAGE_ORDER.slice(1).map(s => <option key={s} value={s}>{s}</option>)}
         </select>
         <select value={filters.status} onChange={e => setFilters(f => ({ ...f, status: e.target.value }))}
+<<<<<<< HEAD
           style={{ padding: "7px 28px 7px 12px", borderRadius: 8, border: `1px solid ${C.border}`,
             outline: "none", fontSize: 13, color: C.text, background: "#fff",
             fontFamily: "'Plus Jakarta Sans', sans-serif", appearance: "none", cursor: "pointer" }}>
+=======
+          style={{ ...S.select(false), width: "auto", minWidth: 160 }}>
+>>>>>>> 2dfc12740a97cede23f7be06dd88218fc7713123
           <option value="">{t("All Statuses", lang)}</option>
           <option value="In Review">{t("In Review", lang)}</option>
           <option value="Approved">{t("Approved", lang)}</option>

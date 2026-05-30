@@ -1,5 +1,12 @@
 import { useState, useEffect, useCallback } from "react";
+<<<<<<< HEAD
 import { useApi } from "../../../hooks/useApi";
+=======
+import { Users, FileText, BarChart3, Wallet, ShieldCheck } from "lucide-react";
+import { useApi } from "../../../hooks/useApi";
+import PageHeader from "../../../components/shared/PageHeader";
+import { ActionButton } from "../../../components/shared/ActionButtons";
+>>>>>>> 2dfc12740a97cede23f7be06dd88218fc7713123
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { t } from "../../../i18n/translations";
 
@@ -9,7 +16,11 @@ import { t } from "../../../i18n/translations";
 const CAPABILITY_GROUPS = [
   {
     label: "User Management",
+<<<<<<< HEAD
     icon: "👤",
+=======
+    icon: Users,
+>>>>>>> 2dfc12740a97cede23f7be06dd88218fc7713123
     color: "#7c3aed",
     colorBg: "#ede9fe",
     caps: [
@@ -33,7 +44,11 @@ const CAPABILITY_GROUPS = [
   },
   {
     label: "Form Access",
+<<<<<<< HEAD
     icon: "📋",
+=======
+    icon: FileText,
+>>>>>>> 2dfc12740a97cede23f7be06dd88218fc7713123
     color: "#0891b2",
     colorBg: "#e0f2fe",
     caps: [
@@ -51,7 +66,11 @@ const CAPABILITY_GROUPS = [
   },
   {
     label: "Report",
+<<<<<<< HEAD
     icon: "📊",
+=======
+    icon: BarChart3,
+>>>>>>> 2dfc12740a97cede23f7be06dd88218fc7713123
     color: "#d97706",
     colorBg: "#fef3c7",
     caps: [
@@ -98,7 +117,11 @@ const CAPABILITY_GROUPS = [
   },
   {
     label: "Finance",
+<<<<<<< HEAD
     icon: "💰",
+=======
+    icon: Wallet,
+>>>>>>> 2dfc12740a97cede23f7be06dd88218fc7713123
     color: "#059669",
     colorBg: "#d1fae5",
     caps: [
@@ -118,7 +141,11 @@ const CAPABILITY_GROUPS = [
   },
   {
     label: "Administration & Audit",
+<<<<<<< HEAD
     icon: "🛡️",
+=======
+    icon: ShieldCheck,
+>>>>>>> 2dfc12740a97cede23f7be06dd88218fc7713123
     color: "#dc2626",
     colorBg: "#fee2e2",
     caps: [
@@ -244,6 +271,7 @@ function FieldLabel({ children }) {
   );
 }
 
+<<<<<<< HEAD
 function PageBadge({ color, label }) {
   return (
     <div
@@ -275,6 +303,8 @@ function PageBadge({ color, label }) {
   );
 }
 
+=======
+>>>>>>> 2dfc12740a97cede23f7be06dd88218fc7713123
 /* ══════════════════════════════════════════════════════════════
    EDITOR: CAPABILITY GROUP — professional, neutral
 ══════════════════════════════════════════════════════════════════ */
@@ -1344,6 +1374,7 @@ function RoleList({ roles, onEdit, onDelete, onCreate, deleting }) {
   return (
     <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
       {/* Header */}
+<<<<<<< HEAD
       <div style={{ marginBottom: 28 }}>
         <PageBadge color="#0891b2" label={t("Role & Access Control", lang)} />
         <div
@@ -1390,6 +1421,18 @@ function RoleList({ roles, onEdit, onDelete, onCreate, deleting }) {
           </button>
         </div>
       </div>
+=======
+      <PageHeader
+        breadcrumb={[t("Home", lang), t("Role & Access Control", lang), t("Roles & Permissions", lang)]}
+        title={t("Roles & Permissions", lang)}
+        description="Define what each role can access and do across the platform."
+        actions={
+          <ActionButton variant="primary" onClick={onCreate} style={{ height: 38 }}>
+            {t("+ Create Role", lang)}
+          </ActionButton>
+        }
+      />
+>>>>>>> 2dfc12740a97cede23f7be06dd88218fc7713123
 
       {/* Stat row — minimal, no colour fills */}
       <div style={{ display: "flex", gap: 12, marginBottom: 24 }}>

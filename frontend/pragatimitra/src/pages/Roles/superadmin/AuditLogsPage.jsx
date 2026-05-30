@@ -1,5 +1,12 @@
 import React, { useState, useEffect, useCallback } from "react";
+<<<<<<< HEAD
 import { useAuth } from "../../../store/AuthContext";
+=======
+import { User, Building, Landmark, Shield, FileText } from "lucide-react";
+import { useAuth } from "../../../store/AuthContext";
+import PageHeader from "../../../components/shared/PageHeader";
+import { tableCardStyle } from "../../../components/shared/ui";
+>>>>>>> 2dfc12740a97cede23f7be06dd88218fc7713123
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { t } from "../../../i18n/translations";
 
@@ -71,7 +78,11 @@ const TYPE_META = {
   ROLE:        { label: "Role",        bg: "#fef3c7", color: "#d97706" },
 };
 
+<<<<<<< HEAD
 const ENTITY_EMOJI = { USER: "👤", DEPARTMENT: "🏢", INSTITUTION: "🏛️", ROLE: "🛡️" };
+=======
+const ENTITY_ICON = { USER: User, DEPARTMENT: Building, INSTITUTION: Landmark, ROLE: Shield };
+>>>>>>> 2dfc12740a97cede23f7be06dd88218fc7713123
 
 /* ═══════════════════════════════════════════════════════════════
    BROWSER GLYPH
@@ -403,8 +414,13 @@ function ExpandedDetailPanel({ log }) {
 
       {/* Actor strip */}
       <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 18px", background: "#fff", border: "1px solid #e2e8f0", borderRadius: 13, marginBottom: 20, boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
+<<<<<<< HEAD
         <div style={{ width: 40, height: 40, borderRadius: 11, background: typeMeta.bg, border: `1.5px solid ${typeMeta.color}22`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>
           {ENTITY_EMOJI[log.entity_type] || "📋"}
+=======
+        <div style={{ width: 40, height: 40, borderRadius: 11, background: typeMeta.bg, border: `1.5px solid ${typeMeta.color}22`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+          {(() => { const EntIcon = ENTITY_ICON[log.entity_type] || FileText; return <EntIcon size={18} strokeWidth={2} color={typeMeta.color} />; })()}
+>>>>>>> 2dfc12740a97cede23f7be06dd88218fc7713123
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 13.5, fontWeight: 700, color: "#0f172a" }}>{log.actor_name || "System"}</div>
@@ -496,6 +512,7 @@ export default function AuditLogsPage() {
     <div style={{ padding: "32px 36px", fontFamily: "'Plus Jakarta Sans', sans-serif", maxWidth: 1200 }}>
 
       {/* Header */}
+<<<<<<< HEAD
       <div style={{ marginBottom: 28 }}>
         <div style={{ display: "inline-flex", alignItems: "center", gap: 7, background: "#dc262614", borderRadius: 8, padding: "4px 12px", marginBottom: 12 }}>
           <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#dc2626" }} />
@@ -504,6 +521,13 @@ export default function AuditLogsPage() {
         <h1 style={{ fontSize: 24, fontWeight: 700, color: "#1e293b", letterSpacing: "-0.4px", margin: 0 }}>{t("Audit Logs", lang)}</h1>
         <p style={{ color: "#94a3b8", fontSize: 14, margin: "6px 0 0" }}>Click a card to filter by entity. Full history of system events and user actions.</p>
       </div>
+=======
+      <PageHeader
+        breadcrumb={[t("Home", lang), t("Audit", lang), t("Logs", lang)]}
+        title={t("Audit Logs", lang)}
+        description="Click a card to filter by entity. Full history of system events and user actions."
+      />
+>>>>>>> 2dfc12740a97cede23f7be06dd88218fc7713123
 
       {/* Entity cards */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 28 }}>
@@ -548,7 +572,11 @@ export default function AuditLogsPage() {
       </div>
 
       {/* Table */}
+<<<<<<< HEAD
       <div style={{ background: "#fff", border: "1px solid rgba(0,0,0,0.07)", borderRadius: 14, overflow: "hidden", boxShadow: "0 1px 4px rgba(0,0,0,0.05)" }}>
+=======
+      <div style={tableCardStyle}>
+>>>>>>> 2dfc12740a97cede23f7be06dd88218fc7713123
         <div style={{ display: "grid", gridTemplateColumns: "32px 200px 1fr 180px 130px 160px", padding: "11px 20px", background: "#f8fafc", borderBottom: "1px solid rgba(0,0,0,0.06)" }}>
           {["", "Actor", "Message", "Action", "Type", "Timestamp"].map((h) => (
             <div key={h} style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.8 }}>{h ? t(h, lang) : h}</div>

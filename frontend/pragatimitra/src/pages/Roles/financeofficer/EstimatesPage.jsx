@@ -1,4 +1,8 @@
 import { useState, useMemo } from "react";
+<<<<<<< HEAD
+=======
+import { Save, ClipboardList } from "lucide-react";
+>>>>>>> 2dfc12740a97cede23f7be06dd88218fc7713123
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { t } from "../../../i18n/translations";
 
@@ -438,7 +442,11 @@ export default function EstimatesPage() {
             <div style={{ display: "flex", gap: 9 }}>
               <button onClick={resetForm} style={{ ...btn("ghost"), padding: "9px 16px" }}>✕ {t("Clear", lang)}</button>
               <button onClick={() => handleSave("Draft")}
+<<<<<<< HEAD
                 style={{ ...btn("outline"), padding: "9px 18px" }}>💾 {t("Save as Draft", lang)}</button>
+=======
+                style={{ ...btn("outline"), display: "inline-flex", alignItems: "center", gap: 6, padding: "9px 18px" }}><Save size={14} strokeWidth={2} /> {t("Save as Draft", lang)}</button>
+>>>>>>> 2dfc12740a97cede23f7be06dd88218fc7713123
               <button onClick={() => handleSave("Submitted")}
                 style={{ ...btn("success"), padding: "9px 18px" }}>✓ {t("Submit for Approval", lang)}</button>
             </div>
@@ -452,7 +460,11 @@ export default function EstimatesPage() {
           {saved.length === 0
             ? <div style={{ background: C.surface, border: `0.5px solid ${C.border}`, borderRadius: 14,
                 padding: "48px", textAlign: "center" }}>
+<<<<<<< HEAD
                 <div style={{ fontSize: 32, marginBottom: 12 }}>📋</div>
+=======
+                <ClipboardList size={32} strokeWidth={1.5} color={C.textSub} style={{ marginBottom: 12 }} />
+>>>>>>> 2dfc12740a97cede23f7be06dd88218fc7713123
                 <div style={{ fontSize: 14, fontWeight: 600, color: C.text, marginBottom: 6 }}>{t("No entries yet", lang)}</div>
                 <div style={{ fontSize: 12, color: C.textSub, marginBottom: 16 }}>{t("Create your first estimate using the entry form.", lang)}</div>
                 <button onClick={() => setActiveTab("entry")} style={btn("primary")}>+ {t("New Entry", lang)}</button>

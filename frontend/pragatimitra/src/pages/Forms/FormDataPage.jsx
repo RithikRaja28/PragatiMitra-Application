@@ -1,13 +1,39 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import ReactDOM from "react-dom";
+import { createPortal } from "react-dom";
+import { Trash2, FileText, FilePlus, Lock, Clock, Globe, SearchX } from "lucide-react";
 import { useApi } from "../../hooks/useApi";
 import { useAuth } from "../../store/AuthContext";
+import { useLanguage } from "../../i18n/LanguageContext";
 import { S, Toast, isAuthError, formatDate } from "../../components/shared/formUtils";
+import PageHeader from "../../components/shared/PageHeader";
+import { tableCardStyle } from "../../components/shared/ui";
 
-const ACCENT = "#2563eb";
+const ACCENT = "#0891b2";
 const CHUNK_SIZE = 500;
+
 function dbCol(col) { return col.trim().toLowerCase().replace(/\s+/g, "_"); }
 function displayCol(col) { return col.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()); }
+
+/* Derive deadline display + status from a form row (DB-driven). */
+function formStatus(form) {
+  const deadline = form.deadline_at ? new Date(form.deadline_at) : null;
+  const expired = deadline ? deadline.getTime() <= Date.now() : false;
+  const dateText = deadline
+    ? deadline.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })
+    : "No deadline";
+
+  let badge;
+  if (form.is_locked || expired) {
+    badge = { label: expired ? "Expired" : "Locked", color: "#dc2626", bg: "#fef2f2" };
+  } else if (deadline) {
+    const daysLeft = Math.ceil((deadline.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+    badge = { label: `${daysLeft}d left`, color: daysLeft <= 3 ? "#d97706" : "#16a34a", bg: daysLeft <= 3 ? "#fffbeb" : "#f0fdf4" };
+  } else {
+    badge = { label: "Open", color: "#16a34a", bg: "#f0fdf4" };
+  }
+  return { dateText, expired, badge };
+}
 
 /* ── Icons ── */
 function IcoPlus() { return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>; }
@@ -24,6 +50,7 @@ function IcoAlert() { return <svg width="14" height="14" viewBox="0 0 24 24" fil
 function IcoSortAsc() { return <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 15 12 9 6 15"/></svg>; }
 function IcoSortDesc() { return <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>; }
 function IcoSort() { return <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="7" y1="12" x2="17" y2="12"/><line x1="11" y1="18" x2="13" y2="18"/></svg>; }
+function IcoSearch() { return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>; }
 
 const ALLOWED_TYPES = ["image/jpeg","image/png","image/webp","application/pdf","application/msword","application/vnd.openxmlformats-officedocument.wordprocessingml.document","application/vnd.ms-excel","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"];
 const MAX_SIZE = 10 * 1024 * 1024;
@@ -103,14 +130,14 @@ function FieldInput({ field, value, onChange, getToken }) {
       </div>
     </div>
   );
-  if (type === "textarea") return <div><label style={S.label}>{label}{field.required && " *"}</label><textarea style={{ ...commonStyle, resize: "vertical", minHeight: 80 }} value={value||""} onChange={e => onChange(col, e.target.value)} required={field.required} /></div>;
+  if (type === "textarea" || type === "description") return <div><label style={S.label}>{label}{field.required && " *"}</label><textarea style={{ ...commonStyle, resize: "vertical", minHeight: 80 }} value={value||""} onChange={e => onChange(col, e.target.value)} required={field.required} /></div>;
   if (type === "document") return <DocumentUploadField label={label} required={field.required} value={value} onChange={url => onChange(col, url)} getToken={getToken} />;
   const inputType = type==="number"?"number":type==="date"?"date":type==="email"?"email":type==="phone"?"tel":"text";
   return <div><label style={S.label}>{label}{field.required && " *"}</label><input style={commonStyle} type={inputType} value={value||""} onChange={e => onChange(col, e.target.value)} required={field.required} /></div>;
 }
 
 /* ════════════════════════════════════════════════════════════════════
-   RecordModal — rendered via portal to avoid clipping issues
+   RecordModal — rendered via ModalPortal to avoid clipping issues
 ════════════════════════════════════════════════════════════════════ */
 function RecordModal({ fields, record, onSave, onClose, saving, error, getToken }) {
   const isEdit = !!record;
@@ -176,7 +203,7 @@ function RecordModal({ fields, record, onSave, onClose, saving, error, getToken 
 }
 
 /* ════════════════════════════════════════════════════════════════════
-   DeleteModal — single or bulk, rendered via portal
+   DeleteModal — single or bulk, rendered via ModalPortal
 ════════════════════════════════════════════════════════════════════ */
 function DeleteModal({ count = 1, onConfirm, onClose, deleting }) {
   const isBulk = count > 1;
@@ -261,7 +288,7 @@ function ImportProgressPanel({ total, processed, remaining, percent, chunksDone,
 }
 
 /* ════════════════════════════════════════════════════════════════════
-   FormImportWizard
+   FormImportWizard — with dept selection, rendered via ModalPortal
 ════════════════════════════════════════════════════════════════════ */
 function FormImportWizard({ formName, onClose, onDone, apiFetch, getToken }) {
   const [step, setStep] = useState(1);
@@ -559,7 +586,7 @@ function FormImportWizard({ formName, onClose, onDone, apiFetch, getToken }) {
   );
 }
 
-/* ── Export dropdown ── */
+/* ── Export dropdown with progress bar ── */
 function ExportDropdown({ formName, accessToken }) {
   const [open, setOpen]                   = useState(false);
   const [exporting, setExporting]         = useState(null);
@@ -626,7 +653,7 @@ function ExportDropdown({ formName, accessToken }) {
 }
 
 /* ════════════════════════════════════════════════════════════════════
-   SortDropdown — same look & feel as ExportDropdown
+   SortDropdown
 ════════════════════════════════════════════════════════════════════ */
 function SortDropdown({ sortDir, onSort }) {
   const [open, setOpen] = useState(false);
@@ -638,55 +665,33 @@ function SortDropdown({ sortDir, onSort }) {
 
   const active = options.find(o => o.key === sortDir);
 
-  function pick(key) {
-    setOpen(false);
-    onSort(key);
-  }
+  function pick(key) { setOpen(false); onSort(key); }
 
   return (
     <div style={{ position: "relative" }}>
       <button
         onClick={() => setOpen(v => !v)}
-        style={{
-          display: "inline-flex", alignItems: "center", gap: 7,
-          background: "#fff", color: "#475569", border: "1.5px solid #e2e8f0",
-          borderRadius: 10, padding: "9px 14px", fontSize: 13, fontWeight: 600,
-          cursor: "pointer", boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
-        }}
+        style={{ display: "inline-flex", alignItems: "center", gap: 7, background: "#fff", color: "#475569", border: "1.5px solid #e2e8f0", borderRadius: 10, padding: "9px 14px", fontSize: 13, fontWeight: 600, cursor: "pointer", boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }}
       >
         {active?.icon}
         Sort: {active?.key === "desc" ? "Newest First" : "Oldest First"}
         <IcoChevronDown />
       </button>
-
       {open && (
         <>
           <div style={{ position: "fixed", inset: 0, zIndex: 99 }} onClick={() => setOpen(false)} />
-          <div style={{
-            position: "absolute", top: "calc(100% + 6px)", right: 0, zIndex: 100,
-            background: "#fff", borderRadius: 10, border: "1.5px solid #e2e8f0",
-            boxShadow: "0 8px 24px rgba(0,0,0,0.12)", minWidth: 210, overflow: "hidden",
-          }}>
+          <div style={{ position: "absolute", top: "calc(100% + 6px)", right: 0, zIndex: 100, background: "#fff", borderRadius: 10, border: "1.5px solid #e2e8f0", boxShadow: "0 8px 24px rgba(0,0,0,0.12)", minWidth: 210, overflow: "hidden" }}>
             {options.map(({ key, label, icon }) => (
               <button
                 key={key}
                 onClick={() => pick(key)}
-                style={{
-                  display: "flex", alignItems: "center", gap: 9,
-                  width: "100%", padding: "10px 16px",
-                  background: sortDir === key ? ACCENT + "08" : "none",
-                  border: "none", textAlign: "left", fontSize: 13,
-                  color: sortDir === key ? ACCENT : "#1e293b",
-                  cursor: "pointer", fontWeight: sortDir === key ? 700 : 500,
-                }}
+                style={{ display: "flex", alignItems: "center", gap: 9, width: "100%", padding: "10px 16px", background: sortDir === key ? ACCENT + "08" : "none", border: "none", textAlign: "left", fontSize: 13, color: sortDir === key ? ACCENT : "#1e293b", cursor: "pointer", fontWeight: sortDir === key ? 700 : 500 }}
                 onMouseEnter={e => { if (sortDir !== key) e.currentTarget.style.background = "#f8fafc"; }}
                 onMouseLeave={e => { e.currentTarget.style.background = sortDir === key ? ACCENT + "08" : "none"; }}
               >
                 <span style={{ color: sortDir === key ? ACCENT : "#94a3b8" }}>{icon}</span>
                 {label}
-                {sortDir === key && (
-                  <span style={{ marginLeft: "auto", color: ACCENT }}><IcoCheck /></span>
-                )}
+                {sortDir === key && <span style={{ marginLeft: "auto", color: ACCENT }}><IcoCheck /></span>}
               </button>
             ))}
           </div>
@@ -697,41 +702,27 @@ function SortDropdown({ sortDir, onSort }) {
 }
 
 /* ════════════════════════════════════════════════════════════════════
-   RowsPerPageDropdown — same style as Export / Sort dropdowns
+   RowsPerPageDropdown
 ════════════════════════════════════════════════════════════════════ */
 function RowsPerPageDropdown({ pageSize, onPageSizeChange }) {
   const [open, setOpen] = useState(false);
   const OPTIONS = [50, 100, 250, 500];
 
-  function pick(val) {
-    setOpen(false);
-    onPageSizeChange(val);
-  }
+  function pick(val) { setOpen(false); onPageSizeChange(val); }
 
   return (
     <div style={{ position: "relative" }}>
       <button
         onClick={() => setOpen(v => !v)}
-        style={{
-          display: "inline-flex", alignItems: "center", gap: 7,
-          background: "#fff", color: "#475569", border: "1.5px solid #e2e8f0",
-          borderRadius: 10, padding: "7px 13px", fontSize: 13, fontWeight: 600,
-          cursor: "pointer", boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
-          whiteSpace: "nowrap",
-        }}
+        style={{ display: "inline-flex", alignItems: "center", gap: 7, background: "#fff", color: "#475569", border: "1.5px solid #e2e8f0", borderRadius: 10, padding: "7px 13px", fontSize: 13, fontWeight: 600, cursor: "pointer", boxShadow: "0 1px 3px rgba(0,0,0,0.06)", whiteSpace: "nowrap" }}
       >
         {pageSize} / page
         <IcoChevronDown />
       </button>
-
       {open && (
         <>
           <div style={{ position: "fixed", inset: 0, zIndex: 99 }} onClick={() => setOpen(false)} />
-          <div style={{
-            position: "absolute", bottom: "calc(100% + 6px)", left: 0, zIndex: 100,
-            background: "#fff", borderRadius: 10, border: "1.5px solid #e2e8f0",
-            boxShadow: "0 8px 24px rgba(0,0,0,0.12)", minWidth: 160, overflow: "hidden",
-          }}>
+          <div style={{ position: "absolute", bottom: "calc(100% + 6px)", left: 0, zIndex: 100, background: "#fff", borderRadius: 10, border: "1.5px solid #e2e8f0", boxShadow: "0 8px 24px rgba(0,0,0,0.12)", minWidth: 160, overflow: "hidden" }}>
             <div style={{ padding: "8px 14px 6px", fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.6, borderBottom: "1px solid #f1f5f9" }}>
               Rows per page
             </div>
@@ -739,14 +730,7 @@ function RowsPerPageDropdown({ pageSize, onPageSizeChange }) {
               <button
                 key={val}
                 onClick={() => pick(val)}
-                style={{
-                  display: "flex", alignItems: "center", justifyContent: "space-between",
-                  width: "100%", padding: "9px 14px",
-                  background: pageSize === val ? ACCENT + "08" : "none",
-                  border: "none", textAlign: "left", fontSize: 13,
-                  color: pageSize === val ? ACCENT : "#1e293b",
-                  cursor: "pointer", fontWeight: pageSize === val ? 700 : 500,
-                }}
+                style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", padding: "9px 14px", background: pageSize === val ? ACCENT + "08" : "none", border: "none", textAlign: "left", fontSize: 13, color: pageSize === val ? ACCENT : "#1e293b", cursor: "pointer", fontWeight: pageSize === val ? 700 : 500 }}
                 onMouseEnter={e => { if (pageSize !== val) e.currentTarget.style.background = "#f8fafc"; }}
                 onMouseLeave={e => { e.currentTarget.style.background = pageSize === val ? ACCENT + "08" : "none"; }}
               >
@@ -762,21 +746,17 @@ function RowsPerPageDropdown({ pageSize, onPageSizeChange }) {
 }
 
 /* ════════════════════════════════════════════════════════════════════
-   Bulk Action Bar
+   BulkActionBar
 ════════════════════════════════════════════════════════════════════ */
 function BulkActionBar({ selectedCount, totalOnPage, onSelectAll, onDeselectAll, onBulkDelete, allSelected }) {
   return (
-    <div style={{
-      display: "flex", alignItems: "center", justifyContent: "space-between",
-      padding: "10px 16px", background: `${ACCENT}08`, border: `1.5px solid ${ACCENT}25`,
-      borderRadius: 10, marginBottom: 12,
-    }}>
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 16px", background: `${ACCENT}08`, border: `1.5px solid ${ACCENT}25`, borderRadius: 10, marginBottom: 12 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
         <div style={{ fontSize: 13, fontWeight: 700, color: "#1e293b" }}>
           <span style={{ color: ACCENT }}>{selectedCount}</span> record{selectedCount !== 1 ? "s" : ""} selected
         </div>
         {!allSelected && (
-          <button onClick={onSelectAll} style={{ fontSize: 12, fontWeight: 600, color: ACCENT, background: "none", border: "none", cursor: "pointer", padding: "3px 8px", borderRadius: 6, background: "#fff", border: `1px solid ${ACCENT}30` }}>
+          <button onClick={onSelectAll} style={{ fontSize: 12, fontWeight: 600, color: ACCENT, background: "#fff", border: `1px solid ${ACCENT}30`, cursor: "pointer", padding: "3px 8px", borderRadius: 6 }}>
             Select all {totalOnPage} on this page
           </button>
         )}
@@ -802,6 +782,7 @@ function BulkActionBar({ selectedCount, totalOnPage, onSelectAll, onDeselectAll,
 export default function FormDataPage() {
   const { apiFetch }    = useApi();
   const { accessToken } = useAuth();
+  const { lang }        = useLanguage();
   const getToken        = useCallback(() => accessToken, [accessToken]);
 
   const [view, setView]                 = useState("forms");
@@ -817,10 +798,21 @@ export default function FormDataPage() {
   const [recsLoading, setRecsLoading] = useState(false);
   const [recsError, setRecsError]     = useState("");
 
+  /* ── Lock status ── */
+  const [lockInfo, setLockInfo] = useState({ is_locked: false, locked_by: null, locked_at: null });
+
+  /* ── Search (live + debounced) ── */
+  const [searchInput, setSearchInput] = useState("");
+  const [searchTerm, setSearchTerm]   = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => setSearchTerm(searchInput), 250);
+    return () => clearTimeout(t);
+  }, [searchInput]);
+
   /* ── Modal state ── */
   const [modalOpen, setModalOpen]       = useState(false);
   const [editRecord, setEditRecord]     = useState(null);
-  const [deleteTarget, setDeleteTarget] = useState(null);   // single record id or null
+  const [deleteTarget, setDeleteTarget] = useState(null);
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const [saving, setSaving]             = useState(false);
   const [deleting, setDeleting]         = useState(false);
@@ -856,17 +848,28 @@ export default function FormDataPage() {
 
   useEffect(() => { loadForms(); }, [loadForms]);
 
+  /* ── Load records, language-aware, with lock info ── */
   const loadRecords = useCallback(async (form) => {
     setRecsLoading(true); setRecsError("");
-    setSelectedIds(new Set()); // clear selection on reload
+    setSelectedIds(new Set());
     try {
-      const res  = await apiFetch(`/api/form-data/${form.form_name}/records`);
+      const res  = await apiFetch(`/api/form-data/${form.form_name}/records?language=${lang}`);
       const data = await res.json();
-      if (data.success) { setRecords(data.records || []); setSchema(data.schema); }
-      else setRecsError(data.message || "Failed to load records.");
+      if (data.success) {
+        setRecords(data.records || []);
+        setSchema(data.schema);
+        setLockInfo(data.lock || { is_locked: false, locked_by: null, locked_at: null });
+      } else {
+        setRecsError(data.message || "Failed to load records.");
+      }
     } catch (err) { if (!isAuthError(err)) setRecsError("Failed to load records."); }
     finally { setRecsLoading(false); }
-  }, [apiFetch]);
+  }, [apiFetch, lang]);
+
+  /* Re-fetch when form opens or language changes while viewing records */
+  useEffect(() => {
+    if (view === "records" && selectedForm) loadRecords(selectedForm);
+  }, [view, selectedForm, loadRecords]);
 
   function openForm(form) {
     setSelectedForm(form);
@@ -874,12 +877,16 @@ export default function FormDataPage() {
     setCurrentPage(1);
     setSortField("created_at");
     setSortDir("desc");
+    setSearchInput("");
+    setSearchTerm("");
     loadRecords(form);
   }
 
   function backToForms() {
     setView("forms"); setSelectedForm(null); setSchema(null); setRecords([]);
     setRecsError(""); setCurrentPage(1); setSelectedIds(new Set());
+    setSearchInput(""); setSearchTerm("");
+    setLockInfo({ is_locked: false, locked_by: null, locked_at: null });
   }
 
   async function handleSave(formData) {
@@ -914,7 +921,6 @@ export default function FormDataPage() {
     setDeleting(true);
     const ids = Array.from(selectedIds);
     try {
-      // Single batch request — backend deletes all IDs in one SQL query
       const res  = await apiFetch(
         `/api/form-data/${selectedForm.form_name}/records/bulk-delete`,
         { method: "DELETE", body: JSON.stringify({ ids }) }
@@ -941,8 +947,24 @@ export default function FormDataPage() {
     f => !excludedCols.has(dbCol(f.column_name)) && !excludedCols.has(f.column_name)
   );
 
-  /* ── Derived: sorted records ── */
-  const sortedRecords = [...records].sort((a, b) => {
+  /* ── Derived: search-filtered records ── */
+  const filteredRecords = useMemo(() => {
+    const needle = searchTerm.trim().toLowerCase();
+    if (!needle) return records;
+    return records.filter((rec) =>
+      schemaFields.some((f) => {
+        const v = rec[dbCol(f.column_name)];
+        return v != null && String(v).toLowerCase().includes(needle);
+      })
+    );
+  }, [records, searchTerm, schemaFields]);
+
+  /* ── Read-only flags ── */
+  const viewingTranslated = lang === "hi";
+  const readOnly = lockInfo.is_locked || viewingTranslated;
+
+  /* ── Derived: sorted records (applied after search filter) ── */
+  const sortedRecords = [...filteredRecords].sort((a, b) => {
     let aVal = a[sortField], bVal = b[sortField];
     if (sortField === "created_at") {
       aVal = aVal ? new Date(aVal).getTime() : 0;
@@ -978,53 +1000,175 @@ export default function FormDataPage() {
   function deselectAll() { setSelectedIds(new Set()); }
   function handlePageSizeChange(size) { setPageSize(size); setCurrentPage(1); setSelectedIds(new Set()); }
 
-  /* ── VIEW 1: forms grid ── */
+  /* ══════════════════════════════════════════════════════
+     VIEW 1 — Form selection grid
+  ══════════════════════════════════════════════════════ */
   if (view === "forms") {
+    const now = Date.now();
+    const isExpired = (f) => f.deadline_at && new Date(f.deadline_at).getTime() <= now;
+    const totalForms   = forms.length;
+    const activeForms  = forms.filter((f) => !f.is_locked && !isExpired(f)).length;
+    const pendingForms = forms.filter((f) => {
+      if (!f.deadline_at) return false;
+      const ms = new Date(f.deadline_at).getTime() - now;
+      return ms > 0 && ms <= 7 * 24 * 3600 * 1000;
+    }).length;
+    const expiredForms = forms.filter(isExpired).length;
+
+    const summary = [
+      { label: "Total Forms",      value: totalForms,   color: "#0891b2", bg: "#ecfeff", hint: "All accessible forms" },
+      { label: "Active Forms",     value: activeForms,  color: "#16a34a", bg: "#f0fdf4", hint: "Open for submissions" },
+      { label: "Pending Deadline", value: pendingForms, color: "#d97706", bg: "#fffbeb", hint: "Due within 7 days" },
+      { label: "Expired Forms",    value: expiredForms, color: "#dc2626", bg: "#fef2f2", hint: "Past deadline" },
+    ];
+
     return (
-      <div style={{ padding: "32px 36px", fontFamily: "'Plus Jakarta Sans', sans-serif", minHeight: "100%" }}>
+      <div style={{ padding: "20px 28px", fontFamily: "'Plus Jakarta Sans', sans-serif", minHeight: "100%", maxWidth: 1440 }}>
         {toast && <Toast message={toast.message} type={toast.type} />}
-        <div style={{ marginBottom: 28 }}>
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 7, background: ACCENT + "12", borderRadius: 8, padding: "4px 12px", marginBottom: 10 }}>
-            <div style={{ width: 6, height: 6, borderRadius: "50%", background: ACCENT }} />
-            <span style={{ fontSize: 11, fontWeight: 700, color: ACCENT, textTransform: "uppercase", letterSpacing: 1 }}>Data Entry</span>
-          </div>
-          <h1 style={{ fontSize: 24, fontWeight: 700, color: "#1e293b", letterSpacing: "-0.4px", margin: "0 0 6px" }}>Forms</h1>
-          <p style={{ fontSize: 13, color: "#94a3b8", margin: 0 }}>Select a form to view, add, or manage its records.</p>
-        </div>
-        {formsError && <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 10, padding: "12px 16px", fontSize: 13, color: "#b91c1c", marginBottom: 20 }}>{formsError}</div>}
-        {formsLoading ? (
-          <div style={{ textAlign: "center", padding: "60px 24px", color: "#94a3b8", fontSize: 13 }}>Loading forms…</div>
-        ) : forms.length === 0 ? (
-          <div style={{ textAlign: "center", padding: "60px 24px", color: "#94a3b8" }}>
-            <div style={{ fontSize: 40, marginBottom: 14 }}>📋</div>
-            <div style={{ fontSize: 14, fontWeight: 600, color: "#64748b", marginBottom: 6 }}>No forms available</div>
-            <div style={{ fontSize: 13 }}>Your institution doesn't have access to any forms yet.</div>
-          </div>
-        ) : (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 16 }}>
-            {forms.map(form => (
-              <button key={form.id} onClick={() => openForm(form)}
-                style={{ background: "#fff", border: "1px solid rgba(0,0,0,0.08)", borderRadius: 14, padding: "22px 20px", textAlign: "left", cursor: "pointer", transition: "all .15s", boxShadow: "0 1px 4px rgba(0,0,0,0.05)" }}
-                onMouseEnter={e => { e.currentTarget.style.borderColor = ACCENT + "60"; e.currentTarget.style.boxShadow = `0 4px 16px ${ACCENT}18`; e.currentTarget.style.transform = "translateY(-1px)"; }}
-                onMouseLeave={e => { e.currentTarget.style.borderColor = "rgba(0,0,0,0.08)"; e.currentTarget.style.boxShadow = "0 1px 4px rgba(0,0,0,0.05)"; e.currentTarget.style.transform = ""; }}>
-                <div style={{ width: 42, height: 42, borderRadius: 11, background: ACCENT + "14", color: ACCENT, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 14 }}><IcoForm /></div>
-                <div style={{ fontSize: 14, fontWeight: 700, color: "#1e293b", marginBottom: 4 }}>{form.form_name.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())}</div>
-                <div style={{ fontSize: 11, color: "#94a3b8", fontFamily: "monospace" }}>{form.form_name}</div>
-                <div style={{ marginTop: 14, fontSize: 11, color: ACCENT, fontWeight: 600 }}>Open →</div>
-              </button>
-            ))}
+
+        <PageHeader
+          breadcrumb={["Home", "Department", "Forms & Data Entry"]}
+          title="Forms & Data Entry Center"
+          description="Access all department forms, monitor deadlines, and manage records in one place."
+        />
+
+        {formsError && (
+          <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 10, padding: "10px 14px", fontSize: 12.5, color: "#b91c1c", marginBottom: 14 }}>
+            {formsError}
           </div>
         )}
+
+        {/* Summary stats cards */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12, marginBottom: 18 }}>
+          {summary.map((s) => (
+            <div key={s.label} style={{ background: "#fff", border: "1px solid rgba(0,0,0,0.07)", borderRadius: 12, padding: "12px 14px", boxShadow: "0 1px 4px rgba(0,0,0,0.04)", display: "flex", alignItems: "center", gap: 12 }}>
+              <div style={{ width: 40, height: 40, borderRadius: 10, background: s.bg, color: s.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17, fontWeight: 800, flexShrink: 0, letterSpacing: -0.3 }}>
+                {s.value}
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 10.5, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.5 }}>{s.label}</div>
+                <div style={{ fontSize: 11.5, color: "#64748b", marginTop: 1 }}>{s.hint}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Available Forms table */}
+        <div style={tableCardStyle}>
+          <div style={{ padding: "12px 16px", borderBottom: "1px solid #eef2f6", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "#1e293b" }}>Available Forms</div>
+              <div style={{ fontSize: 11.5, color: "#94a3b8", marginTop: 1 }}>
+                {formsLoading ? "Loading…" : `${forms.length} form${forms.length !== 1 ? "s" : ""} accessible to your department`}
+              </div>
+            </div>
+          </div>
+
+          {formsLoading ? (
+            <div style={{ padding: "48px 24px", textAlign: "center", color: "#94a3b8", fontSize: 13 }}>Loading forms…</div>
+          ) : forms.length === 0 ? (
+            <div style={{ textAlign: "center", padding: "48px 24px", color: "#94a3b8" }}>
+              <div style={{ width: 56, height: 56, borderRadius: 14, margin: "0 auto 16px", background: "#f1f5f9", border: "1px solid #e2e8f0", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <FileText size={26} strokeWidth={1.6} color="#94a3b8" />
+              </div>
+              <div style={{ fontSize: 13.5, fontWeight: 600, color: "#64748b", marginBottom: 4 }}>No forms available</div>
+              <div style={{ fontSize: 12.5 }}>Your institution hasn't shared any forms with your department yet.</div>
+            </div>
+          ) : (
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 820 }}>
+                <thead>
+                  <tr style={{ background: "#f8fafc" }}>
+                    {["Form", "Form Name & Description", "Deadline", "Status", "Actions"].map((h) => (
+                      <th key={h} style={{ padding: "8px 14px", textAlign: h === "Actions" ? "right" : "left", fontSize: 10.5, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.5, borderBottom: "1px solid #eef2f6", whiteSpace: "nowrap" }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {forms.map((form) => {
+                    const expired = form.deadline_at && new Date(form.deadline_at).getTime() <= now;
+                    const locked  = form.is_locked;
+                    const statusBadge = locked
+                      ? { label: "LOCKED",  color: "#dc2626" }
+                      : expired
+                        ? { label: "EXPIRED", color: "#dc2626" }
+                        : { label: "OPEN",    color: "#16a34a" };
+                    const deadlineText = form.deadline_at
+                      ? new Date(form.deadline_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })
+                      : "—";
+                    let deadlineSubBadge = null;
+                    if (form.deadline_at) {
+                      if (expired) {
+                        deadlineSubBadge = { label: "EXPIRED", color: "#dc2626" };
+                      } else {
+                        const daysLeft = Math.ceil((new Date(form.deadline_at).getTime() - now) / (24 * 3600 * 1000));
+                        deadlineSubBadge = { label: `${daysLeft} DAY${daysLeft !== 1 ? "S" : ""} LEFT`, color: daysLeft <= 3 ? "#d97706" : "#16a34a" };
+                      }
+                    }
+                    return (
+                      <tr key={form.id}
+                        style={{ borderBottom: "1px solid #f1f5f9", transition: "background .1s", cursor: "pointer" }}
+                        onClick={() => openForm(form)}
+                        onMouseEnter={(e) => (e.currentTarget.style.background = "#f8fafc")}
+                        onMouseLeave={(e) => (e.currentTarget.style.background = "")}
+                      >
+                        <td style={{ padding: "8px 14px" }}>
+                          <div style={{ width: 30, height: 30, borderRadius: 8, background: ACCENT + "18", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, color: ACCENT, fontWeight: 800, letterSpacing: 0.3 }}>
+                            {form.form_name.slice(0, 2).toUpperCase()}
+                          </div>
+                        </td>
+                        <td style={{ padding: "8px 14px" }}>
+                          <div style={{ fontSize: 12.5, fontWeight: 700, color: "#1e293b", letterSpacing: 0.2 }}>
+                            {form.form_name.toUpperCase()}
+                          </div>
+                          <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 1, fontFamily: "monospace" }}>{form.form_name}</div>
+                        </td>
+                        <td style={{ padding: "8px 14px" }}>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                            <span style={{ fontSize: 12.5, color: "#475569", fontWeight: 600 }}>{deadlineText}</span>
+                            {deadlineSubBadge && (
+                              <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 8px", borderRadius: 20, fontSize: 10, fontWeight: 700, background: deadlineSubBadge.color + "18", color: deadlineSubBadge.color, alignSelf: "flex-start", whiteSpace: "nowrap", letterSpacing: 0.3 }}>
+                                {deadlineSubBadge.label}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td style={{ padding: "8px 14px" }}>
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700, background: statusBadge.color + "18", color: statusBadge.color, letterSpacing: 0.3, whiteSpace: "nowrap" }}>
+                            <span style={{ width: 6, height: 6, borderRadius: "50%", background: statusBadge.color, display: "inline-block" }} />
+                            {statusBadge.label}
+                          </span>
+                        </td>
+                        <td style={{ padding: "6px 14px", textAlign: "right" }}>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); openForm(form); }}
+                            style={{ display: "inline-flex", alignItems: "center", gap: 5, background: "#fff", color: ACCENT, border: `1px solid ${ACCENT}40`, borderRadius: 7, padding: "0 12px", height: 30, fontSize: 11.5, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap", transition: "background .15s, border-color .15s" }}
+                            onMouseEnter={(e) => { e.currentTarget.style.background = ACCENT + "12"; e.currentTarget.style.borderColor = ACCENT; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.background = "#fff"; e.currentTarget.style.borderColor = ACCENT + "40"; }}
+                          >
+                            Open <span style={{ fontSize: 12 }}>→</span>
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       </div>
     );
   }
 
-  /* ── VIEW 2: records table ── */
+  /* ══════════════════════════════════════════════════════
+     VIEW 2 — Records table for selected form
+  ══════════════════════════════════════════════════════ */
   return (
-    <div style={{ padding: "32px 36px", fontFamily: "'Plus Jakarta Sans', sans-serif", minHeight: "100%" }}>
+    <div style={{ padding: "20px 28px", fontFamily: "'Plus Jakarta Sans', sans-serif", minHeight: "100%", maxWidth: 1440 }}>
       {toast && <Toast message={toast.message} type={toast.type} />}
 
-      {/* ── Modals rendered via portal ── */}
+      {/* ── Modals ── */}
       {modalOpen && (
         <RecordModal
           fields={schemaFields}
@@ -1062,38 +1206,99 @@ export default function FormDataPage() {
         />
       )}
 
-      {/* Header */}
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 28 }}>
-        <div>
-          <button onClick={backToForms} style={{ display: "inline-flex", alignItems: "center", gap: 5, background: "none", border: "none", fontSize: 13, fontWeight: 600, color: ACCENT, cursor: "pointer", padding: 0, marginBottom: 12 }}>
-            <IcoBack /> Back to Forms
-          </button>
-          <h1 style={{ fontSize: 22, fontWeight: 700, color: "#1e293b", letterSpacing: "-0.3px", margin: "0 0 4px" }}>
-            {selectedForm?.form_name.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())}
-          </h1>
-          <p style={{ fontSize: 13, color: "#94a3b8", margin: 0 }}>
-            {recsLoading ? "Loading…" : `${records.length.toLocaleString()} record${records.length !== 1 ? "s" : ""}`}
+      {/* ── Locked banner ── */}
+      {lockInfo.is_locked && (() => {
+        const deadlineExpired =
+          lockInfo.auto_locked ||
+          (lockInfo.deadline_at && new Date(lockInfo.deadline_at).getTime() <= Date.now());
+        return (
+          <div style={{ display: "flex", alignItems: "center", gap: 12, background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 10, padding: "12px 18px", marginBottom: 20 }}>
+            {deadlineExpired
+              ? <Clock size={18} color="#b91c1c" strokeWidth={2} style={{ flexShrink: 0 }} />
+              : <Lock size={18} color="#b91c1c" strokeWidth={2} style={{ flexShrink: 0 }} />}
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "#b91c1c" }}>
+                {deadlineExpired
+                  ? "This form deadline has expired for your institution. The form is automatically locked."
+                  : "This form is currently locked by the institution admin."}
+              </div>
+              <div style={{ fontSize: 12, color: "#dc2626", marginTop: 2 }}>
+                You can only view the records. Adding, editing, and deleting are disabled.
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ── Hindi / translated read-only banner ── */}
+      {viewingTranslated && !lockInfo.is_locked && (
+        <div style={{ display: "flex", alignItems: "center", gap: 12, background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 10, padding: "12px 18px", marginBottom: 20 }}>
+          <Globe size={18} color="#1e3a8a" strokeWidth={2} style={{ flexShrink: 0 }} />
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#1e3a8a" }}>
+              हिंदी अनुवाद देखा जा रहा है — केवल देखने का मोड।
+            </div>
+            <div style={{ fontSize: 12, color: "#2563eb", marginTop: 2 }}>
+              रिकॉर्ड जोड़ने, संपादित करने या हटाने के लिए अंग्रेज़ी (EN) पर स्विच करें।
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Page Header ── */}
+      <PageHeader
+        breadcrumb={[
+          "Home",
+          "Department",
+          { label: "Forms & Data Entry", onClick: backToForms },
+          selectedForm?.form_name.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+        ]}
+        title={
+          <>
+            {selectedForm?.form_name.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
+            {lockInfo.is_locked && (
+              <span style={{ marginLeft: 10, fontSize: 13, fontWeight: 600, color: "#dc2626", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 6, padding: "2px 8px", verticalAlign: "middle", display: "inline-flex", alignItems: "center", gap: 5 }}>
+                <Lock size={13} strokeWidth={2.2} /> Locked
+              </span>
+            )}
+          </>
+        }
+        description={
+          <>
+            {recsLoading
+              ? "Loading…"
+              : searchTerm
+                ? `${sortedRecords.length} of ${records.length} record${records.length !== 1 ? "s" : ""}`
+                : `${records.length} record${records.length !== 1 ? "s" : ""}`}
             {schema && <span style={{ marginLeft: 8, fontFamily: "monospace", fontSize: 11 }}>· {schema.year}</span>}
-          </p>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <SortDropdown
-            sortDir={sortDir}
-            onSort={(dir) => { setSortDir(dir); setSortField("created_at"); setCurrentPage(1); setSelectedIds(new Set()); }}
-          />
-          <ExportDropdown formName={selectedForm?.form_name} accessToken={accessToken} />
-          <button onClick={() => setImportOpen(true)}
-            style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "10px 18px", borderRadius: 10, border: "1.5px solid #2563eb", background: "#eff6ff", fontSize: 13, fontWeight: 600, color: "#2563eb", cursor: "pointer" }}>
-            <IcoUpload /> Import
-          </button>
-          <button
-            onClick={() => { setEditRecord(null); setModalError(""); setModalOpen(true); }}
-            style={{ display: "inline-flex", alignItems: "center", gap: 7, background: ACCENT, color: "#fff", border: "none", borderRadius: 10, padding: "10px 18px", fontSize: 13, fontWeight: 700, cursor: "pointer", boxShadow: `0 2px 8px ${ACCENT}40` }}
-          >
-            <IcoPlus /> Add Record
-          </button>
-        </div>
-      </div>
+          </>
+        }
+        actions={
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <SortDropdown
+              sortDir={sortDir}
+              onSort={(dir) => { setSortDir(dir); setSortField("created_at"); setCurrentPage(1); setSelectedIds(new Set()); }}
+            />
+            <ExportDropdown formName={selectedForm?.form_name} accessToken={accessToken} />
+            <button
+              onClick={() => { if (!readOnly) setImportOpen(true); }}
+              disabled={readOnly}
+              title={readOnly ? (lockInfo.is_locked ? "Form is locked" : "Switch to English to import") : ""}
+              style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "9px 16px", borderRadius: 10, border: `1.5px solid ${readOnly ? "#e2e8f0" : ACCENT}`, background: readOnly ? "#f8fafc" : "#ecfeff", fontSize: 13, fontWeight: 600, color: readOnly ? "#94a3b8" : ACCENT, cursor: readOnly ? "not-allowed" : "pointer" }}
+            >
+              <IcoUpload /> Import
+            </button>
+            <button
+              onClick={() => { if (!readOnly) { setEditRecord(null); setModalError(""); setModalOpen(true); } }}
+              disabled={readOnly}
+              title={lockInfo.is_locked ? "Form is locked — contact your institution admin" : viewingTranslated ? "Switch to English (EN) to add records" : ""}
+              style={{ display: "inline-flex", alignItems: "center", gap: 7, background: readOnly ? "#94a3b8" : ACCENT, color: "#fff", border: "none", borderRadius: 10, padding: "9px 18px", fontSize: 13, fontWeight: 700, cursor: readOnly ? "not-allowed" : "pointer", boxShadow: readOnly ? "none" : `0 2px 8px ${ACCENT}40` }}
+            >
+              <IcoPlus /> Add Record
+            </button>
+          </div>
+        }
+      />
 
       {recsError && (
         <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 10, padding: "12px 16px", fontSize: 13, color: "#b91c1c", marginBottom: 20 }}>
@@ -1101,8 +1306,8 @@ export default function FormDataPage() {
         </div>
       )}
 
-      {/* Bulk action bar */}
-      {selectedIds.size > 0 && (
+      {/* ── Bulk action bar ── */}
+      {selectedIds.size > 0 && !readOnly && (
         <BulkActionBar
           selectedCount={selectedIds.size}
           totalOnPage={pagedIds.length}
@@ -1113,40 +1318,86 @@ export default function FormDataPage() {
         />
       )}
 
-      {/* Records table */}
-      <div style={{ background: "#fff", borderRadius: 16, border: "1px solid rgba(0,0,0,0.07)", boxShadow: "0 1px 6px rgba(0,0,0,0.05)", overflow: "hidden" }}>
+      {/* ── Records card ── */}
+      <div style={tableCardStyle}>
+        {/* Toolbar: search + record count */}
+        {!recsLoading && records.length > 0 && (
+          <div style={{ padding: "12px 20px", borderBottom: "1px solid #f1f5f9", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#1e293b" }}>
+              Records
+              {searchTerm && (
+                <span style={{ marginLeft: 8, fontSize: 12, fontWeight: 500, color: "#94a3b8" }}>
+                  · {sortedRecords.length} matching
+                </span>
+              )}
+            </div>
+            <div style={{ position: "relative", width: 260 }}>
+              <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "#94a3b8", display: "flex" }}>
+                <IcoSearch />
+              </span>
+              <input
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                placeholder="Search records..."
+                style={{ width: "100%", padding: "7px 30px 7px 32px", fontSize: 13, color: "#1e293b", border: "1px solid #e2e8f0", borderRadius: 8, outline: "none", background: "#fff" }}
+              />
+              {searchInput && (
+                <button
+                  onClick={() => setSearchInput("")}
+                  title="Clear"
+                  style={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", color: "#94a3b8", fontSize: 16, lineHeight: 1, cursor: "pointer", padding: "2px 6px" }}
+                >
+                  ×
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
         {recsLoading ? (
           <div style={{ padding: "60px 24px", textAlign: "center", color: "#94a3b8", fontSize: 13 }}>Loading records…</div>
         ) : records.length === 0 ? (
           <div style={{ textAlign: "center", padding: "56px 24px", color: "#94a3b8" }}>
-            <div style={{ fontSize: 36, marginBottom: 12 }}>📝</div>
+            <div style={{ width: 56, height: 56, borderRadius: 14, margin: "0 auto 16px", background: "#f1f5f9", border: "1px solid #e2e8f0", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <FilePlus size={26} strokeWidth={1.6} color="#94a3b8" />
+            </div>
             <div style={{ fontSize: 14, fontWeight: 600, color: "#64748b", marginBottom: 6 }}>No records yet</div>
             <div style={{ fontSize: 13 }}>Click "Add Record" to create the first entry, or Import from a file.</div>
+          </div>
+        ) : sortedRecords.length === 0 ? (
+          <div style={{ textAlign: "center", padding: "56px 24px", color: "#94a3b8" }}>
+            <div style={{ width: 56, height: 56, borderRadius: 14, margin: "0 auto 16px", background: "#f1f5f9", border: "1px solid #e2e8f0", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <SearchX size={26} strokeWidth={1.6} color="#94a3b8" />
+            </div>
+            <div style={{ fontSize: 14, fontWeight: 600, color: "#64748b", marginBottom: 6 }}>No matching records</div>
+            <div style={{ fontSize: 13 }}>Try a different search term or clear the search to see all records.</div>
           </div>
         ) : (
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 600 }}>
               <thead>
                 <tr style={{ background: "#f8fafc" }}>
-                  {/* Checkbox select-all */}
-                  <th style={{ ...thStyle, width: 44, padding: "10px 12px" }}>
-                    <input
-                      type="checkbox"
-                      checked={allPageSelected}
-                      ref={el => { if (el) el.indeterminate = somePageSelected && !allPageSelected; }}
-                      onChange={toggleSelectAll}
-                      style={{ width: 15, height: 15, accentColor: ACCENT, cursor: "pointer" }}
-                      title={allPageSelected ? "Deselect all on page" : "Select all on page"}
-                    />
-                  </th>
+                  {/* Checkbox select-all — hidden in readOnly mode */}
+                  {!readOnly && (
+                    <th style={{ ...thStyle, width: 44, padding: "10px 12px" }}>
+                      <input
+                        type="checkbox"
+                        checked={allPageSelected}
+                        ref={el => { if (el) el.indeterminate = somePageSelected && !allPageSelected; }}
+                        onChange={toggleSelectAll}
+                        style={{ width: 15, height: 15, accentColor: ACCENT, cursor: "pointer" }}
+                        title={allPageSelected ? "Deselect all on page" : "Select all on page"}
+                      />
+                    </th>
+                  )}
                   <th style={thStyle}>#</th>
                   {schemaFields.map(f => (
                     <th key={dbCol(f.column_name)} style={thStyle}>
-                      {f.label?.en || displayCol(f.column_name)}
+                      {f.label?.[lang] || f.label?.en || displayCol(f.column_name)}
                     </th>
                   ))}
                   <th style={thStyle}>Created</th>
-                  <th style={{ ...thStyle, textAlign: "right" }}>Actions</th>
+                  {!readOnly && <th style={{ ...thStyle, textAlign: "right" }}>Actions</th>}
                 </tr>
               </thead>
               <tbody>
@@ -1163,15 +1414,17 @@ export default function FormDataPage() {
                       onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = "#f8fafc"; }}
                       onMouseLeave={e => { e.currentTarget.style.background = isSelected ? `${ACCENT}08` : ""; }}
                     >
-                      {/* Row checkbox */}
-                      <td style={{ padding: "13px 12px", verticalAlign: "middle" }}>
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={() => toggleSelectOne(rec.id)}
-                          style={{ width: 15, height: 15, accentColor: ACCENT, cursor: "pointer" }}
-                        />
-                      </td>
+                      {/* Row checkbox — hidden in readOnly mode */}
+                      {!readOnly && (
+                        <td style={{ padding: "13px 12px", verticalAlign: "middle" }}>
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => toggleSelectOne(rec.id)}
+                            style={{ width: 15, height: 15, accentColor: ACCENT, cursor: "pointer" }}
+                          />
+                        </td>
+                      )}
                       {/* Serial number (global across pages) */}
                       <td style={tdStyle}>
                         <span style={{ fontSize: 11, color: "#94a3b8", fontWeight: 600 }}>
@@ -1191,32 +1444,26 @@ export default function FormDataPage() {
                           {formatDate(rec.created_at)}
                         </span>
                       </td>
-                      <td style={{ ...tdStyle, textAlign: "right" }}>
-                        <div style={{ display: "inline-flex", gap: 6 }}>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setEditRecord(rec);
-                              setModalError("");
-                              setModalOpen(true);
-                            }}
-                            style={actionBtn}
-                            title="Edit record"
-                          >
-                            <IcoEdit />
-                          </button>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setDeleteTarget(rec.id);
-                            }}
-                            style={{ ...actionBtn, color: "#dc2626", borderColor: "#fecaca" }}
-                            title="Delete record"
-                          >
-                            <IcoTrash />
-                          </button>
-                        </div>
-                      </td>
+                      {!readOnly && (
+                        <td style={{ ...tdStyle, textAlign: "right" }}>
+                          <div style={{ display: "inline-flex", gap: 6 }}>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setEditRecord(rec); setModalError(""); setModalOpen(true); }}
+                              style={actionBtn}
+                              title="Edit record"
+                            >
+                              <IcoEdit />
+                            </button>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setDeleteTarget(rec.id); }}
+                              style={{ ...actionBtn, color: "#dc2626", borderColor: "#fecaca" }}
+                              title="Delete record"
+                            >
+                              <IcoTrash />
+                            </button>
+                          </div>
+                        </td>
+                      )}
                     </tr>
                   );
                 })}
@@ -1226,25 +1473,27 @@ export default function FormDataPage() {
         )}
       </div>
 
-      {/* Pagination */}
+      {/* ── Pagination ── */}
       {!recsLoading && records.length > 0 && (
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 16, padding: "10px 4px", flexWrap: "wrap", gap: 10 }}>
           {/* Left: rows-per-page + record range */}
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <RowsPerPageDropdown pageSize={pageSize} onPageSizeChange={handlePageSizeChange} />
             <div style={{ fontSize: 13, color: "#64748b" }}>
-              {records.length <= pageSize ? (
+              {sortedRecords.length <= pageSize ? (
                 <>
-                  <strong style={{ color: "#1e293b" }}>{records.length.toLocaleString()}</strong> record{records.length !== 1 ? "s" : ""}
+                  <strong style={{ color: "#1e293b" }}>{sortedRecords.length.toLocaleString()}</strong> record{sortedRecords.length !== 1 ? "s" : ""}
+                  {searchTerm && records.length !== sortedRecords.length && <span style={{ color: "#94a3b8", marginLeft: 4 }}>(filtered from {records.length})</span>}
                 </>
               ) : (
                 <>
                   Showing{" "}
                   <strong style={{ color: "#1e293b" }}>
-                    {(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, records.length)}
+                    {(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, sortedRecords.length)}
                   </strong>{" "}
                   of{" "}
-                  <strong style={{ color: "#1e293b" }}>{records.length.toLocaleString()}</strong>
+                  <strong style={{ color: "#1e293b" }}>{sortedRecords.length.toLocaleString()}</strong>
+                  {searchTerm && records.length !== sortedRecords.length && <span style={{ color: "#94a3b8", marginLeft: 4 }}>(filtered)</span>}
                 </>
               )}
               {selectedIds.size > 0 && (
@@ -1252,7 +1501,7 @@ export default function FormDataPage() {
               )}
             </div>
           </div>
-          {/* Right: page navigation — only shown when more than 1 page */}
+          {/* Right: page navigation */}
           {totalPages > 1 && (
             <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
               <button onClick={() => { setCurrentPage(1); setSelectedIds(new Set()); }} disabled={currentPage === 1} title="First page"

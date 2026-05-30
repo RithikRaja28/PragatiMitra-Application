@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback } from "react";
+import { FileText, FilePlus } from "lucide-react";
 import { useApi } from "../../hooks/useApi";
 import { S, Toast, isAuthError, formatDate } from "../../components/shared/formUtils";
+import { tableCardStyle } from "../../components/shared/ui";
 import FormBuilderPage from "./FormBuilderPage";
 
 /* ── icons ── */
@@ -41,6 +43,22 @@ function IconArrow() {
     </svg>
   );
 }
+function IconLock() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+    </svg>
+  );
+}
+function IconUnlock() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+      <path d="M7 11V7a5 5 0 0 1 9.9-1" />
+    </svg>
+  );
+}
 
 const ACCENT = "#2563eb";
 
@@ -62,7 +80,13 @@ function Badge({ label, color }) {
 function EmptyState({ icon, title, subtitle }) {
   return (
     <div style={{ textAlign: "center", padding: "48px 24px", color: "#94a3b8" }}>
-      <div style={{ fontSize: 36, marginBottom: 12 }}>{icon}</div>
+      <div style={{
+        width: 56, height: 56, borderRadius: 14, margin: "0 auto 16px",
+        background: "#f1f5f9", border: "1px solid #e2e8f0",
+        display: "flex", alignItems: "center", justifyContent: "center",
+      }}>
+        {icon}
+      </div>
       <div style={{ fontSize: 14, fontWeight: 600, color: "#64748b", marginBottom: 6 }}>{title}</div>
       <div style={{ fontSize: 13 }}>{subtitle}</div>
     </div>
@@ -72,10 +96,7 @@ function EmptyState({ icon, title, subtitle }) {
 /* ── Section card ── */
 function SectionCard({ title, subtitle, icon, action, children }) {
   return (
-    <div style={{
-      background: "#fff", borderRadius: 16, border: "1px solid rgba(0,0,0,0.07)",
-      boxShadow: "0 1px 6px rgba(0,0,0,0.05)", overflow: "hidden", marginBottom: 28,
-    }}>
+    <div style={{ ...tableCardStyle, marginBottom: 28 }}>
       <div style={{
         padding: "18px 24px", borderBottom: "1px solid #f1f5f9",
         display: "flex", alignItems: "center", justifyContent: "space-between",
@@ -108,9 +129,9 @@ export default function FormManagementPage({ isSuperAdmin = false }) {
   const { apiFetch } = useApi();
 
   /* ── view state ── */
-  const [view, setView]           = useState("list"); // "list" | "builder"
-  const [builderMode, setBuilderMode] = useState(null); // "create" | "adapt" | "edit"
-  const [selectedForm, setSelectedForm] = useState(null); // form obj passed to builder
+  const [view, setView]               = useState("list");
+  const [builderMode, setBuilderMode] = useState(null);
+  const [selectedForm, setSelectedForm] = useState(null);
 
   /* ── data ── */
   const [templates, setTemplates]   = useState([]);
@@ -118,6 +139,7 @@ export default function FormManagementPage({ isSuperAdmin = false }) {
   const [loading, setLoading]       = useState(true);
   const [error, setError]           = useState("");
   const [toast, setToast]           = useState(null);
+  const [lockTogglingForm, setLockTogglingForm] = useState(null);
 
   const showToast = (message, type = "success") => {
     setToast({ message, type });
@@ -167,6 +189,32 @@ export default function FormManagementPage({ isSuperAdmin = false }) {
   }
   function onBuilderBack() {
     setView("list");
+  }
+
+  /* ── lock / unlock ── */
+  async function handleToggleLock(form) {
+    const action = form.is_locked ? "unlock" : "lock";
+    setLockTogglingForm(form.form_name);
+    try {
+      const res = await apiFetch(`/api/forms/${form.form_name}/${action}`, { method: "POST" });
+      const data = await res.json();
+      if (data.success) {
+        showToast(data.message);
+        setMyForms((prev) =>
+          prev.map((f) =>
+            f.form_name === form.form_name
+              ? { ...f, is_locked: !form.is_locked, locked_by: data.lock?.locked_by ?? null, locked_at: data.lock?.locked_at ?? null }
+              : f
+          )
+        );
+      } else {
+        showToast(data.message || "Failed to update lock.", "error");
+      }
+    } catch {
+      showToast("Network error. Please try again.", "error");
+    } finally {
+      setLockTogglingForm(null);
+    }
   }
 
   /* ── builder mode ── */
@@ -240,7 +288,7 @@ export default function FormManagementPage({ isSuperAdmin = false }) {
           </div>
         ) : templates.length === 0 ? (
           <EmptyState
-            icon="📋"
+            icon={<FileText size={26} strokeWidth={1.6} color="#94a3b8" />}
             title="No shared templates"
             subtitle="Shared forms from other institutions will appear here"
           />
@@ -328,7 +376,7 @@ export default function FormManagementPage({ isSuperAdmin = false }) {
           </div>
         ) : myForms.length === 0 ? (
           <EmptyState
-            icon="📝"
+            icon={<FilePlus size={26} strokeWidth={1.6} color="#94a3b8" />}
             title="No forms yet"
             subtitle='Click "New Form" to create your first form schema'
           />
@@ -336,7 +384,7 @@ export default function FormManagementPage({ isSuperAdmin = false }) {
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
               <tr style={{ background: "#f8fafc" }}>
-                {["Form Name", "Year", "Version", "Shared", "Created", ""].map((h) => (
+                {["Form Name", "Year", "Version", "Shared", isSuperAdmin ? null : "Lock Status", "Created", ""].filter(Boolean).map((h) => (
                   <th key={h} style={{
                     padding: "10px 20px", textAlign: "left", fontSize: 11,
                     fontWeight: 700, color: "#94a3b8", textTransform: "uppercase",
@@ -392,6 +440,33 @@ export default function FormManagementPage({ isSuperAdmin = false }) {
                       <Badge label="Private" color="#64748b" />
                     )}
                   </td>
+                  {!isSuperAdmin && (
+                    <td style={{ padding: "14px 20px" }}>
+                      <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                        {form.is_locked ? (
+                          <Badge label="Locked" color="#dc2626" />
+                        ) : (
+                          <Badge label="Open" color="#16a34a" />
+                        )}
+                        <button
+                          onClick={() => handleToggleLock(form)}
+                          disabled={lockTogglingForm === form.form_name}
+                          title={form.is_locked ? "Unlock form" : "Lock form"}
+                          style={{
+                            display: "inline-flex", alignItems: "center", gap: 5,
+                            background: form.is_locked ? "#fef2f2" : "#f0fdf4",
+                            color: form.is_locked ? "#dc2626" : "#16a34a",
+                            border: `1px solid ${form.is_locked ? "#fecaca" : "#bbf7d0"}`,
+                            borderRadius: 7, padding: "5px 10px", fontSize: 11, fontWeight: 700,
+                            cursor: lockTogglingForm === form.form_name ? "not-allowed" : "pointer",
+                            opacity: lockTogglingForm === form.form_name ? 0.6 : 1,
+                          }}
+                        >
+                          {form.is_locked ? <><IconUnlock /> Unlock</> : <><IconLock /> Lock</>}
+                        </button>
+                      </div>
+                    </td>
+                  )}
                   <td style={{ padding: "14px 20px", fontSize: 12, color: "#64748b" }}>
                     {formatDate(form.created_at)}
                   </td>

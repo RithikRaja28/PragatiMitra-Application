@@ -1,8 +1,20 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
+<<<<<<< HEAD
 import { useApi } from "../../../hooks/useApi";
 import FormScreen from "../../../components/shared/FormScreen";
 import ImportWizard from "../../../components/shared/ImportWizard";
 import { S, Toast, isAuthError, formatDate } from "../../../components/shared/formUtils";
+=======
+import { Building2, Pencil, Landmark } from "lucide-react";
+import { useApi } from "../../../hooks/useApi";
+import FormScreen from "../../../components/shared/FormScreen";
+import FormWizard, { ReviewGroup, ReviewItem } from "../../../components/shared/FormWizard";
+import ImportWizard from "../../../components/shared/ImportWizard";
+import { S, Toast, isAuthError, formatDate } from "../../../components/shared/formUtils";
+import PageHeader from "../../../components/shared/PageHeader";
+import { ActionButton, ActionButtonGroup } from "../../../components/shared/ActionButtons";
+import { StatusBadge, tableCardStyle } from "../../../components/shared/ui";
+>>>>>>> 2dfc12740a97cede23f7be06dd88218fc7713123
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { t } from "../../../i18n/translations";
 
@@ -72,6 +84,10 @@ function InstitutionForm({ mode, entity, onCreated, onSaved, onBack }) {
   const [fieldErrors, setFieldErrors] = useState({});
   const [submitError, setSubmitError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+<<<<<<< HEAD
+=======
+  const [step, setStep] = useState(0);
+>>>>>>> 2dfc12740a97cede23f7be06dd88218fc7713123
   const nameRef = useRef(null);
 
   useEffect(() => {
@@ -84,7 +100,11 @@ function InstitutionForm({ mode, entity, onCreated, onSaved, onBack }) {
     if (submitError) setSubmitError("");
   }
 
+<<<<<<< HEAD
   function clientValidate() {
+=======
+  function computeErrors() {
+>>>>>>> 2dfc12740a97cede23f7be06dd88218fc7713123
     const errs = {};
     if (!form.institution_name.trim()) errs.institution_name = "Institution name is required.";
     if (!form.code.trim()) errs.code = "Code is required.";
@@ -100,13 +120,48 @@ function InstitutionForm({ mode, entity, onCreated, onSaved, onBack }) {
     else if (!/^\d{6}$/.test(form.pincode.trim())) errs.pincode = "Must be 6 digits.";
     if (isEdit && !["ACTIVE", "INACTIVE"].includes(form.status))
       errs.status = "Invalid status.";
+<<<<<<< HEAD
     setFieldErrors(errs);
     return Object.keys(errs).length === 0;
+=======
+    return errs;
+  }
+
+  /* Fields owned by each create-wizard step (for per-step gating). */
+  const STEP_FIELDS = [
+    ["institution_name", "code", "email_domain"],
+    ["address_line1", "city", "state", "pincode"],
+  ];
+
+  /* Validate just the current step before letting the wizard advance. */
+  function validateStep(s) {
+    const errs = computeErrors();
+    const stepErrs = {};
+    (STEP_FIELDS[s] || []).forEach((f) => { if (errs[f]) stepErrs[f] = errs[f]; });
+    if (Object.keys(stepErrs).length) {
+      setFieldErrors((prev) => ({ ...prev, ...stepErrs }));
+      return false;
+    }
+    return true;
+>>>>>>> 2dfc12740a97cede23f7be06dd88218fc7713123
   }
 
   async function handleSubmit(e) {
     e.preventDefault();
+<<<<<<< HEAD
     if (!clientValidate()) return;
+=======
+    const errs = computeErrors();
+    setFieldErrors(errs);
+    if (Object.keys(errs).length) {
+      // In the create wizard, surface the earliest step that has an error.
+      if (!isEdit) {
+        const bad = STEP_FIELDS.findIndex((fields) => fields.some((f) => errs[f]));
+        if (bad >= 0) setStep(bad);
+      }
+      return;
+    }
+>>>>>>> 2dfc12740a97cede23f7be06dd88218fc7713123
     setSubmitting(true);
     setSubmitError("");
     try {
@@ -142,6 +197,7 @@ function InstitutionForm({ mode, entity, onCreated, onSaved, onBack }) {
 
   const goingInactive = isEdit && entity.status === "ACTIVE" && form.status === "INACTIVE";
 
+<<<<<<< HEAD
   return (
     <FormScreen
       pageTitle={t("Institutions", lang)}
@@ -241,10 +297,158 @@ function InstitutionForm({ mode, entity, onCreated, onSaved, onBack }) {
           placeholder="Area / Landmark"
           value={form.address_line2}
           onChange={(e) => set("address_line2", e.target.value)}
+=======
+  /* ── Field blocks (shared by the edit FormScreen and the create wizard) ── */
+  const fldName = (
+    <div>
+      <label style={S.label}>{t("Institution Name", lang)}</label>
+      <input
+        ref={nameRef}
+        type="text"
+        placeholder="e.g. All India Institute of Ayurveda"
+        value={form.institution_name}
+        onChange={(e) => set("institution_name", e.target.value)}
+        disabled={submitting}
+        maxLength={200}
+        style={S.input(!!fieldErrors.institution_name)}
+      />
+      {fieldErrors.institution_name && (
+        <div style={S.errorText}>{fieldErrors.institution_name}</div>
+      )}
+    </div>
+  );
+
+  const fldCodeEmail = (
+    <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 14 }}>
+      <div>
+        <label style={S.label}>{t("Institution Code", lang)}</label>
+        <input
+          type="text"
+          placeholder="e.g. AIIA"
+          value={form.code}
+          onChange={(e) => set("code", e.target.value.toUpperCase())}
+          disabled={submitting}
+          maxLength={20}
+          style={{ ...S.input(!!fieldErrors.code), fontFamily: "monospace", letterSpacing: 1 }}
+        />
+        {fieldErrors.code ? (
+          <div style={S.errorText}>{fieldErrors.code}</div>
+        ) : (
+          <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 4 }}>{t("Auto-uppercased.", lang)}</div>
+        )}
+      </div>
+      <div>
+        <label style={S.label}>{t("Email Domain", lang)}</label>
+        <input
+          type="text"
+          placeholder="e.g. aiia.edu.in"
+          value={form.email_domain}
+          onChange={(e) => set("email_domain", e.target.value.toLowerCase())}
+          disabled={submitting}
+          style={S.input(!!fieldErrors.email_domain)}
+        />
+        {fieldErrors.email_domain && (
+          <div style={S.errorText}>{fieldErrors.email_domain}</div>
+        )}
+      </div>
+    </div>
+  );
+
+  const fldAddress1 = (
+    <div>
+      <label style={S.label}>{t("Address Line 1", lang)}</label>
+      <input
+        type="text"
+        placeholder="Street / Building name"
+        value={form.address_line1}
+        onChange={(e) => set("address_line1", e.target.value)}
+        disabled={submitting}
+        style={S.input(!!fieldErrors.address_line1)}
+      />
+      {fieldErrors.address_line1 && (
+        <div style={S.errorText}>{fieldErrors.address_line1}</div>
+      )}
+    </div>
+  );
+
+  const fldAddress2 = (
+    <div>
+      <label style={S.label}>
+        {t("Address Line 2", lang)}{" "}
+        <span style={{ color: "#94a3b8", fontWeight: 400, textTransform: "none" }}>
+          (optional)
+        </span>
+      </label>
+      <input
+        type="text"
+        placeholder="Area / Landmark"
+        value={form.address_line2}
+        onChange={(e) => set("address_line2", e.target.value)}
+        disabled={submitting}
+        style={S.input(false)}
+      />
+    </div>
+  );
+
+  const fldCityPincode = (
+    <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 14 }}>
+      <div>
+        <label style={S.label}>{t("City", lang)}</label>
+        <input
+          type="text"
+          placeholder="e.g. Delhi"
+          value={form.city}
+          onChange={(e) => set("city", e.target.value)}
+          disabled={submitting}
+          style={S.input(!!fieldErrors.city)}
+        />
+        {fieldErrors.city && <div style={S.errorText}>{fieldErrors.city}</div>}
+      </div>
+      <div>
+        <label style={S.label}>{t("Pincode", lang)}</label>
+        <input
+          type="text"
+          placeholder="6-digit pincode"
+          value={form.pincode}
+          onChange={(e) => set("pincode", e.target.value.replace(/\D/g, "").slice(0, 6))}
+          disabled={submitting}
+          maxLength={6}
+          style={S.input(!!fieldErrors.pincode)}
+        />
+        {fieldErrors.pincode && <div style={S.errorText}>{fieldErrors.pincode}</div>}
+      </div>
+    </div>
+  );
+
+  const fldStateCountry = (
+    <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 14 }}>
+      <div>
+        <label style={S.label}>{t("State", lang)}</label>
+        <select
+          value={form.state}
+          onChange={(e) => set("state", e.target.value)}
+          disabled={submitting}
+          style={S.select(!!fieldErrors.state)}
+        >
+          <option value="">{t("— Select State —", lang)}</option>
+          {INDIA_STATES.map((s) => (
+            <option key={s} value={s}>{s}</option>
+          ))}
+        </select>
+        {fieldErrors.state && <div style={S.errorText}>{fieldErrors.state}</div>}
+      </div>
+      <div>
+        <label style={S.label}>{t("Country", lang)}</label>
+        <input
+          type="text"
+          value={form.country}
+          onChange={(e) => set("country", e.target.value)}
+>>>>>>> 2dfc12740a97cede23f7be06dd88218fc7713123
           disabled={submitting}
           style={S.input(false)}
         />
       </div>
+<<<<<<< HEAD
 
       {/* City + Pincode */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
@@ -526,6 +730,123 @@ function SkeletonCard() {
   );
 }
 
+=======
+    </div>
+  );
+
+  const fldStatus = isEdit && (
+    <div>
+      <label style={S.label}>{t("Status", lang)}</label>
+      <select
+        value={form.status}
+        onChange={(e) => set("status", e.target.value)}
+        disabled={submitting}
+        style={S.select(!!fieldErrors.status)}
+      >
+        <option value="ACTIVE">{t("Active", lang)}</option>
+        <option value="INACTIVE">{t("Inactive", lang)}</option>
+      </select>
+      {fieldErrors.status && <div style={S.errorText}>{fieldErrors.status}</div>}
+      {goingInactive && (
+        <div
+          style={{
+            marginTop: 8,
+            padding: "8px 12px",
+            background: "#fffbeb",
+            border: "1px solid #fcd34d",
+            borderRadius: 8,
+            fontSize: 12,
+            color: "#92400e",
+            lineHeight: 1.5,
+          }}
+        >
+          Deactivating will fail unless every user of this institution is already inactive.
+        </div>
+      )}
+    </div>
+  );
+
+  /* ── Edit: single-page form ── */
+  if (isEdit) {
+    return (
+      <FormScreen
+        pageTitle={t("Institutions", lang)}
+        formTitle={t("Edit Institution", lang)}
+        formSubtitle="Update name, code, address or status."
+        icon={<Pencil size={20} color="#d97706" strokeWidth={2} />}
+        iconBg="#fef3c7"
+        onBack={onBack}
+        onSubmit={handleSubmit}
+        submitting={submitting}
+        submitLabel={t("Save Changes", lang)}
+        submitError={submitError}
+      >
+        {fldName}
+        {fldCodeEmail}
+        {fldAddress1}
+        {fldAddress2}
+        {fldCityPincode}
+        {fldStateCountry}
+        {fldStatus}
+      </FormScreen>
+    );
+  }
+
+  /* ── Create: multi-step wizard ── */
+  return (
+    <FormWizard
+      pageTitle={t("Institutions", lang)}
+      formTitle="Create Institution"
+      formSubtitle="Register a new institution in the platform."
+      icon={<Building2 size={20} color="#2563eb" strokeWidth={2} />}
+      iconBg="#eff6ff"
+      steps={[t("Institution Details", lang), t("Address Information", lang), t("Review & Create", lang)]}
+      step={step}
+      onStepChange={setStep}
+      canAdvance={validateStep}
+      onBack={onBack}
+      onSubmit={handleSubmit}
+      submitting={submitting}
+      submitLabel="Create Institution"
+      submitError={submitError}
+    >
+      {(s) =>
+        s === 0 ? (
+          <>
+            {fldName}
+            {fldCodeEmail}
+          </>
+        ) : s === 1 ? (
+          <>
+            {fldAddress1}
+            {fldAddress2}
+            {fldCityPincode}
+            {fldStateCountry}
+          </>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            <ReviewGroup title={t("Institution Details", lang)}>
+              <ReviewItem label={t("Institution Name", lang)} value={form.institution_name} />
+              <ReviewItem label={t("Institution Code", lang)} value={form.code} />
+              <ReviewItem label={t("Email Domain", lang)} value={form.email_domain} />
+            </ReviewGroup>
+            <ReviewGroup title={t("Address Information", lang)}>
+              <ReviewItem label={t("Address Line 1", lang)} value={form.address_line1} />
+              <ReviewItem label={t("Address Line 2", lang)} value={form.address_line2} />
+              <ReviewItem label={t("City", lang)} value={form.city} />
+              <ReviewItem label={t("State", lang)} value={form.state} />
+              <ReviewItem label={t("Pincode", lang)} value={form.pincode} />
+              <ReviewItem label={t("Country", lang)} value={form.country} />
+            </ReviewGroup>
+          </div>
+        )
+      }
+    </FormWizard>
+  );
+}
+
+
+>>>>>>> 2dfc12740a97cede23f7be06dd88218fc7713123
 function ExportMenu({ loading, onExport }) {
   const [open, setOpen] = useState(false);
   return (
@@ -534,10 +855,17 @@ function ExportMenu({ loading, onExport }) {
         onClick={() => setOpen((v) => !v)}
         disabled={!!loading}
         style={{
+<<<<<<< HEAD
           display: "inline-flex", alignItems: "center", gap: 6,
           padding: "10px 18px", borderRadius: 10,
           border: "1.5px solid #e2e8f0", background: "#fff",
           fontSize: 13, fontWeight: 600, color: "#475569",
+=======
+          display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6,
+          height: 34, minHeight: 34, padding: "0 14px", borderRadius: 6,
+          border: "1px solid #cbd5e1", background: "#fff",
+          fontSize: 12.5, fontWeight: 600, color: "#334155", whiteSpace: "nowrap",
+>>>>>>> 2dfc12740a97cede23f7be06dd88218fc7713123
           cursor: loading ? "not-allowed" : "pointer",
           opacity: loading ? 0.6 : 1,
         }}
@@ -612,6 +940,7 @@ function StyledSelect({ value, onChange, children, minWidth = 180 }) {
     <select
       value={value}
       onChange={(e) => onChange(e.target.value)}
+<<<<<<< HEAD
       style={{
         padding: "8px 12px",
         border: "1.5px solid #e2e8f0",
@@ -624,6 +953,9 @@ function StyledSelect({ value, onChange, children, minWidth = 180 }) {
         cursor: "pointer",
         minWidth,
       }}
+=======
+      style={{ ...S.select(false), width: "auto", minWidth }}
+>>>>>>> 2dfc12740a97cede23f7be06dd88218fc7713123
     >
       {children}
     </select>
@@ -753,7 +1085,11 @@ export default function InstitutionManagementPage() {
         <ImportWizard
           apiPath="/api/institutions"
           entityLabel="Institutions"
+<<<<<<< HEAD
           entityIcon="🏛️"
+=======
+          entityIcon={<Landmark size={22} strokeWidth={1.8} color="#2563eb" />}
+>>>>>>> 2dfc12740a97cede23f7be06dd88218fc7713123
           onBack={() => setShowImport(false)}
           onSuccess={(result) => {
             setShowImport(false);
@@ -784,6 +1120,7 @@ export default function InstitutionManagementPage() {
       {toast && <Toast message={toast.message} type={toast.type} />}
 
       {/* Page Header */}
+<<<<<<< HEAD
       <div
         style={{
           display: "flex",
@@ -860,6 +1197,28 @@ export default function InstitutionManagementPage() {
           </button>
         </div>
       </div>
+=======
+      <PageHeader
+        breadcrumb={[t("Home", lang), t("Institution Management", lang), t("Institutions", lang)]}
+        title={t("Institutions", lang)}
+        description="Create and manage institutions on the platform."
+        actions={
+          <>
+            <ExportMenu loading={exportingFormat} onExport={handleExport} />
+            <ActionButton icon={<IconUpload />} onClick={() => setShowImport(true)}>
+              {t("Import", lang)}
+            </ActionButton>
+            <ActionButton
+              variant="primary"
+              onClick={() => setFormView({ mode: "create", entity: null })}
+              style={{ height: 38 }}
+            >
+              <span style={{ fontSize: 18, lineHeight: 1 }}>+</span> {t("New Institution", lang)}
+            </ActionButton>
+          </>
+        }
+      />
+>>>>>>> 2dfc12740a97cede23f7be06dd88218fc7713123
 
       {error && (
         <div
@@ -908,6 +1267,7 @@ export default function InstitutionManagementPage() {
         </div>
       )}
 
+<<<<<<< HEAD
       <div
         style={{
           display: "grid",
@@ -940,6 +1300,127 @@ export default function InstitutionManagementPage() {
             <div
               style={{ fontSize: 15, fontWeight: 600, color: "#64748b", marginBottom: 6 }}
             >
+=======
+      {/* ── Institutions table ── */}
+      <div style={tableCardStyle}>
+        {loading ? (
+          <div style={{ padding: "48px 24px", textAlign: "center", color: "#94a3b8", fontSize: 13 }}>
+            {t("Loading institutions…", lang)}
+          </div>
+        ) : filtered.length > 0 ? (
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 940 }}>
+              <thead>
+                <tr style={{ background: "#f8fafc" }}>
+                  {[
+                    { label: t("Code", lang), align: "left" },
+                    { label: t("Institution Name", lang), align: "left" },
+                    { label: t("Location", lang), align: "left" },
+                    { label: t("Departments", lang), align: "left" },
+                    { label: t("Users", lang), align: "left" },
+                    { label: t("Status", lang), align: "left" },
+                    { label: t("Actions", lang), align: "right" },
+                  ].map((h) => (
+                    <th
+                      key={h.label}
+                      style={{
+                        padding: "10px 16px",
+                        textAlign: h.align,
+                        fontSize: 10.5,
+                        fontWeight: 700,
+                        color: "#94a3b8",
+                        textTransform: "uppercase",
+                        letterSpacing: 0.5,
+                        borderBottom: "1px solid #eef2f6",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {h.label}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {paginated.map((inst) => {
+                  const isActive = inst.status === "ACTIVE";
+                  const busy = togglingId === inst.institution_id;
+                  return (
+                    <tr
+                      key={inst.institution_id}
+                      style={{ borderBottom: "1px solid #f1f5f9", transition: "background .1s" }}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = "#f8fafc")}
+                      onMouseLeave={(e) => (e.currentTarget.style.background = "")}
+                    >
+                      {/* Code */}
+                      <td style={{ padding: "12px 16px" }}>
+                        <span style={{ fontFamily: "monospace", fontSize: 12.5, fontWeight: 600, color: isActive ? "#2563eb" : "#94a3b8" }}>
+                          {inst.code || "—"}
+                        </span>
+                      </td>
+
+                      {/* Institution name */}
+                      <td style={{ padding: "12px 16px" }}>
+                        <div style={{ fontSize: 13.5, fontWeight: 700, color: "#1e293b" }}>
+                          {inst.institution_name}
+                        </div>
+                        <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>
+                          {t("Since", lang)} {formatDate(inst.created_at)} · @{inst.email_domain}
+                        </div>
+                      </td>
+
+                      {/* Location */}
+                      <td style={{ padding: "12px 16px" }}>
+                        <span style={{ fontSize: 12.5, color: "#64748b" }}>
+                          {[inst.city, inst.state].filter(Boolean).join(", ") || "—"}
+                        </span>
+                      </td>
+
+                      {/* Departments */}
+                      <td style={{ padding: "12px 16px" }}>
+                        <span style={{ fontSize: 13.5, fontWeight: 600, color: "#1e293b" }}>
+                          {Number(inst.department_count || 0)}
+                        </span>
+                      </td>
+
+                      {/* Users */}
+                      <td style={{ padding: "12px 16px" }}>
+                        <span style={{ fontSize: 13.5, fontWeight: 600, color: "#1e293b" }}>
+                          {Number(inst.user_count || 0)}
+                        </span>
+                      </td>
+
+                      {/* Status */}
+                      <td style={{ padding: "12px 16px" }}>
+                        <StatusBadge tone={isActive ? "active" : "inactive"}>
+                          {isActive ? t("Active", lang) : t("Inactive", lang)}
+                        </StatusBadge>
+                      </td>
+
+                      {/* Actions */}
+                      <td style={{ padding: "8px 16px", verticalAlign: "middle" }}>
+                        <ActionButtonGroup justify="flex-end">
+                          <ActionButton onClick={() => setFormView({ mode: "edit", entity: inst })}>
+                            {t("Edit", lang)}
+                          </ActionButton>
+                          <ActionButton
+                            variant={isActive ? "danger" : "success"}
+                            onClick={() => handleToggleStatus(inst)}
+                            disabled={busy}
+                          >
+                            {busy ? "…" : isActive ? t("Deactivate", lang) : t("Activate", lang)}
+                          </ActionButton>
+                        </ActionButtonGroup>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div style={{ textAlign: "center", padding: "64px 24px", color: "#94a3b8" }}>
+            <div style={{ fontSize: 15, fontWeight: 600, color: "#64748b", marginBottom: 6 }}>
+>>>>>>> 2dfc12740a97cede23f7be06dd88218fc7713123
               {statusFilter !== "ALL"
                 ? `No ${statusFilter.toLowerCase()} institutions`
                 : "No institutions yet"}

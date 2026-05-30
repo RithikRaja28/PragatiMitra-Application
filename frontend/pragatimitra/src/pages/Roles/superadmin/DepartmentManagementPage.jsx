@@ -1,8 +1,20 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
+<<<<<<< HEAD
 import { useApi } from "../../../hooks/useApi";
 import FormScreen from "../../../components/shared/FormScreen";
 import ImportWizard from "../../../components/shared/ImportWizard";
 import { S, Toast, isAuthError, formatDate } from "../../../components/shared/formUtils";
+=======
+import { Building, Pencil } from "lucide-react";
+import { useApi } from "../../../hooks/useApi";
+import FormScreen from "../../../components/shared/FormScreen";
+import FormWizard, { ReviewGroup, ReviewItem } from "../../../components/shared/FormWizard";
+import ImportWizard from "../../../components/shared/ImportWizard";
+import { S, Toast, isAuthError, formatDate } from "../../../components/shared/formUtils";
+import PageHeader from "../../../components/shared/PageHeader";
+import { ActionButton, ActionButtonGroup } from "../../../components/shared/ActionButtons";
+import { StatusBadge, tableCardStyle } from "../../../components/shared/ui";
+>>>>>>> 2dfc12740a97cede23f7be06dd88218fc7713123
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { t } from "../../../i18n/translations";
 
@@ -38,6 +50,10 @@ function DepartmentForm({
   const [fieldErrors, setFieldErrors] = useState({});
   const [submitError, setSubmitError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+<<<<<<< HEAD
+=======
+  const [step, setStep] = useState(0);
+>>>>>>> 2dfc12740a97cede23f7be06dd88218fc7713123
   const nameRef = useRef(null);
 
   useEffect(() => {
@@ -50,7 +66,11 @@ function DepartmentForm({
     if (submitError) setSubmitError("");
   }
 
+<<<<<<< HEAD
   function clientValidate() {
+=======
+  function computeErrors() {
+>>>>>>> 2dfc12740a97cede23f7be06dd88218fc7713123
     const errs = {};
     if (!form.name.trim()) errs.name = "Department name is required.";
     if (!form.code.trim()) errs.code = "Department code is required.";
@@ -59,13 +79,43 @@ function DepartmentForm({
     if (!isEdit && !form.institution_id) errs.institution_id = "Please select an institution.";
     if (isEdit && !["ACTIVE", "INACTIVE"].includes(form.status))
       errs.status = "Status must be Active or Inactive.";
+<<<<<<< HEAD
     setFieldErrors(errs);
     return Object.keys(errs).length === 0;
+=======
+    return errs;
+  }
+
+  /* Fields owned by each create-wizard step (only step 0 collects input). */
+  const STEP_FIELDS = [["institution_id", "name", "code"]];
+
+  function validateStep(s) {
+    const errs = computeErrors();
+    const stepErrs = {};
+    (STEP_FIELDS[s] || []).forEach((f) => { if (errs[f]) stepErrs[f] = errs[f]; });
+    if (Object.keys(stepErrs).length) {
+      setFieldErrors((prev) => ({ ...prev, ...stepErrs }));
+      return false;
+    }
+    return true;
+>>>>>>> 2dfc12740a97cede23f7be06dd88218fc7713123
   }
 
   async function handleSubmit(e) {
     e.preventDefault();
+<<<<<<< HEAD
     if (!clientValidate()) return;
+=======
+    const errs = computeErrors();
+    setFieldErrors(errs);
+    if (Object.keys(errs).length) {
+      if (!isEdit) {
+        const bad = STEP_FIELDS.findIndex((fields) => fields.some((f) => errs[f]));
+        if (bad >= 0) setStep(bad);
+      }
+      return;
+    }
+>>>>>>> 2dfc12740a97cede23f7be06dd88218fc7713123
     setSubmitting(true);
     setSubmitError("");
     try {
@@ -104,6 +154,7 @@ function DepartmentForm({
 
   const goingInactive = isEdit && entity.status === "ACTIVE" && form.status === "INACTIVE";
 
+<<<<<<< HEAD
   return (
     <FormScreen
       pageTitle={t("Departments", lang)}
@@ -385,6 +436,159 @@ function SkeletonCard() {
         />
       ))}
     </div>
+=======
+  /* ── Field blocks (shared by the edit FormScreen and the create wizard) ── */
+  const fldInstitution = !isEdit && (
+    <div>
+      <label style={S.label}>{t("Institution", lang)}</label>
+      <select
+        value={form.institution_id}
+        onChange={(e) => set("institution_id", e.target.value)}
+        disabled={submitting}
+        style={S.select(!!fieldErrors.institution_id)}
+      >
+        {institutions.map((inst) => (
+          <option key={inst.institution_id} value={inst.institution_id}>
+            {inst.institution_name}
+          </option>
+        ))}
+      </select>
+      {fieldErrors.institution_id && (
+        <div style={S.errorText}>{fieldErrors.institution_id}</div>
+      )}
+    </div>
+  );
+
+  const fldName = (
+    <div>
+      <label style={S.label}>{t("Department Name", lang)}</label>
+      <input
+        ref={nameRef}
+        type="text"
+        placeholder="e.g. Computer Science"
+        value={form.name}
+        onChange={(e) => set("name", e.target.value)}
+        disabled={submitting}
+        maxLength={120}
+        style={S.input(!!fieldErrors.name)}
+      />
+      {fieldErrors.name && <div style={S.errorText}>{fieldErrors.name}</div>}
+    </div>
+  );
+
+  const fldCode = (
+    <div>
+      <label style={S.label}>{t("Department Code", lang)}</label>
+      <input
+        type="text"
+        placeholder="e.g. CS or COMP_SCI"
+        value={form.code}
+        onChange={(e) => set("code", e.target.value.toUpperCase())}
+        disabled={submitting}
+        maxLength={20}
+        style={{ ...S.input(!!fieldErrors.code), fontFamily: "monospace", letterSpacing: 1 }}
+      />
+      {fieldErrors.code ? (
+        <div style={S.errorText}>{fieldErrors.code}</div>
+      ) : (
+        <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 4 }}>
+          {t("Auto-uppercased.", lang)} Letters, digits, hyphens, underscores only.
+        </div>
+      )}
+    </div>
+  );
+
+  const fldStatus = isEdit && (
+    <div>
+      <label style={S.label}>{t("Status", lang)}</label>
+      <select
+        value={form.status}
+        onChange={(e) => set("status", e.target.value)}
+        disabled={submitting}
+        style={S.select(!!fieldErrors.status)}
+      >
+        <option value="ACTIVE">{t("Active", lang)}</option>
+        <option value="INACTIVE">{t("Inactive", lang)}</option>
+      </select>
+      {fieldErrors.status && <div style={S.errorText}>{fieldErrors.status}</div>}
+      {goingInactive && (
+        <div
+          style={{
+            marginTop: 8,
+            padding: "8px 12px",
+            background: "#fffbeb",
+            border: "1px solid #fcd34d",
+            borderRadius: 8,
+            fontSize: 12,
+            color: "#92400e",
+            lineHeight: 1.5,
+          }}
+        >
+          Deactivating will fail unless every member of this department is already inactive.
+        </div>
+      )}
+    </div>
+  );
+
+  /* ── Edit: single-page form ── */
+  if (isEdit) {
+    return (
+      <FormScreen
+        pageTitle={t("Departments", lang)}
+        formTitle={t("Edit Department", lang)}
+        formSubtitle="Update name, code, or status."
+        icon={<Pencil size={20} color="#d97706" strokeWidth={2} />}
+        iconBg="#fef3c7"
+        onBack={onBack}
+        onSubmit={handleSubmit}
+        submitting={submitting}
+        submitLabel={t("Save Changes", lang)}
+        submitError={submitError}
+      >
+        {fldName}
+        {fldCode}
+        {fldStatus}
+      </FormScreen>
+    );
+  }
+
+  /* ── Create: multi-step wizard ── */
+  const selectedInst = institutions.find((i) => String(i.institution_id) === String(form.institution_id));
+
+  return (
+    <FormWizard
+      pageTitle={t("Departments", lang)}
+      formTitle="Create Department"
+      formSubtitle="Create a department within the institution."
+      icon={<Building size={20} color="#2563eb" strokeWidth={2} />}
+      iconBg="#eff6ff"
+      steps={[t("Department Details", lang), t("Review & Create", lang)]}
+      step={step}
+      onStepChange={setStep}
+      canAdvance={validateStep}
+      onBack={onBack}
+      onSubmit={handleSubmit}
+      submitting={submitting}
+      submitLabel="Create Department"
+      submitError={submitError}
+    >
+      {(s) =>
+        s === 0 ? (
+          <>
+            {fldInstitution}
+            {fldName}
+            {fldCode}
+          </>
+        ) : (
+          <ReviewGroup title={t("Department Details", lang)}>
+            <ReviewItem label={t("Institution", lang)} value={selectedInst?.institution_name} />
+            <ReviewItem label={t("Department Name", lang)} value={form.name} />
+            <ReviewItem label={t("Department Code", lang)} value={form.code} />
+          </ReviewGroup>
+        )
+      }
+    </FormWizard>
+>>>>>>> 2dfc12740a97cede23f7be06dd88218fc7713123
   );
 }
 
@@ -394,6 +598,7 @@ function StyledSelect({ value, onChange, children, minWidth = 180 }) {
     <select
       value={value}
       onChange={(e) => onChange(e.target.value)}
+<<<<<<< HEAD
       style={{
         padding: "8px 12px",
         border: "1.5px solid #e2e8f0",
@@ -406,6 +611,9 @@ function StyledSelect({ value, onChange, children, minWidth = 180 }) {
         cursor: "pointer",
         minWidth,
       }}
+=======
+      style={{ ...S.select(false), width: "auto", minWidth }}
+>>>>>>> 2dfc12740a97cede23f7be06dd88218fc7713123
     >
       {children}
     </select>
@@ -457,10 +665,17 @@ function ExportMenu({ selectedInstitutionId }) {
       <button
         onClick={() => setOpen((v) => !v)}
         style={{
+<<<<<<< HEAD
           display: "inline-flex", alignItems: "center", gap: 6,
           padding: "10px 18px", borderRadius: 10,
           border: "1.5px solid #e2e8f0", background: "#fff",
           fontSize: 13, fontWeight: 600, color: "#475569", cursor: "pointer",
+=======
+          display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6,
+          height: 34, minHeight: 34, padding: "0 14px", borderRadius: 6,
+          border: "1px solid #cbd5e1", background: "#fff",
+          fontSize: 12.5, fontWeight: 600, color: "#334155", whiteSpace: "nowrap", cursor: "pointer",
+>>>>>>> 2dfc12740a97cede23f7be06dd88218fc7713123
         }}
       >
         <IconDownload /> Export <IconChevron />
@@ -751,7 +966,11 @@ export default function DepartmentManagementPage() {
         <ImportWizard
           apiPath="/api/departments"
           entityLabel="Departments"
+<<<<<<< HEAD
           entityIcon="🏛️"
+=======
+          entityIcon={<Building size={22} strokeWidth={1.8} color="#2563eb" />}
+>>>>>>> 2dfc12740a97cede23f7be06dd88218fc7713123
           onBack={() => setShowImport(false)}
           onSuccess={(result) => {
             setShowImport(false);
@@ -807,6 +1026,7 @@ export default function DepartmentManagementPage() {
       {toast && <Toast message={toast.message} type={toast.type} />}
 
       {/* ── Header ── */}
+<<<<<<< HEAD
       <div
         style={{
           display: "flex",
@@ -911,6 +1131,55 @@ export default function DepartmentManagementPage() {
           )}
         </div>
       </div>
+=======
+      <PageHeader
+        breadcrumb={[t("Home", lang), t("Dept Management", lang), t("Departments", lang)]}
+        title={t("Departments", lang)}
+        description="Create and manage departments across institutions."
+        actions={
+          <div style={{ display: "flex", alignItems: "flex-end", gap: 12, flexWrap: "wrap" }}>
+            {/* Institution selector */}
+            {!loadingInstitutions && !institutionsError && institutions.length > 0 && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                <span style={{ ...S.label, marginBottom: 4 }}>{t("Institution", lang)}</span>
+                <StyledSelect
+                  value={selectedInstitutionId ?? ""}
+                  onChange={(v) => setSelectedInstitutionId(v)}
+                  minWidth={220}
+                >
+                  {institutions.map((inst) => (
+                    <option key={inst.institution_id} value={inst.institution_id}>
+                      {inst.institution_name}
+                    </option>
+                  ))}
+                </StyledSelect>
+              </div>
+            )}
+
+            {!loadingInstitutions && !institutionsError && institutions.length > 0 && (
+              <>
+                {/* Export dropdown — self-contained */}
+                <ExportMenu selectedInstitutionId={selectedInstitutionId} />
+
+                {/* Import button */}
+                <ActionButton icon={<IconUpload />} onClick={() => setShowImport(true)}>
+                  {t("Import", lang)}
+                </ActionButton>
+
+                {/* New Department button */}
+                <ActionButton
+                  variant="primary"
+                  onClick={() => setFormView({ mode: "create", entity: null })}
+                  style={{ height: 38 }}
+                >
+                  + {t("New Department", lang)}
+                </ActionButton>
+              </>
+            )}
+          </div>
+        }
+      />
+>>>>>>> 2dfc12740a97cede23f7be06dd88218fc7713123
 
       {/* Institution load error */}
       {institutionsError && (
@@ -968,6 +1237,7 @@ export default function DepartmentManagementPage() {
         </div>
       )}
 
+<<<<<<< HEAD
       {/* ── Cards grid ── */}
       <div
         style={{
@@ -1002,6 +1272,128 @@ export default function DepartmentManagementPage() {
               <div
                 style={{ fontSize: 15, fontWeight: 600, color: "#64748b", marginBottom: 6 }}
               >
+=======
+      {/* ── Departments table ── */}
+      <div style={tableCardStyle}>
+        {loadingDepts ? (
+          <div style={{ padding: "48px 24px", textAlign: "center", color: "#94a3b8", fontSize: 13 }}>
+            {t("Loading departments…", lang)}
+          </div>
+        ) : paginated.length > 0 ? (
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 880 }}>
+              <thead>
+                <tr style={{ background: "#f8fafc" }}>
+                  {[
+                    { label: t("Code", lang), align: "left" },
+                    { label: t("Department Name", lang), align: "left" },
+                    { label: t("Creation Date", lang), align: "left" },
+                    { label: t("Members", lang), align: "left" },
+                    { label: t("Status", lang), align: "left" },
+                    { label: t("Actions", lang), align: "right" },
+                  ].map((h) => (
+                    <th
+                      key={h.label}
+                      style={{
+                        padding: "10px 16px",
+                        textAlign: h.align,
+                        fontSize: 10.5,
+                        fontWeight: 700,
+                        color: "#94a3b8",
+                        textTransform: "uppercase",
+                        letterSpacing: 0.5,
+                        borderBottom: "1px solid #eef2f6",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {h.label}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {paginated.map((dept) => {
+                  const isActive = dept.status === "ACTIVE";
+                  const busy = togglingId === dept.department_id;
+                  return (
+                    <tr
+                      key={dept.department_id}
+                      style={{ borderBottom: "1px solid #f1f5f9", transition: "background .1s" }}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = "#f8fafc")}
+                      onMouseLeave={(e) => (e.currentTarget.style.background = "")}
+                    >
+                      {/* Code */}
+                      <td style={{ padding: "12px 16px" }}>
+                        <span
+                          style={{
+                            fontFamily: "monospace",
+                            fontSize: 12.5,
+                            fontWeight: 600,
+                            color: isActive ? "#2563eb" : "#94a3b8",
+                          }}
+                        >
+                          {dept.code || "—"}
+                        </span>
+                      </td>
+
+                      {/* Department name */}
+                      <td style={{ padding: "12px 16px" }}>
+                        <span style={{ fontSize: 13.5, fontWeight: 700, color: "#1e293b" }}>
+                          {dept.name}
+                        </span>
+                      </td>
+
+                      {/* Creation date */}
+                      <td style={{ padding: "12px 16px" }}>
+                        <span style={{ fontSize: 12.5, color: "#64748b" }}>
+                          {t("Since", lang)} {formatDate(dept.created_at)}
+                        </span>
+                      </td>
+
+                      {/* Members */}
+                      <td style={{ padding: "12px 16px" }}>
+                        <span style={{ fontSize: 13.5, fontWeight: 600, color: "#1e293b" }}>
+                          {Number(dept.member_count)}
+                        </span>
+                      </td>
+
+                      {/* Status */}
+                      <td style={{ padding: "12px 16px" }}>
+                        <StatusBadge tone={isActive ? "active" : "inactive"}>
+                          {isActive ? t("Active", lang) : t("Inactive", lang)}
+                        </StatusBadge>
+                      </td>
+
+                      {/* Actions */}
+                      <td style={{ padding: "8px 16px", verticalAlign: "middle" }}>
+                        <ActionButtonGroup justify="flex-end">
+                          <ActionButton
+                            onClick={() => setFormView({ mode: "edit", entity: dept })}
+                            title={t("Edit department", lang)}
+                          >
+                            {t("Edit", lang)}
+                          </ActionButton>
+                          <ActionButton
+                            variant={isActive ? "danger" : "success"}
+                            onClick={() => handleToggleStatus(dept)}
+                            disabled={busy}
+                            title={isActive ? t("Deactivate department", lang) : t("Activate department", lang)}
+                          >
+                            {busy ? "…" : isActive ? t("Deactivate", lang) : t("Activate", lang)}
+                          </ActionButton>
+                        </ActionButtonGroup>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          !loadingInstitutions && (
+            <div style={{ textAlign: "center", padding: "64px 24px", color: "#94a3b8" }}>
+              <div style={{ fontSize: 15, fontWeight: 600, color: "#64748b", marginBottom: 6 }}>
+>>>>>>> 2dfc12740a97cede23f7be06dd88218fc7713123
                 {statusFilter !== "ALL"
                   ? `No ${statusFilter.toLowerCase()} departments`
                   : "No departments yet"}

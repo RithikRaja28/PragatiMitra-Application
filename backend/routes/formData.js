@@ -3,9 +3,19 @@
 const express = require("express");
 const { verifyToken } = require("../middleware/auth");
 const logger = require("../utils/logger");
+const { translateRow, resolveTranslationMode } = require("../services/translationService");
 
 const router = express.Router();
 router.use(verifyToken);
+
+// Session-level cache: prevents repeated ALTER TABLE calls for source_row_id column
+const ensuredSourceRowIdTables = new Set();
+
+async function ensureSourceRowIdColumn(pool, tableName) {
+  if (ensuredSourceRowIdTables.has(tableName)) return;
+  await pool.query(`ALTER TABLE ${tableName} ADD COLUMN IF NOT EXISTS source_row_id UUID`);
+  ensuredSourceRowIdTables.add(tableName);
+}
 
 function validateFormName(name) {
   return /^[a-z][a-z0-9_]*$/.test(name);
@@ -15,12 +25,12 @@ function dbCol(col) {
   return col.trim().toLowerCase().replace(/\s+/g, "_");
 }
 
-/* ════════════════════════════════════════════════════════════════
+/* ════════════════════════════════════════════════════════════════════
    resolveUserContext
    - institute_admin → departmentId = null  (sees ALL dept records)
    - department_admin → departmentId = theirs (sees ONLY their dept)
    - super_admin     → reads from body/query
-════════════════════════════════════════════════════════════════ */
+════════════════════════════════════════════════════════════════════ */
 async function resolveUserContext(pool, req) {
   const roles = req.user.roles || [];
   const isSuperAdmin = roles.includes("super_admin");
@@ -70,16 +80,50 @@ function activeFields(schemaRow) {
   });
 }
 
+/* Returns { locked, message } — chooses the deadline-expired message when the
+   lock is the result of an expired deadline, otherwise the manual-lock message. */
+async function getLockBlock(pool, formName, institutionId) {
+  const { rows } = await pool.query(
+    `SELECT flc.is_locked, flc.auto_locked, flc.deadline_at
+     FROM form_lock_config flc
+     WHERE flc.form_name = $1 AND flc.institution_id = $2`,
+    [formName, institutionId]
+  );
+  const row = rows[0];
+  if (!row?.is_locked) return { locked: false, message: null };
+
+  const expired =
+    row.auto_locked ||
+    (row.deadline_at && new Date(row.deadline_at).getTime() <= Date.now());
+
+  const message = expired
+    ? "This form deadline has expired for your institution. The form is automatically locked."
+    : "This form is currently locked by the institution admin. You can only view the records.";
+
+  return { locked: true, message };
+}
+
+/* Map each field's DB column → its resolved translation mode
+   (transliterate | translate | none). Drives translateRow(). */
+function buildFieldModes(fields) {
+  const modes = {};
+  for (const f of fields) {
+    modes[dbCol(f.column_name)] = resolveTranslationMode(f);
+  }
+  return modes;
+}
+
 /* ─────────────────────────────────────────────────────────────────────
    GET /api/form-data/:formName/records
    SCOPING:
-   - dept admin  → institution_id + (department_id = theirs OR IS NULL)
-   - inst/super  → institution_id only (all departments)
+   - dept admin  → institution_id + language filter + dept scope
+   - inst/super  → institution_id + language filter (all departments)
+   Returns lock info alongside records.
 ─────────────────────────────────────────────────────────────────────── */
 router.get("/:formName/records", async (req, res) => {
   const pool = req.app.locals.pool;
   const { formName } = req.params;
-  const { year } = req.query;
+  const { year, language = "en" } = req.query;
 
   if (!validateFormName(formName))
     return res.status(400).json({ success: false, message: "Invalid form name." });
@@ -93,11 +137,11 @@ router.get("/:formName/records", async (req, res) => {
     if (!schema)
       return res.status(404).json({ success: false, message: "No active schema found for this form." });
 
-    let whereClause = "WHERE institution_id = $1";
-    const queryParams = [ctx.institutionId];
+    let whereClause = "WHERE institution_id = $1 AND (language = $2 OR ($2 = 'en' AND language IS NULL))";
+    const queryParams = [ctx.institutionId, language];
 
     if (ctx.role === "department_admin" && ctx.departmentId) {
-      whereClause += " AND (department_id = $2 OR department_id IS NULL)";
+      whereClause += " AND (department_id = $3 OR department_id IS NULL)";
       queryParams.push(ctx.departmentId);
     }
 
@@ -106,7 +150,15 @@ router.get("/:formName/records", async (req, res) => {
       queryParams
     );
 
-    return res.json({ success: true, records, schema });
+    const { rows: lockRows } = await pool.query(
+      `SELECT is_locked, locked_by, locked_at, deadline_at, COALESCE(auto_locked, false) AS auto_locked
+       FROM form_lock_config
+       WHERE form_name = $1 AND institution_id = $2`,
+      [formName, ctx.institutionId]
+    );
+    const lock = lockRows[0] || { is_locked: false, locked_by: null, locked_at: null, deadline_at: null, auto_locked: false };
+
+    return res.json({ success: true, records, schema, lock });
   } catch (err) {
     logger.error(`GET /api/form-data/${formName}/records`, { stack: err.stack });
     return res.status(500).json({ success: false, message: "Failed to fetch records." });
@@ -115,7 +167,8 @@ router.get("/:formName/records", async (req, res) => {
 
 /* ─────────────────────────────────────────────────────────────────────
    POST /api/form-data/:formName/records
-   Insert a new record manually. Tags department_id from user context.
+   Lock-checked. Inserts English row then async Hindi mirror (via translateRow).
+   Tags department_id from user context.
 ─────────────────────────────────────────────────────────────────────── */
 router.post("/:formName/records", async (req, res) => {
   const pool = req.app.locals.pool;
@@ -132,26 +185,60 @@ router.post("/:formName/records", async (req, res) => {
     if (!ctx.institutionId)
       return res.status(400).json({ success: false, message: "Institution ID required." });
 
+    const lockBlock = await getLockBlock(pool, formName, ctx.institutionId);
+    if (lockBlock.locked) {
+      return res.status(403).json({ success: false, message: lockBlock.message });
+    }
+
     const schema = await getActiveSchema(pool, formName, ctx.institutionId, year);
     if (!schema)
       return res.status(404).json({ success: false, message: "No active schema found." });
 
     const fields    = activeFields(schema);
     const fieldCols = fields.map((f) => dbCol(f.column_name));
+    const fieldModes = buildFieldModes(fields);
     const formYear  = Number(year) || schema.year;
+    const createdBy = req.user.userId || null;
 
-    const stdCols = ["form_name", "institution_id", "department_id", "year", "schema_id", "language"];
-    const stdVals = [formName, ctx.institutionId, ctx.departmentId, formYear, schema.id, language];
+    const stdCols = ["form_name", "institution_id", "department_id", "year", "schema_id", "language", "created_by"];
+    const stdVals = [formName, ctx.institutionId, ctx.departmentId, formYear, schema.id, language, createdBy];
+    const fieldVals = fieldCols.map((col) => data[col] ?? null);
+
     const allCols = [...stdCols, ...fieldCols];
-    const allVals = [...stdVals, ...fieldCols.map((col) => data[col] ?? null)];
+    const allVals = [...stdVals, ...fieldVals];
     const placeholders = allVals.map((_, i) => `$${i + 1}`).join(", ");
 
     const { rows } = await pool.query(
       `INSERT INTO ${formName}_records (${allCols.join(", ")}) VALUES (${placeholders}) RETURNING *`,
       allVals
     );
+    const enRow = rows[0];
 
-    return res.json({ success: true, record: rows[0], message: "Record created successfully." });
+    // Only auto-generate Hindi row for English submissions
+    if (language === "en") {
+      const tableName = `${formName}_records`;
+      setImmediate(async () => {
+        try {
+          await ensureSourceRowIdColumn(pool, tableName);
+
+          const hiData = await translateRow(data, fieldModes);
+          const hiStdVals = [formName, ctx.institutionId, ctx.departmentId, formYear, schema.id, "hi", createdBy];
+          const hiFieldVals = fieldCols.map((col) => hiData[col] ?? null);
+          const hiAllCols = [...stdCols, ...fieldCols, "source_row_id"];
+          const hiAllVals = [...hiStdVals, ...hiFieldVals, enRow.id];
+          const hiPlaceholders = hiAllVals.map((_, i) => `$${i + 1}`).join(", ");
+
+          await pool.query(
+            `INSERT INTO ${tableName} (${hiAllCols.join(", ")}) VALUES (${hiPlaceholders})`,
+            hiAllVals
+          );
+        } catch (err) {
+          logger.error(`Hindi row insert failed for ${formName}`, { stack: err.stack });
+        }
+      });
+    }
+
+    return res.json({ success: true, record: enRow, message: "Record created successfully." });
   } catch (err) {
     logger.error(`POST /api/form-data/${formName}/records`, { stack: err.stack });
     return res.status(500).json({ success: false, message: "Failed to create record." });
@@ -160,6 +247,7 @@ router.post("/:formName/records", async (req, res) => {
 
 /* ─────────────────────────────────────────────────────────────────────
    PUT /api/form-data/:formName/records/:id
+   Lock-checked. Updates English row and async updates linked Hindi row.
    Dept admin can only update records in their own department.
 ─────────────────────────────────────────────────────────────────────── */
 router.put("/:formName/records/:id", async (req, res) => {
@@ -177,12 +265,18 @@ router.put("/:formName/records/:id", async (req, res) => {
     if (!ctx.institutionId)
       return res.status(400).json({ success: false, message: "Institution ID required." });
 
+    const lockBlock = await getLockBlock(pool, formName, ctx.institutionId);
+    if (lockBlock.locked) {
+      return res.status(403).json({ success: false, message: lockBlock.message });
+    }
+
     const schema = await getActiveSchema(pool, formName, ctx.institutionId, null);
     if (!schema)
       return res.status(404).json({ success: false, message: "No active schema found." });
 
     const fields    = activeFields(schema);
     const fieldCols = fields.map((f) => dbCol(f.column_name));
+    const fieldModes = buildFieldModes(fields);
 
     let idx = 1;
     const setClauses = [...fieldCols.map((col) => `${col} = $${idx++}`), `updated_at = now()`];
@@ -205,6 +299,28 @@ router.put("/:formName/records/:id", async (req, res) => {
     if (!rows.length)
       return res.status(404).json({ success: false, message: "Record not found." });
 
+    // Asynchronously update linked Hindi row
+    const tableName = `${formName}_records`;
+    setImmediate(async () => {
+      try {
+        await ensureSourceRowIdColumn(pool, tableName);
+
+        const hiData = await translateRow(data, fieldModes);
+        let hidx = 1;
+        const hiSetClauses = fieldCols.map((col) => `${col} = $${hidx++}`);
+        hiSetClauses.push(`updated_at = now()`);
+        const hiVals = [...fieldCols.map((col) => hiData[col] ?? null), id];
+
+        await pool.query(
+          `UPDATE ${tableName} SET ${hiSetClauses.join(", ")}
+           WHERE source_row_id = $${hidx}`,
+          hiVals
+        );
+      } catch (err) {
+        logger.error(`Hindi row update failed for ${formName}/${id}`, { stack: err.stack });
+      }
+    });
+
     return res.json({ success: true, record: rows[0], message: "Record updated successfully." });
   } catch (err) {
     logger.error(`PUT /api/form-data/${formName}/records/${id}`, { stack: err.stack });
@@ -219,10 +335,6 @@ router.put("/:formName/records/:id", async (req, res) => {
    ⚠️  REGISTERED BEFORE /:formName/records/:id  — critical ordering.
        If the single-delete route came first, Express would match
        "bulk-delete" as the :id param and this route would never run.
-
-   One SQL statement deletes all IDs:
-     DELETE … WHERE id = ANY($1::uuid[]) AND institution_id = $2
-   No loops, no N+1 queries, scales to thousands of records.
 ─────────────────────────────────────────────────────────────────────── */
 router.delete("/:formName/records/bulk-delete", async (req, res) => {
   const pool = req.app.locals.pool;
@@ -241,9 +353,8 @@ router.delete("/:formName/records/bulk-delete", async (req, res) => {
       message: "Cannot bulk-delete more than 5 000 records at once. Split into smaller batches.",
     });
 
-  /* Validate UUID format before touching the DB */
   const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  const badIds  = ids.filter(id => !UUID_RE.test(id));
+  const badIds  = ids.filter((id) => !UUID_RE.test(id));
   if (badIds.length > 0)
     return res.status(400).json({ success: false, message: `${badIds.length} invalid ID(s) in request.` });
 
@@ -252,11 +363,10 @@ router.delete("/:formName/records/bulk-delete", async (req, res) => {
     if (!ctx.institutionId)
       return res.status(400).json({ success: false, message: "Institution ID required." });
 
-    /*
-      Security scoping — mirrors the single-delete rules:
-      - dept admin : only their dept rows (+ institution-wide rows where dept IS NULL)
-      - inst/super : whole institution
-    */
+    const lockBlock = await getLockBlock(pool, formName, ctx.institutionId);
+    if (lockBlock.locked)
+      return res.status(403).json({ success: false, message: lockBlock.message });
+
     let whereClause   = "id = ANY($1::uuid[]) AND institution_id = $2";
     const queryParams = [ids, ctx.institutionId];
 
@@ -271,7 +381,7 @@ router.delete("/:formName/records/bulk-delete", async (req, res) => {
     );
 
     const deleted = rowCount ?? 0;
-    const failed  = ids.length - deleted; // IDs that didn't match (wrong inst/dept or already gone)
+    const failed  = ids.length - deleted;
 
     logger.info(`Bulk delete ${formName}: ${deleted} deleted, ${failed} not matched`, {
       institutionId: ctx.institutionId,
@@ -295,6 +405,7 @@ router.delete("/:formName/records/bulk-delete", async (req, res) => {
 
 /* ─────────────────────────────────────────────────────────────────────
    DELETE /api/form-data/:formName/records/:id   (single record)
+   Lock-checked. Deletes the English row and its linked Hindi row.
    ⚠️  Must stay AFTER the bulk-delete route above.
 ─────────────────────────────────────────────────────────────────────── */
 router.delete("/:formName/records/:id", async (req, res) => {
@@ -309,7 +420,14 @@ router.delete("/:formName/records/:id", async (req, res) => {
     if (!ctx.institutionId)
       return res.status(400).json({ success: false, message: "Institution ID required." });
 
-    let whereClause = "id = $1 AND institution_id = $2";
+    const lockBlock = await getLockBlock(pool, formName, ctx.institutionId);
+    if (lockBlock.locked) {
+      return res.status(403).json({ success: false, message: lockBlock.message });
+    }
+
+    await ensureSourceRowIdColumn(pool, `${formName}_records`);
+
+    let whereClause = "(id = $1 OR source_row_id = $1) AND institution_id = $2";
     const whereVals = [id, ctx.institutionId];
 
     if (ctx.role === "department_admin" && ctx.departmentId) {

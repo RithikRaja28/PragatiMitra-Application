@@ -31,17 +31,26 @@ const CSS = `
   :root {
     --sh-topbar:    #0f172a;
     --sh-topbar-b:  rgba(255,255,255,0.07);
-    --sh-sidebar:   #ffffff;
-    --sh-bg:        #f1f5f9;
-    --sh-border:    rgba(0,0,0,0.08);
+    --sh-sidebar:   #0b1324;
+    --sh-bg:        #f8f9fb;
+    --sh-border:    #e2e8f0;
     --sh-accent:    #2563eb;
     --sh-accent2:   #7c3aed;
     --sh-text:      #1e293b;
     --sh-muted:     #94a3b8;
     --sh-hover:     rgba(37,99,235,0.07);
     --sh-active:    rgba(37,99,235,0.10);
-    --sh-topbar-h:  56px;
-    --sh-side-open: 240px;
+
+    /* Sidebar (dark theme — matches the topbar) */
+    --sh-side-border:  rgba(255,255,255,0.08);
+    --sh-side-text:    #cbd5e1;
+    --sh-side-text-hi: #ffffff;
+    --sh-side-muted:   #64748b;
+    --sh-side-hover:   rgba(255,255,255,0.06);
+    --sh-side-active:  #1e3a8a;
+    --sh-side-accent:  #60a5fa;
+    --sh-topbar-h:  60px;
+    --sh-side-open: 280px;
     --sh-side-col:  64px;
     --sh-font:      'Plus Jakarta Sans', sans-serif;
     --sh-mono:      'DM Mono', monospace;
@@ -126,7 +135,7 @@ const CSS = `
     border: 1px solid rgba(255,255,255,0.10);
     border-radius: 8px;
     padding: 0 12px;
-    height: 34px;
+    height: 30px;
     transition: border-color .15s, background .15s;
   }
   .sh-search:focus-within {
@@ -217,7 +226,7 @@ const CSS = `
 
   .sh-icon-btn {
     display: flex; align-items: center; justify-content: center;
-    width: 34px; height: 34px; border-radius: 8px;
+    width: 30px; height: 30px; border-radius: 8px;
     border: 1px solid rgba(255,255,255,0.10);
     background: transparent; color: rgba(255,255,255,0.55);
     cursor: pointer; transition: background var(--sh-ease), color var(--sh-ease);
@@ -241,7 +250,7 @@ const CSS = `
   }
   .sh-avatar:hover { background: rgba(255,255,255,0.08); }
   .sh-avatar-circle {
-    width: 28px; height: 28px; border-radius: 7px;
+    width: 26px; height: 26px; border-radius: 7px;
     background: linear-gradient(135deg, var(--sh-accent), var(--sh-accent2));
     display: flex; align-items: center; justify-content: center;
     font-size: 11px; font-weight: 700; color: #fff; flex-shrink: 0;
@@ -284,8 +293,8 @@ const CSS = `
     display: flex; flex-direction: column;
     width: var(--sh-side-open);
     background: var(--sh-sidebar);
-    border-right: 1px solid var(--sh-border);
-    box-shadow: 1px 0 12px rgba(0,0,0,0.04);
+    border-right: 1px solid var(--sh-side-border);
+    box-shadow: 1px 0 12px rgba(0,0,0,0.18);
     transition: width var(--sh-ease);
     z-index: 50; flex-shrink: 0; overflow: hidden;
   }
@@ -308,13 +317,13 @@ const CSS = `
     scrollbar-width: thin; scrollbar-color: var(--sh-border) transparent;
   }
   .sh-nav::-webkit-scrollbar { width: 4px; }
-  .sh-nav::-webkit-scrollbar-thumb { background: var(--sh-border); border-radius: 4px; }
+  .sh-nav::-webkit-scrollbar-thumb { background: var(--sh-side-border); border-radius: 4px; }
 
   /* ── NAV GROUP ── */
   .sh-nav-group { margin-bottom: 4px; }
   .sh-nav-group-label {
     padding: 6px 16px 4px; font-size: 10px; font-weight: 700;
-    letter-spacing: 1px; text-transform: uppercase; color: var(--sh-muted);
+    letter-spacing: 1px; text-transform: uppercase; color: var(--sh-side-muted);
     white-space: nowrap; overflow: hidden; transition: opacity var(--sh-ease);
   }
   .sh-sidebar.col .sh-nav-group-label { opacity: 0; height: 0; padding: 0; }
@@ -325,19 +334,19 @@ const CSS = `
     padding: 0 12px; height: 40px; margin: 1px 8px; border-radius: 8px;
     cursor: pointer; white-space: nowrap; overflow: hidden;
     position: relative; border: none; background: transparent;
-    color: var(--sh-muted); font-family: var(--sh-font);
+    color: var(--sh-side-text); font-family: var(--sh-font);
     font-size: 13.5px; font-weight: 500; text-align: left;
     width: calc(100% - 16px);
     transition: background var(--sh-ease), color var(--sh-ease);
   }
-  .sh-nav-item:hover { background: var(--sh-hover); color: var(--sh-text); }
+  .sh-nav-item:hover { background: var(--sh-side-hover); color: var(--sh-side-text-hi); }
   .sh-nav-item.on {
-    background: var(--sh-active); color: var(--sh-accent);
+    background: var(--sh-side-active); color: var(--sh-side-text-hi); font-weight: 600;
   }
   .sh-nav-item.on::before {
     content: '';
     position: absolute; left: 0; top: 8px; bottom: 8px;
-    width: 3px; background: var(--sh-accent); border-radius: 0 3px 3px 0;
+    width: 3px; background: var(--sh-side-accent); border-radius: 0 3px 3px 0;
   }
   .sh-nav-label {
     transition: opacity var(--sh-ease), width var(--sh-ease); font-size: 13.5px;
@@ -366,17 +375,17 @@ const CSS = `
 
   /* ── SIDEBAR FOOTER ── */
   .sh-sidebar-footer {
-    border-top: 1px solid var(--sh-border);
+    border-top: 1px solid var(--sh-side-border);
     padding: 10px 8px; flex-shrink: 0;
   }
   .sh-collapse-btn {
     display: flex; align-items: center; justify-content: center;
     width: 100%; height: 36px; border-radius: 8px;
-    border: 1px solid var(--sh-border); background: transparent;
-    color: var(--sh-muted); cursor: pointer; font-family: var(--sh-font);
+    border: 1px solid var(--sh-side-border); background: transparent;
+    color: var(--sh-side-muted); cursor: pointer; font-family: var(--sh-font);
     transition: background var(--sh-ease), color var(--sh-ease);
   }
-  .sh-collapse-btn:hover { background: var(--sh-hover); color: var(--sh-text); }
+  .sh-collapse-btn:hover { background: var(--sh-side-hover); color: var(--sh-side-text-hi); }
 
   /* ── CONTENT ── */
   .sh-content {
@@ -449,7 +458,7 @@ const CSS = `
     border: 1px solid rgba(255,255,255,0.12);
     background: rgba(255,255,255,0.06);
     overflow: hidden; flex-shrink: 0;
-    height: 30px;
+    height: 28px;
   }
   .sh-lang-opt {
     display: flex; align-items: center; justify-content: center;
