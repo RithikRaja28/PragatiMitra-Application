@@ -86,12 +86,18 @@ function DocumentUploadField({ label, required, value, onChange, getToken }) {
     if (file.size > MAX_SIZE) { setErrMsg("File exceeds 10 MB."); setStatus("error"); return; }
     setStatus("uploading"); setErrMsg(""); setFileName(file.name);
     try {
-      const fd = new FormData(); fd.append("file", file);
       const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
-      const res = await fetch(`${API_BASE}/api/upload/document`, { method: "POST", body: fd, headers: getToken() ? { Authorization: `Bearer ${getToken()}` } : {} });
+      const token = getToken();
+      const fd = new FormData(); fd.append("file", file);
+      const res = await fetch(`${API_BASE}/api/upload/document`, {
+        method: "POST", body: fd,
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
       const data = await res.json();
       if (!data.success) throw new Error(data.error || "Upload failed.");
-      onChange(data.url); setStatus("done");
+      /* Backend returns the S3 key; store it (not a URL) */
+      onChange(data.fileKey);
+      setStatus("done");
     } catch (err) { setErrMsg(err.message || "Upload failed."); setStatus("error"); }
   }
   return (
@@ -109,14 +115,40 @@ function DocumentUploadField({ label, required, value, onChange, getToken }) {
   );
 }
 
-function DocumentCell({ url }) {
-  if (!url) return <span style={{ color: "#cbd5e1" }}>—</span>;
-  return <a href={url} target="_blank" rel="noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 5, color: ACCENT, fontSize: 12, fontWeight: 600, textDecoration: "none" }}><IcoFile /> View Doc ↗</a>;
+function DocumentCell({ fileKey, getToken, lang = "en" }) {
+  const [loading, setLoading] = useState(false);
+  if (!fileKey) return <span style={{ color: "#cbd5e1" }}>—</span>;
+
+  /* Legacy: value is a full local URL stored before S3 migration */
+  const isLegacyUrl = fileKey.startsWith("http://") || fileKey.startsWith("https://");
+
+  async function handleView() {
+    if (isLegacyUrl) { window.open(fileKey, "_blank", "noreferrer"); return; }
+    setLoading(true);
+    try {
+      const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
+      const token = getToken ? getToken() : null;
+      const res = await fetch(`${API_BASE}/api/upload/read-url`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ fileKey }),
+      });
+      const data = await res.json();
+      if (data.readUrl) window.open(data.readUrl, "_blank", "noreferrer");
+    } finally { setLoading(false); }
+  }
+
+  return (
+    <button onClick={handleView} disabled={loading}
+      style={{ display: "inline-flex", alignItems: "center", gap: 5, color: ACCENT, fontSize: 12, fontWeight: 600, background: "none", border: "none", cursor: loading ? "wait" : "pointer", padding: 0, textDecoration: "none" }}>
+      <IcoFile /> {loading ? (lang === "hi" ? "लोड हो रहा है…" : "Loading…") : (lang === "hi" ? "दस्तावेज़ देखें ↗" : "View Doc ↗")}
+    </button>
+  );
 }
 
-function FieldInput({ field, value, onChange, getToken }) {
+function FieldInput({ field, value, onChange, getToken, lang = "en" }) {
   const col = dbCol(field.column_name);
-  const label = field.label?.en || displayCol(field.column_name);
+  const label = field.label?.[lang] || field.label?.en || displayCol(field.column_name);
   const type = field.type;
   const commonStyle = S.input(false);
   if (type === "boolean") return (
@@ -139,7 +171,7 @@ function FieldInput({ field, value, onChange, getToken }) {
 /* ════════════════════════════════════════════════════════════════════
    RecordModal — rendered via ModalPortal to avoid clipping issues
 ════════════════════════════════════════════════════════════════════ */
-function RecordModal({ fields, record, onSave, onClose, saving, error, getToken }) {
+function RecordModal({ fields, record, onSave, onClose, saving, error, getToken, lang = "en" }) {
   const isEdit = !!record;
   const [formData, setFormData] = useState(() => {
     const init = {};
@@ -181,6 +213,7 @@ function RecordModal({ fields, record, onSave, onClose, saving, error, getToken 
                   value={formData[dbCol(field.column_name)]}
                   onChange={handleChange}
                   getToken={getToken}
+                  lang={lang}
                 />
               ))}
               {error && (
@@ -506,23 +539,32 @@ function FormImportWizard({ formName, onClose, onDone, apiFetch, getToken }) {
                       <div />
                       <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.5 }}>Your File Column</div>
                     </div>
-                    {schemaFields.map((field, idx) => (
-                      <div key={field.col} style={{ display: "grid", gridTemplateColumns: "1fr 24px 1fr", gap: "0 8px", padding: "9px 12px", alignItems: "center", borderBottom: idx < schemaFields.length - 1 ? "1px solid #f1f5f9" : "none", background: "#fff" }}>
-                        <div>
-                          <div style={{ fontSize: 13, fontWeight: 600, color: "#1e293b" }}>{field.label}{field.required && <span style={{ color: "#dc2626", marginLeft: 3 }}>*</span>}</div>
-                          <div style={{ fontSize: 10, color: "#94a3b8", fontFamily: "monospace", marginTop: 1 }}>{field.col}</div>
+                    {schemaFields.map((field, idx) => {
+                      const isDoc = field.type === "document";
+                      return (
+                        <div key={field.col} style={{ display: "grid", gridTemplateColumns: "1fr 24px 1fr", gap: "0 8px", padding: "9px 12px", alignItems: "center", borderBottom: idx < schemaFields.length - 1 ? "1px solid #f1f5f9" : "none", background: isDoc ? "#fafafa" : "#fff" }}>
+                          <div>
+                            <div style={{ fontSize: 13, fontWeight: 600, color: "#1e293b" }}>{field.label}{field.required && <span style={{ color: "#dc2626", marginLeft: 3 }}>*</span>}</div>
+                            <div style={{ fontSize: 10, color: "#94a3b8", fontFamily: "monospace", marginTop: 1 }}>{field.col}</div>
+                          </div>
+                          <div style={{ color: !isDoc && mapping[field.col] ? "#16a34a" : "#cbd5e1", textAlign: "center", fontSize: 16 }}>→</div>
+                          {isDoc ? (
+                            <div style={{ fontSize: 11.5, color: "#94a3b8", fontStyle: "italic", padding: "6px 9px", border: "1.5px dashed #e2e8f0", borderRadius: 6, background: "#f8fafc" }}>
+                              Saved as blank — upload file manually after import
+                            </div>
+                          ) : (
+                            <div style={{ position: "relative" }}>
+                              <select value={mapping[field.col] || ""} onChange={e => setMapping(prev => ({ ...prev, [field.col]: e.target.value }))} disabled={executing}
+                                style={{ width: "100%", padding: "6px 26px 6px 9px", fontSize: 12, border: `1.5px solid ${mapping[field.col] ? "#86efac" : "#e2e8f0"}`, borderRadius: 6, background: "#fff", color: "#1e293b", appearance: "none", cursor: executing ? "not-allowed" : "pointer", outline: "none" }}>
+                                <option value="">— skip —</option>
+                                {fileColumns.map(col => <option key={col} value={col}>{col}</option>)}
+                              </select>
+                              <div style={{ position: "absolute", right: 7, top: "50%", transform: "translateY(-50%)", pointerEvents: "none", color: "#94a3b8" }}><IcoChevronDown /></div>
+                            </div>
+                          )}
                         </div>
-                        <div style={{ color: mapping[field.col] ? "#16a34a" : "#cbd5e1", textAlign: "center", fontSize: 16 }}>→</div>
-                        <div style={{ position: "relative" }}>
-                          <select value={mapping[field.col] || ""} onChange={e => setMapping(prev => ({ ...prev, [field.col]: e.target.value }))} disabled={executing}
-                            style={{ width: "100%", padding: "6px 26px 6px 9px", fontSize: 12, border: `1.5px solid ${mapping[field.col] ? "#86efac" : "#e2e8f0"}`, borderRadius: 6, background: "#fff", color: "#1e293b", appearance: "none", cursor: executing ? "not-allowed" : "pointer", outline: "none" }}>
-                            <option value="">— skip —</option>
-                            {fileColumns.map(col => <option key={col} value={col}>{col}</option>)}
-                          </select>
-                          <div style={{ position: "absolute", right: 7, top: "50%", transform: "translateY(-50%)", pointerEvents: "none", color: "#94a3b8" }}><IcoChevronDown /></div>
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
                 {preview.length > 0 && !executing && (
@@ -660,8 +702,8 @@ function SortDropdown({ sortDir, onSort }) {
   const [open, setOpen] = useState(false);
 
   const options = [
-    { key: "desc", label: "Newest First (DESC)", icon: <IcoSortDesc /> },
-    { key: "asc",  label: "Oldest First (ASC)",  icon: <IcoSortAsc />  },
+    { key: "desc", label: "Newest First", icon: <IcoSortDesc /> },
+    { key: "asc",  label: "Oldest First", icon: <IcoSortAsc />  },
   ];
 
   const active = options.find(o => o.key === sortDir);
@@ -670,31 +712,57 @@ function SortDropdown({ sortDir, onSort }) {
 
   return (
     <div style={{ position: "relative" }}>
+      {/* Trigger — identical styling to ExportDropdown */}
       <button
         onClick={() => setOpen(v => !v)}
-        style={{ display: "inline-flex", alignItems: "center", gap: 7, background: "#fff", color: "#475569", border: "1.5px solid #e2e8f0", borderRadius: 10, padding: "9px 14px", fontSize: 13, fontWeight: 600, cursor: "pointer", boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }}
+        style={{
+          display: "inline-flex", alignItems: "center", gap: 7,
+          background: "#fff", color: "#475569",
+          border: "1.5px solid #e2e8f0", borderRadius: 10,
+          padding: "9px 14px", fontSize: 13, fontWeight: 600,
+          cursor: "pointer", boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
+        }}
       >
-        {active?.icon}
-        Sort: {active?.key === "desc" ? "Newest First" : "Oldest First"}
+        <IcoSort />
+        Sort: {active?.label}
         <IcoChevronDown />
       </button>
+
       {open && (
         <>
+          {/* Click-away backdrop */}
           <div style={{ position: "fixed", inset: 0, zIndex: 99 }} onClick={() => setOpen(false)} />
-          <div style={{ position: "absolute", top: "calc(100% + 6px)", right: 0, zIndex: 100, background: "#fff", borderRadius: 10, border: "1.5px solid #e2e8f0", boxShadow: "0 8px 24px rgba(0,0,0,0.12)", minWidth: 210, overflow: "hidden" }}>
-            {options.map(({ key, label, icon }) => (
-              <button
-                key={key}
-                onClick={() => pick(key)}
-                style={{ display: "flex", alignItems: "center", gap: 9, width: "100%", padding: "10px 16px", background: sortDir === key ? ACCENT + "08" : "none", border: "none", textAlign: "left", fontSize: 13, color: sortDir === key ? ACCENT : "#1e293b", cursor: "pointer", fontWeight: sortDir === key ? 700 : 500 }}
-                onMouseEnter={e => { if (sortDir !== key) e.currentTarget.style.background = "#f8fafc"; }}
-                onMouseLeave={e => { e.currentTarget.style.background = sortDir === key ? ACCENT + "08" : "none"; }}
-              >
-                <span style={{ color: sortDir === key ? ACCENT : "#94a3b8" }}>{icon}</span>
-                {label}
-                {sortDir === key && <span style={{ marginLeft: "auto", color: ACCENT }}><IcoCheck /></span>}
-              </button>
-            ))}
+
+          {/* Panel */}
+          <div style={{
+            position: "absolute", top: "calc(100% + 6px)", right: 0, zIndex: 100,
+            background: "#fff", borderRadius: 12, border: "1.5px solid #e2e8f0",
+            boxShadow: "0 8px 24px rgba(0,0,0,0.12)", minWidth: 200,
+            padding: 6,
+          }}>
+            {options.map(({ key, label, icon }) => {
+              const isActive = sortDir === key;
+              return (
+                <button
+                  key={key}
+                  onClick={() => pick(key)}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 9,
+                    width: "100%", padding: "9px 12px", borderRadius: 8,
+                    background: isActive ? ACCENT + "15" : "transparent",
+                    border: "none", textAlign: "left", fontSize: 13,
+                    color: isActive ? ACCENT : "#1e293b",
+                    cursor: "pointer", fontWeight: isActive ? 600 : 500,
+                  }}
+                  onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = "#f1f5f9"; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = isActive ? ACCENT + "15" : "transparent"; }}
+                >
+                  <span style={{ color: isActive ? ACCENT : "#94a3b8" }}>{icon}</span>
+                  {label}
+                  {isActive && <span style={{ marginLeft: "auto", color: ACCENT }}><IcoCheck /></span>}
+                </button>
+              );
+            })}
           </div>
         </>
       )}
@@ -1179,6 +1247,7 @@ export default function FormDataPage() {
           saving={saving}
           error={modalError}
           getToken={getToken}
+          lang={lang}
         />
       )}
       {deleteTarget !== null && (
@@ -1382,8 +1451,8 @@ export default function FormDataPage() {
                       {f.label?.[lang] || f.label?.en || displayCol(f.column_name)}
                     </th>
                   ))}
-                  <th style={thStyle}>Created</th>
-                  {!readOnly && <th style={{ ...thStyle, textAlign: "right" }}>Actions</th>}
+                  <th style={thStyle}>{lang === "hi" ? "बनाया गया" : "Created"}</th>
+                  {!readOnly && <th style={{ ...thStyle, textAlign: "right" }}>{lang === "hi" ? "क्रियाएँ" : "Actions"}</th>}
                 </tr>
               </thead>
               <tbody>
@@ -1421,7 +1490,7 @@ export default function FormDataPage() {
                         const col = dbCol(f.column_name); const raw = rec[col];
                         let cell;
                         if (f.type === "boolean") cell = raw===true||raw==="true" ? "Yes" : raw===false||raw==="false" ? "No" : "—";
-                        else if (f.type === "document") cell = <DocumentCell url={raw} />;
+                        else if (f.type === "document") cell = <DocumentCell fileKey={raw} getToken={getToken} lang={lang} />;
                         else cell = raw ?? <span style={{ color: "#cbd5e1" }}>—</span>;
                         return <td key={col} style={tdStyle}><span style={{ fontSize: 13, color: "#1e293b" }}>{cell}</span></td>;
                       })}

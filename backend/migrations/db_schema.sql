@@ -220,6 +220,7 @@ CREATE TABLE public.departments (
     department_id uuid DEFAULT gen_random_uuid() NOT NULL,
     institution_id uuid NOT NULL,
     name text NOT NULL,
+    name_hi text,
     code text NOT NULL,
     status public.department_status DEFAULT 'ACTIVE'::public.department_status NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,

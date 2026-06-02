@@ -3,7 +3,7 @@
 const express = require("express");
 const { verifyToken } = require("../middleware/auth");
 const logger = require("../utils/logger");
-const { translateRow, resolveTranslationMode } = require("../services/translationService");
+const { translateRow, resolveTranslationMode, enrichSchemaLabels } = require("../services/translationService");
 
 const router = express.Router();
 router.use(verifyToken);
@@ -153,18 +153,45 @@ router.get("/:formName/records", async (req, res) => {
     if (!schema)
       return res.status(404).json({ success: false, message: "No active schema found for this form." });
 
-    let whereClause = "WHERE institution_id = $1 AND (language = $2 OR ($2 = 'en' AND language IS NULL))";
-    const queryParams = [ctx.institutionId, language];
+    const queryParams = [ctx.institutionId];
+    const deptClause  = (ctx.role === "department_admin" && ctx.departmentId)
+      ? (() => { queryParams.push(ctx.departmentId); return `AND (department_id = $${queryParams.length} OR department_id IS NULL)`; })()
+      : "";
 
-    if (ctx.role === "department_admin" && ctx.departmentId) {
-      whereClause += " AND (department_id = $3 OR department_id IS NULL)";
-      queryParams.push(ctx.departmentId);
+    let recordsQuery;
+    if (language === "en") {
+      recordsQuery = `SELECT * FROM ${formName}_records
+                      WHERE institution_id = $1 AND (language = 'en' OR language IS NULL)
+                      ${deptClause}
+                      ORDER BY created_at DESC`;
+    } else {
+      /* For non-English: return translated rows where they exist, PLUS English
+         rows that have no translated mirror (imported records, translation-disabled
+         forms). This prevents the blank-screen when Hindi rows are absent. */
+      queryParams.push(language);
+      const langParam = `$${queryParams.length}`;
+      recordsQuery = `
+        WITH has_translation AS (
+          SELECT source_row_id
+          FROM   ${formName}_records
+          WHERE  language = ${langParam}
+            AND  source_row_id IS NOT NULL
+            AND  institution_id = $1
+        )
+        SELECT * FROM ${formName}_records
+        WHERE institution_id = $1
+          ${deptClause}
+          AND (
+            language = ${langParam}
+            OR (
+              (language = 'en' OR language IS NULL)
+              AND id NOT IN (SELECT source_row_id FROM has_translation)
+            )
+          )
+        ORDER BY created_at DESC`;
     }
 
-    const { rows: records } = await pool.query(
-      `SELECT * FROM ${formName}_records ${whereClause} ORDER BY created_at DESC`,
-      queryParams
-    );
+    const { rows: records } = await pool.query(recordsQuery, queryParams);
 
     const { rows: lockRows } = await pool.query(
       `SELECT is_locked, locked_by, locked_at, deadline_at, COALESCE(auto_locked, false) AS auto_locked
@@ -174,7 +201,13 @@ router.get("/:formName/records", async (req, res) => {
     );
     const lock = lockRows[0] || { is_locked: false, locked_by: null, locked_at: null, deadline_at: null, auto_locked: false };
 
-    return res.json({ success: true, records, schema, lock });
+    /* Enrich schema labels for non-English responses so the frontend can show
+       translated headers without a separate translation request. */
+    const displaySchema = language !== "en"
+      ? await enrichSchemaLabels(schema, language)
+      : schema;
+
+    return res.json({ success: true, records, schema: displaySchema, lock });
   } catch (err) {
     logger.error(`GET /api/form-data/${formName}/records`, { stack: err.stack });
     return res.status(500).json({ success: false, message: "Failed to fetch records." });

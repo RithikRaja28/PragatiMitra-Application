@@ -70,6 +70,17 @@ app.use(cookies());
 app.use(requestId);
 app.use(requestLogger);
 
+/* ─── pg type parsers ──────────────────────────────────────────
+   By default pg converts DATE columns to JS Date objects at local
+   midnight. On a UTC+5:30 server that midnight is 18:30 UTC of the
+   previous day, so .toISOString() would silently shift the date.
+   Registering a string parser for DATE (OID 1082) keeps the value
+   as "YYYY-MM-DD" throughout the application, matching what was
+   stored and what the user entered.
+─────────────────────────────────────────────────────────────── */
+const { types: pgTypes } = require("pg");
+pgTypes.setTypeParser(1082, (val) => val); // DATE → keep as "YYYY-MM-DD" string
+
 /* ─── PostgreSQL pool ───────────────────────────────────────── */
 const pool = new Pool({
   user:     process.env.DB_USER,

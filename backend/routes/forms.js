@@ -4,6 +4,24 @@ const express = require("express");
 const { verifyToken, requireRole } = require("../middleware/auth");
 const { writeAuditLog } = require("../utils/audit");
 const logger = require("../utils/logger");
+const { translateSentence, enrichSchemaLabels } = require("../services/translationService");
+
+/* Auto-fill label.hi for any field missing it, using Google Translate.
+   Only runs when translate_to_hindi is true. Mutates schema.fields in-place. */
+async function autoFillHindiLabels(schema) {
+  const fields = schema?.fields;
+  if (!Array.isArray(fields)) return;
+  const tasks = fields.map(async (field) => {
+    const en = field.label?.en || field.column_name;
+    if (!en || field.label?.hi) return;
+    const hi = await translateSentence(en).catch(() => null);
+    if (hi && hi !== en) {
+      if (!field.label) field.label = {};
+      field.label.hi = hi;
+    }
+  });
+  await Promise.all(tasks);
+}
 
 const router = express.Router();
 router.use(verifyToken);
@@ -328,6 +346,9 @@ router.post(
         return res.status(400).json({ success: false, message: "Institution ID is required." });
       }
 
+      // Auto-fill missing Hindi labels before persisting
+      if (translateToHindi) await autoFillHindiLabels(schema);
+
       const client = await pool.connect();
       try {
         await client.query("BEGIN");
@@ -381,9 +402,21 @@ router.post(
           );
         }
 
-        // 4. Create physical records table
+        // 4. Create physical records table.
+        //    IF NOT EXISTS makes this safe to retry, but it also means
+        //    a pre-existing table won't have the new custom columns added.
+        //    The ALTER TABLE loop below closes that gap.
         const ddl = buildRecordsTableDDL(recordsTable, schema.fields || []);
         await client.query(ddl);
+
+        for (const field of (schema.fields || [])) {
+          const colName = field.column_name.trim().toLowerCase().replace(/\s+/g, "_");
+          if (/^[a-z][a-z0-9_]*$/.test(colName)) {
+            await client.query(
+              `ALTER TABLE ${recordsTable} ADD COLUMN IF NOT EXISTS ${colName} ${pgType(field.type)}`
+            );
+          }
+        }
 
         await client.query("COMMIT");
 
@@ -533,6 +566,11 @@ router.put(
       if (!institutionId) {
         return res.status(400).json({ success: false, message: "Institution ID required." });
       }
+
+      // Auto-fill missing Hindi labels before persisting.
+      // translate_to_hindi may be toggled in this same request; default to true if not specified.
+      const effectiveTranslate = typeof translate_to_hindi === "boolean" ? translate_to_hindi : true;
+      if (effectiveTranslate) await autoFillHindiLabels(schema);
 
       const client = await pool.connect();
       try {
@@ -709,7 +747,13 @@ router.get("/:formName/institution-records", async (req, res) => {
     );
     const lock = lockRows[0] || { is_locked: false, locked_by: null, locked_at: null, deadline_at: null, auto_locked: false };
 
-    return res.json({ success: true, schema, departments, grouped, lock });
+    /* Enrich schema labels for non-English responses — same logic applied in
+       GET /api/form-data/:formName/records so both views stay consistent. */
+    const displaySchema = language !== "en"
+      ? await enrichSchemaLabels(schema, language)
+      : schema;
+
+    return res.json({ success: true, schema: displaySchema, departments, grouped, lock });
   } catch (err) {
     logger.error(`GET /api/forms/${formName}/institution-records`, { stack: err.stack });
     return res.status(500).json({ success: false, message: "Failed to fetch institution records." });

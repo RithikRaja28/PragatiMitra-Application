@@ -33,9 +33,10 @@ function DepartmentForm({
 
   const [form, setForm] = useState(
     isEdit
-      ? { name: entity.name || "", code: entity.code || "", status: entity.status || "ACTIVE" }
+      ? { name: entity.name || "", name_hi: entity.name_hi || "", code: entity.code || "", status: entity.status || "ACTIVE" }
       : {
           name: "",
+          name_hi: "",
           code: "",
           institution_id: defaultInstitutionId || institutions[0]?.institution_id || "",
         }
@@ -100,16 +101,18 @@ function DepartmentForm({
         ? await apiFetch(`/api/departments/${entity.department_id}`, {
             method: "PUT",
             body: JSON.stringify({
-              name: form.name.trim(),
-              code: form.code.trim().toUpperCase(),
-              status: form.status,
+              name:    form.name.trim(),
+              name_hi: form.name_hi.trim() || undefined,
+              code:    form.code.trim().toUpperCase(),
+              status:  form.status,
             }),
           })
         : await apiFetch("/api/departments", {
             method: "POST",
             body: JSON.stringify({
-              name: form.name.trim(),
-              code: form.code.trim().toUpperCase(),
+              name:           form.name.trim(),
+              name_hi:        form.name_hi.trim() || undefined,
+              code:           form.code.trim().toUpperCase(),
               institution_id: form.institution_id,
             }),
           });
@@ -167,6 +170,24 @@ function DepartmentForm({
         style={S.input(!!fieldErrors.name)}
       />
       {fieldErrors.name && <div style={S.errorText}>{fieldErrors.name}</div>}
+    </div>
+  );
+
+  const fldNameHi = (
+    <div>
+      <label style={S.label}>विभाग का नाम (हिंदी)</label>
+      <input
+        type="text"
+        placeholder="e.g. कंप्यूटर विज्ञान"
+        value={form.name_hi}
+        onChange={(e) => set("name_hi", e.target.value)}
+        disabled={submitting}
+        maxLength={120}
+        style={{ ...S.input(false), fontFamily: "inherit" }}
+      />
+      <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 4 }}>
+        Optional — used in Hindi exports.
+      </div>
     </div>
   );
 
@@ -240,6 +261,7 @@ function DepartmentForm({
         submitError={submitError}
       >
         {fldName}
+        {fldNameHi}
         {fldCode}
         {fldStatus}
       </FormScreen>
@@ -271,12 +293,14 @@ function DepartmentForm({
           <>
             {fldInstitution}
             {fldName}
+            {fldNameHi}
             {fldCode}
           </>
         ) : (
           <ReviewGroup title={t("Department Details", lang)}>
             <ReviewItem label={t("Institution", lang)} value={selectedInst?.institution_name} />
             <ReviewItem label={t("Department Name", lang)} value={form.name} />
+            {form.name_hi && <ReviewItem label="विभाग का नाम (हिंदी)" value={form.name_hi} />}
             <ReviewItem label={t("Department Code", lang)} value={form.code} />
           </ReviewGroup>
         )
@@ -570,7 +594,7 @@ export default function DepartmentManagementPage() {
     try {
       const res = await apiFetch(`/api/departments/${dept.department_id}`, {
         method: "PUT",
-        body: JSON.stringify({ name: dept.name, code: dept.code, status: nextStatus }),
+        body: JSON.stringify({ name: dept.name, name_hi: dept.name_hi || undefined, code: dept.code, status: nextStatus }),
       });
       const data = await res.json();
       if (data.success) {

@@ -20,6 +20,124 @@ const PURE_TEXT_RE = /^[A-Za-z\s]+$/;
 const HAS_ALPHA_RE = /[A-Za-z]/;
 const DEVANAGARI_RE = /[ऀ-ॿ]/;
 
+/* ── Predefined label lookup (Hindi) ──────────────────────────────────────
+   Common English form-field label words → correct Hindi equivalents.
+   Checked first in enrichSchemaLabels / resolveLabel so that typical labels
+   always get proper Hindi even when the Google Translate API is unavailable,
+   avoiding incorrect phonetic outputs like "नम" for "name". */
+const LABEL_MAP_HI = new Map([
+  ["name",            "नाम"],
+  ["full name",       "पूरा नाम"],
+  ["first name",      "पहला नाम"],
+  ["last name",       "अंतिम नाम"],
+  ["surname",         "उपनाम"],
+  ["reason",          "कारण"],
+  ["department",      "विभाग"],
+  ["date",            "दिनांक"],
+  ["date of birth",   "जन्म तिथि"],
+  ["dob",             "जन्म तिथि"],
+  ["email",           "ईमेल"],
+  ["email address",   "ईमेल पता"],
+  ["phone",           "फोन"],
+  ["phone number",    "फोन नंबर"],
+  ["mobile",          "मोबाइल"],
+  ["mobile number",   "मोबाइल नंबर"],
+  ["address",         "पता"],
+  ["age",             "आयु"],
+  ["gender",          "लिंग"],
+  ["created at",      "निर्माण तिथि"],
+  ["created",         "निर्मित"],
+  ["description",     "विवरण"],
+  ["remarks",         "टिप्पणी"],
+  ["remark",          "टिप्पणी"],
+  ["comment",         "टिप्पणी"],
+  ["comments",        "टिप्पणियाँ"],
+  ["status",          "स्थिति"],
+  ["type",            "प्रकार"],
+  ["category",        "श्रेणी"],
+  ["institution",     "संस्थान"],
+  ["year",            "वर्ष"],
+  ["academic year",   "शैक्षणिक वर्ष"],
+  ["subject",         "विषय"],
+  ["title",           "शीर्षक"],
+  ["roll number",     "रोल नंबर"],
+  ["roll no",         "रोल नंबर"],
+  ["student",         "छात्र"],
+  ["teacher",         "शिक्षक"],
+  ["class",           "कक्षा"],
+  ["grade",           "श्रेणी"],
+  ["marks",           "अंक"],
+  ["total marks",     "कुल अंक"],
+  ["gpa",             "जीपीए"],
+  ["cgpa",            "सीजीपीए"],
+  ["attendance",      "उपस्थिति"],
+  ["course",          "पाठ्यक्रम"],
+  ["college",         "महाविद्यालय"],
+  ["university",      "विश्वविद्यालय"],
+  ["city",            "शहर"],
+  ["state",           "राज्य"],
+  ["country",         "देश"],
+  ["pincode",         "पिन कोड"],
+  ["pin code",        "पिन कोड"],
+  ["number",          "संख्या"],
+  ["code",            "कोड"],
+  ["id",              "आईडी"],
+  ["staff",           "कर्मचारी"],
+  ["employee",        "कर्मचारी"],
+  ["designation",     "पदनाम"],
+  ["salary",          "वेतन"],
+  ["amount",          "राशि"],
+  ["qualification",   "योग्यता"],
+  ["experience",      "अनुभव"],
+  ["document",        "दस्तावेज़"],
+  ["photo",           "फोटो"],
+  ["signature",       "हस्ताक्षर"],
+  ["note",            "नोट"],
+  ["notes",           "नोट्स"],
+  ["feedback",        "प्रतिक्रिया"],
+  ["rating",          "रेटिंग"],
+  ["score",           "स्कोर"],
+  ["rank",            "रैंक"],
+  ["result",          "परिणाम"],
+  ["percentage",      "प्रतिशत"],
+  ["fee",             "शुल्क"],
+  ["fees",            "शुल्क"],
+  ["backlog",         "बैकलॉग"],
+  ["blacklog",        "बैकलॉग"],
+  ["semester",        "सेमेस्टर"],
+  ["section",         "अनुभाग"],
+  ["branch",          "शाखा"],
+  ["batch",           "बैच"],
+  ["program",         "कार्यक्रम"],
+  ["programme",       "कार्यक्रम"],
+  ["degree",          "डिग्री"],
+  ["roll",            "रोल"],
+  ["admission",       "प्रवेश"],
+  ["registration",    "पंजीकरण"],
+  ["contact",         "संपर्क"],
+  ["father",          "पिता"],
+  ["mother",          "माता"],
+  ["guardian",        "अभिभावक"],
+  ["occupation",      "व्यवसाय"],
+  ["income",          "आय"],
+  ["religion",        "धर्म"],
+  ["caste",           "जाति"],
+  ["nationality",     "राष्ट्रीयता"],
+  ["language",        "भाषा"],
+  ["blood group",     "रक्त समूह"],
+]);
+
+/**
+ * Look up a label in the predefined Hindi map.
+ * Returns the Hindi string if found, otherwise undefined.
+ * @param {string} source - English label text
+ * @param {string} language - target language code
+ */
+function lookupLabel(source, language) {
+  if (language !== "hi") return undefined;
+  return LABEL_MAP_HI.get(source.trim().toLowerCase());
+}
+
 function isTranslatableText(value) {
   if (typeof value !== "string") return false;
   const t = value.trim();
@@ -310,7 +428,17 @@ async function translateRow(dataMap, fieldModes = null) {
 
     if (mode === "translate") {
       if (!HAS_ALPHA_RE.test(trimmed)) continue; // nothing to translate (e.g. "78")
-      tasks.push(translateSentence(trimmed).then((hi) => { if (hi) result[col] = hi; }));
+      tasks.push(
+        translateSentence(trimmed)
+          .then(async (hi) => {
+            // translateSentence returns the original text when Google fails or
+            // returns non-Devanagari output — check and fall back so description
+            // fields always end up in Hindi script, just like text/textarea fields.
+            if (DEVANAGARI_RE.test(hi)) return hi;
+            return transliteratePhrase(trimmed);
+          })
+          .then((hi) => { if (hi) result[col] = hi; })
+      );
     } else {
       // transliterate — keep the strict pure-text gate so values like emails,
       // dates or mixed alphanumerics are never mangled.
@@ -323,4 +451,59 @@ async function translateRow(dataMap, fieldModes = null) {
   return result;
 }
 
-module.exports = { isTranslatableText, translateRow, resolveTranslationMode };
+/**
+ * Enrich a schema row's field labels with translated values for the requested
+ * language. Returns a deep-cloned schema object so the caller's DB row is
+ * never mutated.
+ *
+ * Resolution order for each label:
+ *   0. Predefined lookup map  — instant, correct for common form-field words
+ *   1. Stored label[language] — already saved (e.g. from form creation)
+ *   2. translateSentence       — full Google Translate
+ *   3. transliteratePhrase     — word-by-word + phonetic fallback
+ *   4. English source          — last resort (better than wrong phonetic)
+ *
+ * @param {object} schemaRow  - raw schema row from custom_field_schemas
+ * @param {string} language   - target language code, e.g. "hi"
+ * @returns {Promise<object>} - deep-cloned, label-enriched schema row
+ */
+async function enrichSchemaLabels(schemaRow, language) {
+  if (!schemaRow || language === "en") return schemaRow;
+
+  const clone  = JSON.parse(JSON.stringify(schemaRow));
+  const fields = clone.schema?.fields;
+  if (!Array.isArray(fields)) return clone;
+
+  await Promise.all(fields.map(async (field) => {
+    const stored = field.label?.[language];
+    if (stored && DEVANAGARI_RE.test(stored)) return; // already a valid script label
+
+    const source = field.label?.en || field.column_name;
+    if (!source) return;
+
+    // 0. Predefined lookup — correct Hindi for common field-label words
+    const fromMap = lookupLabel(source, language);
+    if (fromMap) {
+      if (!field.label) field.label = {};
+      field.label[language] = fromMap;
+      return;
+    }
+
+    // 1‑2. Google Translate (full sentence) → if it returns Devanagari, use it
+    const translated = await translateSentence(source).catch(() => source);
+    if (DEVANAGARI_RE.test(translated)) {
+      if (!field.label) field.label = {};
+      field.label[language] = translated;
+      return;
+    }
+
+    // 3. Word-by-word + phonetic fallback
+    const phonetic = await transliteratePhrase(source).catch(() => "");
+    if (!field.label) field.label = {};
+    field.label[language] = DEVANAGARI_RE.test(phonetic) ? phonetic : source;
+  }));
+
+  return clone;
+}
+
+module.exports = { isTranslatableText, translateRow, resolveTranslationMode, translateSentence, transliteratePhrase, enrichSchemaLabels, lookupLabel };

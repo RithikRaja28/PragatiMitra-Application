@@ -1,10 +1,10 @@
 const express   = require("express");
 const { v4: uuidv4 } = require("uuid");
-const { getUploadUrl, getReadUrl } = require("../utils/s3");
+const { getUploadUrl, getReadUrl, uploadBuffer } = require("../utils/s3");
 const { verifyToken } = require("../middleware/auth");
-const multer = require("multer");
-const path   = require("path");
-const fs     = require("fs");
+const logger  = require("../utils/logger");
+const multer  = require("multer");
+const path    = require("path");
 
 const router = express.Router();
 
@@ -19,20 +19,9 @@ const ALLOWED_MIME_TYPES = [
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024;     // 10 MB
 
-/* ── Local disk storage for document uploads (mock / dev) ── */
-const UPLOADS_DIR = path.join(__dirname, "..", "uploads", "documents");
-if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
-
-const diskStorage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, UPLOADS_DIR),
-  filename:    (_req, file, cb) => {
-    const ext  = path.extname(file.originalname).toLowerCase();
-    cb(null, `${uuidv4()}${ext}`);
-  },
-});
-
+/* ── Memory storage for document uploads — file is streamed to S3 ── */
 const upload = multer({
-  storage: diskStorage,
+  storage: multer.memoryStorage(),
   limits:  { fileSize: MAX_FILE_SIZE },
   fileFilter: (_req, file, cb) => {
     if (ALLOWED_MIME_TYPES.includes(file.mimetype)) cb(null, true);
@@ -93,13 +82,14 @@ router.post("/read-url", verifyToken, async (req, res) => {
 /**
  * POST /api/upload/document
  * Multipart: field name "file"
- * Returns: { success, url, fileName }
+ * Returns: { success, fileKey }
  *
- * Saves the file to local disk and returns a URL pointing to it.
- * Swap the storage/url logic here when connecting real cloud storage.
+ * Accepts the file via multipart (no S3 CORS needed), uploads it to S3
+ * server-side, and returns the S3 key. The key is stored in the DB; a
+ * presigned read URL is generated on-demand when the user views the file.
  */
 router.post("/document", verifyToken, (req, res) => {
-  upload.single("file")(req, res, (err) => {
+  upload.single("file")(req, res, async (err) => {
     if (err instanceof multer.MulterError && err.code === "LIMIT_FILE_SIZE") {
       return res.status(400).json({ success: false, error: "File exceeds 10 MB limit." });
     }
@@ -110,16 +100,26 @@ router.post("/document", verifyToken, (req, res) => {
       return res.status(400).json({ success: false, error: "No file received." });
     }
 
-    /* Build the accessible URL.
-       In production swap this with your cloud storage URL. */
-    const host     = `${req.protocol}://${req.get("host")}`;
-    const fileUrl  = `${host}/uploads/documents/${req.file.filename}`;
+    try {
+      const ext     = path.extname(req.file.originalname).toLowerCase();
+      const fileKey = `form-documents/${uuidv4()}${ext}`;
 
-    return res.json({
-      success:  true,
-      url:      fileUrl,
-      fileName: req.file.originalname,
-    });
+      await uploadBuffer(fileKey, req.file.buffer, req.file.mimetype);
+
+      return res.json({ success: true, fileKey });
+    } catch (s3Err) {
+      logger.error("[upload/document] S3 upload failed", {
+        name: s3Err?.name, code: s3Err?.Code || s3Err?.code, message: s3Err?.message,
+      });
+      const code = s3Err?.Code || s3Err?.code || s3Err?.name || "";
+      const friendly =
+        code === "NoSuchBucket"
+          ? `S3 bucket "${process.env.AWS_BUCKET_NAME}" does not exist. Create it in the AWS console (region: ${process.env.AWS_REGION}).`
+          : code === "AccessDenied"
+          ? "S3 access denied. Ensure the IAM user has s3:PutObject permission on this bucket."
+          : `Storage error: ${s3Err?.message || code}`;
+      return res.status(500).json({ success: false, error: friendly });
+    }
   });
 });
 

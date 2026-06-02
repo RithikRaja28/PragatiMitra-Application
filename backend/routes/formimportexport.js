@@ -1,11 +1,42 @@
 "use strict";
 
-const express = require("express");
-const multer  = require("multer");
-const XLSX    = require("xlsx");
+const express  = require("express");
+const multer   = require("multer");
+const XLSX     = require("xlsx");     // used for import parsing only
+const ExcelJS  = require("exceljs"); // used for styled Excel export
 const { verifyToken } = require("../middleware/auth");
 const logger  = require("../utils/logger");
 const { getLogContext } = logger;
+const { translateSentence, transliteratePhrase, lookupLabel, translateRow, resolveTranslationMode } = require("../services/translationService");
+const { getReadUrl } = require("../utils/s3");
+
+/* 7 days — maximum presigned URL lifetime for long-term IAM credentials */
+const DOC_URL_TTL = 7 * 24 * 3600;
+
+/* Regex for Devanagari script — used to validate stored Hindi labels. */
+const DEVANAGARI_RE = /[ऀ-ॿ]/;
+
+/* Resolve a single UI label to the target language.
+   Priority order:
+     0. Predefined lookup map  — instant, correct for common form-field words
+     1. translateSentence       — Google Translate full phrase
+     2. transliteratePhrase     — word-by-word + phonetic fallback
+*/
+async function resolveLabel(source, language) {
+  if (language === "en" || !source) return source;
+
+  // 0. Predefined lookup — avoids wrong phonetic for common words
+  const fromMap = lookupLabel(source, language);
+  if (fromMap) return fromMap;
+
+  // 1. Google Translate
+  const translated = await translateSentence(source).catch(() => source);
+  if (DEVANAGARI_RE.test(translated)) return translated;
+
+  // 2. Word-by-word + phonetic fallback
+  const phonetic = await transliteratePhrase(source).catch(() => "");
+  return DEVANAGARI_RE.test(phonetic) ? phonetic : source;
+}
 
 const router = express.Router();
 router.use(verifyToken);
@@ -35,6 +66,87 @@ function handleUpload(req, res, next) {
 function validateFormName(name) { return /^[a-z][a-z0-9_]*$/.test(name); }
 function dbCol(col) { return col.trim().toLowerCase().replace(/\s+/g, "_"); }
 function normalize(s) { return String(s).toLowerCase().replace(/[\s_\-\.]+/g, ""); }
+
+/* ── Date export formatting ────────────────────────────────────────────────
+   With the pg DATE type-parser fix in server.js, date values arrive as plain
+   "YYYY-MM-DD" strings. This helper is a defensive fallback that also handles
+   the legacy case where pg still returns a JS Date object, using LOCAL-time
+   getters so the calendar date is never shifted by the server's UTC offset. */
+function formatExportDate(val) {
+  if (!val) return "";
+  if (val instanceof Date) {
+    const y = val.getFullYear();
+    const m = String(val.getMonth() + 1).padStart(2, "0");
+    const d = String(val.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
+  const s = String(val);
+  return s.length > 10 ? s.slice(0, 10) : s; // strip time component if present
+}
+
+/* ── Date parsing ──────────────────────────────────────────────────────────
+   Supports, in priority order:
+     1. JS Date object  — from XLSX cellDates mode
+     2. Excel serial    — integer number of days since 1899-12-30
+     3. ISO             — YYYY-MM-DD  /  YYYY/MM/DD  /  YYYY.MM.DD
+     4. DD-first        — DD/MM/YYYY  DD-MM-YYYY  DD.MM.YYYY  (Indian default)
+                          D/M/YY two-digit year also accepted
+     5. MM-first        — MM/DD/YYYY  MM-DD-YYYY  (US format, fallback when
+                          DD-first produces an invalid month)
+   Returns "YYYY-MM-DD" string, or null when the value cannot be parsed.
+   Caller should treat null as a validation error for required fields. */
+
+function _utcDate(y, m, d) {
+  if (m < 1 || m > 12 || d < 1 || d > 31 || y < 1900 || y > 2100) return null;
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  if (dt.getUTCFullYear() !== y || dt.getUTCMonth() + 1 !== m || dt.getUTCDate() !== d) return null;
+  return dt.toISOString().slice(0, 10);
+}
+
+function parseImportDate(val) {
+  if (val == null || val === "") return null;
+
+  /* 1. JS Date object (XLSX cellDates: true) */
+  if (val instanceof Date) {
+    return isNaN(val.getTime()) ? null : val.toISOString().slice(0, 10);
+  }
+
+  const str = String(val).trim();
+  if (!str) return null;
+
+  /* 2. Excel serial number — positive integer in plausible date range */
+  const num = Number(str);
+  if (!isNaN(num) && Number.isFinite(num) && num > 0 && Math.floor(num) === num && num < 2_958_466) {
+    const d = new Date(Date.UTC(1899, 11, 30) + num * 86_400_000);
+    return isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
+  }
+
+  /* 3. ISO: YYYY[-/.]MM[-/.]DD */
+  const isoM = str.match(/^(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})$/);
+  if (isoM) return _utcDate(+isoM[1], +isoM[2], +isoM[3]);
+
+  /* 4 & 5. D/M/Y patterns — handles 4-digit or 2-digit year */
+  const dmyM = str.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})$/);
+  if (dmyM) {
+    const a = +dmyM[1], b = +dmyM[2];
+    let y = +dmyM[3];
+    if (y < 100) y += y < 50 ? 2000 : 1900;   // 2-digit year pivot at 50
+
+    /* Try DD/MM/YYYY first (Indian/European standard) */
+    const dmy = _utcDate(y, b, a);
+    if (dmy) return dmy;
+
+    /* Fallback: MM/DD/YYYY (US format) when DD/MM produces an invalid month */
+    const mdy = _utcDate(y, a, b);
+    if (mdy) return mdy;
+
+    return null;
+  }
+
+  /* 6. Native JS parse — last resort (handles ISO 8601 variants, RFC 2822, etc.) */
+  const d = new Date(str);
+  return isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
+}
 
 /* ════════════════════════════════════════════════════════════════
    resolveUserContext
@@ -126,8 +238,15 @@ function processRow(row, fields, fieldToCol, rowNum) {
     } else if (field.type === "boolean") {
       rowData[col] = ["true", "yes", "1"].includes(val.toLowerCase());
     } else if (field.type === "date") {
-      const d = new Date(val);
-      rowData[col] = isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
+      const parsed = parseImportDate(val);
+      if (parsed === null && field.required) {
+        return { error: { row: rowNum, field: col, error: `${label} has an unrecognised date format ("${val}"). Use DD/MM/YYYY, YYYY-MM-DD, or MM/DD/YYYY.` } };
+      }
+      rowData[col] = parsed;
+    } else if (field.type === "document") {
+      /* Document files cannot be included in a CSV/Excel import.
+         Always store NULL — the user uploads the file manually after import. */
+      rowData[col] = null;
     } else {
       rowData[col] = val;
     }
@@ -323,8 +442,16 @@ router.post("/:formName/import/execute-chunk", async (req, res) => {
     const recordsTable = `${formName}_records`;
     const fieldCols    = fields.map((f) => dbCol(f.column_name));
 
+    /* Track inserted English rows so Hindi mirrors can be created afterward */
+    const insertedRows = [];
+
     try {
       await client.query("BEGIN");
+
+      /* Ensure source_row_id column exists (needed for Hindi linking) */
+      await client.query(
+        `ALTER TABLE ${recordsTable} ADD COLUMN IF NOT EXISTS source_row_id UUID`
+      );
 
       for (const rowData of prepared) {
         if (duplicateHandling !== "new") {
@@ -356,17 +483,18 @@ router.post("/:formName/import/execute-chunk", async (req, res) => {
           }
         }
 
-        /* INSERT */
+        /* INSERT — capture the new row's id for Hindi linking */
         const stdCols = ["form_name", "institution_id", "department_id", "year", "schema_id", "language"];
         const stdVals = [formName, ctx.institutionId, resolvedDeptId, formYear, schemaRow.id, language];
         const allCols = [...stdCols, ...fieldCols];
         const allVals = [...stdVals, ...fieldCols.map((col) => rowData[col] ?? null)];
         const placeholders = allVals.map((_, i) => `$${i + 1}`).join(", ");
 
-        await client.query(
-          `INSERT INTO ${recordsTable} (${allCols.join(", ")}) VALUES (${placeholders})`,
+        const { rows: [inserted] } = await client.query(
+          `INSERT INTO ${recordsTable} (${allCols.join(", ")}) VALUES (${placeholders}) RETURNING id`,
           allVals
         );
+        insertedRows.push({ id: inserted.id, rowData });
         success++;
       }
 
@@ -376,6 +504,36 @@ router.post("/:formName/import/execute-chunk", async (req, res) => {
       throw err;
     } finally {
       client.release();
+    }
+
+    /* ── Async Hindi mirror rows ──────────────────────────────────────────
+       Mirrors the formData.js POST behaviour: for each newly imported English
+       row, translate the text fields and insert a linked Hindi row.
+       Runs after the response is sent so import speed is unaffected. */
+    if (language === "en" && insertedRows.length > 0) {
+      const hindiEnabled = await pool
+        .query(`SELECT COALESCE(translate_to_hindi, true) AS enabled FROM table_list WHERE form_name = $1`, [formName])
+        .then(r => r.rows[0]?.enabled !== false)
+        .catch(() => true);
+
+      if (hindiEnabled) {
+        const fieldModes = {};
+        for (const f of fields) fieldModes[dbCol(f.column_name)] = resolveTranslationMode(f);
+
+        setImmediate(async () => {
+          for (const { id: srcId, rowData } of insertedRows) {
+            try {
+              const hiData  = await translateRow(rowData, fieldModes);
+              const hiCols  = ["form_name", "institution_id", "department_id", "year", "schema_id", "language", "source_row_id", ...fieldCols];
+              const hiVals  = [formName, ctx.institutionId, resolvedDeptId, formYear, schemaRow.id, "hi", srcId, ...fieldCols.map(c => hiData[c] ?? null)];
+              const hiPh    = hiVals.map((_, i) => `$${i + 1}`).join(", ");
+              await pool.query(`INSERT INTO ${recordsTable} (${hiCols.join(", ")}) VALUES (${hiPh})`, hiVals);
+            } catch (e) {
+              logger.error(`Hindi import mirror failed ${formName}/${srcId}`, { message: e.message });
+            }
+          }
+        });
+      }
     }
 
     return res.json({
@@ -466,49 +624,188 @@ router.get("/:formName/export", async (req, res) => {
       queryParams
     );
 
-    /* Fetch dept names for institute admin export */
+    /* Fetch dept names (both EN and HI) for institute admin export */
     let deptMap = {};
     if (!ctx.departmentId && records.some(r => r.department_id)) {
       const deptIds = [...new Set(records.map(r => r.department_id).filter(Boolean))];
       if (deptIds.length > 0) {
         const { rows: depts } = await pool.query(
-          `SELECT department_id, name FROM departments WHERE department_id = ANY($1::uuid[])`,
+          `SELECT department_id, name, name_hi FROM departments WHERE department_id = ANY($1::uuid[])`,
           [deptIds]
         );
-        depts.forEach(d => { deptMap[d.department_id] = d.name; });
+        depts.forEach(d => { deptMap[d.department_id] = { name: d.name, name_hi: d.name_hi }; });
       }
     }
 
-    const exportRows = records.map((rec) => {
-      const row = {};
+    /* "Department" column header and fallback in the export language */
+    const deptColHeader   = language === "hi" ? "विभाग"        : "Department";
+    const institutionWide = language === "hi" ? "संस्था-व्यापी" : "Institution-wide";
+
+    /* ── Resolve column headers ───────────────────────────────────────────
+       For non-English exports:
+         1. Use stored label[lang] ONLY if it actually contains target-script
+            characters (guards against English text accidentally saved as the
+            Hindi label in the form builder).
+         2. Otherwise fall through to resolveLabel (Google Translate → phonetic
+            fallback), which covers all existing forms that were created before
+            Hindi label storage was added.
+    ─────────────────────────────────────────────────────────────────────── */
+    const isTargetScript = (text) => language === "en" || DEVANAGARI_RE.test(text);
+
+    const fieldLabelMap  = {};
+    const createdAtLabel = language !== "en"
+      ? await resolveLabel("Created At", language)
+      : "Created At";
+
+    if (language !== "en") {
+      await Promise.all(fields.map(async (f) => {
+        const col    = dbCol(f.column_name);
+        const stored = f.label?.[language];
+        if (stored && isTargetScript(stored)) {
+          fieldLabelMap[col] = stored;
+        } else {
+          const source = f.label?.en || f.column_name;
+          fieldLabelMap[col] = await resolveLabel(source, language);
+        }
+      }));
+    } else {
+      fields.forEach((f) => {
+        const col = dbCol(f.column_name);
+        fieldLabelMap[col] = f.label?.en || f.column_name;
+      });
+    }
+
+    /* ── Pre-generate presigned URLs for document fields ─────────────────
+       getSignedUrl is local HMAC — no S3 network call. Fast even for
+       thousands of rows. Deduplicates keys so each unique file is signed
+       only once. Legacy local URLs (http://…) are passed through as-is. */
+    const docCols = new Set(
+      fields.filter((f) => f.type === "document").map((f) => dbCol(f.column_name))
+    );
+
+    const keyToUrl = {};
+    if (docCols.size > 0) {
+      const uniqueKeys = [
+        ...new Set(
+          records.flatMap((rec) =>
+            [...docCols].map((col) => rec[col]).filter(
+              (v) => v && !v.startsWith("http://") && !v.startsWith("https://")
+            )
+          )
+        ),
+      ];
+      await Promise.all(
+        uniqueKeys.map(async (key) => {
+          try { keyToUrl[key] = await getReadUrl(key, DOC_URL_TTL); }
+          catch { keyToUrl[key] = key; } // fallback: keep raw key on error
+        })
+      );
+    }
+
+    function resolveDocValue(val) {
+      if (!val) return "";
+      if (val.startsWith("http://") || val.startsWith("https://")) return val;
+      return keyToUrl[val] ?? val;
+    }
+
+    /* ── Build ordered header list + data rows ────────────────────────── */
+    const headers = [];
+    if (!ctx.departmentId) headers.push(deptColHeader);
+    fields.forEach((f) => headers.push(fieldLabelMap[dbCol(f.column_name)]));
+    headers.push(createdAtLabel);
+
+    /* Track which column indices (0-based) hold document URLs for XLSX hyperlinks */
+    const hasDeptCol   = !ctx.departmentId;
+    const docColIndices = new Set(
+      fields.reduce((acc, f, i) => {
+        if (f.type === "document") acc.push((hasDeptCol ? 1 : 0) + i);
+        return acc;
+      }, [])
+    );
+
+    const dataRows = records.map((rec) => {
+      const row = [];
       if (!ctx.departmentId) {
-        row["Department"] = rec.department_id ? (deptMap[rec.department_id] || rec.department_id) : "Institution-wide";
+        const deptInfo = rec.department_id ? deptMap[rec.department_id] : null;
+        row.push(deptInfo
+          ? (language === "hi" ? (deptInfo.name_hi || deptInfo.name) : deptInfo.name)
+          : institutionWide);
       }
       fields.forEach((f) => {
-        const col   = dbCol(f.column_name);
-        /* Use the label for the selected language; fall back to English then raw column name */
-        const label = f.label?.[language] || f.label?.en || f.column_name;
-        row[label]  = rec[col] ?? "";
+        const val = rec[dbCol(f.column_name)] ?? "";
+        if (f.type === "date")     row.push(formatExportDate(val));
+        else if (f.type === "document") row.push(resolveDocValue(val));
+        else                       row.push(val);
       });
-      row["Created At"] = rec.created_at ? new Date(rec.created_at).toISOString().slice(0, 10) : "";
+      row.push(rec.created_at ? formatExportDate(new Date(rec.created_at)) : "");
       return row;
     });
 
-    const ws = XLSX.utils.json_to_sheet(exportRows.length ? exportRows : [{}]);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, formName);
     const ts       = new Date().toISOString().slice(0, 10);
     const langTag  = language !== "en" ? `_${language}` : "";
     const baseName = `${formName}${langTag}_${ts}`;
 
+    /* ── XLSX export via ExcelJS (supports cell styling) ─────────────── */
     if (format === "xlsx") {
-      const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+      const workbook  = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet(formName);
+
+      /* Header row — bold white text on blue background */
+      const headerRow = worksheet.addRow(headers);
+      headerRow.eachCell((cell) => {
+        cell.font      = { bold: true, color: { argb: "FFFFFFFF" }, size: 11 };
+        cell.fill      = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1D4ED8" } };
+        cell.alignment = { vertical: "middle", horizontal: "center", wrapText: false };
+        cell.border    = {
+          bottom: { style: "thin", color: { argb: "FF1E40AF" } },
+        };
+      });
+      headerRow.height = 20;
+
+      /* Auto-width: seed each column with its header length */
+      worksheet.columns = headers.map((h) => ({ width: Math.max(String(h).length + 4, 12) }));
+
+      /* Data rows — normal format, zebra shading + hyperlinks for document cols */
+      dataRows.forEach((row, idx) => {
+        const dataRow = worksheet.addRow(row);
+        if (idx % 2 === 1) {
+          dataRow.eachCell({ includeEmpty: true }, (cell) => {
+            cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF1F5F9" } };
+          });
+        }
+        /* Convert document URL strings to clickable hyperlinks */
+        docColIndices.forEach((colIdx) => {
+          const cell = dataRow.getCell(colIdx + 1); // ExcelJS is 1-based
+          const url  = cell.value;
+          if (url && typeof url === "string" && url.startsWith("https://")) {
+            cell.value     = { text: "View Document ↗", hyperlink: url, tooltip: url };
+            cell.font      = { color: { argb: "FF2563EB" }, underline: true, size: 10 };
+          }
+        });
+        dataRow.eachCell({ includeEmpty: true }, (cell) => {
+          cell.alignment = { vertical: "middle" };
+        });
+      });
+
+      worksheet.views = [{ state: "frozen", ySplit: 1 }]; // freeze header row
+
       res.setHeader("Content-Disposition", `attachment; filename="${baseName}.xlsx"`);
       res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-      return res.send(buf);
+      await workbook.xlsx.write(res);
+      return res.end();
     }
 
-    const csv = XLSX.utils.sheet_to_csv(ws);
+    /* ── CSV export — plain text, no styling needed ───────────────────── */
+    const escape = (v) => {
+      const s = String(v ?? "");
+      return s.includes(",") || s.includes('"') || s.includes("\n")
+        ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const csvLines = [
+      headers.map(escape).join(","),
+      ...dataRows.map((r) => r.map(escape).join(",")),
+    ];
+    const csv = "﻿" + csvLines.join("\r\n"); // BOM for Excel UTF-8 detection
     res.setHeader("Content-Disposition", `attachment; filename="${baseName}.csv"`);
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
     return res.send(csv);
@@ -541,11 +838,12 @@ router.get("/:formName/export/sample", async (req, res) => {
     const { fields } = result;
 
     const samplePlaceholder = (field) => {
-      if (field.type === "number")  return "0";
-      if (field.type === "boolean") return "Yes";
-      if (field.type === "date")    return "2025-01-01";
-      if (field.type === "email")   return "example@email.com";
-      if (field.type === "phone")   return "9876543210";
+      if (field.type === "number")   return "0";
+      if (field.type === "boolean")  return "Yes";
+      if (field.type === "date")     return "2025-01-01";
+      if (field.type === "email")    return "example@email.com";
+      if (field.type === "phone")    return "9876543210";
+      if (field.type === "document") return "(upload via UI – leave blank)";
       return "Sample Value";
     };
 
