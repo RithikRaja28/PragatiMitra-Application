@@ -24,17 +24,18 @@ import DepartmentManagementPage  from "../../pages/Roles/superadmin/DepartmentMa
 import InstitutionManagementPage from "../../pages/Roles/superadmin/InstitutionManagementPage";
 import CommitteeManagementPage   from "../../pages/Roles/superadmin/CommitteesManagementPage";
 import RoleAccessPage            from "../../pages/Roles/superadmin/RoleAccessPage";
-import KPIPage                   from "../../pages/Roles/superadmin/Kpipage";
 
 /* ── Institute Admin page imports ───────────────────────────── */
 import InstitutionAdminOverviewPage      from "../../pages/Roles/institutionadmin/InstitutionAdminOverviewPage";
 import ReportSetupPage                   from "../../pages/Roles/institutionadmin/ReportSetupPage";
 import InstituteAdminUserManagementPage  from "../../pages/Roles/institutionadmin/InstituteAdminUserManagementPage";
 import InstituteAdminDepartmentPage      from "../../pages/Roles/institutionadmin/InstituteAdminDepartmentPage";
+import InstituteKpiPage                  from "../../pages/Roles/institutionadmin/InstituteKpiPage";
 
 /* ── Department Admin page imports ──────────────────────────── */
 import DepartmentAdminDashboardPage      from "../../pages/Roles/departmentadmin/DepartmentAdminDashboardPage";
 import DepartmentAdminUserManagementPage from "../../pages/Roles/departmentadmin/DepartmentAdminUserManagementPage";
+import DeptKpiPage                       from "../../pages/Roles/departmentadmin/DeptKpiPage";
 
 /* ── Director's Office page imports ─────────────────────────── */
 import DirectorsDashboardPage from "../../pages/Roles/directorsoffice/DirectorsDashboardPage";
@@ -199,11 +200,6 @@ export const ROLE_CONFIG = {
       },
 
       {
-        group: "KPI",
-        items: [{ id: "kpi", label: "KPI", icon: "BarChart2", permission: null }],
-      },
-
-      {
         group: "Access & Data",
         items: [
           {
@@ -241,7 +237,6 @@ export const ROLE_CONFIG = {
       "role-access": <RoleAccessPage />,
       "master-data": <SuperAdminMasterDataPage />,
       "audit-logs": <AuditLogsPage />,
-      "kpi": <KPIPage />,
     },
     defaultPage: "overview",
     user: { name: "Super Admin", initials: "SA", org: "PragatiMitra HQ" },
@@ -281,6 +276,12 @@ export const ROLE_CONFIG = {
             id: "ia-report-setup",
             label: "Report Setup",
             icon: "FileText",
+            permission: null,
+          },
+          {
+            id: "ia-kpi",
+            label: "KPI Charts",
+            icon: "BarChart2",
             permission: null,
           },
         ],
@@ -337,6 +338,7 @@ export const ROLE_CONFIG = {
       "ia-users":           <InstituteAdminUserManagementPage />,
       "ia-departments":     <InstituteAdminDepartmentPage />,
       "ia-report-setup":    <ReportSetupPage />,
+      "ia-kpi":             <InstituteKpiPage />,
       "ia-sections":        <SectionsPage />,
       "ia-workflow":        <WorkflowPage />,
       "ia-task-workflow":   <TaskWorkflowPage />,
@@ -498,11 +500,23 @@ export const ROLE_CONFIG = {
           },
         ],
       },
+      {
+        group: "Reports",
+        items: [
+          {
+            id: "da-kpi",
+            label: "KPI Charts",
+            icon: "BarChart2",
+            permission: null,
+          },
+        ],
+      },
     ],
     pages: {
       "da-dashboard": <DeptAdminDashboardPage />,
       "da-users": <DeptUsersPage />,
       "da-tasks": <TaskOverviewPage />,
+      "da-kpi":   <DeptKpiPage />,
     },
     defaultPage: "da-dashboard",
     user: {

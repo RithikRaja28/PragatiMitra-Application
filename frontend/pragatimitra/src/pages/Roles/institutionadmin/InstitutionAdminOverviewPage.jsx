@@ -5,6 +5,7 @@ import {
 } from "recharts";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { t } from "../../../i18n/translations";
+import KpiDashboardPanel from "../../../components/KPI/KpiDashboardPanel";
 
 const C = {
   primary:   "#6366f1",
@@ -124,6 +125,15 @@ export default function InstitutionAdminOverviewPage() {
               width: `${c.bar}%`, background: c.color, borderRadius: "0 2px 2px 0" }} />
           </div>
         ))}
+      </div>
+
+      {/* KPI Dashboard Panel */}
+      <div style={{ ...card, padding: "16px 20px" }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 2 }}>{t("KPI Overview", lang)}</div>
+        <div style={{ fontSize: 11, color: C.textSub, marginBottom: 12 }}>
+          Charts from KPIs pinned to the dashboard — configure in KPI Charts
+        </div>
+        <KpiDashboardPanel />
       </div>
 
       {/* Main row */}
