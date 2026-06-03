@@ -1,48 +1,25 @@
 /**
  * routes/kpi.js — Annual Report Portal · KPI Backend
  *
- * Mount: app.use("/api/kpi", require("./routes/kpi"));
+ * Role-based scope:
+ *   institute_admin  → scope='institute', keyed by institute_id  (UUID/TEXT)
+ *   department_admin → scope='department', keyed by department_id (UUID/TEXT)
  *
- * Architecture:
- *   kpi_config      = SOURCE OF TRUTH (chart configuration + stored query)
- *   kpi_svg_reports = EXPORT ONLY     (SVG saved once at report generation)
- *   dashboard_kpi   = JUNCTION TABLE  (links configs to report pages)
- *
- * Flow:
- *   1. User designs chart → config saved to kpi_config
- *   2. Preview/Regenerate → query rebuilt fresh from config, NO SVG saved
- *   3. Export Report → SVG rendered and saved ONCE to kpi_svg_reports
- *
- * Key rules:
- *   - x_col always comes from DB column
- *   - y_cols are selected numeric DB columns
- *   - New rows in source table appear automatically on regenerate
- *   - New columns appear only when user adds them to y_cols
- *   - institute_id, department_id, year from session — never stored in DB
- *
- * Endpoints:
- *   GET    /api/kpi/tables
- *   GET    /api/kpi/tables/:name/columns
- *
- *   POST   /api/kpi/configs
- *   GET    /api/kpi/configs
- *   GET    /api/kpi/configs/:id
- *   PUT    /api/kpi/configs/:id
- *   DELETE /api/kpi/configs/:id
- *
- *   POST   /api/kpi/configs/:id/regenerate   fresh data, NO SVG saved
- *   POST   /api/kpi/configs/:id/export-svg   save SVG at export time only
- *   GET    /api/kpi/configs/:id/svg
- *
- *   GET    /api/kpi/dashboard-kpi
- *   POST   /api/kpi/dashboard-kpi
- *   DELETE /api/kpi/dashboard-kpi/:id
+ * Dashboard config fields on kpi_config:
+ *   show_on_dashboard       BOOLEAN  — user explicitly pinned this KPI to dashboard
+ *   dashboard_display_type  TEXT     — 'single' | 'group'
+ *   dashboard_group_name    TEXT     — label when display_type='group'
  */
 
-const express = require("express");
-const router  = express.Router();
+const express         = require("express");
+const router          = express.Router();
+const { verifyToken } = require("../middleware/auth");
 
 router.use((req, _res, next) => { req.pool = req.app.locals.pool; next(); });
+router.use(verifyToken);
+
+// ─── One-time init flag (avoid re-running migrations per request) ──────────────
+let _initialized = false;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -59,20 +36,17 @@ const NUMERIC_TYPES = [
 ];
 
 function isNumericType(dt) {
-  const t = (dt || "").toLowerCase();
-  return NUMERIC_TYPES.some(nt => t.includes(nt));
+  return NUMERIC_TYPES.some(nt => (dt || "").toLowerCase().includes(nt));
 }
 
 function niceNumber(val) {
   if (!val || val <= 0) return 100;
   const mag = Math.pow(10, Math.floor(Math.log10(val)));
   const res = val / mag;
-  let n;
-  if (res <= 1) n = 1;
-  else if (res <= 2) n = 2;
-  else if (res <= 5) n = 5;
-  else n = 10;
-  return n * mag;
+  if (res <= 1) return 1 * mag;
+  if (res <= 2) return 2 * mag;
+  if (res <= 5) return 5 * mag;
+  return 10 * mag;
 }
 
 function niceInterval(nm) {
@@ -80,21 +54,10 @@ function niceInterval(nm) {
   const raw = nm / 5;
   const mag = Math.pow(10, Math.floor(Math.log10(raw)));
   const res = raw / mag;
-  let s;
-  if (res <= 1) s = 1;
-  else if (res <= 2) s = 2;
-  else if (res <= 5) s = 5;
-  else s = 10;
-  return s * mag;
-}
-
-function getSessionContext(req) {
-  return {
-    institute_id:  req.session?.institute_id  ?? null,
-    department_id: req.session?.department_id ?? null,
-    year:          req.session?.year          ?? null,
-    user_id:       req.session?.user_id       ?? req.session?.userId ?? null,
-  };
+  if (res <= 1) return 1 * mag;
+  if (res <= 2) return 2 * mag;
+  if (res <= 5) return 5 * mag;
+  return 10 * mag;
 }
 
 function buildDisplaySql(cfg) {
@@ -102,28 +65,86 @@ function buildDisplaySql(cfg) {
     `SELECT ${cfg.x_col}, ${(cfg.y_cols || []).join(", ")}\n` +
     `FROM   ${cfg.table_name}\n` +
     `WHERE  ${cfg.x_col} IS NOT NULL\n` +
-    `ORDER  BY ${cfg.x_col}\n` +
-    `LIMIT  ${cfg.row_limit || 500}`
+    `ORDER  BY ${cfg.x_col}`
   );
 }
 
-// ─── Ensure tables ────────────────────────────────────────────────────────────
+// ─── Role context from JWT ─────────────────────────────────────────────────────
+
+function getRoleContext(req) {
+  const roles = new Set(req.user?.roles || []);
+  return {
+    isInstAdmin:  roles.has("institute_admin"),
+    isDeptAdmin:  roles.has("department_admin"),
+    isSuperAdmin: roles.has("super_admin"),
+    institute_id:  String(req.user?.institutionId ?? ""),
+    department_id: String(req.user?.departmentId  ?? ""),
+    user_id:       String(req.user?.userId        ?? ""),
+  };
+}
+
+// Returns { clause, params } — clause may be empty string (super admin = no filter)
+function buildScopeWhere(ctx, alias = "c") {
+  const a = alias ? `${alias}.` : "";
+  if (ctx.isSuperAdmin) return { clause: "", params: [] };
+  if (ctx.isInstAdmin && ctx.institute_id)
+    return { clause: `WHERE ${a}scope = 'institute' AND ${a}institute_id = $1`, params: [ctx.institute_id] };
+  if (ctx.isDeptAdmin && ctx.department_id)
+    return { clause: `WHERE ${a}scope = 'department' AND ${a}department_id = $1`, params: [ctx.department_id] };
+  return { clause: "WHERE 1=0", params: [] };
+}
+
+// Append an extra AND condition to an existing scope result
+function appendAnd(scope, condition, ...newParams) {
+  const idx = scope.params.length + 1;
+  // Replace placeholder $N in condition with actual position
+  let resolved = condition;
+  newParams.forEach((_, i) => {
+    resolved = resolved.replace(`$?`, `$${idx + i}`);
+  });
+  const clause = scope.clause
+    ? `${scope.clause} AND ${resolved}`
+    : `WHERE ${resolved}`;
+  return { clause, params: [...scope.params, ...newParams] };
+}
+
+async function checkOwnership(pool, configId, ctx) {
+  if (ctx.isSuperAdmin) return true;
+  const { rows } = await pool.query(
+    `SELECT id FROM kpi_config WHERE id = $1 AND (
+      (scope = 'institute'  AND institute_id  = $2) OR
+      (scope = 'department' AND department_id = $3)
+    )`,
+    [configId, ctx.institute_id, ctx.department_id]
+  );
+  return rows.length > 0;
+}
+
+// ─── Ensure tables + migrations (runs once per process) ───────────────────────
 async function ensureTables(pool) {
+  if (_initialized) return;
+
+  // 1. Create tables if they don't exist
   await pool.query(`
     CREATE TABLE IF NOT EXISTS kpi_config (
-      id          SERIAL        PRIMARY KEY,
-      title       TEXT          NOT NULL DEFAULT 'KPI Chart',
-      description TEXT,
-      table_name  VARCHAR(255)  NOT NULL,
-      x_col       VARCHAR(255)  NOT NULL,
-      y_cols      TEXT[]        NOT NULL,
-      chart_type  VARCHAR(50)   NOT NULL DEFAULT 'bar',
-      row_limit   INTEGER       NOT NULL DEFAULT 500,
-      query       TEXT,
-      created_by  INTEGER,
-      updated_by  INTEGER,
-      created_at  TIMESTAMP     NOT NULL DEFAULT NOW(),
-      updated_at  TIMESTAMP     NOT NULL DEFAULT NOW()
+      id                     SERIAL        PRIMARY KEY,
+      title                  TEXT          NOT NULL DEFAULT 'KPI Chart',
+      description            TEXT,
+      table_name             VARCHAR(255)  NOT NULL,
+      x_col                  VARCHAR(255)  NOT NULL,
+      y_cols                 TEXT[]        NOT NULL,
+      chart_type             VARCHAR(50)   NOT NULL DEFAULT 'bar',
+      query                  TEXT,
+      scope                  VARCHAR(20)   NOT NULL DEFAULT 'institute',
+      institute_id           TEXT,
+      department_id          TEXT,
+      show_on_dashboard      BOOLEAN       NOT NULL DEFAULT false,
+      dashboard_display_type TEXT          NOT NULL DEFAULT 'single',
+      dashboard_group_name   TEXT,
+      created_by             TEXT,
+      updated_by             TEXT,
+      created_at             TIMESTAMP     NOT NULL DEFAULT NOW(),
+      updated_at             TIMESTAMP     NOT NULL DEFAULT NOW()
     );
 
     CREATE TABLE IF NOT EXISTS kpi_svg_reports (
@@ -139,21 +160,64 @@ async function ensureTables(pool) {
     CREATE TABLE IF NOT EXISTS dashboard_kpi (
       id            SERIAL    PRIMARY KEY,
       kpi_config_id INTEGER   NOT NULL REFERENCES kpi_config(id) ON DELETE CASCADE,
-      created_by    INTEGER,
-      updated_by    INTEGER,
+      created_by    TEXT,
+      updated_by    TEXT,
       created_at    TIMESTAMP NOT NULL DEFAULT NOW(),
       updated_at    TIMESTAMP NOT NULL DEFAULT NOW()
     );
   `);
+
+  // 2. Add new columns to existing tables (each individually so one failure doesn't block others)
+  const safeAdd = async (sql) => { try { await pool.query(sql); } catch (_) {} };
+
+  await safeAdd(`ALTER TABLE kpi_config ADD COLUMN IF NOT EXISTS scope                  VARCHAR(20) NOT NULL DEFAULT 'institute'`);
+  await safeAdd(`ALTER TABLE kpi_config ADD COLUMN IF NOT EXISTS show_on_dashboard      BOOLEAN     NOT NULL DEFAULT false`);
+  await safeAdd(`ALTER TABLE kpi_config ADD COLUMN IF NOT EXISTS dashboard_display_type TEXT        NOT NULL DEFAULT 'single'`);
+  await safeAdd(`ALTER TABLE kpi_config ADD COLUMN IF NOT EXISTS dashboard_group_name   TEXT`);
+
+  // 3. Convert old INTEGER columns to TEXT (handles projects that started before this refactor)
+  const safeConvert = async (table, col) => {
+    try {
+      const { rows } = await pool.query(
+        `SELECT 1 FROM information_schema.columns
+         WHERE table_name=$1 AND column_name=$2 AND data_type='integer'`,
+        [table, col]
+      );
+      if (rows.length > 0) {
+        await pool.query(`ALTER TABLE ${table} ALTER COLUMN ${col} TYPE TEXT USING ${col}::TEXT`);
+      }
+    } catch (_) {}
+  };
+
+  const safeAddText = async (table, col) => {
+    try {
+      const { rows } = await pool.query(
+        `SELECT 1 FROM information_schema.columns WHERE table_name=$1 AND column_name=$2`,
+        [table, col]
+      );
+      if (!rows.length) await pool.query(`ALTER TABLE ${table} ADD COLUMN ${col} TEXT`);
+    } catch (_) {}
+  };
+
+  await safeConvert("kpi_config", "institute_id");
+  await safeConvert("kpi_config", "department_id");
+  await safeConvert("kpi_config", "created_by");
+  await safeConvert("kpi_config", "updated_by");
+  await safeConvert("kpi_config", "row_limit");   // was integer, safe to ignore if missing
+  await safeConvert("dashboard_kpi", "created_by");
+  await safeConvert("dashboard_kpi", "updated_by");
+
+  await safeAddText("kpi_config", "institute_id");
+  await safeAddText("kpi_config", "department_id");
+
+  _initialized = true;
 }
 
-// ─── Core query runner ────────────────────────────────────────────────────────
-// SQL is ALWAYS rebuilt fresh from config fields.
-// New rows in the source table appear automatically on every run.
+// ─── Core query runner (no row limit — returns all records) ───────────────────
 async function runConfigQuery(pool, cfg) {
   const yArr = cfg.y_cols || [];
-  if (!yArr.length) throw new Error("No y_cols configured");
-  if (!cfg.x_col)   throw new Error("No x_col configured");
+  if (!yArr.length)    throw new Error("No y_cols configured");
+  if (!cfg.x_col)      throw new Error("No x_col configured");
   if (!cfg.table_name) throw new Error("No table_name configured");
 
   const selectParts = [
@@ -166,10 +230,9 @@ async function runConfigQuery(pool, cfg) {
     `FROM   ${quoteIdent(cfg.table_name)}`,
     `WHERE  ${quoteIdent(cfg.x_col)} IS NOT NULL`,
     `ORDER  BY ${quoteIdent(cfg.x_col)}`,
-    `LIMIT  $1`,
   ].join(" ");
 
-  const { rows } = await pool.query(sql, [cfg.row_limit || 500]);
+  const { rows } = await pool.query(sql);
 
   const xData  = rows.map(r => String(r.__x__));
   const series = yArr.map((col, i) => ({
@@ -201,16 +264,26 @@ router.get("/tables", async (req, res) => {
   const { schema = "public" } = req.query;
   try {
     await ensureTables(req.pool);
+    // Use pg_class.reltuples (planner estimate) as primary row count — n_live_tup from
+    // pg_stat_user_tables is 0 until ANALYZE runs, so it's unreliable for new tables.
     const { rows } = await req.pool.query(
       `SELECT t.table_name,
               t.table_schema AS schema_name,
-              s.n_live_tup   AS row_count
+              GREATEST(0,
+                CASE WHEN s.n_live_tup > 0 THEN s.n_live_tup
+                     ELSE GREATEST(0, c.reltuples::bigint)
+                END
+              ) AS row_count
        FROM   information_schema.tables t
        LEFT   JOIN pg_stat_user_tables s
               ON s.schemaname = t.table_schema AND s.relname = t.table_name
+       LEFT   JOIN pg_class c
+              ON c.relname = t.table_name
+             AND c.relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = t.table_schema)
        WHERE  t.table_schema = $1
          AND  t.table_type   = 'BASE TABLE'
-         AND  t.table_name NOT IN ('kpi_config','kpi_svg_reports','dashboard_kpi')
+         AND  t.table_name NOT IN ('kpi_config','kpi_svg_reports','dashboard_kpi',
+                                   'sessions','roles','user_roles')
        ORDER  BY t.table_name`,
       [schema]
     );
@@ -246,60 +319,54 @@ router.get("/tables/:tableName/columns", async (req, res) => {
 // =============================================================================
 
 router.post("/configs", async (req, res) => {
-  const ctx = getSessionContext(req);
+  const ctx = getRoleContext(req);
+  if (!ctx.isInstAdmin && !ctx.isDeptAdmin && !ctx.isSuperAdmin)
+    return res.status(403).json({ ok: false, error: "Only Institute Admin or Department Admin can create KPIs." });
+
   const {
-    title       = "KPI Chart",
-    description = "",
+    title                  = "KPI Chart",
+    description            = "",
     table_name,
     x_col,
-    y_cols      = [],
-    chart_type  = "bar",
-    row_limit   = 500,
+    y_cols                 = [],
+    chart_type             = "bar",
+    show_on_dashboard      = false,
+    dashboard_display_type = "single",
+    dashboard_group_name   = null,
   } = req.body;
 
   if (!table_name)    return res.status(400).json({ ok: false, error: "table_name is required" });
   if (!x_col)         return res.status(400).json({ ok: false, error: "x_col is required" });
   if (!y_cols.length) return res.status(400).json({ ok: false, error: "y_cols must not be empty" });
 
+  let scope, institute_id, department_id;
+  if (ctx.isDeptAdmin) {
+    scope = "department"; institute_id = null; department_id = ctx.department_id;
+  } else {
+    scope = "institute"; institute_id = ctx.institute_id; department_id = null;
+  }
+
   try {
     await ensureTables(req.pool);
-    const cfgDraft = { title, description, table_name, x_col, y_cols, chart_type, row_limit };
+    const cfgDraft = { title, description, table_name, x_col, y_cols, chart_type };
 
-    // Check if a config already exists for this table — UPDATE it, do not create a duplicate
-    const existing = await req.pool.query(
-      `SELECT id FROM kpi_config WHERE table_name = $1 ORDER BY created_at ASC LIMIT 1`,
-      [table_name]
-    );
-
-    let savedRow;
-
-    if (existing.rowCount > 0) {
-      // UPDATE the existing config row for this table
-      const existingId = existing.rows[0].id;
-      const { rows } = await req.pool.query(
-        `UPDATE kpi_config SET
-           title=$1, description=$2, x_col=$3, y_cols=$4,
-           chart_type=$5, row_limit=$6, query=$7,
-           updated_by=$8, updated_at=NOW()
-         WHERE id=$9 RETURNING *`,
-        [title, description, x_col, y_cols, chart_type, row_limit,
-         buildDisplaySql(cfgDraft), ctx.user_id, existingId]
-      );
-      savedRow = rows[0];
-      const queryResult = await runConfigQuery(req.pool, savedRow);
-      return res.status(200).json({ ok: true, data: savedRow, query_result: queryResult, updated: true });
-    }
-
-    // No existing config for this table — INSERT new row
+    // Always INSERT a new config — multiple KPIs from the same table are allowed.
+    // Editing an existing config must go through PUT /configs/:id.
+    // Refreshing data for an existing config must go through POST /configs/:id/regenerate.
     const { rows } = await req.pool.query(
       `INSERT INTO kpi_config
-         (title, description, table_name, x_col, y_cols, chart_type, row_limit, query, created_by, updated_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+         (title, description, table_name, x_col, y_cols, chart_type, query,
+          scope, institute_id, department_id,
+          show_on_dashboard, dashboard_display_type, dashboard_group_name,
+          created_by, updated_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
        RETURNING *`,
-      [title, description, table_name, x_col, y_cols, chart_type, row_limit,
-       buildDisplaySql(cfgDraft), ctx.user_id, ctx.user_id]
+      [title, description, table_name, x_col, y_cols, chart_type, buildDisplaySql(cfgDraft),
+       scope, institute_id || null, department_id || null,
+       show_on_dashboard, dashboard_display_type, dashboard_group_name || null,
+       ctx.user_id, ctx.user_id]
     );
-    savedRow = rows[0];
+    const savedRow   = rows[0];
     const queryResult = await runConfigQuery(req.pool, savedRow);
     res.status(201).json({ ok: true, data: savedRow, query_result: queryResult, updated: false });
 
@@ -310,6 +377,8 @@ router.post("/configs", async (req, res) => {
 });
 
 router.get("/configs", async (req, res) => {
+  const ctx   = getRoleContext(req);
+  const scope = buildScopeWhere(ctx);
   try {
     await ensureTables(req.pool);
     const { rows } = await req.pool.query(
@@ -324,7 +393,9 @@ router.get("/configs", async (req, res) => {
          WHERE  config_id = c.id
          ORDER  BY exported_at DESC LIMIT 1
        ) s ON TRUE
-       ORDER  BY c.updated_at DESC`
+       ${scope.clause}
+       ORDER  BY c.updated_at DESC`,
+      scope.params
     );
     res.json({ ok: true, data: rows });
   } catch (err) {
@@ -333,24 +404,21 @@ router.get("/configs", async (req, res) => {
 });
 
 router.get("/configs/:id", async (req, res) => {
+  const ctx = getRoleContext(req);
   try {
     await ensureTables(req.pool);
     const { rows, rowCount } = await req.pool.query(
-      `SELECT c.*,
-              s.id          AS svg_id,
-              s.exported_at AS svg_exported_at,
-              s.svg_bytes   AS svg_bytes
+      `SELECT c.*, s.id AS svg_id, s.exported_at AS svg_exported_at, s.svg_bytes
        FROM   kpi_config c
        LEFT   JOIN LATERAL (
-         SELECT id, exported_at, svg_bytes
-         FROM   kpi_svg_reports
-         WHERE  config_id = c.id
-         ORDER  BY exported_at DESC LIMIT 1
+         SELECT id, exported_at, svg_bytes FROM kpi_svg_reports
+         WHERE config_id=c.id ORDER BY exported_at DESC LIMIT 1
        ) s ON TRUE
-       WHERE  c.id = $1`,
-      [req.params.id]
+       WHERE c.id=$1`, [req.params.id]
     );
     if (!rowCount) return res.status(404).json({ ok: false, error: "Config not found" });
+    if (!await checkOwnership(req.pool, req.params.id, ctx))
+      return res.status(403).json({ ok: false, error: "Not authorized." });
     res.json({ ok: true, data: rows[0] });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
@@ -358,19 +426,26 @@ router.get("/configs/:id", async (req, res) => {
 });
 
 router.put("/configs/:id", async (req, res) => {
-  const ctx = getSessionContext(req);
-  const { title, description, table_name, x_col, y_cols, chart_type, row_limit } = req.body;
-
+  const ctx = getRoleContext(req);
+  const {
+    title, description, table_name, x_col, y_cols, chart_type,
+    show_on_dashboard, dashboard_display_type, dashboard_group_name,
+  } = req.body;
   try {
     await ensureTables(req.pool);
-    const cfgDraft = { title, description, table_name, x_col, y_cols, chart_type, row_limit };
+    if (!await checkOwnership(req.pool, req.params.id, ctx))
+      return res.status(403).json({ ok: false, error: "Not authorized." });
+    const cfgDraft = { title, description, table_name, x_col, y_cols, chart_type };
     const { rows, rowCount } = await req.pool.query(
       `UPDATE kpi_config SET
-         title=$1, description=$2, table_name=$3, x_col=$4, y_cols=$5,
-         chart_type=$6, row_limit=$7, query=$8, updated_by=$9, updated_at=NOW()
-       WHERE id=$10 RETURNING *`,
-      [title, description, table_name, x_col, y_cols, chart_type, row_limit,
-       buildDisplaySql(cfgDraft), ctx.user_id, req.params.id]
+         title=$1, description=$2, table_name=$3, x_col=$4, y_cols=$5, chart_type=$6,
+         query=$7, show_on_dashboard=$8, dashboard_display_type=$9, dashboard_group_name=$10,
+         updated_by=$11, updated_at=NOW()
+       WHERE id=$12 RETURNING *`,
+      [title, description, table_name, x_col, y_cols, chart_type,
+       buildDisplaySql(cfgDraft), show_on_dashboard ?? false,
+       dashboard_display_type || "single", dashboard_group_name || null,
+       ctx.user_id, req.params.id]
     );
     if (!rowCount) return res.status(404).json({ ok: false, error: "Config not found" });
     res.json({ ok: true, data: rows[0] });
@@ -380,10 +455,11 @@ router.put("/configs/:id", async (req, res) => {
 });
 
 router.delete("/configs/:id", async (req, res) => {
+  const ctx = getRoleContext(req);
   try {
-    const { rowCount } = await req.pool.query(
-      `DELETE FROM kpi_config WHERE id = $1`, [req.params.id]
-    );
+    if (!await checkOwnership(req.pool, req.params.id, ctx))
+      return res.status(403).json({ ok: false, error: "Not authorized." });
+    const { rowCount } = await req.pool.query(`DELETE FROM kpi_config WHERE id=$1`, [req.params.id]);
     if (!rowCount) return res.status(404).json({ ok: false, error: "Config not found" });
     res.json({ ok: true, deleted: parseInt(req.params.id) });
   } catch (err) {
@@ -393,38 +469,33 @@ router.delete("/configs/:id", async (req, res) => {
 
 
 // =============================================================================
-//  REGENERATE — fresh data preview, SVG is NOT saved
+//  REGENERATE — refresh existing config data, no new config created
 // =============================================================================
 
 router.post("/configs/:id/regenerate", async (req, res) => {
+  const ctx = getRoleContext(req);
   try {
     await ensureTables(req.pool);
     const { rows: cfgRows, rowCount } = await req.pool.query(
-      `SELECT * FROM kpi_config WHERE id = $1`, [req.params.id]
+      `SELECT * FROM kpi_config WHERE id=$1`, [req.params.id]
     );
     if (!rowCount) return res.status(404).json({ ok: false, error: "Config not found" });
-    const cfg = cfgRows[0];
+    if (!await checkOwnership(req.pool, req.params.id, ctx))
+      return res.status(403).json({ ok: false, error: "Not authorized." });
 
+    const cfg    = cfgRows[0];
     const result = await runConfigQuery(req.pool, cfg);
 
-    // Keep stored query in sync
     await req.pool.query(
-      `UPDATE kpi_config SET query = $1, updated_at = NOW() WHERE id = $2`,
+      `UPDATE kpi_config SET query=$1, updated_at=NOW() WHERE id=$2`,
       [result.sql, cfg.id]
     );
 
     res.json({
-      ok:   true,
-      data: {
-        config:     cfg,
-        x:          result.x,
-        series:     result.series,
-        y_range:    result.y_range,
-        y_stats:    result.y_stats,
-        row_count:  result.row_count,
-        sql:        result.sql,
-        fetched_at: result.fetched_at,
-      },
+      ok: true,
+      data: { config: cfg, x: result.x, series: result.series,
+              y_range: result.y_range, y_stats: result.y_stats,
+              row_count: result.row_count, sql: result.sql, fetched_at: result.fetched_at },
     });
   } catch (err) {
     console.error("[POST /regenerate]", err.message);
@@ -434,28 +505,27 @@ router.post("/configs/:id/regenerate", async (req, res) => {
 
 
 // =============================================================================
-//  EXPORT SVG — saved ONCE when user generates the final report
+//  EXPORT SVG
 // =============================================================================
 
 router.post("/configs/:id/export-svg", async (req, res) => {
+  const ctx = getRoleContext(req);
   const { svg_data, report_data } = req.body;
   if (!svg_data) return res.status(400).json({ ok: false, error: "svg_data is required" });
-
   try {
     await ensureTables(req.pool);
     const { rows: cfgRows, rowCount } = await req.pool.query(
-      `SELECT * FROM kpi_config WHERE id = $1`, [req.params.id]
+      `SELECT * FROM kpi_config WHERE id=$1`, [req.params.id]
     );
     if (!rowCount) return res.status(404).json({ ok: false, error: "Config not found" });
+    if (!await checkOwnership(req.pool, req.params.id, ctx))
+      return res.status(403).json({ ok: false, error: "Not authorized." });
     const cfg = cfgRows[0];
-
     const { rows } = await req.pool.query(
       `INSERT INTO kpi_svg_reports (config_id, title, svg_data, report_data)
-       VALUES ($1, $2, $3, $4)
-       RETURNING id, config_id, title, svg_bytes, exported_at`,
+       VALUES ($1,$2,$3,$4) RETURNING id, config_id, title, svg_bytes, exported_at`,
       [cfg.id, cfg.title, svg_data, report_data ? JSON.stringify(report_data) : null]
     );
-
     res.status(201).json({ ok: true, data: rows[0] });
   } catch (err) {
     console.error("[POST /export-svg]", err.message);
@@ -464,15 +534,16 @@ router.post("/configs/:id/export-svg", async (req, res) => {
 });
 
 router.get("/configs/:id/svg", async (req, res) => {
+  const ctx = getRoleContext(req);
   try {
     await ensureTables(req.pool);
+    if (!await checkOwnership(req.pool, req.params.id, ctx))
+      return res.status(403).json({ ok: false, error: "Not authorized." });
     const { rows, rowCount } = await req.pool.query(
-      `SELECT * FROM kpi_svg_reports
-       WHERE  config_id = $1
-       ORDER  BY exported_at DESC LIMIT 1`,
+      `SELECT * FROM kpi_svg_reports WHERE config_id=$1 ORDER BY exported_at DESC LIMIT 1`,
       [req.params.id]
     );
-    if (!rowCount) return res.status(404).json({ ok: false, error: "No exported SVG found. Export the report first." });
+    if (!rowCount) return res.status(404).json({ ok: false, error: "No exported SVG found." });
     res.json({ ok: true, data: rows[0] });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
@@ -481,20 +552,96 @@ router.get("/configs/:id/svg", async (req, res) => {
 
 
 // =============================================================================
-//  DASHBOARD KPI
+//  DASHBOARD CHARTS — KPIs pinned to dashboard with their live data
+// =============================================================================
+
+router.get("/dashboard-charts", async (req, res) => {
+  const ctx   = getRoleContext(req);
+  const scope = buildScopeWhere(ctx);
+
+  try {
+    await ensureTables(req.pool);
+
+    // Combine scope filter + show_on_dashboard=true
+    const showIdx = scope.params.length + 1;
+    const finalClause = scope.clause
+      ? `${scope.clause} AND c.show_on_dashboard = $${showIdx}`
+      : `WHERE c.show_on_dashboard = $${showIdx}`;
+    const finalParams = [...scope.params, true];
+
+    const { rows: configs } = await req.pool.query(
+      `SELECT * FROM kpi_config c
+       ${finalClause}
+       ORDER BY dashboard_group_name NULLS LAST, title`,
+      finalParams
+    );
+
+    const results = [];
+    for (const cfg of configs) {
+      try {
+        const data = await runConfigQuery(req.pool, cfg);
+        results.push({ config: cfg, x: data.x, series: data.series,
+                       y_range: data.y_range, row_count: data.row_count });
+      } catch (e) {
+        results.push({ config: cfg, x: [], series: [], y_range: null,
+                       row_count: 0, error: e.message });
+      }
+    }
+
+    // Separate singles from groups
+    const singles = results.filter(r => r.config.dashboard_display_type !== "group");
+    const groupMap = {};
+    for (const r of results.filter(r => r.config.dashboard_display_type === "group")) {
+      const key = r.config.dashboard_group_name || "Other";
+      if (!groupMap[key]) groupMap[key] = [];
+      groupMap[key].push(r);
+    }
+    const groups = Object.entries(groupMap).map(([name, items]) => ({ name, items }));
+
+    res.json({ ok: true, singles, groups });
+  } catch (err) {
+    console.error("[GET /dashboard-charts]", err.message);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// Returns unique dashboard group names for the caller's scope (used in ConfigDrawer)
+router.get("/dashboard-groups", async (req, res) => {
+  const ctx   = getRoleContext(req);
+  const scope = buildScopeWhere(ctx);
+  try {
+    await ensureTables(req.pool);
+    const { rows } = await req.pool.query(
+      `SELECT DISTINCT dashboard_group_name FROM kpi_config c
+       ${scope.clause ? scope.clause + " AND" : "WHERE"} dashboard_group_name IS NOT NULL
+         AND dashboard_display_type = 'group'
+       ORDER BY dashboard_group_name`,
+      scope.params
+    );
+    res.json({ ok: true, data: rows.map(r => r.dashboard_group_name) });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+
+// =============================================================================
+//  DASHBOARD KPI (legacy junction table)
 // =============================================================================
 
 router.get("/dashboard-kpi", async (req, res) => {
+  const ctx = getRoleContext(req);
+  const scope = buildScopeWhere(ctx);
   const { kpi_config_id } = req.query;
   try {
     await ensureTables(req.pool);
-    const params = [];
-    let sql = `
-      SELECT dk.*, kc.title, kc.table_name, kc.chart_type, kc.x_col, kc.y_cols
-      FROM   dashboard_kpi dk
-      LEFT   JOIN kpi_config kc ON kc.id = dk.kpi_config_id
-    `;
-    if (kpi_config_id) { sql += ` WHERE dk.kpi_config_id = $1`; params.push(kpi_config_id); }
+    let sql = `SELECT dk.*, kc.title, kc.table_name, kc.chart_type, kc.x_col, kc.y_cols
+               FROM dashboard_kpi dk LEFT JOIN kpi_config kc ON kc.id=dk.kpi_config_id`;
+    const params = [...scope.params];
+    const conds  = [];
+    if (scope.clause) conds.push(scope.clause.replace(/^WHERE\s+/, "").replace(/c\./g, "kc."));
+    if (kpi_config_id) { conds.push(`dk.kpi_config_id=$${params.length+1}`); params.push(kpi_config_id); }
+    if (conds.length)  sql += ` WHERE ${conds.join(" AND ")}`;
     sql += ` ORDER BY dk.created_at DESC`;
     const { rows } = await req.pool.query(sql, params);
     res.json({ ok: true, data: rows });
@@ -504,32 +651,27 @@ router.get("/dashboard-kpi", async (req, res) => {
 });
 
 router.post("/dashboard-kpi", async (req, res) => {
-  const ctx = getSessionContext(req);
+  const ctx = getRoleContext(req);
   const { kpi_config_id } = req.body;
   if (!kpi_config_id) return res.status(400).json({ ok: false, error: "kpi_config_id is required" });
   try {
     await ensureTables(req.pool);
-    const { rowCount: exists } = await req.pool.query(
-      `SELECT 1 FROM kpi_config WHERE id = $1`, [kpi_config_id]
-    );
-    if (!exists) return res.status(404).json({ ok: false, error: "kpi_config not found" });
+    if (!await checkOwnership(req.pool, kpi_config_id, ctx))
+      return res.status(403).json({ ok: false, error: "Not authorized." });
     const { rows } = await req.pool.query(
       `INSERT INTO dashboard_kpi (kpi_config_id, created_by, updated_by)
-       VALUES ($1, $2, $3) RETURNING *`,
+       VALUES ($1,$2,$3) RETURNING *`,
       [kpi_config_id, ctx.user_id, ctx.user_id]
     );
     res.status(201).json({ ok: true, data: rows[0] });
   } catch (err) {
-    console.error("[POST /dashboard-kpi]", err.message);
     res.status(500).json({ ok: false, error: err.message });
   }
 });
 
 router.delete("/dashboard-kpi/:id", async (req, res) => {
   try {
-    const { rowCount } = await req.pool.query(
-      `DELETE FROM dashboard_kpi WHERE id = $1`, [req.params.id]
-    );
+    const { rowCount } = await req.pool.query(`DELETE FROM dashboard_kpi WHERE id=$1`, [req.params.id]);
     if (!rowCount) return res.status(404).json({ ok: false, error: "Entry not found" });
     res.json({ ok: true, deleted: parseInt(req.params.id) });
   } catch (err) {

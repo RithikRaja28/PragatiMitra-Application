@@ -16,6 +16,7 @@
  */
 
 import React from "react";
+import PlaceholderPage from "../shared/PlaceholderPage";
 
 /* ── Super Admin page imports ───────────────────────────────── */
 import UserManagementPage        from "../../pages/Roles/superadmin/UserManagementPage";
@@ -27,14 +28,13 @@ import RoleAccessPage            from "../../pages/Roles/superadmin/RoleAccessPa
 import KPIPage                   from "../../pages/Roles/superadmin/Kpipage";
 
 /* ── Institute Admin page imports ───────────────────────────── */
-import InstitutionAdminOverviewPage      from "../../pages/Roles/institutionadmin/InstitutionAdminOverviewPage";
-import ReportSetupPage                   from "../../pages/Roles/institutionadmin/ReportSetupPage";
-import InstituteAdminUserManagementPage  from "../../pages/Roles/institutionadmin/InstituteAdminUserManagementPage";
-import InstituteAdminDepartmentPage      from "../../pages/Roles/institutionadmin/InstituteAdminDepartmentPage";
-
-/* ── Department Admin page imports ──────────────────────────── */
-import DepartmentAdminDashboardPage      from "../../pages/Roles/departmentadmin/DepartmentAdminDashboardPage";
-import DepartmentAdminUserManagementPage from "../../pages/Roles/departmentadmin/DepartmentAdminUserManagementPage";
+import InstitutionAdminOverviewPage     from "../../pages/Roles/institutionadmin/InstitutionAdminOverviewPage";
+import ReportSetupPage                  from "../../pages/Roles/institutionadmin/ReportSetupPage";
+import InstituteAdminUserManagementPage from "../../pages/Roles/institutionadmin/InstituteAdminUserManagementPage";
+import InstituteAdminDepartmentPage     from "../../pages/Roles/institutionadmin/InstituteAdminDepartmentPage";
+import InstituteKpiPage                  from "../../pages/Roles/institutionadmin/InstituteKpiPage";
+import InstituteFormManagementPage      from "../../pages/Forms/InstituteFormManagementPage";
+import DeptKpiPage                       from "../../pages/Roles/departmentadmin/DeptKpiPage";
 
 /* ── Director's Office page imports ─────────────────────────── */
 import DirectorsDashboardPage from "../../pages/Roles/directorsoffice/DirectorsDashboardPage";
@@ -44,6 +44,7 @@ import ReviewQueuePage        from "../../pages/Roles/directorsoffice/ReviewQueu
 import DeptAdminDashboardPage from "../../pages/Roles/departmentadmin/DeptAdminDashboardPage";
 import DeptUsersPage          from "../../pages/Roles/departmentadmin/DeptUsersPage";
 import TaskOverviewPage       from "../../pages/Roles/departmentadmin/TaskOverviewPage";
+import FormDataPage           from "../../pages/Forms/FormDataPage";
 
 /* ── Dept Nodal Officer page imports ─────────────────────────── */
 import NodalDashboardPage    from "../../pages/Roles/departmentnodalofficer/NodalDashboardPage";
@@ -56,90 +57,19 @@ import EstimatesPage       from "../../pages/Roles/financeofficer/EstimatesPage"
 import AuditsPage          from "../../pages/Roles/financeofficer/AuditsPage";
 import BalanceSheetPage    from "../../pages/Roles/financeofficer/BalanceSheetPage";
 
-/* ── Shared placeholder (swap for real components as built) ─── */
-export function PlaceholderPage({ title, subtitle, color = "#2563eb" }) {
-  return (
-    <div style={{ padding: "32px 36px", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
-      <div style={{ marginBottom: 28 }}>
-        <div style={{
-          display: "inline-flex", alignItems: "center", gap: 8,
-          background: color + "14", borderRadius: 8, padding: "4px 12px", marginBottom: 12,
-        }}>
-          <div style={{ width: 7, height: 7, borderRadius: "50%", background: color }} />
-          <span style={{ fontSize: 11, fontWeight: 600, color, textTransform: "uppercase", letterSpacing: 1 }}>
-            {title}
-          </span>
-        </div>
-        <h1 style={{ fontSize: 24, fontWeight: 700, color: "#1e293b", letterSpacing: "-0.4px", marginBottom: 6 }}>
-          {title}
-        </h1>
-        <p style={{ color: "#94a3b8", fontSize: 14 }}>{subtitle}</p>
-      </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 16, marginBottom: 28 }}>
-        {["Total", "Active", "Pending", "Resolved"].map((label, i) => (
-          <div key={label} style={{
-            background: "#fff", border: "1px solid rgba(0,0,0,0.07)",
-            borderRadius: 12, padding: "20px 22px", boxShadow: "0 1px 4px rgba(0,0,0,0.05)",
-          }}>
-            <div style={{ fontSize: 11, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 10 }}>
-              {label}
-            </div>
-            <div style={{ fontSize: 30, fontWeight: 700, color: "#1e293b", letterSpacing: "-1px" }}>
-              {(i + 1) * 148 + 17}
-            </div>
-            <div style={{ fontSize: 12, color, marginTop: 6, fontWeight: 500 }}>
-              ↑ {((i + 1) * 2.3).toFixed(1)}% this month
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <div style={{
-        background: "#fff", border: "1px solid rgba(0,0,0,0.07)",
-        borderRadius: 12, overflow: "hidden", boxShadow: "0 1px 4px rgba(0,0,0,0.05)",
-      }}>
-        <div style={{
-          padding: "16px 22px", borderBottom: "1px solid rgba(0,0,0,0.06)",
-          display: "flex", alignItems: "center", justifyContent: "space-between",
-        }}>
-          <span style={{ fontWeight: 600, fontSize: 14, color: "#1e293b" }}>Recent Activity</span>
-          <span style={{ fontSize: 12, color, cursor: "pointer", fontWeight: 500 }}>View all →</span>
-        </div>
-        {[1, 2, 3, 4, 5].map((i) => (
-          <div key={i} style={{
-            display: "flex", alignItems: "center", gap: 14, padding: "13px 22px",
-            borderBottom: i < 5 ? "1px solid rgba(0,0,0,0.04)" : "none",
-          }}>
-            <div style={{ width: 34, height: 34, borderRadius: 9, background: `hsl(${i * 53 + 200}, 55%, 88%)`, flexShrink: 0 }} />
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 13, fontWeight: 500, color: "#1e293b", marginBottom: 2 }}>Record #{i * 100 + 43}</div>
-              <div style={{ fontSize: 11, color: "#94a3b8" }}>Updated {i} hour{i > 1 ? "s" : ""} ago</div>
-            </div>
-            <div style={{
-              padding: "3px 10px", borderRadius: 20, fontSize: 11, fontWeight: 600,
-              background: i % 2 === 0 ? color + "18" : "#10b98118",
-              color: i % 2 === 0 ? color : "#10b981",
-            }}>
-              {i % 2 === 0 ? "Active" : "Done"}
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
+/* ── Re-export so existing imports of PlaceholderPage from this file still work ── */
+export { default as PlaceholderPage } from "../shared/PlaceholderPage";
 
 /* ── Super Admin placeholders ───────────────────────────────── */
 const SuperAdminOverviewPage   = () => <PlaceholderPage title="Overview"    subtitle="Platform-wide summary and key metrics"                color="#2563eb" />;
-const SuperAdminMasterDataPage = () => <PlaceholderPage title="Master Data" subtitle="Manage lookup values, categories, and reference data" color="#059669" />;
+const SuperAdminMasterDataPage = () => <PlaceholderPage title="Master Data" subtitle="Manage lookup values, categories, and reference data" color="#2563eb" />;
 
 /* ── Institute Admin placeholders ───────────────────────────── */
-const SectionsPage       = () => <PlaceholderPage title="Sections"        subtitle="Manage academic sections and groupings"         color="#0891b2" />;
-const WorkflowPage       = () => <PlaceholderPage title="Workflow"        subtitle="Define and oversee institutional workflows"     color="#0891b2" />;
-const TaskWorkflowPage   = () => <PlaceholderPage title="Task Workflow"   subtitle="Assign and track task-level workflow stages"    color="#0891b2" />;
-const VersionControlPage = () => <PlaceholderPage title="Version Control" subtitle="Manage document versions and change history"    color="#0891b2" />;
-const SystemPage         = () => <PlaceholderPage title="System"          subtitle="Institution system settings and configurations" color="#0891b2" />;
+const SectionsPage       = () => <PlaceholderPage title="Sections"        subtitle="Manage academic sections and groupings"         color="#2563eb" />;
+const WorkflowPage       = () => <PlaceholderPage title="Workflow"        subtitle="Define and oversee institutional workflows"     color="#2563eb" />;
+const TaskWorkflowPage   = () => <PlaceholderPage title="Task Workflow"   subtitle="Assign and track task-level workflow stages"    color="#2563eb" />;
+const VersionControlPage = () => <PlaceholderPage title="Version Control" subtitle="Manage document versions and change history"    color="#2563eb" />;
+const SystemPage         = () => <PlaceholderPage title="System"          subtitle="Institution system settings and configurations" color="#2563eb" />;
 
 /* ══════════════════════════════════════════════════════════════
    ROLE CONFIG MAP
@@ -275,12 +205,24 @@ export const ROLE_CONFIG = {
         ],
       },
       {
+        group: "Forms",
+        items: [
+          { id: "ia-form-management", label: "Form Management", icon: "ClipboardList", permission: null },
+        ],
+      },
+      {
         group: "Reports",
         items: [
           {
             id: "ia-report-setup",
             label: "Report Setup",
             icon: "FileText",
+            permission: null,
+          },
+          {
+            id: "ia-kpi",
+            label: "KPI Charts",
+            icon: "BarChart2",
             permission: null,
           },
         ],
@@ -332,14 +274,15 @@ export const ROLE_CONFIG = {
       },
     ],
     pages: {
-
-      "ia-overview":        <InstitutionAdminOverviewPage />,
-      "ia-users":           <InstituteAdminUserManagementPage />,
-      "ia-departments":     <InstituteAdminDepartmentPage />,
-      "ia-report-setup":    <ReportSetupPage />,
-      "ia-sections":        <SectionsPage />,
-      "ia-workflow":        <WorkflowPage />,
-      "ia-task-workflow":   <TaskWorkflowPage />,
+      "ia-overview":          <InstitutionAdminOverviewPage />,
+      "ia-users":             <InstituteAdminUserManagementPage />,
+      "ia-departments":       <InstituteAdminDepartmentPage />,
+      "ia-form-management":   <InstituteFormManagementPage />,
+      "ia-report-setup":      <ReportSetupPage />,
+      "ia-kpi":             <InstituteKpiPage />,
+      "ia-sections":          <SectionsPage />,
+      "ia-workflow":          <WorkflowPage />,
+      "ia-task-workflow":     <TaskWorkflowPage />,
       "ia-version-control": <VersionControlPage />,
       "ia-system": <SystemPage />,
     },
@@ -498,11 +441,35 @@ export const ROLE_CONFIG = {
           },
         ],
       },
+      {
+        group: "Reports",
+        items: [
+          {
+            id: "da-kpi",
+            label: "KPI Charts",
+            icon: "BarChart2",
+            permission: null,
+          },
+        ],
+      },
+      {
+        group: "Data Entry",
+        items: [
+          {
+            id: "da-form-data",
+            label: "Form Data",
+            icon: "ClipboardList",
+            permission: null,
+          },
+        ],
+      },
     ],
     pages: {
       "da-dashboard": <DeptAdminDashboardPage />,
       "da-users": <DeptUsersPage />,
       "da-tasks": <TaskOverviewPage />,
+      "da-kpi":   <DeptKpiPage />,
+      "da-form-data": <FormDataPage />,
     },
     defaultPage: "da-dashboard",
     user: {

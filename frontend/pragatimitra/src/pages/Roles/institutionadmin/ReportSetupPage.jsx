@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect } from "react";
+import { Save, FolderTree } from "lucide-react";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { t } from "../../../i18n/translations";
+import PageHeader from "../../../components/shared/PageHeader";
 
 let _id = 0;
 const uid = () => `id_${++_id}`;
@@ -33,15 +35,15 @@ const WORKFLOWS = ["Standard Review", "Fast Track", "Committee Review", "Directo
 
 /* ── Design tokens ── */
 const C = {
-  primary:    "#6366f1",
-  primaryLt:  "#ede9fe",
-  primaryMid: "#818cf8",
-  text:       "#1e1b4b",
-  textMid:    "#4338ca",
-  textSub:    "#6b7280",
-  border:     "rgba(99,102,241,0.15)",
+  primary:    "#2563eb",
+  primaryLt:  "#dbeafe",
+  primaryMid: "#60a5fa",
+  text:       "#1e293b",
+  textMid:    "#1d4ed8",
+  textSub:    "#64748b",
+  border:     "rgba(37,99,235,0.12)",
   borderSoft: "rgba(0,0,0,0.07)",
-  bg:         "#f5f3ff",
+  bg:         "#f8f9fb",
   surface:    "#ffffff",
   danger:     "#ef4444",
   dangerLt:   "#fef2f2",
@@ -297,21 +299,17 @@ export default function ReportSetupPage() {
       display: "flex", flexDirection: "column", gap: 18, minHeight: "100vh", background: C.bg }}>
 
       {/* Header */}
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
-        <div>
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 6,
-            background: C.primaryLt, borderRadius: 6, padding: "3px 11px", marginBottom: 8 }}>
-            <span style={{ width: 6, height: 6, borderRadius: "50%", background: C.primary }} />
-            <span style={{ fontSize: 10, fontWeight: 700, color: C.primary, textTransform: "uppercase", letterSpacing: "0.08em" }}>{t("Report Setup", lang)}</span>
-          </div>
-          <h1 style={{ fontSize: 22, fontWeight: 700, color: C.text, margin: 0, letterSpacing: "-0.4px" }}>{t("Report Configuration", lang)}</h1>
-          <p style={{ fontSize: 13, color: C.textSub, margin: "4px 0 0" }}>Manage sections, subsections, dates and workflow</p>
-        </div>
-        <button style={{ ...btn("primary"), padding: "10px 20px", fontSize: 12, borderRadius: 9,
-          boxShadow: "0 2px 8px rgba(99,102,241,0.3)" }}>
-          ✦ {t("Save Report", lang)}
-        </button>
-      </div>
+      <PageHeader
+        breadcrumb={[t("Home", lang), t("Reports", lang), t("Report Setup", lang)]}
+        title={t("Report Configuration", lang)}
+        description="Manage sections, subsections, dates and workflow"
+        actions={
+          <button style={{ ...btn("primary"), display: "inline-flex", alignItems: "center", gap: 7, padding: "10px 20px", fontSize: 12, borderRadius: 9,
+            boxShadow: "0 2px 8px rgba(99,102,241,0.3)" }}>
+            <Save size={14} strokeWidth={2} /> {t("Save Report", lang)}
+          </button>
+        }
+      />
 
       {/* Summary pills */}
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
@@ -498,7 +496,7 @@ export default function ReportSetupPage() {
                 </>
               ) : (
                 <div style={{ textAlign: "center", padding: "36px 0" }}>
-                  <div style={{ fontSize: 28, marginBottom: 10 }}>🗂</div>
+                  <FolderTree size={28} strokeWidth={1.5} color={C.textSub} style={{ marginBottom: 10 }} />
                   <div style={{ fontSize: 13, color: C.textSub }}>{t("Select a section from the tree", lang)}</div>
                 </div>
               )}

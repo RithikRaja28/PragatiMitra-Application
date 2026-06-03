@@ -3,6 +3,11 @@ import { useApi } from "../../../hooks/useApi";
 import { useAuth } from "../../../store/AuthContext";
 import { S, Toast } from "../../../components/shared/formUtils";
 import FormScreen from "../../../components/shared/FormScreen";
+import PageHeader from "../../../components/shared/PageHeader";
+import { ActionButton, ActionButtonGroup } from "../../../components/shared/ActionButtons";
+import { StatusBadge } from "../../../components/shared/ui";
+import { useLanguage } from "../../../i18n/LanguageContext";
+import { t } from "../../../i18n/translations";
 
 /* ── Constants ──────────────────────────────────────────────────── */
 const STATUS_OPTIONS = ["ACTIVE", "INACTIVE", "SUSPENDED"];
@@ -24,6 +29,12 @@ const ROLE_COLORS = {
   reviewer:           { bg: "#eff6ff", color: "#1e40af" },
   finance_officer:    { bg: "#fff7ed", color: "#9a3412" },
   directors_office:   { bg: "#fdf4ff", color: "#7e22ce" },
+};
+
+const ROLE_LABELS = {
+  department_nodal_officer: "Nodal Officer",
+  contributor: "Contributor",
+  reviewer: "Reviewer",
 };
 
 const ACCENT = "#059669";
@@ -564,6 +575,7 @@ function UserList({ apiFetch, onEdit }) {
 export default function DepartmentAdminUserManagementPage() {
   const { apiFetch } = useApi();
   const { user }     = useAuth();
+  const { lang }     = useLanguage();
   const [formView,   setFormView]   = useState(null);
   const [toast,      setToast]      = useState(null);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -602,45 +614,28 @@ export default function DepartmentAdminUserManagementPage() {
     <div style={{ padding: "32px 36px", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
       {toast && <Toast message={toast.message} type={toast.type} />}
 
-      {/* Header */}
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 28 }}>
-        <div>
-          <div style={{
-            display: "inline-flex", alignItems: "center", gap: 8,
-            background: `${ACCENT}14`, borderRadius: 8, padding: "4px 12px", marginBottom: 12,
-          }}>
-            <div style={{ width: 7, height: 7, borderRadius: "50%", background: ACCENT }} />
-            <span style={{ fontSize: 11, fontWeight: 600, color: ACCENT, textTransform: "uppercase", letterSpacing: 1 }}>
-              User Management
-            </span>
-          </div>
-          <h1 style={{ fontSize: 24, fontWeight: 700, color: "#1e293b", letterSpacing: "-0.4px", marginBottom: 6 }}>
-            Users
-          </h1>
-          <p style={{ color: "#94a3b8", fontSize: 14 }}>
-            Manage users in{" "}
+      <PageHeader
+        breadcrumb={[t("Home", lang), t("Department", lang), t("Users", lang)]}
+        title={t("Department Users", lang)}
+        description={
+          <>
+            {t("Manage users in", lang)}{" "}
             <span style={{ color: ACCENT, fontWeight: 600 }}>{departmentName}</span>
-            {institutionName ? (
-              <>
-                {" "}·{" "}
-                <span style={{ color: "#64748b", fontWeight: 500 }}>{institutionName}</span>
-              </>
-            ) : null}
-          </p>
-        </div>
-
-        <button
-          onClick={() => setFormView({ mode: "create", entity: null })}
-          style={{
-            display: "inline-flex", alignItems: "center", gap: 8,
-            padding: "10px 20px", borderRadius: 10, border: "none",
-            background: ACCENT, fontSize: 13, fontWeight: 700,
-            color: "#fff", cursor: "pointer", flexShrink: 0, marginTop: 4,
-          }}
-        >
-          + New User
-        </button>
-      </div>
+            {institutionName && (
+              <>{" · "}<span style={{ color: "#64748b", fontWeight: 500 }}>{institutionName}</span></>
+            )}
+          </>
+        }
+        actions={
+          <ActionButton
+            variant="primary"
+            onClick={() => setFormView({ mode: "create", entity: null })}
+            style={{ height: 38 }}
+          >
+            {t("+ New User", lang)}
+          </ActionButton>
+        }
+      />
 
       <UserList
         key={refreshKey}

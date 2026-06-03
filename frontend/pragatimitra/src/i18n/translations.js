@@ -45,6 +45,8 @@ export const translations = {
     "Department Users":        "विभाग के उपयोगकर्ता",
     "Tasks":                   "कार्य",
     "Task Overview":           "कार्य अवलोकन",
+    "Data Entry":              "डेटा प्रविष्टि",
+    "Form Data":               "फ़ॉर्म डेटा",
 
     /* ── department_nodal_officer: sidebar ── */
     "Sections":                "अनुभाग",
@@ -52,6 +54,9 @@ export const translations = {
     "Submissions":             "प्रस्तुतियां",
 
     /* ── institute_admin: sidebar ── */
+    "Forms":                   "फ़ॉर्म",
+    "Form Management":         "फ़ॉर्म प्रबंधन",
+    "KPI Charts":              "केपीआई चार्ट",
     "Reports":                 "रिपोर्टें",
     "Report Setup":            "रिपोर्ट सेटअप",
     "Structure":               "संरचना",
