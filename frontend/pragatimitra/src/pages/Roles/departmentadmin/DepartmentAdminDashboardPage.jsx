@@ -1,4 +1,4 @@
-import { PlaceholderPage } from "../../../components/Dashboard/roleConfig";
+import PlaceholderPage from "../../../components/shared/PlaceholderPage";
 
 export default function DepartmentAdminDashboardPage() {
   return (

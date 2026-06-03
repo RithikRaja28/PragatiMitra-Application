@@ -12,6 +12,7 @@ import * as Icons from "lucide-react";
 import { useAuth } from "../../store/AuthContext";
 import { useLanguage } from "../../i18n/LanguageContext";
 import { t } from "../../i18n/translations";
+import NotificationBell from "./NotificationBell";
 
 /* ─── Context ───────────────────────────────────────────────── */
 const ShellContext = createContext(null);
@@ -30,9 +31,9 @@ const CSS = `
   @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
 
   :root {
-    --sh-topbar:    #0f172a;
+    --sh-topbar:    #080d1b;
     --sh-topbar-b:  rgba(255,255,255,0.07);
-    --sh-sidebar:   #0b1324;
+    --sh-sidebar:   #060a16;
     --sh-bg:        #dfe3ec;
     --sh-border:    #e2e8f0;
     --sh-accent:    #2563eb;
@@ -43,12 +44,12 @@ const CSS = `
     --sh-active:    rgba(37,99,235,0.10);
 
     /* Sidebar (dark theme — matches the topbar) */
-    --sh-side-border:  rgba(255,255,255,0.08);
-    --sh-side-text:    #cbd5e1;
+    --sh-side-border:  rgba(255,255,255,0.07);
+    --sh-side-text:    #94a3b8;
     --sh-side-text-hi: #ffffff;
-    --sh-side-muted:   #64748b;
-    --sh-side-hover:   rgba(255,255,255,0.06);
-    --sh-side-active:  #1e3a8a;
+    --sh-side-muted:   #4a5568;
+    --sh-side-hover:   rgba(255,255,255,0.05);
+    --sh-side-active:  #2563eb;
     --sh-side-accent:  #60a5fa;
     --sh-topbar-h:  64px;
     --sh-side-open: 280px;
@@ -301,12 +302,9 @@ const CSS = `
   .sh-nav-item:hover { background: var(--sh-side-hover); color: var(--sh-side-text-hi); }
   .sh-nav-item.on {
     background: var(--sh-side-active); color: var(--sh-side-text-hi); font-weight: 600;
+    box-shadow: 0 2px 8px rgba(37,99,235,0.35);
   }
-  .sh-nav-item.on::before {
-    content: '';
-    position: absolute; left: 0; top: 8px; bottom: 8px;
-    width: 3px; background: var(--sh-side-accent); border-radius: 0 3px 3px 0;
-  }
+  .sh-nav-item.on::before { content: none; }
   .sh-nav-label { transition: opacity var(--sh-ease), width var(--sh-ease); font-size: 13.5px; }
   .sh-sidebar.col .sh-nav-label { opacity: 0; width: 0; }
 
@@ -714,10 +712,7 @@ function Topbar({
         <AcademicYearPicker selectedYear={selectedYear} onChange={onYearChange} />
 
         {/* Notifications */}
-        <button className="sh-icon-btn" aria-label="Notifications">
-          <Icons.Bell size={18} />
-          {notificationCount > 0 && <span className="sh-badge" />}
-        </button>
+        <NotificationBell />
 
         {/* Language toggle */}
         <div className="sh-lang-toggle" role="group" aria-label="Select language">
