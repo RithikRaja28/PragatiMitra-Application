@@ -70,6 +70,17 @@ app.use(cookies());
 app.use(requestId);
 app.use(requestLogger);
 
+/* ─── pg type parsers ──────────────────────────────────────────
+   By default pg converts DATE columns to JS Date objects at local
+   midnight. On a UTC+5:30 server that midnight is 18:30 UTC of the
+   previous day, so .toISOString() would silently shift the date.
+   Registering a string parser for DATE (OID 1082) keeps the value
+   as "YYYY-MM-DD" throughout the application, matching what was
+   stored and what the user entered.
+─────────────────────────────────────────────────────────────── */
+const { types: pgTypes } = require("pg");
+pgTypes.setTypeParser(1082, (val) => val); // DATE → keep as "YYYY-MM-DD" string
+
 /* ─── PostgreSQL pool ───────────────────────────────────────── */
 const pool = new Pool({
   user:     process.env.DB_USER,
@@ -99,6 +110,19 @@ pool.connect((err, client, release) => {
 // Make pool available to all route handlers via req.app.locals.pool
 app.locals.pool = pool;
 
+/* ── Form-level Hindi translation toggle: ensure the metadata column exists.
+   NOT NULL DEFAULT TRUE backfills every existing form to TRUE, so current
+   auto-translate behavior is preserved (backward compatible). ── */
+pool
+  .query(`ALTER TABLE table_list ADD COLUMN IF NOT EXISTS translate_to_hindi BOOLEAN NOT NULL DEFAULT TRUE`)
+  .catch((e) => logger.error("Failed to ensure table_list.translate_to_hindi column", { stack: e.stack }));
+
+/* ── Form deadline auto-lock: ensure columns, then start periodic checker ── */
+const { ensureDeadlineColumns, startDeadlineScheduler } = require("./services/formDeadlineService");
+ensureDeadlineColumns(pool)
+  .then(() => startDeadlineScheduler(pool, 60 * 1000))
+  .catch((e) => logger.error("Failed to init form deadline scheduler", { stack: e.stack }));
+
 /* ── Import session cache: rows stored server-side after parse ───── */
 app.locals.importSessions = new Map();
 // Purge sessions older than 1 hour every 30 minutes
@@ -108,6 +132,10 @@ setInterval(() => {
     if (val.expiresAt < now) app.locals.importSessions.delete(key);
   }
 }, 30 * 60 * 1000).unref();
+
+/* ─── Static: serve uploaded documents ─────────────────────── */
+const path = require("path");
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 /* ─── Routes ────────────────────────────────────────────────── */
 app.get("/", (_req, res) => {
@@ -125,9 +153,10 @@ app.use("/api/audit-logs",   auditLogRoutes);
 app.use("/api/upload",       uploadRoutes);
 app.use("/api/notification-templates", notificationTemplatesRouter);
 app.use("/api/radiology",              radiologyRoutes);   // ← radiology mounted
-app.use("/api/kpi", require("./routes/kpi"));
-
-
+app.use("/api/kpi",                    require("./routes/kpi"));
+app.use("/api/forms",                  require("./routes/forms"));
+app.use("/api/form-data",              require("./routes/formData"));
+app.use("/api/form-data",              require("./routes/formimportexport"));
 /* ─── Global error handler (must be last) ───────────────────── */
 app.use(errorHandler);
 

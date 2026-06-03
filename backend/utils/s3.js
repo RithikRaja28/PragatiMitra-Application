@@ -34,6 +34,22 @@ async function getReadUrl(key, expiresIn = 900) {
 }
 
 /**
+ * Upload a Buffer directly to S3 from the server side.
+ * Used by the /api/upload/document route to proxy files through the backend.
+ * ContentLength is required by AWS SDK v3 when using a Buffer body.
+ */
+async function uploadBuffer(key, buffer, mimeType) {
+  const command = new PutObjectCommand({
+    Bucket:        BUCKET,
+    Key:           key,
+    Body:          buffer,
+    ContentType:   mimeType,
+    ContentLength: buffer.length,
+  });
+  return s3.send(command);
+}
+
+/**
  * Delete a file from S3 by its key.
  */
 async function deleteFile(key) {
@@ -41,4 +57,4 @@ async function deleteFile(key) {
   return s3.send(command);
 }
 
-module.exports = { getUploadUrl, getReadUrl, deleteFile };
+module.exports = { getUploadUrl, getReadUrl, uploadBuffer, deleteFile };
