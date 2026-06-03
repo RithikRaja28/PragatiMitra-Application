@@ -1,15 +1,17 @@
 import React from "react";
+import { Pencil, Send, MessageSquare } from "lucide-react";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { t } from "../../../i18n/translations";
+import PageHeader from "../../../components/shared/PageHeader";
 
 const C = {
-  primary:   "#d97706",
-  primaryLt: "#fef3c7",
-  primaryMid:"#f59e0b",
-  text:      "#1c1917",
-  textSub:   "#78716c",
-  border:    "rgba(217,119,6,0.13)",
-  bg:        "#fffbeb",
+  primary:   "#2563eb",
+  primaryLt: "#dbeafe",
+  primaryMid:"#60a5fa",
+  text:      "#1e293b",
+  textSub:   "#64748b",
+  border:    "rgba(37,99,235,0.12)",
+  bg:        "#f8f9fb",
   surface:   "#ffffff",
 };
 
@@ -41,7 +43,7 @@ const STATS = [
   { label: "Assigned",     value: 4,  sub: "Total sections",          color: C.primary, bar: 100 },
   { label: "Submitted",    value: 1,  sub: "Pending review",          color: "#059669", bar: 25  },
   { label: "Sent Back",    value: 1,  sub: "Need revision",           color: "#dc2626", bar: 25  },
-  { label: "In Progress",  value: 2,  sub: "Being worked on",         color: "#0891b2", bar: 50  },
+  { label: "In Progress",  value: 2,  sub: "Being worked on",         color: "#2563eb", bar: 50  },
 ];
 
 export default function NodalDashboardPage() {
@@ -51,15 +53,11 @@ export default function NodalDashboardPage() {
       display: "flex", flexDirection: "column", gap: 14, background: C.bg, minHeight: "100vh" }}>
 
       {/* Header */}
-      <div>
-        <div style={{ display: "inline-flex", alignItems: "center", gap: 6,
-          background: C.primaryLt, borderRadius: 6, padding: "3px 11px", marginBottom: 8 }}>
-          <span style={{ width: 6, height: 6, borderRadius: "50%", background: C.primary }} />
-          <span style={{ fontSize: 10, fontWeight: 700, color: C.primary, textTransform: "uppercase", letterSpacing: "0.08em" }}>{t("Dept. Nodal Officer", lang)}</span>
-        </div>
-        <h1 style={{ fontSize: 22, fontWeight: 700, color: C.text, margin: 0, letterSpacing: "-0.4px" }}>{t("My Dashboard", lang)}</h1>
-        <p style={{ fontSize: 13, color: C.textSub, margin: "4px 0 0" }}>Annual Report 2026 — Samhita Siddhanta</p>
-      </div>
+      <PageHeader
+        breadcrumb={[t("Home", lang), t("Department", lang), t("Dashboard", lang)]}
+        title={t("My Dashboard", lang)}
+        description="Annual Report 2026 — Samhita Siddhanta"
+      />
 
       {/* Stat cards */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 10 }}>
@@ -168,18 +166,18 @@ export default function NodalDashboardPage() {
           <div style={card}>
             <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 10 }}>{t("Quick Actions", lang)}</div>
             {[
-              { label: "Edit a section",       icon: "✏️" },
-              { label: "View submissions",      icon: "📤" },
-              { label: "Check comments",        icon: "💬" },
+              { label: "Edit a section",       Icon: Pencil },
+              { label: "View submissions",      Icon: Send },
+              { label: "Check comments",        Icon: MessageSquare },
             ].map((a, i) => (
-              <button key={i} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%",
+              <button key={i} style={{ display: "flex", alignItems: "center", gap: 9, width: "100%",
                 padding: "8px 10px", borderRadius: 8, border: `0.5px solid ${C.border}`,
                 background: "transparent", cursor: "pointer", marginBottom: 6,
                 fontSize: 12, color: C.text, fontFamily: "'Plus Jakarta Sans', sans-serif",
                 textAlign: "left", transition: "background .12s" }}
                 onMouseEnter={e => e.currentTarget.style.background = C.primaryLt}
                 onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
-                <span>{a.icon}</span>
+                <a.Icon size={15} strokeWidth={2} color={C.primary} />
                 {t(a.label, lang)}
               </button>
             ))}

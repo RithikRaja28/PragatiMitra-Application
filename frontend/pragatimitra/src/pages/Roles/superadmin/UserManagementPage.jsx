@@ -1,7 +1,11 @@
 import { useState, useEffect, useCallback } from "react";
+import { User, UsersRound } from "lucide-react";
 import { useApi } from "../../../hooks/useApi";
 import { S, Toast } from "../../../components/shared/formUtils";
 import FormScreen from "../../../components/shared/FormScreen";
+import PageHeader from "../../../components/shared/PageHeader";
+import { ActionButton, ActionButtonGroup } from "../../../components/shared/ActionButtons";
+import { StatusBadge, tableCardStyle } from "../../../components/shared/ui";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { t } from "../../../i18n/translations";
 import ImportWizard from "../../../components/shared/ImportWizard";
@@ -31,12 +35,6 @@ const IconChevron = () => (
 
 /* ── Constants & pure helpers ──────────────────────────────────── */
 const STATUS_OPTIONS = ["ACTIVE", "INACTIVE", "SUSPENDED"];
-
-const STATUS_STYLE = {
-  ACTIVE:    { dot: "#10b981", label: "#059669" },
-  INACTIVE:  { dot: "#cbd5e1", label: "#94a3b8" },
-  SUSPENDED: { dot: "#f87171", label: "#dc2626" },
-};
 
 const ROLE_COLORS = {
   super_admin:        { bg: "#dbeafe", color: "#1d4ed8" },
@@ -76,13 +74,9 @@ function RoleBadge({ name, display_name }) {
 }
 
 function StatusDot({ status }) {
-  const s = STATUS_STYLE[status] || STATUS_STYLE.INACTIVE;
-  return (
-    <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 500, color: s.label }}>
-      <span style={{ width: 7, height: 7, borderRadius: "50%", background: s.dot, display: "inline-block" }} />
-      {status.charAt(0) + status.slice(1).toLowerCase()}
-    </span>
-  );
+  const tone = status === "ACTIVE" ? "active" : status === "INACTIVE" ? "inactive" : "neutral";
+  const label = status.charAt(0) + status.slice(1).toLowerCase();
+  return <StatusBadge tone={tone}>{label}</StatusBadge>;
 }
 
 function Spinner() {
@@ -242,7 +236,7 @@ function UserForm({ mode, entity, onCreated, onSaved, onBack, apiFetch }) {
       pageTitle={t("Users", lang)}
       formTitle={isEdit ? t("Edit User", lang) : t("New User", lang)}
       formSubtitle={isEdit ? entity.full_name : "Add a new user to the platform"}
-      icon="👤"
+      icon={<User size={20} color="#7c3aed" strokeWidth={2} />}
       iconBg="#ede9fe"
       onBack={onBack}
       onSubmit={handleSubmit}
@@ -316,7 +310,7 @@ function UserForm({ mode, entity, onCreated, onSaved, onBack, apiFetch }) {
       </div>
 
       {/* Department + Role/Status grid */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 16 }}>
         <div>
           <label style={S.label}>
             Department{" "}
@@ -622,10 +616,7 @@ function UserList({ apiFetch, onEdit }) {
       </div>
 
       {/* Table */}
-      <div style={{
-        background: "#fff", border: "1px solid rgba(0,0,0,0.07)",
-        borderRadius: 14, overflow: "hidden", boxShadow: "0 1px 4px rgba(0,0,0,0.05)",
-      }}>
+      <div style={tableCardStyle}>
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
             <tr style={{ background: "#f8fafc", borderBottom: "1px solid rgba(0,0,0,0.06)" }}>
@@ -682,28 +673,19 @@ function UserList({ apiFetch, onEdit }) {
                 <td style={{ padding: "14px 16px", fontSize: 12, color: "#94a3b8" }}>
                   {formatDate(u.last_login_at)}
                 </td>
-                <td style={{ padding: "14px 16px" }}>
-                  <div style={{ display: "flex", gap: 6 }}>
-                    <button onClick={() => onEdit(u)} style={{
-                      padding: "5px 12px", borderRadius: 7, border: "1.5px solid #e2e8f0",
-                      background: "#fff", fontSize: 12, fontWeight: 600,
-                      color: "#2563eb", cursor: "pointer",
-                    }}>
+                <td style={{ padding: "14px 16px", verticalAlign: "middle" }}>
+                  <ActionButtonGroup>
+                    <ActionButton onClick={() => onEdit(u)}>
                       {t("Edit", lang)}
-                    </button>
-                    <button
+                    </ActionButton>
+                    <ActionButton
+                      variant={u.account_status === "ACTIVE" ? "danger" : "success"}
                       onClick={() => toggleStatus(u)}
                       disabled={toggling === u.id}
-                      style={{
-                        padding: "5px 12px", borderRadius: 7, border: "1.5px solid #e2e8f0",
-                        background: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer",
-                        color: u.account_status === "ACTIVE" ? "#dc2626" : "#059669",
-                        opacity: toggling === u.id ? 0.6 : 1,
-                      }}
                     >
                       {toggling === u.id ? "…" : u.account_status === "ACTIVE" ? t("Deactivate", lang) : t("Activate", lang)}
-                    </button>
-                  </div>
+                    </ActionButton>
+                  </ActionButtonGroup>
                 </td>
               </tr>
             ))}
@@ -748,7 +730,7 @@ function UserImportWizard({ onBack, onSuccess }) {
   }, [apiFetch]);
 
   const extraSettingsSlot = (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+    <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 14 }}>
       <div>
         <label style={S.label}>Default Institution</label>
         <select
@@ -790,7 +772,7 @@ function UserImportWizard({ onBack, onSuccess }) {
     <ImportWizard
       apiPath="/api/users"
       entityLabel="Users"
-      entityIcon="👥"
+      entityIcon={<UsersRound size={22} strokeWidth={1.8} color="#7c3aed" />}
       extraSettingsSlot={extraSettingsSlot}
       extraImportBody={{
         defaultInstitutionId: defaults.defaultInstitutionId || null,
@@ -877,115 +859,33 @@ export default function UserManagementPage() {
       {toast && <Toast message={toast.message} type={toast.type} />}
 
       {/* Header */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "flex-start",
-          justifyContent: "space-between",
-          marginBottom: 28,
-          flexWrap: "wrap",
-          gap: 12,
-        }}
-      >
-        <div>
-          <div
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 8,
-              background: "#7c3aed14",
-              borderRadius: 8,
-              padding: "4px 12px",
-              marginBottom: 12,
-            }}
-          >
-            <div
-              style={{
-                width: 7,
-                height: 7,
-                borderRadius: "50%",
-                background: "#7c3aed",
-              }}
-            />
-            <span
-              style={{
-                fontSize: 11,
-                fontWeight: 600,
-                color: "#7c3aed",
-                textTransform: "uppercase",
-                letterSpacing: 1,
-              }}
+      <PageHeader
+        breadcrumb={[t("Home", lang), t("User Management", lang), t("Users", lang)]}
+        title={t("Users", lang)}
+        description="Create, edit, activate/deactivate, and manage roles for all platform users."
+        actions={
+          <>
+            {/* Export dropdown */}
+            <div style={{ position: "relative" }}>
+              <ExportMenu loading={exportingFormat} onExport={handleExport} />
+            </div>
+
+            {/* Import button */}
+            <ActionButton icon={<IconUpload />} onClick={() => setShowImport(true)}>
+              {t("Import", lang)}
+            </ActionButton>
+
+            {/* New user button */}
+            <ActionButton
+              variant="primary"
+              onClick={() => setFormView({ mode: "create", entity: null })}
+              style={{ height: 38 }}
             >
-              {t("User Management", lang)}
-            </span>
-          </div>
-          <h1
-            style={{
-              fontSize: 24,
-              fontWeight: 700,
-              color: "#1e293b",
-              letterSpacing: "-0.4px",
-              marginBottom: 6,
-            }}
-          >
-            {t("Users", lang)}
-          </h1>
-          <p style={{ color: "#94a3b8", fontSize: 14 }}>
-            Create, edit, activate/deactivate, and manage roles for all platform
-            users.
-          </p>
-        </div>
-
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            flexShrink: 0,
-            marginTop: 4,
-          }}
-        >
-          {/* Export dropdown */}
-          <div style={{ position: "relative" }}>
-            <ExportMenu loading={exportingFormat} onExport={handleExport} />
-          </div>
-
-          {/* Import button */}
-          <button
-            onClick={() => setShowImport(true)}
-            style={{
-              display: "inline-flex", alignItems: "center", gap: 6,
-              padding: "10px 18px", borderRadius: 10,
-              border: "1.5px solid #2563eb", background: "#eff6ff",
-              fontSize: 13, fontWeight: 600, color: "#2563eb", cursor: "pointer",
-            }}
-          >
-            <IconUpload /> Import
-          </button>
-
-          {/* New user button */}
-          <button
-            onClick={() => setFormView({ mode: "create", entity: null })}
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 8,
-              padding: "10px 20px",
-              borderRadius: 10,
-              border: "none",
-              background: "#2563eb",
-              fontSize: 13,
-              fontWeight: 700,
-              color: "#fff",
-              cursor: "pointer",
-              flexShrink: 0,
-              marginTop: 4,
-            }}
-          >
-            {t("+ New User", lang)}
-          </button>
-        </div>
-      </div>
+              {t("+ New User", lang)}
+            </ActionButton>
+          </>
+        }
+      />
 
       <UserList
         key={refreshKey}
@@ -1005,10 +905,10 @@ function ExportMenu({ loading, onExport }) {
         onClick={() => setOpen((v) => !v)}
         disabled={!!loading}
         style={{
-          display: "inline-flex", alignItems: "center", gap: 6,
-          padding: "10px 18px", borderRadius: 10,
-          border: "1.5px solid #e2e8f0", background: "#fff",
-          fontSize: 13, fontWeight: 600, color: "#475569",
+          display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6,
+          height: 34, minHeight: 34, padding: "0 14px", borderRadius: 6,
+          border: "1px solid #cbd5e1", background: "#fff",
+          fontSize: 12.5, fontWeight: 600, color: "#334155", whiteSpace: "nowrap",
           cursor: loading ? "not-allowed" : "pointer",
           opacity: loading ? 0.6 : 1,
         }}

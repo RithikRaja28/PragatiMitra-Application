@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useApi } from "../../../hooks/useApi";
 import {
   Bell, Edit3, Check, X, Save, Eye,
-  Loader2, ChevronDown,
+  Loader2, ChevronDown, Mail, Smartphone,
   Users, Building2, UserCheck, BookOpen, DollarSign, Settings2,
 } from "lucide-react";
 
@@ -100,13 +100,14 @@ function TemplateEditor({ template, onSave, onCancel, saving }) {
 
       {/* Tabs */}
       <div style={{ display: "flex", gap: 3, background: "#f1f5f9", borderRadius: 7, padding: 3, width: "fit-content" }}>
-        {[["email","✉ Email"],["app","📱 App"]].map(([t, l]) => (
-          <button key={t} onClick={() => setTab(t)} style={{
+        {[{ key: "email", label: "Email", Icon: Mail }, { key: "app", label: "App", Icon: Smartphone }].map(({ key, label, Icon }) => (
+          <button key={key} onClick={() => setTab(key)} style={{
+            display: "inline-flex", alignItems: "center", gap: 6,
             padding: "5px 12px", borderRadius: 5, border: "none", cursor: "pointer",
             fontSize: 11.5, fontWeight: 600,
-            background: tab === t ? "#2563eb" : "transparent",
-            color: tab === t ? "#fff" : "#64748b",
-          }}>{l}</button>
+            background: tab === key ? "#2563eb" : "transparent",
+            color: tab === key ? "#fff" : "#64748b",
+          }}><Icon size={13} strokeWidth={2} /> {label}</button>
         ))}
       </div>
 

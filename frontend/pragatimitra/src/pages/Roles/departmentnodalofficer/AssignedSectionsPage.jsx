@@ -1,15 +1,18 @@
 import React, { useState } from "react";
+import { Paperclip } from "lucide-react";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { t } from "../../../i18n/translations";
+import PageHeader from "../../../components/shared/PageHeader";
+import { S } from "../../../components/shared/formUtils";
 
 const C = {
-  primary:   "#d97706",
-  primaryLt: "#fef3c7",
-  primaryMid:"#f59e0b",
-  text:      "#1c1917",
-  textSub:   "#78716c",
-  border:    "rgba(217,119,6,0.13)",
-  bg:        "#fffbeb",
+  primary:   "#2563eb",
+  primaryLt: "#dbeafe",
+  primaryMid:"#60a5fa",
+  text:      "#1e293b",
+  textSub:   "#64748b",
+  border:    "rgba(37,99,235,0.12)",
+  bg:        "#f8f9fb",
   surface:   "#ffffff",
 };
 
@@ -193,9 +196,7 @@ export default function AssignedSectionsPage() {
                 </div>
                 <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                   {/* Status update */}
-                  <select style={{ padding: "6px 28px 6px 10px", borderRadius: 8, border: `1px solid ${C.border}`,
-                    fontSize: 12, color: C.text, background: "#fff", cursor: "pointer", outline: "none",
-                    fontFamily: "'Plus Jakarta Sans', sans-serif", appearance: "none" }}>
+                  <select style={{ ...S.select(false), width: "auto", minWidth: 150, height: 34, padding: "0 30px 0 12px", fontSize: 12 }}>
                     <option value="Draft">{t("Draft", lang)}</option>
                     <option value="In Progress">{t("In Progress", lang)}</option>
                     <option value="In Review">{t("In Review", lang)}</option>
@@ -246,7 +247,7 @@ export default function AssignedSectionsPage() {
                   {selectedSection.files.map((f, i) => (
                     <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 12px",
                       borderRadius: 8, background: C.primaryLt, border: `0.5px solid ${C.border}`, cursor: "pointer" }}>
-                      <span style={{ fontSize: 15 }}>📎</span>
+                      <Paperclip size={15} strokeWidth={2} color={C.primary} style={{ flexShrink: 0 }} />
                       <div>
                         <div style={{ fontSize: 11, fontWeight: 600, color: C.primary }}>{f.name}</div>
                         <div style={{ fontSize: 10, color: C.textSub }}>{f.size}</div>
@@ -401,15 +402,11 @@ export default function AssignedSectionsPage() {
     <div style={{ padding: "24px 28px", fontFamily: "'Plus Jakarta Sans', sans-serif",
       background: C.bg, minHeight: "100vh" }}>
 
-      <div style={{ marginBottom: 20 }}>
-        <div style={{ display: "inline-flex", alignItems: "center", gap: 6,
-          background: C.primaryLt, borderRadius: 6, padding: "3px 11px", marginBottom: 8 }}>
-          <span style={{ width: 6, height: 6, borderRadius: "50%", background: C.primary }} />
-          <span style={{ fontSize: 10, fontWeight: 700, color: C.primary, textTransform: "uppercase", letterSpacing: "0.08em" }}>{t("Assigned Sections", lang)}</span>
-        </div>
-        <h1 style={{ fontSize: 22, fontWeight: 700, color: C.text, margin: 0, letterSpacing: "-0.4px" }}>{t("My Assigned Sections", lang)}</h1>
-        <p style={{ fontSize: 13, color: C.textSub, margin: "4px 0 0" }}>Click any section to edit content, view comments, or compare versions</p>
-      </div>
+      <PageHeader
+        breadcrumb={[t("Home", lang), t("Department", lang), t("Sections", lang)]}
+        title={t("My Assigned Sections", lang)}
+        description="Click any section to edit content, view comments, or compare versions"
+      />
 
       {/* Filters */}
       <div style={{ display: "flex", gap: 10, marginBottom: 16, background: C.surface,
@@ -419,9 +416,7 @@ export default function AssignedSectionsPage() {
           style={{ flex: 1, padding: "7px 12px", borderRadius: 8, border: `1px solid ${C.border}`,
             outline: "none", fontSize: 13, color: C.text, fontFamily: "'Plus Jakarta Sans', sans-serif" }} />
         <select value={filters.status} onChange={e => setFilters(f => ({ ...f, status: e.target.value }))}
-          style={{ padding: "7px 28px 7px 12px", borderRadius: 8, border: `1px solid ${C.border}`,
-            outline: "none", fontSize: 13, color: C.text, background: "#fff",
-            fontFamily: "'Plus Jakarta Sans', sans-serif", appearance: "none", cursor: "pointer" }}>
+          style={{ ...S.select(false), width: "auto", minWidth: 160 }}>
           <option value="">{t("All Statuses", lang)}</option>
           <option value="In Progress">{t("In Progress", lang)}</option>
           <option value="Sent Back">{t("Sent Back", lang)}</option>
