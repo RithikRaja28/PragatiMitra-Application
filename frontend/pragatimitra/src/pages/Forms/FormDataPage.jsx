@@ -1028,9 +1028,17 @@ export default function FormDataPage() {
     );
   }, [records, searchTerm, schemaFields]);
 
-  /* ── Read-only flags ── */
+  /* ── Read-only flags ──
+     readOnly → gates record *authoring* that only makes sense in English:
+                Add, Import, Delete and bulk-select. Disabled in Hindi because a
+                brand-new record must be created in English to generate its EN+HI
+                pair, and deletes are driven from the English (source) row.
+     canEdit  → editing is allowed in BOTH languages (Task 2); only a locked form
+                blocks it. Editing a Hindi row updates that row only; editing an
+                English row regenerates its Hindi mirror (handled by the backend). */
   const viewingTranslated = lang === "hi";
   const readOnly = lockInfo.is_locked || viewingTranslated;
+  const canEdit  = !lockInfo.is_locked;
 
   /* ── Derived: sorted records (applied after search filter) ── */
   const sortedRecords = [...filteredRecords].sort((a, b) => {
@@ -1452,7 +1460,7 @@ export default function FormDataPage() {
                     </th>
                   ))}
                   <th style={thStyle}>{lang === "hi" ? "बनाया गया" : "Created"}</th>
-                  {!readOnly && <th style={{ ...thStyle, textAlign: "right" }}>{lang === "hi" ? "क्रियाएँ" : "Actions"}</th>}
+                  {canEdit && <th style={{ ...thStyle, textAlign: "right" }}>{lang === "hi" ? "क्रियाएँ" : "Actions"}</th>}
                 </tr>
               </thead>
               <tbody>
@@ -1499,23 +1507,26 @@ export default function FormDataPage() {
                           {formatDate(rec.created_at)}
                         </span>
                       </td>
-                      {!readOnly && (
+                      {canEdit && (
                         <td style={{ ...tdStyle, textAlign: "right" }}>
                           <div style={{ display: "inline-flex", gap: 6 }}>
                             <button
                               onClick={(e) => { e.stopPropagation(); setEditRecord(rec); setModalError(""); setModalOpen(true); }}
                               style={actionBtn}
-                              title="Edit record"
+                              title={viewingTranslated ? "Edit Hindi record" : "Edit record"}
                             >
                               <IcoEdit />
                             </button>
-                            <button
-                              onClick={(e) => { e.stopPropagation(); setDeleteTarget(rec.id); }}
-                              style={{ ...actionBtn, color: "#dc2626", borderColor: "#fecaca" }}
-                              title="Delete record"
-                            >
-                              <IcoTrash />
-                            </button>
+                            {/* Delete is driven from the English (source) row, so it stays English-only */}
+                            {!readOnly && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); setDeleteTarget(rec.id); }}
+                                style={{ ...actionBtn, color: "#dc2626", borderColor: "#fecaca" }}
+                                title="Delete record"
+                              >
+                                <IcoTrash />
+                              </button>
+                            )}
                           </div>
                         </td>
                       )}

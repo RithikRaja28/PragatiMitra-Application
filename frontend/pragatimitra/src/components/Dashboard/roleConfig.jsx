@@ -188,13 +188,18 @@ export const ROLE_CONFIG = {
       {
         group: "User Management",
         items: [
-          { id: "ia-users",        label: "Users",       icon: "Users",     permission: null },
+          // Gated on the real permission key. Institute Admin has
+          // manage_dept_users=false in the DB, so this stays hidden —
+          // it must NOT leak the Super-Admin-style "User Management" menu.
+          { id: "ia-users",        label: "Users",       icon: "Users",     permission: "manage_dept_users" },
         ],
       },
       {
         group: "Dept Management",
         items: [
-          { id: "ia-departments",  label: "Departments", icon: "Building2", permission: null },
+          // Gated on the real permission key. Institute Admin has
+          // manage_departments=false in the DB, so this stays hidden.
+          { id: "ia-departments",  label: "Departments", icon: "Building2", permission: "manage_departments" },
         ],
       },
       {

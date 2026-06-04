@@ -329,6 +329,18 @@ router.put("/:formName/records/:id", async (req, res) => {
     const fieldCols = fields.map((f) => dbCol(f.column_name));
     const fieldModes = buildFieldModes(fields);
 
+    /* Determine which language row is being edited so we apply the right rule:
+         en → update the English row AND regenerate its linked Hindi mirror
+         hi → update ONLY this Hindi row (English untouched, no reverse translation)
+       The language is read from the DB (not trusted from the client). */
+    const { rows: targetRows } = await pool.query(
+      `SELECT language FROM ${formName}_records WHERE id = $1 AND institution_id = $2`,
+      [id, ctx.institutionId]
+    );
+    if (!targetRows.length)
+      return res.status(404).json({ success: false, message: "Record not found." });
+    const editedLanguage = targetRows[0].language === "hi" ? "hi" : "en";
+
     let idx = 1;
     const setClauses = [...fieldCols.map((col) => `${col} = $${idx++}`), `updated_at = now()`];
 
@@ -350,10 +362,12 @@ router.put("/:formName/records/:id", async (req, res) => {
     if (!rows.length)
       return res.status(404).json({ success: false, message: "Record not found." });
 
-    // Asynchronously update the linked Hindi row — only when this form has
-    // Hindi translation enabled. When disabled, no Hindi row exists and no
-    // translation pipeline runs.
-    if (await isHindiTranslationEnabled(pool, formName)) {
+    // Asynchronously update the linked Hindi row — ONLY when an English row was
+    // edited AND this form has Hindi translation enabled. When a Hindi row is
+    // edited directly (editedLanguage === "hi") the UPDATE above already saved
+    // it; we do NOT run the translation pipeline (no reverse translation) and we
+    // leave the English row untouched.
+    if (editedLanguage === "en" && await isHindiTranslationEnabled(pool, formName)) {
       const tableName = `${formName}_records`;
       setImmediate(async () => {
         try {
