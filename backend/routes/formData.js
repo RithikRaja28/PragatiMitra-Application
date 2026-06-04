@@ -215,6 +215,67 @@ router.get("/:formName/records", async (req, res) => {
 });
 
 /* ─────────────────────────────────────────────────────────────────────
+   GET /api/form-data/:formName/records/:id/counterpart
+   Returns the linked row in the OTHER language for the read-only reference pane
+   of the edit dialog:
+     - editing a Hindi row → returns its English source row (source_row_id)
+     - editing an English row → returns its Hindi mirror (if any)
+   Never used to edit. Scoped to the caller's institution (and department).
+   ⚠️  Registered before PUT/DELETE /:formName/records/:id — distinct method/path.
+─────────────────────────────────────────────────────────────────────── */
+router.get("/:formName/records/:id/counterpart", async (req, res) => {
+  const pool = req.app.locals.pool;
+  const { formName, id } = req.params;
+
+  if (!validateFormName(formName))
+    return res.status(400).json({ success: false, message: "Invalid form name." });
+
+  try {
+    const ctx = await resolveUserContext(pool, req);
+    if (!ctx.institutionId)
+      return res.status(400).json({ success: false, message: "Institution ID required." });
+
+    await ensureSourceRowIdColumn(pool, `${formName}_records`);
+
+    let selfWhere = "id = $1 AND institution_id = $2";
+    const selfVals = [id, ctx.institutionId];
+    if (ctx.role === "department_admin" && ctx.departmentId) {
+      selfWhere += ` AND (department_id = $3 OR department_id IS NULL)`;
+      selfVals.push(ctx.departmentId);
+    }
+
+    const { rows: selfRows } = await pool.query(
+      `SELECT * FROM ${formName}_records WHERE ${selfWhere}`,
+      selfVals
+    );
+    if (!selfRows.length)
+      return res.status(404).json({ success: false, message: "Record not found." });
+
+    const self = selfRows[0];
+    let counterpart = null;
+
+    if (self.language === "hi" && self.source_row_id) {
+      const { rows } = await pool.query(
+        `SELECT * FROM ${formName}_records WHERE id = $1 AND institution_id = $2`,
+        [self.source_row_id, ctx.institutionId]
+      );
+      counterpart = rows[0] || null;
+    } else {
+      const { rows } = await pool.query(
+        `SELECT * FROM ${formName}_records WHERE source_row_id = $1 AND institution_id = $2 LIMIT 1`,
+        [self.id, ctx.institutionId]
+      );
+      counterpart = rows[0] || null;
+    }
+
+    return res.json({ success: true, record: counterpart });
+  } catch (err) {
+    logger.error(`GET /api/form-data/${formName}/records/${id}/counterpart`, { stack: err.stack });
+    return res.status(500).json({ success: false, message: "Failed to fetch counterpart record." });
+  }
+});
+
+/* ─────────────────────────────────────────────────────────────────────
    POST /api/form-data/:formName/records
    Lock-checked. Inserts English row then async Hindi mirror (via translateRow).
    Tags department_id from user context.
