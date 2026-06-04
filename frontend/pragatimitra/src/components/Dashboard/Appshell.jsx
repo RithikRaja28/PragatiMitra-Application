@@ -472,6 +472,46 @@ const CSS = `
     border-color: var(--sh-accent) !important;
     box-shadow: 0 0 0 3px rgba(37,99,235,0.12) !important;
   }
+  .sh-ay-btn.open {
+    background: rgba(37,99,235,0.25);
+    border-color: rgba(37,99,235,0.6);
+  }
+  .sh-ay-tag {
+    font-size: 9px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.5px; color: rgba(255,255,255,0.45);
+  }
+  .sh-ay-val { font-size: 12px; font-weight: 700; color: #fff; }
+  .sh-ay-chevron {
+    opacity: 0.5; transition: transform .2s; flex-shrink: 0;
+  }
+  .sh-ay-btn.open .sh-ay-chevron { transform: rotate(180deg); }
+
+  .sh-ay-dropdown {
+    position: absolute; top: calc(100% + 8px); right: 0;
+    background: #fff; border-radius: 12px;
+    border: 1px solid rgba(0,0,0,0.09);
+    box-shadow: 0 14px 40px rgba(0,0,0,0.16);
+    min-width: 175px; z-index: 9999; overflow: hidden;
+    animation: shMenuIn .13s ease both;
+  }
+  .sh-ay-hdr {
+    display: flex; align-items: center; gap: 7px;
+    padding: 10px 14px 8px;
+    font-size: 10px; font-weight: 700; letter-spacing: 0.8px;
+    text-transform: uppercase; color: #94a3b8;
+    border-bottom: 1px solid #f1f5f9;
+  }
+  .sh-ay-opt {
+    display: flex; align-items: center; justify-content: space-between;
+    width: 100%; padding: 9px 14px;
+    border: none; background: transparent; cursor: pointer;
+    font-family: var(--sh-font); font-size: 13px; text-align: left;
+    color: #475569; font-weight: 500;
+    transition: background .1s, color .1s;
+  }
+  .sh-ay-opt:hover { background: #f8fafc; color: #1e293b; }
+  .sh-ay-opt.sel { color: #2563eb; font-weight: 700; background: rgba(37,99,235,0.05); }
+  .sh-ay-check { color: #2563eb; flex-shrink: 0; }
 `;
 
 function injectCSS(id, css) {

@@ -168,19 +168,190 @@ function FieldInput({ field, value, onChange, getToken, lang = "en" }) {
   return <div><label style={S.label}>{label}{field.required && " *"}</label><input style={commonStyle} type={inputType} value={value||""} onChange={e => onChange(col, e.target.value)} required={field.required} /></div>;
 }
 
+/* ── Read-only field renderer (reference pane of the edit dialog) ──────── */
+function ReadOnlyField({ field, value, lang = "en" }) {
+  const label  = field.label?.[lang] || field.label?.en || displayCol(field.column_name);
+  const isArea = field.type === "textarea" || field.type === "description";
+  const empty  = value == null || value === "";
+
+  let display;
+  if (field.type === "boolean")
+    display = value === true || value === "true" ? "Yes" : value === false || value === "false" ? "No" : "—";
+  else if (field.type === "document")
+    display = empty ? "—" : "📎 File attached";
+  else
+    display = empty ? "—" : String(value);
+
+  return (
+    <div>
+      <label style={S.label}>{label}</label>
+      <div
+        style={{
+          width: "100%",
+          minHeight: isArea ? 80 : 40,
+          padding: isArea ? "10px 14px" : "0 14px",
+          display: "flex",
+          alignItems: isArea ? "flex-start" : "center",
+          border: "1px solid #e2e8f0",
+          borderRadius: 8,
+          fontSize: 13,
+          color: empty ? "#94a3b8" : "#475569",
+          background: "#fff",
+          whiteSpace: "pre-wrap",
+          wordBreak: "break-word",
+          boxSizing: "border-box",
+        }}
+      >
+        {display}
+      </div>
+    </div>
+  );
+}
+
+/* ── One titled column of the edit dialog ─────────────────────────────── */
+function ModalPane({ title, reference, helper, loading, children }) {
+  return (
+    <div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: helper ? 4 : 14 }}>
+        <span style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.5, textTransform: "uppercase", color: reference ? "#64748b" : ACCENT }}>
+          {title}
+        </span>
+        {reference && (
+          <span style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: 0.4, textTransform: "uppercase", color: "#64748b", background: "#e2e8f0", borderRadius: 20, padding: "2px 8px" }}>
+            Read Only
+          </span>
+        )}
+        {reference && loading && (
+          <span style={{ fontSize: 11, color: "#94a3b8", fontWeight: 600 }}>· loading…</span>
+        )}
+      </div>
+      {helper && (
+        <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 12 }}>{helper}</div>
+      )}
+      {/* Reference side: visually muted + non-interactive per spec */}
+      <div
+        style={
+          reference
+            ? { display: "flex", flexDirection: "column", gap: 16, background: "#F8FAFC", opacity: 0.95, pointerEvents: "none", borderRadius: 12, padding: 16, border: "1px dashed #e2e8f0" }
+            : { display: "flex", flexDirection: "column", gap: 16 }
+        }
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
 /* ════════════════════════════════════════════════════════════════════
-   RecordModal — rendered via ModalPortal to avoid clipping issues
+   RecordModal — dual-pane editor rendered via ModalPortal.
+   One side is editable (driven by the row's language), the other is a
+   read-only reference of the linked translation:
+     • Editing English → LEFT editable EN · RIGHT LIVE Hindi preview
+     • Editing Hindi    → LEFT English reference · RIGHT editable HI
+   Translation-disabled forms collapse to a single editable pane.
 ════════════════════════════════════════════════════════════════════ */
-function RecordModal({ fields, record, onSave, onClose, saving, error, getToken, lang = "en" }) {
+function RecordModal({ fields, record, onSave, onClose, saving, error, getToken, formName, apiFetch, translationEnabled = true }) {
   const isEdit = !!record;
+  // The editable language follows the ROW (a Hindi mirror has language === "hi").
+  // New records are always authored in English.
+  const editLang = record?.language === "hi" ? "hi" : "en";
+  const refLang  = editLang === "hi" ? "en" : "hi";
+  // Reference pane shows the CURRENT linked translation — only meaningful when
+  // editing an existing record (a brand-new record has no translation yet).
+  const showReference = translationEnabled !== false && !!record?.id;
+
   const [formData, setFormData] = useState(() => {
     const init = {};
     fields.forEach(f => { const col = dbCol(f.column_name); init[col] = record ? (record[col] ?? "") : ""; });
     return init;
   });
+  const [refData, setRefData]       = useState({});
+  const [refLoading, setRefLoading] = useState(false);
 
   function handleChange(col, val) { setFormData(prev => ({ ...prev, [col]: val })); }
   function handleSubmit(e) { e.preventDefault(); onSave(formData); }
+
+  /* Inject responsive grid CSS once (desktop side-by-side → tablet stacked). */
+  useEffect(() => {
+    const id = "pm-rec-modal-css";
+    if (document.getElementById(id)) return;
+    const el = document.createElement("style");
+    el.id = id;
+    el.textContent = `
+      .pm-rec-grid { display:grid; grid-template-columns:1fr 1fr; gap:24px; }
+      @media (max-width: 860px){ .pm-rec-grid { grid-template-columns:1fr; } }
+    `;
+    document.head.appendChild(el);
+  }, []);
+
+  /* Reference pane is a ONE-TIME, read-only snapshot of the linked translated
+     row — fetched once when the dialog opens and never again. NO live preview,
+     NO translation API calls while typing. The fresh translation runs only on
+     Update (server-side, inside the PUT handler), after which the table reloads.
+       • Editing English → shows the current Hindi mirror row
+       • Editing Hindi   → shows the English source row                         */
+  useEffect(() => {
+    if (!showReference || !record?.id) return;
+    let cancelled = false;
+    setRefLoading(true);
+    apiFetch(`/api/form-data/${formName}/records/${record.id}/counterpart`)
+      .then(r => r.json())
+      .then(d => {
+        if (cancelled) return;
+        const ref = d?.record || {};
+        const next = {};
+        fields.forEach(f => { const col = dbCol(f.column_name); next[col] = ref[col] ?? ""; });
+        setRefData(next);
+      })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setRefLoading(false); });
+    return () => { cancelled = true; };
+  }, [showReference, record?.id, formName, apiFetch, fields]);
+
+  const noFields = (
+    <div style={{ textAlign: "center", color: "#94a3b8", fontSize: 13, padding: "24px 0" }}>
+      No schema fields configured for this form.
+    </div>
+  );
+
+  const editablePane = (
+    <ModalPane
+      title={editLang === "hi" ? "Hindi (Editable)" : "English (Editable)"}
+    >
+      {fields.length === 0 ? noFields : fields.map(field => (
+        <FieldInput
+          key={dbCol(field.column_name)}
+          field={field}
+          value={formData[dbCol(field.column_name)]}
+          onChange={handleChange}
+          getToken={getToken}
+          lang={editLang}
+        />
+      ))}
+    </ModalPane>
+  );
+
+  const referencePane = (
+    <ModalPane
+      title={editLang === "hi" ? "English Reference (Current)" : "Hindi Reference (Current)"}
+      reference
+      loading={refLoading}
+      helper="Reference values update after saving."
+    >
+      {fields.length === 0 ? noFields : fields.map(field => (
+        <ReadOnlyField
+          key={dbCol(field.column_name)}
+          field={field}
+          value={refData[dbCol(field.column_name)]}
+          lang={refLang}
+        />
+      ))}
+    </ModalPane>
+  );
+
+  // Order swaps so English is always on the left, Hindi always on the right.
+  const leftPane  = editLang === "hi" ? referencePane : editablePane;
+  const rightPane = editLang === "hi" ? editablePane  : referencePane;
 
   return (
     <ModalPortal>
@@ -189,35 +360,32 @@ function RecordModal({ fields, record, onSave, onClose, saving, error, getToken,
         onClick={e => { if (e.target === e.currentTarget) onClose(); }}
       >
         <div
-          style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 560, boxShadow: "0 24px 64px rgba(0,0,0,0.22)", overflow: "hidden", maxHeight: "90vh", display: "flex", flexDirection: "column" }}
+          style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: showReference ? 1100 : 560, boxShadow: "0 24px 64px rgba(0,0,0,0.22)", overflow: "hidden", maxHeight: "90vh", display: "flex", flexDirection: "column" }}
           onClick={e => e.stopPropagation()}
         >
           <div style={{ padding: "20px 24px", borderBottom: "1px solid #f1f5f9", display: "flex", alignItems: "center", justifyContent: "space-between", background: "#fafafa" }}>
             <div>
               <div style={{ fontSize: 15, fontWeight: 700, color: "#1e293b" }}>{isEdit ? "Edit Record" : "Add New Record"}</div>
-              <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 2 }}>{isEdit ? "Update the fields below" : "Fill in the details below"}</div>
+              <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 2 }}>
+                {showReference
+                  ? (editLang === "hi" ? "Edit the Hindi values — English shown for reference" : "Edit the English values — Hindi updates after you save")
+                  : (isEdit ? "Update the fields below" : "Fill in the details below")}
+              </div>
             </div>
             <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 20, color: "#94a3b8", cursor: "pointer", lineHeight: 1, padding: "4px 8px", borderRadius: 6 }}>×</button>
           </div>
           <form onSubmit={handleSubmit} style={{ overflowY: "auto", flex: 1 }}>
-            <div style={{ padding: "20px 24px", display: "flex", flexDirection: "column", gap: 16 }}>
-              {fields.length === 0 && (
-                <div style={{ textAlign: "center", color: "#94a3b8", fontSize: 13, padding: "24px 0" }}>
-                  No schema fields configured for this form.
+            <div style={{ padding: "20px 24px" }}>
+              {showReference ? (
+                <div className="pm-rec-grid">
+                  {leftPane}
+                  {rightPane}
                 </div>
+              ) : (
+                editablePane
               )}
-              {fields.map(field => (
-                <FieldInput
-                  key={dbCol(field.column_name)}
-                  field={field}
-                  value={formData[dbCol(field.column_name)]}
-                  onChange={handleChange}
-                  getToken={getToken}
-                  lang={lang}
-                />
-              ))}
               {error && (
-                <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, padding: "10px 14px", fontSize: 13, color: "#b91c1c" }}>
+                <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, padding: "10px 14px", fontSize: 13, color: "#b91c1c", marginTop: 16 }}>
                   {error}
                 </div>
               )}
@@ -1028,9 +1196,17 @@ export default function FormDataPage() {
     );
   }, [records, searchTerm, schemaFields]);
 
-  /* ── Read-only flags ── */
+  /* ── Read-only flags ──
+     readOnly → gates record *authoring* that only makes sense in English:
+                Add, Import, Delete and bulk-select. Disabled in Hindi because a
+                brand-new record must be created in English to generate its EN+HI
+                pair, and deletes are driven from the English (source) row.
+     canEdit  → editing is allowed in BOTH languages (Task 2); only a locked form
+                blocks it. Editing a Hindi row updates that row only; editing an
+                English row regenerates its Hindi mirror (handled by the backend). */
   const viewingTranslated = lang === "hi";
   const readOnly = lockInfo.is_locked || viewingTranslated;
+  const canEdit  = !lockInfo.is_locked;
 
   /* ── Derived: sorted records (applied after search filter) ── */
   const sortedRecords = [...filteredRecords].sort((a, b) => {
@@ -1247,7 +1423,9 @@ export default function FormDataPage() {
           saving={saving}
           error={modalError}
           getToken={getToken}
-          lang={lang}
+          formName={selectedForm?.form_name}
+          apiFetch={apiFetch}
+          translationEnabled={selectedForm?.translate_to_hindi !== false}
         />
       )}
       {deleteTarget !== null && (
@@ -1452,7 +1630,7 @@ export default function FormDataPage() {
                     </th>
                   ))}
                   <th style={thStyle}>{lang === "hi" ? "बनाया गया" : "Created"}</th>
-                  {!readOnly && <th style={{ ...thStyle, textAlign: "right" }}>{lang === "hi" ? "क्रियाएँ" : "Actions"}</th>}
+                  {canEdit && <th style={{ ...thStyle, textAlign: "right" }}>{lang === "hi" ? "क्रियाएँ" : "Actions"}</th>}
                 </tr>
               </thead>
               <tbody>
@@ -1499,23 +1677,26 @@ export default function FormDataPage() {
                           {formatDate(rec.created_at)}
                         </span>
                       </td>
-                      {!readOnly && (
+                      {canEdit && (
                         <td style={{ ...tdStyle, textAlign: "right" }}>
                           <div style={{ display: "inline-flex", gap: 6 }}>
                             <button
                               onClick={(e) => { e.stopPropagation(); setEditRecord(rec); setModalError(""); setModalOpen(true); }}
                               style={actionBtn}
-                              title="Edit record"
+                              title={viewingTranslated ? "Edit Hindi record" : "Edit record"}
                             >
                               <IcoEdit />
                             </button>
-                            <button
-                              onClick={(e) => { e.stopPropagation(); setDeleteTarget(rec.id); }}
-                              style={{ ...actionBtn, color: "#dc2626", borderColor: "#fecaca" }}
-                              title="Delete record"
-                            >
-                              <IcoTrash />
-                            </button>
+                            {/* Delete is driven from the English (source) row, so it stays English-only */}
+                            {!readOnly && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); setDeleteTarget(rec.id); }}
+                                style={{ ...actionBtn, color: "#dc2626", borderColor: "#fecaca" }}
+                                title="Delete record"
+                              >
+                                <IcoTrash />
+                              </button>
+                            )}
                           </div>
                         </td>
                       )}
