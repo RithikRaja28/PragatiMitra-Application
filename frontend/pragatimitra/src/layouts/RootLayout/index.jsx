@@ -1,13 +1,20 @@
 /**
  * RootLayout.jsx
+ *
+ * Settings mode works by swapping AppShell's navItems + pages + defaultPage.
+ * The header, sidebar container, collapse state, and theme are all unchanged.
+ * A "← Back" nav item at the top of the settings nav exits settings mode.
  */
 
 import { Suspense, useState } from "react";
 import AppShell from "../../components/Dashboard/AppShell";
-import SettingsSidebar, { flatSettingsItems } from "../../components/Dashboard/SettingsSidebar";
+import { flatSettingsItems, buildSettingsNav } from "../../components/Dashboard/SettingsSidebar";
 import "./RootLayout.css";
 import { useAuth } from "../../store/AuthContext";
 import { getRoleConfig } from "../../components/Dashboard/roleConfig";
+
+// Special id used for the "back to dashboard" item in settings nav
+const SETTINGS_BACK_ID = "__settings_back__";
 
 function ShellSkeleton() {
   return (
@@ -43,15 +50,18 @@ function PageLoader() {
 
 export default function RootLayout() {
   const { user, loading } = useAuth();
-  const [showSettings, setShowSettings] = useState(false);
-  const [activeSettingsId, setActiveSettingsId] = useState("notifications");
-  const role = user?.roles?.[0]?.name;
+
+  const [showSettings,      setShowSettings]      = useState(false);
+  const [lastDashboardPage, setLastDashboardPage] = useState(null); // restored on exit
+  const [isCollapsed,       setIsCollapsed]       = useState(false); // survives mode switch
+
+  const role   = user?.roles?.[0]?.name;
   const config = getRoleConfig(role);
 
   const permissions = user?.roles?.[0]?.permissions ?? {};
-  const hasAll = permissions["all"] === true;
+  const hasAll      = permissions["all"] === true;
 
-  // 1. Filter nav items — if hasAll, show everything; otherwise check permission key
+  // ── Role-based nav/pages (dashboard mode) ────────────────────────────────
   const filteredNavItems = config.navItems
     .map((group) => ({
       ...group,
@@ -61,22 +71,63 @@ export default function RootLayout() {
     }))
     .filter((group) => group.items.length > 0);
 
-  // 2. Narrow pages to only ids reachable via filteredNavItems
-  const visibleIds = new Set(
-    filteredNavItems.flatMap((g) => g.items.map((item) => item.id))
-  );
+  const visibleIds = new Set(filteredNavItems.flatMap((g) => g.items.map((i) => i.id)));
   const filteredPages = Object.fromEntries(
     Object.entries(config.pages).filter(([id]) => visibleIds.has(id))
   );
 
-  // 3. Ensure defaultPage is still visible; fall back to first visible item
-  const defaultPage = visibleIds.has(config.defaultPage)
+  const roleDefaultPage = visibleIds.has(config.defaultPage)
     ? config.defaultPage
     : filteredNavItems[0]?.items[0]?.id ?? "home";
 
+  // ── Settings nav/pages ────────────────────────────────────────────────────
+  // Settings nav items are converted to AppShell's navItems format so they
+  // render inside the same dark sidebar container unchanged.
+  const settingsGroups = buildSettingsNav(role);
+
+  const settingsNavItems = [
+    // "Back" as a regular nav item at the very top
+    {
+      group: "",
+      items: [{ id: SETTINGS_BACK_ID, label: "← Back to Dashboard", icon: "ArrowLeft" }],
+    },
+    // All settings groups (Communication, Security, Preferences, Administration…)
+    ...settingsGroups,
+  ];
+
+  const settingsPages = Object.fromEntries(
+    flatSettingsItems(role).map((item) => [
+      item.id,
+      // Wrap in a padded div that matches the regular content area padding
+      <div key={item.id} style={{ padding: "32px 36px" }}>
+        {item.renderPage()}
+      </div>,
+    ])
+  );
+
+  // ── Decide what to pass to AppShell ──────────────────────────────────────
+  const activeNavItems  = showSettings ? settingsNavItems  : filteredNavItems;
+  const activePages     = showSettings ? settingsPages     : filteredPages;
+  const activeDefault   = showSettings
+    ? (settingsGroups[0]?.items[0]?.id ?? "notifications")
+    : (lastDashboardPage ?? roleDefaultPage);
+
+  // ── Navigation handler ────────────────────────────────────────────────────
+  const handleNavigate = (id) => {
+    if (id === SETTINGS_BACK_ID) {
+      // Exit settings — restore the page the user was on before
+      setShowSettings(false);
+      return false; // tell AppShell to cancel this navigation
+    }
+    if (!showSettings) {
+      // Track where the user was in the dashboard
+      setLastDashboardPage(id);
+    }
+  };
+
   const shellUser = {
     name: user?.fullName,
-    org: user?.institutionName,
+    org:  user?.institutionName,
     initials: user?.fullName
       ?.split(" ")
       .map((w) => w[0])
@@ -87,77 +138,27 @@ export default function RootLayout() {
 
   if (loading) return <ShellSkeleton />;
 
-  // Inject CSS variables for settings view (same as AppShell)
-  function injectSettingsCSS() {
-    if (typeof document === "undefined" || document.getElementById("settings-css-vars")) return;
-    const el = document.createElement("style");
-    el.id = "settings-css-vars";
-    el.textContent = `
-      :root {
-        --sh-topbar: #0f172a;
-        --sh-topbar-b: rgba(255,255,255,0.07);
-        --sh-sidebar: #ffffff;
-        --sh-bg: #f1f5f9;
-        --sh-border: rgba(0,0,0,0.08);
-        --sh-accent: #2563eb;
-        --sh-accent2: #7c3aed;
-        --sh-text: #1e293b;
-        --sh-muted: #94a3b8;
-        --sh-hover: rgba(37,99,235,0.07);
-        --sh-active: rgba(37,99,235,0.10);
-        --sh-font: 'Plus Jakarta Sans', sans-serif;
-      }
-      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    `;
-    document.head.appendChild(el);
-  }
-
-  // Get the active settings page content
-  const allSettingsItems = flatSettingsItems();
-  const activeSettingsPage = allSettingsItems.find(item => item.id === activeSettingsId);
-
-  // If settings is shown, render settings sidebar + content
-  if (showSettings) {
-    injectSettingsCSS();
-    return (
-      <Suspense fallback={<PageLoader />}>
-        <div style={{ display: "flex", height: "100dvh", width: "100%", overflow: "hidden" }}>
-          <SettingsSidebar
-            activeId={activeSettingsId}
-            onSelect={setActiveSettingsId}
-            onBack={() => setShowSettings(false)}
-          />
-          <main style={{
-            flex: 1,
-            overflowY: "auto",
-            background: "var(--sh-bg)",
-            fontFamily: "var(--sh-font)",
-            color: "var(--sh-text)",
-          }}>
-            <div style={{ padding: "32px 36px" }}>
-              {activeSettingsPage?.renderPage()}
-            </div>
-          </main>
-        </div>
-      </Suspense>
-    );
-  }
-
   return (
     <Suspense fallback={<PageLoader />}>
+      {/*
+        key changes between "dashboard" and "settings" so AppShell remounts
+        with a fresh activeId = defaultPage.  This prevents the "No page
+        registered for __settings_back__" flash that occurs when activeId and
+        pages are momentarily out of sync.  Collapse state is lifted to
+        RootLayout so it survives the remount.
+      */}
       <AppShell
+        key={showSettings ? "settings" : "dashboard"}
         appName="PragatiMitra"
-        navItems={filteredNavItems}
-        pages={filteredPages}
-        defaultPage={defaultPage}
+        navItems={activeNavItems}
+        pages={activePages}
+        defaultPage={activeDefault}
+        defaultCollapsed={isCollapsed}
+        onCollapseChange={setIsCollapsed}
         user={shellUser}
         notificationCount={2}
-        onNavigate={(id) => console.log("Navigated to:", id)}
-        onSettingsClick={() => {
-          console.log("Settings clicked - opening settings");
-          setShowSettings(true);
-          setActiveSettingsId("notifications");
-        }}
+        onNavigate={handleNavigate}
+        onSettingsClick={() => setShowSettings(true)}
       />
     </Suspense>
   );

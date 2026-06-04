@@ -60,6 +60,83 @@ function cookieOptions() {
   };
 }
 
+/**
+ * currentReportingYear
+ * Indian academic calendar: year starts in July.
+ *   Month >= 7  →  "YYYY-(YY+1)"   e.g. July 2026 → "2026-27"
+ *   Month < 7   →  "(YYYY-1)-YY"   e.g. June 2026 → "2025-26"
+ */
+function currentReportingYear() {
+  const now   = new Date();
+  const month = now.getMonth() + 1;   // 1-12
+  const year  = now.getFullYear();
+  if (month >= 7) {
+    return `${year}-${String(year + 1).slice(2)}`;
+  }
+  return `${year - 1}-${String(year).slice(2)}`;
+}
+
+/**
+ * enrichWithNodalOfficerRole
+ *
+ * After the regular user/roles query, checks nodal_officer_assignments for an
+ * ACTIVE Department Nodal Officer record for the CURRENT academic year.
+ * If found, prepends 'department_admin' to the user's roles array so that:
+ *   - requireRole / isOnlyInstAdmin / isDeptAdmin checks pass automatically
+ *   - Frontend roleConfig routes to the Department Admin dashboard
+ *   - departmentId in the JWT reflects the delegated department
+ *
+ * Only Department Nodal Officer is supported; Institution Nodal Officer is
+ * a future feature.  Fails silently — must never block authentication.
+ */
+async function enrichWithNodalOfficerRole(pool, user) {
+  if (!user) return;
+  try {
+    const reportingYear = currentReportingYear();
+
+    const { rows } = await pool.query(
+      `SELECT
+         noa.institution_id,
+         noa.department_id,
+         r.id           AS role_id,
+         r.name         AS role_name,
+         r.display_name AS role_display_name,
+         r.permissions  AS role_permissions
+       FROM nodal_officer_assignments noa
+       JOIN roles r ON r.name = 'department_admin'
+       WHERE noa.user_id       = $1
+         AND noa.is_active     = TRUE
+         AND noa.department_id IS NOT NULL
+         AND noa.reporting_year = $2
+       LIMIT 1`,
+      [user.id, reportingYear]
+    );
+
+    if (!rows.length) return;
+
+    const noa = rows[0];
+
+    // Only prepend if user doesn't already hold department_admin via user_roles
+    if (!(user.roles || []).some((r) => r.name === "department_admin")) {
+      user.roles = [
+        {
+          id:           noa.role_id,
+          name:         "department_admin",
+          display_name: noa.role_display_name,
+          permissions:  noa.role_permissions,
+        },
+        ...(user.roles || []),
+      ];
+    }
+
+    // Override department context with the assigned department
+    user.institution_id = noa.institution_id;
+    user.department_id  = noa.department_id;
+  } catch (_) {
+    // Silently swallow — nodal officer lookup must never block login
+  }
+}
+
 async function fetchUser(pool, whereClause, params) {
   const { rows } = await pool.query(
     `SELECT
@@ -201,6 +278,9 @@ router.post("/login", loginLimiter, async (req, res) => {
 
     await pool.query("UPDATE users SET last_login_at = now() WHERE id = $1", [user.id]);
 
+    // Elevate role if user has an active Nodal Officer delegation
+    await enrichWithNodalOfficerRole(pool, user);
+
     // ── AUDIT: Login success ────────────────────────────────────────
     await writeAuditLog(req, {
       actionType:     "LOGIN_SUCCESS",
@@ -299,6 +379,7 @@ router.post("/refresh", refreshLimiter, async (req, res) => {
     );
 
     const user = await fetchUser(pool, "WHERE u.id = $1", [session.user_id]);
+    await enrichWithNodalOfficerRole(pool, user);
 
     res.cookie("pm_refresh", newRawToken, cookieOptions());
 
@@ -353,6 +434,8 @@ router.get("/me", refreshLimiter, async (req, res) => {
       res.clearCookie("pm_refresh", { path: "/api/auth" });
       return res.status(401).json({ success: false, expired: true, message: "Account is no longer active." });
     }
+
+    await enrichWithNodalOfficerRole(pool, user);
 
     return res.status(200).json({
       success:     true,

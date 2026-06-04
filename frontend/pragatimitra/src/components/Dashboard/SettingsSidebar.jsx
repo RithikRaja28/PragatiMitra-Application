@@ -15,6 +15,8 @@
 import { useState } from "react";
 import * as Icons from "lucide-react";
 import NotificationsPage from "./settings/NotificationsPage";
+import NodalOfficerPage  from "./settings/NodalOfficerPage";
+import { useAuth }       from "../../store/AuthContext";
 
 /* ── Icon resolver — same as AppShell ── */
 function DynIcon({ name, size = 17 }) {
@@ -46,7 +48,7 @@ function ComingSoon({ title }) {
 /* ══════════════════════════════════════════════════════════════
    SETTINGS NAV — flat, one click per page, no sub-items
 ══════════════════════════════════════════════════════════════ */
-const SETTINGS_NAV = [
+const BASE_SETTINGS_NAV = [
   {
     group: "Communication",
     items: [
@@ -69,9 +71,26 @@ const SETTINGS_NAV = [
   },
 ];
 
-/* Exported so AppShell can look up the active page */
-export function flatSettingsItems() {
-  return SETTINGS_NAV.flatMap(g => g.items);
+// Nodal Officer delegation is currently implemented for Department Admin only.
+// Institute Nodal Officer is a future feature.
+const NODAL_OFFICER_ROLES = ["department_admin"];
+
+export function buildSettingsNav(role) {
+  const nav = [...BASE_SETTINGS_NAV];
+  if (role && NODAL_OFFICER_ROLES.includes(role)) {
+    nav.push({
+      group: "Administration",
+      items: [
+        { id: "nodal-officer", label: "Nodal Officer", icon: "UserCheck", renderPage: () => <NodalOfficerPage /> },
+      ],
+    });
+  }
+  return nav;
+}
+
+/* Exported so RootLayout can look up the active page — pass the current role */
+export function flatSettingsItems(role) {
+  return buildSettingsNav(role).flatMap(g => g.items);
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -81,6 +100,9 @@ export function flatSettingsItems() {
 ══════════════════════════════════════════════════════════════ */
 export default function SettingsSidebar({ activeId, onSelect, onBack }) {
   const [collapsed, setCollapsed] = useState(false);
+  const { user } = useAuth();
+  const role = user?.roles?.[0]?.name;
+  const settingsNav = buildSettingsNav(role);
 
   const cls = ["sh-sidebar", collapsed ? "col" : ""].filter(Boolean).join(" ");
 
@@ -133,7 +155,7 @@ export default function SettingsSidebar({ activeId, onSelect, onBack }) {
 
       {/* ── Nav — uses exact .sh-nav / .sh-nav-group / .sh-nav-item ── */}
       <nav className="sh-nav">
-        {SETTINGS_NAV.map((group) => (
+        {settingsNav.map((group) => (
           <div key={group.group} className="sh-nav-group">
             {/* Group label — uses .sh-nav-group-label */}
             <div className="sh-nav-group-label">{group.group}</div>

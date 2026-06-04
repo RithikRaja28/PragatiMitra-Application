@@ -834,11 +834,11 @@ function Sidebar({ navItems, collapsed, mobileOpen, onCollapse, onNavClick, acti
 
 /* ─── Main export ───────────────────────────────────────────── */
 export default function AppShell({
-  navItems      = [],
-  pages         = {},
+  navItems          = [],
+  pages             = {},
   defaultPage,
   logo,
-  appName       = "PragatiMitra",
+  appName           = "PragatiMitra",
   user,
   searchPlaceholder,
   onSearch,
@@ -849,6 +849,7 @@ export default function AppShell({
   defaultCollapsed  = false,
   defaultYear       = "2024-25",
   onYearChange,
+  onCollapseChange, // optional — called with new boolean when sidebar is collapsed/expanded
 }) {
   injectCSS("app-shell-v4", CSS);
 
@@ -865,9 +866,19 @@ export default function AppShell({
     return () => window.removeEventListener("resize", fn);
   }, []);
 
+  // onNavigate may return false to cancel the navigation (used by the settings back button)
   const handleNavClick = useCallback((id) => {
-    setActiveId(id); setPageKey((k) => k + 1); setMobileOpen(false); onNavigate?.(id);
+    const cancelled = onNavigate?.(id) === false;
+    if (!cancelled) { setActiveId(id); setPageKey((k) => k + 1); setMobileOpen(false); }
   }, [onNavigate]);
+
+  const handleCollapse = useCallback(() => {
+    setCollapsed((c) => {
+      const next = !c;
+      onCollapseChange?.(next);
+      return next;
+    });
+  }, [onCollapseChange]);
 
   const handleYearChange = useCallback((yr) => {
     setSelectedYear(yr); onYearChange?.(yr);
@@ -908,7 +919,7 @@ export default function AppShell({
             navItems={navItems}
             collapsed={collapsed}
             mobileOpen={mobileOpen}
-            onCollapse={() => setCollapsed((c) => !c)}
+            onCollapse={handleCollapse}
             onNavClick={handleNavClick}
             activeId={activeId}
           />
