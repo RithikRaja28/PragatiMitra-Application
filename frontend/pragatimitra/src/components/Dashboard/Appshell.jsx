@@ -885,11 +885,11 @@ function Sidebar({ navItems, collapsed, mobileOpen, onCollapse, onNavClick, acti
 
 /* ─── Main export ───────────────────────────────────────────── */
 export default function AppShell({
-  navItems      = [],
-  pages         = {},
+  navItems          = [],
+  pages             = {},
   defaultPage,
   logo,
-  appName       = "PragatiMitra",
+  appName           = "PragatiMitra",
   user,
   searchPlaceholder,
   onSearch,
@@ -898,6 +898,7 @@ export default function AppShell({
   onNavigate,
   onSettingsClick,
   defaultCollapsed  = false,
+  onCollapseChange, // optional — called with new boolean when sidebar is collapsed/expanded
 }) {
   injectCSS("app-shell-v4", CSS);
 
@@ -913,9 +914,21 @@ export default function AppShell({
     return () => window.removeEventListener("resize", fn);
   }, []);
 
+  // onNavigate may return false to cancel the navigation (used by the settings back button)
   const handleNavClick = useCallback((id) => {
-    setActiveId(id); setPageKey((k) => k + 1); setMobileOpen(false); onNavigate?.(id);
+    const cancelled = onNavigate?.(id) === false;
+    if (!cancelled) { setActiveId(id); setPageKey((k) => k + 1); setMobileOpen(false); }
   }, [onNavigate]);
+
+  // Toggle collapse and notify the parent so the state survives the
+  // dashboard ⇄ settings remount (RootLayout lifts it via onCollapseChange).
+  const handleCollapse = useCallback(() => {
+    setCollapsed((c) => {
+      const next = !c;
+      onCollapseChange?.(next);
+      return next;
+    });
+  }, [onCollapseChange]);
 
   const currentPage = pages[activeId] ?? (
     <div style={{ padding: 40, color: "var(--sh-muted)", fontFamily: "var(--sh-font)" }}>
@@ -950,7 +963,7 @@ export default function AppShell({
             navItems={navItems}
             collapsed={collapsed}
             mobileOpen={mobileOpen}
-            onCollapse={() => setCollapsed((c) => !c)}
+            onCollapse={handleCollapse}
             onNavClick={handleNavClick}
             activeId={activeId}
           />

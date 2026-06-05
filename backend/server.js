@@ -31,6 +31,7 @@ const lookupRoutes                = require("./routes/lookup");
 const auditLogRoutes              = require("./routes/auditLogs");
 const notificationTemplatesRouter = require("./routes/notificationTemplates");
 const radiologyRoutes             = require("./routes/radiology");   // ← radiology
+const nodalOfficerAssignmentsRouter = require("./routes/nodalOfficerAssignments");
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -110,6 +111,26 @@ pool.connect((err, client, release) => {
 // Make pool available to all route handlers via req.app.locals.pool
 app.locals.pool = pool;
 
+/* ── Nodal Officer Assignments: ensure table + index exist on startup ── */
+pool.query(`
+  CREATE TABLE IF NOT EXISTS nodal_officer_assignments (
+    id             UUID        NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+    institution_id UUID        NOT NULL REFERENCES institutions(institution_id),
+    department_id  UUID        REFERENCES departments(department_id),
+    user_id        UUID        NOT NULL REFERENCES users(id),
+    reporting_year TEXT        NOT NULL,
+    is_active      BOOLEAN     NOT NULL DEFAULT TRUE,
+    assigned_by    UUID        NOT NULL REFERENCES users(id),
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+  )
+`).catch(e => logger.error("Failed to ensure nodal_officer_assignments table", { stack: e.stack }));
+
+// Multiple active assignments per dept+year are now allowed — drop the old
+// unique partial index if it was created by a previous version of the server.
+pool.query(`DROP INDEX IF EXISTS idx_noa_unique_active`)
+  .catch(e => logger.error("Failed to drop idx_noa_unique_active", { stack: e.stack }));
+
 /* ── Form-level Hindi translation toggle: ensure the metadata column exists.
    NOT NULL DEFAULT TRUE backfills every existing form to TRUE, so current
    auto-translate behavior is preserved (backward compatible). ── */
@@ -163,6 +184,7 @@ app.use("/api/forms",                  require("./routes/forms"));
 app.use("/api/academic-years",         require("./routes/academicYear"));
 app.use("/api/form-data",              require("./routes/formData"));
 app.use("/api/form-data",              require("./routes/formimportexport"));
+app.use("/api/nodal-officer-assignments", nodalOfficerAssignmentsRouter);
 /* ─── Global error handler (must be last) ───────────────────── */
 app.use(errorHandler);
 
