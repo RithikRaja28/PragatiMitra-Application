@@ -9,7 +9,8 @@
       "Bash(python -c \"from playwright.sync_api import sync_playwright; p=sync_playwright\\(\\).start\\(\\); b=p.chromium.launch\\(\\); print\\('chromium OK'\\); b.close\\(\\); p.stop\\(\\)\")",
       "Bash(node server.js)",
       "Bash(node -e \"const s=require\\('./package.json'\\).scripts; console.log\\(JSON.stringify\\(s,null,2\\)\\)\")",
-      "Bash(node _inspect_ay.js)"
+      "Bash(node _inspect_ay.js)",
+      "Bash(node _inspect3.js)"
     ]
   }
 }
