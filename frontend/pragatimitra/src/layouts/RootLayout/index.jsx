@@ -3,7 +3,7 @@
  */
 
 import { Suspense, useState } from "react";
-import AppShell from "../../components/Dashboard/AppShell";
+import AppShell from "../../components/Dashboard/Appshell";
 import SettingsSidebar, { flatSettingsItems } from "../../components/Dashboard/SettingsSidebar";
 import "./RootLayout.css";
 import { useAuth } from "../../store/AuthContext";

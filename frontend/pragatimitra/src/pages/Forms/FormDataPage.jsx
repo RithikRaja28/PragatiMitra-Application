@@ -4,6 +4,7 @@ import { createPortal } from "react-dom";
 import { Trash2, FileText, FilePlus, Lock, Clock, Globe, SearchX } from "lucide-react";
 import { useApi } from "../../hooks/useApi";
 import { useAuth } from "../../store/AuthContext";
+import { useAcademicYear } from "../../store/AcademicYearContext";
 import { useLanguage } from "../../i18n/LanguageContext";
 import { S, Toast, isAuthError, formatDate } from "../../components/shared/formUtils";
 import PageHeader from "../../components/shared/PageHeader";
@@ -1020,6 +1021,10 @@ export default function FormDataPage() {
   const { apiFetch }    = useApi();
   const { accessToken } = useAuth();
   const { lang }        = useLanguage();
+  const { selectedYear, years } = useAcademicYear() || {};
+  // Year-aware filtering only kicks in once the institution has created academic
+  // years (opted into the lifecycle). Otherwise behave exactly as before.
+  const yearAware       = (years?.length || 0) > 0;
   const getToken        = useCallback(() => accessToken, [accessToken]);
 
   const [view, setView]                 = useState("forms");
@@ -1075,13 +1080,19 @@ export default function FormDataPage() {
   const loadForms = useCallback(async () => {
     setFormsLoading(true); setFormsError("");
     try {
-      const res  = await apiFetch("/api/forms/institution-forms");
+      const qs   = selectedYear != null ? `?year=${selectedYear}` : "";
+      const res  = await apiFetch(`/api/forms/institution-forms${qs}`);
       const data = await res.json();
-      if (data.success) setForms(data.forms || []);
+      if (data.success) {
+        const all = data.forms || [];
+        // When the institution uses academic years, departments see only the
+        // forms ACTIVE for the selected year; switching the top-bar year reloads.
+        setForms(yearAware ? all.filter((f) => (f.lifecycle_status ?? "active") === "active") : all);
+      }
       else setFormsError(data.message || "Failed to load forms.");
     } catch (err) { if (!isAuthError(err)) setFormsError("Failed to load forms."); }
     finally { setFormsLoading(false); }
-  }, [apiFetch]);
+  }, [apiFetch, selectedYear, yearAware]);
 
   useEffect(() => { loadForms(); }, [loadForms]);
 

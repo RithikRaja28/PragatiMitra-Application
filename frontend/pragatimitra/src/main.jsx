@@ -6,6 +6,7 @@ import store from "./store";
 import router from "./router";
 import { AuthProvider } from "./store/AuthContext";
 import { LanguageProvider } from "./i18n/LanguageContext";
+import { AcademicYearProvider } from "./store/AcademicYearContext";
 import "./index.css";
 
 createRoot(document.getElementById("root")).render(
@@ -13,7 +14,9 @@ createRoot(document.getElementById("root")).render(
     <Provider store={store}>
       <AuthProvider>
         <LanguageProvider>
-          <RouterProvider router={router} />
+          <AcademicYearProvider>
+            <RouterProvider router={router} />
+          </AcademicYearProvider>
         </LanguageProvider>
       </AuthProvider>
     </Provider>

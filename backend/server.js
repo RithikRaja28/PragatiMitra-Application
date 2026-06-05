@@ -123,6 +123,11 @@ ensureDeadlineColumns(pool)
   .then(() => startDeadlineScheduler(pool, 60 * 1000))
   .catch((e) => logger.error("Failed to init form deadline scheduler", { stack: e.stack }));
 
+/* ── Academic-year form lifecycle: ensure the two additive tables exist ── */
+const { ensureAcademicYearTables } = require("./services/academicYearService");
+ensureAcademicYearTables(pool)
+  .catch((e) => logger.error("Failed to ensure academic year tables", { stack: e.stack }));
+
 /* ── Import session cache: rows stored server-side after parse ───── */
 app.locals.importSessions = new Map();
 // Purge sessions older than 1 hour every 30 minutes
@@ -155,6 +160,7 @@ app.use("/api/notification-templates", notificationTemplatesRouter);
 app.use("/api/radiology",              radiologyRoutes);   // ← radiology mounted
 app.use("/api/kpi",                    require("./routes/kpi"));
 app.use("/api/forms",                  require("./routes/forms"));
+app.use("/api/academic-years",         require("./routes/academicYear"));
 app.use("/api/form-data",              require("./routes/formData"));
 app.use("/api/form-data",              require("./routes/formimportexport"));
 /* ─── Global error handler (must be last) ───────────────────── */

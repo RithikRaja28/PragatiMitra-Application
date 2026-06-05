@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
-import { FileText, Wrench, CheckCircle2 } from "lucide-react";
+import { FileText, Wrench, CheckCircle2, CalendarRange } from "lucide-react";
 import { useApi } from "../../hooks/useApi";
+import { useAcademicYear } from "../../store/AcademicYearContext";
 import { S, isAuthError } from "../../components/shared/formUtils";
 import PageHeader from "../../components/shared/PageHeader";
 
@@ -328,6 +329,7 @@ function dbColToField(col, order) {
 ════════════════════════════════════════════════════════════════════ */
 export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDone, onBack }) {
   const { apiFetch } = useApi();
+  const { selectedYear } = useAcademicYear() || {};
 
   const isCreate = mode === "create";
   const isAdapt  = mode === "adapt";
@@ -351,6 +353,15 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
   const identifier = isEdit || isAdapt
     ? (initialData?.form_name || "")
     : toIdentifier(basics.form_name);
+
+  /* New forms inherit the top-bar academic year (institution context). The year
+     is no longer typed in — it follows the selected academic year. Edit mode
+     keeps the existing schema's year (that schema belongs to that year). */
+  useEffect(() => {
+    if ((isCreate || isAdapt) && selectedYear != null) {
+      setBasics((b) => (b.year === selectedYear ? b : { ...b, year: selectedYear }));
+    }
+  }, [isCreate, isAdapt, selectedYear]);
 
   /* ── Languages ── */
   const [languages, setLanguages] = useState([{ code: "en", name: "English" }]);
@@ -681,22 +692,29 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
                 <div style={hintStyle}>Helps your team understand the form's purpose at a glance.</div>
               </div>
 
-              {/* year */}
-              <div style={{ maxWidth: 220 }}>
-                <label style={S.label}>Schema Year *</label>
-                <input
-                  className="fb-input"
-                  type="number"
-                  style={S.input(!!basicsErrors.year)}
-                  value={basics.year}
-                  onChange={(e) => {
-                    setBasics((b) => ({ ...b, year: Number(e.target.value) }));
-                    if (basicsErrors.year) setBasicsErrors((er) => ({ ...er, year: "" }));
+              {/* Academic year — read-only, driven by the top-bar selector */}
+              <div style={{ maxWidth: 260 }}>
+                <label style={S.label}>Academic Year</label>
+                <div
+                  style={{
+                    ...S.input(false),
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    background: "#f8fafc",
+                    color: "#475569",
+                    cursor: "default",
                   }}
-                  min={2020} max={2100}
-                />
-                <div style={hintStyle}>The academic / fiscal year this schema applies to.</div>
-                {basicsErrors.year && <div style={S.errorText}>{basicsErrors.year}</div>}
+                >
+                  <CalendarRange size={15} color="#94a3b8" />
+                  <strong style={{ color: "#1e293b" }}>{basics.year}–{basics.year + 1}</strong>
+                  <span style={{ fontSize: 11, color: "#94a3b8" }}>(year = {basics.year})</span>
+                </div>
+                <div style={hintStyle}>
+                  {isEdit
+                    ? "This schema belongs to the academic year above."
+                    : "Set automatically from the academic year selected in the top bar. Change it there."}
+                </div>
               </div>
 
             </div>
@@ -921,7 +939,7 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
           <div style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: 14 }}>
             <ReviewSection title="Form Metadata Review">
               <ReviewRow label="Form Name"       value={basics.form_name || initialData?.form_name} />
-              <ReviewRow label="Schema Year"     value={String(basics.year)} />
+              <ReviewRow label="Academic Year"   value={`${basics.year}–${basics.year + 1}`} />
               {basics.description && <ReviewRow label="Description" value={basics.description} />}
               {isSuperAdmin && isCreate && (
                 <ReviewRow label="Shared Template" value={basics.share_table ? "Yes — available to all institutions" : "No — private to this institution"} />

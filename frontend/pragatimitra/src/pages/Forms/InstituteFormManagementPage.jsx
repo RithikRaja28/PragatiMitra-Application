@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
-import { FileText, Archive, Search } from "lucide-react";
+import { FileText, Archive, ArchiveRestore, Search } from "lucide-react";
 import { useApi } from "../../hooks/useApi";
 import { useAuth } from "../../store/AuthContext";
+import { useAcademicYear } from "../../store/AcademicYearContext";
 import { useLanguage } from "../../i18n/LanguageContext";
 import { Toast, isAuthError } from "../../components/shared/formUtils";
 import PageHeader from "../../components/shared/PageHeader";
@@ -473,6 +474,10 @@ export default function InstituteFormManagementPage() {
   const { apiFetch }    = useApi();
   const { accessToken } = useAuth();
   const { lang }        = useLanguage();
+  // Academic-year context — the top-bar year scopes which forms are Active /
+  // Archived here, and Archive/Activate write to academic_year_form_config.
+  const { selectedYear, academicYear, years } = useAcademicYear() || {};
+  const yearAware = (years?.length || 0) > 0;
 
   const [view, setView]               = useState("list");
   const [builderMode, setBuilderMode] = useState(null);
@@ -497,7 +502,8 @@ export default function InstituteFormManagementPage() {
     setLoading(true);
     setError("");
     try {
-      const res  = await apiFetch("/api/forms/institution-forms");
+      const qs   = selectedYear != null ? `?year=${selectedYear}` : "";
+      const res  = await apiFetch(`/api/forms/institution-forms${qs}`);
       const data = await res.json();
       if (data.success) setForms(data.forms || []);
       else setError(data.message || "Failed to load forms.");
@@ -506,14 +512,22 @@ export default function InstituteFormManagementPage() {
     } finally {
       setLoading(false);
     }
-  }, [apiFetch]);
+  }, [apiFetch, selectedYear]);
 
   useEffect(() => { load(); }, [load]);
 
   const visibleForms = useMemo(() => {
     const q = search.trim().toLowerCase();
     return forms
-      .filter((f) => (tab === "archived" ? f.archived : !f.archived))
+      .filter((f) => {
+        // Year-aware: tabs reflect the selected year's lifecycle_status.
+        // Pre-adoption (no academic years yet) keeps the legacy archived flag.
+        if (yearAware) {
+          const st = f.lifecycle_status ?? "active";
+          return tab === "archived" ? (st === "archived" || st === "disabled") : st === "active";
+        }
+        return tab === "archived" ? f.archived : !f.archived;
+      })
       .filter((f) => {
         if (!q) return true;
         return (
@@ -522,7 +536,29 @@ export default function InstituteFormManagementPage() {
           (f.description || "").toLowerCase().includes(q)
         );
       });
-  }, [forms, tab, search]);
+  }, [forms, tab, search, yearAware]);
+
+  /* Archive / Activate a form for the SELECTED academic year only — writes to
+     academic_year_form_config (the single source of truth), so it stays in
+     sync with the department form list and the settings lifecycle page. */
+  async function setLifecycle(form, status) {
+    if (!academicYear) { showToast("No academic year selected.", "error"); return; }
+    try {
+      const res  = await apiFetch(
+        `/api/academic-years/${encodeURIComponent(academicYear)}/forms/${form.id}/status`,
+        { method: "PATCH", body: JSON.stringify({ status }) }
+      );
+      const data = await res.json();
+      if (data.success) {
+        showToast(`"${titleOf(form.form_name)}" ${status === "active" ? "activated" : "archived"} for ${academicYear}.`);
+        load();
+      } else {
+        showToast(data.message || "Failed to update status.", "error");
+      }
+    } catch (err) {
+      if (!isAuthError(err)) showToast("Failed to update status.", "error");
+    }
+  }
 
   async function handleToggleLock(form) {
     const action = form.is_locked ? "unlock" : "lock";
@@ -682,6 +718,11 @@ export default function InstituteFormManagementPage() {
               }}
             />
           </div>
+          {yearAware && academicYear && (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 700, color: ACCENT, background: ACCENT + "10", border: `1px solid ${ACCENT}30`, borderRadius: 8, padding: "5px 10px" }}>
+              <IconCalendar /> {academicYear}
+            </span>
+          )}
           <div style={{ display: "inline-flex", border: "1px solid #e2e8f0", borderRadius: 9, padding: 3, gap: 2, background: "#fff" }}>
             {[
               { key: "active",   label: "Active" },
@@ -813,6 +854,24 @@ export default function InstituteFormManagementPage() {
                             onClick={() => openManage(form)}
                             title="Manage Form"
                           />
+                          {yearAware && (
+                            (form.lifecycle_status ?? "active") === "active" ? (
+                              <ActionButton
+                                icon={<Archive size={15} />}
+                                iconOnly
+                                onClick={() => setLifecycle(form, "archived")}
+                                title={`Archive for ${academicYear}`}
+                              />
+                            ) : (
+                              <ActionButton
+                                icon={<ArchiveRestore size={15} />}
+                                iconOnly
+                                variant="success"
+                                onClick={() => setLifecycle(form, "active")}
+                                title={`Activate for ${academicYear}`}
+                              />
+                            )
+                          )}
                           <ActionButton
                             icon={form.is_locked ? <IconLock /> : <IconUnlock />}
                             iconOnly

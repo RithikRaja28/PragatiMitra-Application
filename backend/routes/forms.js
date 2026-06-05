@@ -5,6 +5,7 @@ const { verifyToken, requireRole } = require("../middleware/auth");
 const { writeAuditLog } = require("../utils/audit");
 const logger = require("../utils/logger");
 const { translateSentence, enrichSchemaLabels } = require("../services/translationService");
+const { formatAcademicYear, ensureYearRows, setFormStatusForYear } = require("../services/academicYearService");
 
 /* Auto-fill label.hi for any field missing it, using Google Translate.
    Only runs when translate_to_hindi is true. Mutates schema.fields in-place. */
@@ -100,6 +101,55 @@ router.get("/institution-forms", async (req, res) => {
          ORDER BY tl.form_name`,
         [institutionId]
       ));
+    }
+
+    /* ── Academic-year lifecycle status (opt-in via ?year=) ──────────────
+       When a start-year is supplied we annotate each form with its lifecycle
+       status for that (institution, year). Status source of truth is
+       academic_year_form_config; if no config row exists for the year we fall
+       back to the form's schema year so pre-existing forms stay visible in the
+       year they belong to. Without ?year= the response is unchanged (existing
+       callers keep their current behavior). */
+    const yearParam = req.query.year != null ? Number(req.query.year) : null;
+    if (yearParam && Number.isInteger(yearParam) && institutionId) {
+      const academicYear = formatAcademicYear(yearParam);
+
+      const { rows: cfgRows } = await pool.query(
+        `SELECT active_forms_json, archived_forms_json, disabled
+         FROM academic_year_form_config
+         WHERE institution_id = $1 AND academic_year = $2`,
+        [institutionId, academicYear]
+      );
+      const cfg = cfgRows[0] || null;
+      const toSet = (j) => new Set(Array.isArray(j) ? j.map(String) : []);
+      const activeSet   = toSet(cfg?.active_forms_json);
+      const archivedSet = toSet(cfg?.archived_forms_json);
+      const disabledSet = toSet(cfg?.disabled);
+
+      // Fallback signal: form has an active schema for this year.
+      const { rows: schemaRows } = await pool.query(
+        `SELECT DISTINCT form_name FROM custom_field_schemas
+         WHERE institution_id = $1 AND year = $2 AND is_active = true`,
+        [institutionId, yearParam]
+      );
+      const schemaYearForms = new Set(schemaRows.map((r) => r.form_name));
+
+      rows = rows.map((f) => {
+        const id = String(f.id);
+        let lifecycle_status;
+        if (cfg) {
+          if (disabledSet.has(id)) lifecycle_status = "disabled";
+          else if (activeSet.has(id)) lifecycle_status = "active";
+          else if (archivedSet.has(id)) lifecycle_status = "archived";
+          else lifecycle_status = schemaYearForms.has(f.form_name) ? "active" : "archived";
+        } else {
+          // No config for this year yet → derive from the schema year.
+          lifecycle_status = schemaYearForms.has(f.form_name) ? "active" : "archived";
+        }
+        return { ...f, lifecycle_status };
+      });
+
+      return res.json({ success: true, forms: rows, institutionId, year: yearParam, academicYear });
     }
 
     return res.json({ success: true, forms: rows, institutionId });
@@ -415,6 +465,27 @@ router.post(
             await client.query(
               `ALTER TABLE ${recordsTable} ADD COLUMN IF NOT EXISTS ${colName} ${pgType(field.type)}`
             );
+          }
+        }
+
+        // 5. Academic-year lifecycle: a newly created form is ACTIVE for its
+        //    creation year only (all other years default to archived). Status is
+        //    tracked in academic_year_form_config. For shared forms we mirror the
+        //    "active" classification to every linked institution for that year.
+        const { rows: tlRows } = await client.query(
+          `SELECT id, COALESCE(institute_access, '{}'::uuid[]) AS institute_access
+           FROM table_list WHERE form_name = $1`,
+          [normalizedName]
+        );
+        const formId = tlRows[0]?.id;
+        if (formId) {
+          const academicYear = formatAcademicYear(formYear);
+          const targets = share_table
+            ? [...new Set([String(institutionId), ...(tlRows[0].institute_access || []).map(String)])]
+            : [String(institutionId)];
+          for (const inst of targets) {
+            await ensureYearRows(client, { institutionId: inst, academicYear, startYear: formYear, createdBy: req.user.userId });
+            await setFormStatusForYear(client, { institutionId: inst, academicYear, formId, status: "active" });
           }
         }
 

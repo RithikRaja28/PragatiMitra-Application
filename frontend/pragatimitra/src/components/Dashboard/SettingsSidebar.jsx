@@ -15,6 +15,7 @@
 import { useState } from "react";
 import * as Icons from "lucide-react";
 import NotificationsPage from "./settings/NotificationsPage";
+import AcademicYearPage from "./settings/AcademicYearPage";
 
 /* ── Icon resolver — same as AppShell ── */
 function DynIcon({ name, size = 17 }) {
@@ -47,6 +48,12 @@ function ComingSoon({ title }) {
    SETTINGS NAV — flat, one click per page, no sub-items
 ══════════════════════════════════════════════════════════════ */
 const SETTINGS_NAV = [
+  {
+    group: "Institution",
+    items: [
+      { id: "academic-year", label: "Academic Year Management", icon: "CalendarRange", renderPage: () => <AcademicYearPage /> },
+    ],
+  },
   {
     group: "Communication",
     items: [

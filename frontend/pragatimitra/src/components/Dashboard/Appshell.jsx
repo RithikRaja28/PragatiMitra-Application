@@ -1,6 +1,4 @@
 import {
-  createContext,
-  useContext,
   useState,
   useEffect,
   useCallback,
@@ -10,13 +8,15 @@ import {
 } from "react";
 import * as Icons from "lucide-react";
 import { useAuth } from "../../store/AuthContext";
+import { useAcademicYear } from "../../store/AcademicYearContext";
 import { useLanguage } from "../../i18n/LanguageContext";
 import { t } from "../../i18n/translations";
 import NotificationBell from "./NotificationBell";
+import { ShellContext } from "./shellContext";
 
-/* ─── Context ───────────────────────────────────────────────── */
-const ShellContext = createContext(null);
-export const useShell = () => useContext(ShellContext);
+/* ─── Context ───────────────────────────────────────────────────
+   ShellContext + useShell live in ./shellContext so this file exports ONLY the
+   AppShell component → React Fast Refresh works (the top bar hot-reloads). */
 
 /* ─── Icon resolver ─────────────────────────────────────────── */
 function DynIcon({ name, size = 18 }) {
@@ -525,12 +525,20 @@ function injectCSS(id, css) {
   el.textContent = css;
 }
 
-/* ─── Academic Year Picker ──────────────────────────────────── */
-const ACADEMIC_YEARS = ["2021-22", "2022-23", "2023-24", "2024-25", "2025-26"];
-
-function AcademicYearPicker({ selectedYear, onChange }) {
+/* ─── Academic Year Picker ───────────────────────────────────────
+   Institution-scoped "current academic year" selector. Reads/writes the
+   global AcademicYearContext (dynamic options from academic_year_master,
+   session-persisted). Selecting a year drives form creation + visibility. */
+function AcademicYearPicker() {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef(null);
+
+  const ay = useAcademicYear();
+  const options  = ay?.options || [];
+  const selected = ay?.selectedYear ?? null;
+  const currentLabel =
+    options.find((o) => o.value === selected)?.label ??
+    (selected != null ? `${selected}–${selected + 1}` : "—");
 
   useEffect(() => {
     if (!open) return;
@@ -540,8 +548,6 @@ function AcademicYearPicker({ selectedYear, onChange }) {
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [open]);
-
-  const yr = selectedYear || "2024-25";
 
   return (
     <div className="sh-ay-wrap" ref={wrapRef}>
@@ -554,7 +560,7 @@ function AcademicYearPicker({ selectedYear, onChange }) {
       >
         <Icons.GraduationCap size={13} style={{ opacity: 0.75, flexShrink: 0 }} />
         <span className="sh-ay-tag">AY</span>
-        <span className="sh-ay-val">{yr}</span>
+        <span className="sh-ay-val">{currentLabel}</span>
         <Icons.ChevronDown size={12} className="sh-ay-chevron" />
       </button>
 
@@ -564,16 +570,23 @@ function AcademicYearPicker({ selectedYear, onChange }) {
             <Icons.CalendarDays size={11} style={{ opacity: 0.6 }} />
             Academic Year
           </div>
-          {ACADEMIC_YEARS.map((y) => (
+          {options.map((o) => (
             <button
-              key={y}
-              className={`sh-ay-opt${yr === y ? " sel" : ""}`}
+              key={o.value}
+              className={`sh-ay-opt${o.value === selected ? " sel" : ""}`}
               role="option"
-              aria-selected={yr === y}
-              onClick={() => { onChange?.(y); setOpen(false); }}
+              aria-selected={o.value === selected}
+              onClick={() => { ay?.setYear(o.value); setOpen(false); }}
             >
-              {y}
-              {yr === y && <Icons.Check size={13} className="sh-ay-check" />}
+              <span style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                {o.label}
+                {o.active && (
+                  <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: 0.3, color: "#16a34a", background: "#16a34a18", borderRadius: 12, padding: "1px 6px", textTransform: "uppercase" }}>
+                    Current
+                  </span>
+                )}
+              </span>
+              {o.value === selected && <Icons.Check size={13} className="sh-ay-check" />}
             </button>
           ))}
         </div>
@@ -595,8 +608,6 @@ function Topbar({
   navItems,
   onNavClick,
   onSettingsClick,
-  selectedYear,
-  onYearChange,
 }) {
   const [query,       setQuery]       = useState("");
   const [menuOpen,    setMenuOpen]    = useState(false);
@@ -748,8 +759,8 @@ function Topbar({
       <div className="sh-actions">
         {headerActions}
 
-        {/* Academic Year */}
-        <AcademicYearPicker selectedYear={selectedYear} onChange={onYearChange} />
+        {/* Academic Year — institution-scoped context (drives forms + visibility) */}
+        <AcademicYearPicker />
 
         {/* Notifications */}
         <NotificationBell />
@@ -887,8 +898,6 @@ export default function AppShell({
   onNavigate,
   onSettingsClick,
   defaultCollapsed  = false,
-  defaultYear       = "2024-25",
-  onYearChange,
 }) {
   injectCSS("app-shell-v4", CSS);
 
@@ -897,7 +906,6 @@ export default function AppShell({
   const [collapsed,    setCollapsed]    = useState(defaultCollapsed);
   const [mobileOpen,   setMobileOpen]   = useState(false);
   const [pageKey,      setPageKey]      = useState(0);
-  const [selectedYear, setSelectedYear] = useState(defaultYear);
 
   useEffect(() => {
     const fn = () => { if (window.innerWidth > 768) setMobileOpen(false); };
@@ -909,10 +917,6 @@ export default function AppShell({
     setActiveId(id); setPageKey((k) => k + 1); setMobileOpen(false); onNavigate?.(id);
   }, [onNavigate]);
 
-  const handleYearChange = useCallback((yr) => {
-    setSelectedYear(yr); onYearChange?.(yr);
-  }, [onYearChange]);
-
   const currentPage = pages[activeId] ?? (
     <div style={{ padding: 40, color: "var(--sh-muted)", fontFamily: "var(--sh-font)" }}>
       No page registered for <code style={{ fontFamily: "var(--sh-mono)" }}>"{activeId}"</code>.
@@ -920,7 +924,7 @@ export default function AppShell({
   );
 
   return (
-    <ShellContext.Provider value={{ activeId, setActiveId: handleNavClick, collapsed, setCollapsed, selectedYear }}>
+    <ShellContext.Provider value={{ activeId, setActiveId: handleNavClick, collapsed, setCollapsed }}>
       <div className="sh-root">
         <Topbar
           appName={appName}
@@ -934,8 +938,6 @@ export default function AppShell({
           navItems={navItems}
           onNavClick={handleNavClick}
           onSettingsClick={onSettingsClick}
-          selectedYear={selectedYear}
-          onYearChange={handleYearChange}
         />
 
         <div className="sh-body">
