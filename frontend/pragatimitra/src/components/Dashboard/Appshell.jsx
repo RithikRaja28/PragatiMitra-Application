@@ -536,6 +536,7 @@ function AcademicYearPicker() {
   const ay = useAcademicYear();
   const options  = ay?.options || [];
   const selected = ay?.selectedYear ?? null;
+  const locked   = !!ay?.selectedYearLocked;
   const currentLabel =
     options.find((o) => o.value === selected)?.label ??
     (selected != null ? `${selected}–${selected + 1}` : "—");
@@ -561,6 +562,11 @@ function AcademicYearPicker() {
         <Icons.GraduationCap size={13} style={{ opacity: 0.75, flexShrink: 0 }} />
         <span className="sh-ay-tag">AY</span>
         <span className="sh-ay-val">{currentLabel}</span>
+        {locked && (
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 3, marginLeft: 2, fontSize: 9.5, fontWeight: 800, letterSpacing: 0.4, color: "#fff", background: "#dc2626", borderRadius: 12, padding: "1px 7px", textTransform: "uppercase" }}>
+            <Icons.Lock size={9} /> Locked
+          </span>
+        )}
         <Icons.ChevronDown size={12} className="sh-ay-chevron" />
       </button>
 
@@ -585,6 +591,7 @@ function AcademicYearPicker() {
                     Current
                   </span>
                 )}
+                {o.locked && <Icons.Lock size={11} style={{ color: "#dc2626" }} />}
               </span>
               {o.value === selected && <Icons.Check size={13} className="sh-ay-check" />}
             </button>

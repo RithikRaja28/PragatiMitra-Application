@@ -4,6 +4,19 @@ const express = require("express");
 const { verifyToken } = require("../middleware/auth");
 const logger = require("../utils/logger");
 const { translateRow, resolveTranslationMode, enrichSchemaLabels } = require("../services/translationService");
+const { getAcademicYearLockBlockForReq } = require("../services/academicYearService");
+
+/* Latest active schema year for a form+institution — used to resolve which
+   academic year a record operation belongs to (for academic-year lock checks). */
+async function getFormActiveYear(pool, formName, institutionId) {
+  const { rows } = await pool.query(
+    `SELECT year FROM custom_field_schemas
+     WHERE form_name = $1 AND institution_id = $2 AND is_active = true
+     ORDER BY year DESC LIMIT 1`,
+    [formName, institutionId]
+  );
+  return rows[0]?.year ?? null;
+}
 
 const router = express.Router();
 router.use(verifyToken);
@@ -310,6 +323,12 @@ router.post("/:formName/records", async (req, res) => {
     const formYear  = Number(year) || schema.year;
     const createdBy = req.user.userId || null;
 
+    // Academic-year lock — checks the SELECTED year (X-Academic-Year header),
+    // falling back to the schema year. View-only when locked.
+    const ayLock = await getAcademicYearLockBlockForReq(pool, req, ctx.institutionId, formYear);
+    if (ayLock.locked)
+      return res.status(403).json({ success: false, message: ayLock.message });
+
     const stdCols = ["form_name", "institution_id", "department_id", "year", "schema_id", "language", "created_by"];
     const stdVals = [formName, ctx.institutionId, ctx.departmentId, formYear, schema.id, language, createdBy];
     const fieldVals = fieldCols.map((col) => data[col] ?? null);
@@ -385,6 +404,12 @@ router.put("/:formName/records/:id", async (req, res) => {
     const schema = await getActiveSchema(pool, formName, ctx.institutionId, null);
     if (!schema)
       return res.status(404).json({ success: false, message: "No active schema found." });
+
+    // Academic-year lock — checks the SELECTED year (header), falling back to
+    // the schema year. View-only when locked.
+    const ayLock = await getAcademicYearLockBlockForReq(pool, req, ctx.institutionId, schema.year);
+    if (ayLock.locked)
+      return res.status(403).json({ success: false, message: ayLock.message });
 
     const fields    = activeFields(schema);
     const fieldCols = fields.map((f) => dbCol(f.column_name));
@@ -497,6 +522,10 @@ router.delete("/:formName/records/bulk-delete", async (req, res) => {
     if (lockBlock.locked)
       return res.status(403).json({ success: false, message: lockBlock.message });
 
+    const ayLock = await getAcademicYearLockBlockForReq(pool, req, ctx.institutionId, await getFormActiveYear(pool, formName, ctx.institutionId));
+    if (ayLock.locked)
+      return res.status(403).json({ success: false, message: ayLock.message });
+
     let whereClause   = "id = ANY($1::uuid[]) AND institution_id = $2";
     const queryParams = [ids, ctx.institutionId];
 
@@ -554,6 +583,10 @@ router.delete("/:formName/records/:id", async (req, res) => {
     if (lockBlock.locked) {
       return res.status(403).json({ success: false, message: lockBlock.message });
     }
+
+    const ayLock = await getAcademicYearLockBlockForReq(pool, req, ctx.institutionId, await getFormActiveYear(pool, formName, ctx.institutionId));
+    if (ayLock.locked)
+      return res.status(403).json({ success: false, message: ayLock.message });
 
     await ensureSourceRowIdColumn(pool, `${formName}_records`);
 

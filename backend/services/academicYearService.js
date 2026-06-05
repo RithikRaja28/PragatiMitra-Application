@@ -55,12 +55,73 @@ async function ensureAcademicYearTables(pool) {
     )
   `);
 
+  // Lock + Archive lifecycle columns (additive — never drop/redefine).
+  // is_locked  → institution+year is view-only (write APIs return 403).
+  // is_archived→ year hidden from top bar / create / reports (records preserved).
+  await pool.query(`ALTER TABLE academic_year_master ADD COLUMN IF NOT EXISTS is_locked   boolean NOT NULL DEFAULT false`);
+  await pool.query(`ALTER TABLE academic_year_master ADD COLUMN IF NOT EXISTS is_archived boolean NOT NULL DEFAULT false`);
+  await pool.query(`ALTER TABLE academic_year_master ADD COLUMN IF NOT EXISTS locked_at   timestamptz`);
+  await pool.query(`ALTER TABLE academic_year_master ADD COLUMN IF NOT EXISTS locked_by   uuid`);
+  await pool.query(`ALTER TABLE academic_year_master ADD COLUMN IF NOT EXISTS archived_at timestamptz`);
+  await pool.query(`ALTER TABLE academic_year_master ADD COLUMN IF NOT EXISTS archived_by uuid`);
+
+  // Per-recipient audit of academic-year activation emails.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS academic_year_notification_logs (
+      id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      institution_id uuid NOT NULL,
+      academic_year  text NOT NULL,
+      recipient      text NOT NULL,
+      status         text NOT NULL,
+      sent_at        timestamptz,
+      error          text,
+      created_at     timestamptz NOT NULL DEFAULT now()
+    )
+  `);
+
   await pool.query(
     `CREATE INDEX IF NOT EXISTS idx_aym_inst_active ON academic_year_master (institution_id, active)`
   );
   await pool.query(
     `CREATE INDEX IF NOT EXISTS idx_ayfc_inst_year ON academic_year_form_config (institution_id, academic_year)`
   );
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS idx_aynl_inst_year ON academic_year_notification_logs (institution_id, academic_year)`
+  );
+}
+
+/* Returns { locked, message } for a (institution, start-year) academic year.
+   Used by every record write path to enforce institution-scoped view-only mode.
+   A missing year row is NOT locked (backward compatible). */
+async function getAcademicYearLockBlock(pool, institutionId, year) {
+  if (!institutionId || year == null) return { locked: false, message: null };
+  try {
+    const { rows } = await pool.query(
+      `SELECT is_locked FROM academic_year_master
+       WHERE institution_id = $1 AND start_year = $2`,
+      [institutionId, Number(year)]
+    );
+    if (rows[0]?.is_locked) {
+      return {
+        locked: true,
+        message: "This academic year is locked. Records are available in view-only mode.",
+      };
+    }
+  } catch {
+    // Never block a write because the lock lookup failed.
+  }
+  return { locked: false, message: null };
+}
+
+/* Resolve the year the user is operating in from the X-Academic-Year request
+   header (the top-bar selection), falling back to the record/schema year, then
+   check the lock. This is what makes "lock the SELECTED year" actually block
+   writes even when the form's stored schema year differs from the selected
+   academic year. */
+async function getAcademicYearLockBlockForReq(pool, req, institutionId, fallbackYear) {
+  const headerYear = Number(req?.headers?.["x-academic-year"]);
+  const year = Number.isInteger(headerYear) ? headerYear : fallbackYear;
+  return getAcademicYearLockBlock(pool, institutionId, year);
 }
 
 /* 2025 → "2025–2026"  (en-dash, matches the spec's display format) */
@@ -128,4 +189,6 @@ module.exports = {
   parseStartYear,
   ensureYearRows,
   setFormStatusForYear,
+  getAcademicYearLockBlock,
+  getAcademicYearLockBlockForReq,
 };

@@ -25,6 +25,7 @@ const express = require("express");
 const { verifyToken, requireRole } = require("../middleware/auth");
 const logger = require("../utils/logger");
 const { formatAcademicYear, parseStartYear } = require("../services/academicYearService");
+const { sendAcademicYearActivatedEmail } = require("../services/mailService");
 
 const router = express.Router();
 router.use(verifyToken);
@@ -83,7 +84,10 @@ router.get("/", async (req, res) => {
     if (!institutionId) return res.json({ success: true, years: [] });
 
     const { rows } = await pool.query(
-      `SELECT id, academic_year, start_year, active, created_at
+      `SELECT id, academic_year, start_year, active,
+              COALESCE(is_locked, false) AS is_locked,
+              COALESCE(is_archived, false) AS is_archived,
+              locked_at, archived_at, created_at
        FROM academic_year_master
        WHERE institution_id = $1
        ORDER BY start_year DESC`,
@@ -107,7 +111,10 @@ router.get("/current", async (req, res) => {
     if (!institutionId) return res.json({ success: true, current: null });
 
     const { rows } = await pool.query(
-      `SELECT id, academic_year, start_year, active, created_at
+      `SELECT id, academic_year, start_year, active,
+              COALESCE(is_locked, false) AS is_locked,
+              COALESCE(is_archived, false) AS is_archived,
+              locked_at, archived_at, created_at
        FROM academic_year_master
        WHERE institution_id = $1 AND active = true
        ORDER BY start_year DESC
@@ -250,6 +257,11 @@ router.post("/", requireRole(MANAGE_ROLES), async (req, res) => {
     });
 
     await client.query("COMMIT");
+
+    // Fire-and-forget activation email to all department HODs / Nodal Officers.
+    // Async, never blocks the response; each send is retried and audit-logged.
+    notifyAcademicYearActivated(pool, { institutionId, academicYear, activeFormsCount: active.length });
+
     return res.json({ success: true, academicYear, masterId: masterRows[0]?.id, activeCount: active.length, archivedCount: archived.length });
   } catch (err) {
     await client.query("ROLLBACK").catch(() => {});
@@ -257,6 +269,122 @@ router.post("/", requireRole(MANAGE_ROLES), async (req, res) => {
     return res.status(500).json({ success: false, message: "Failed to create academic year." });
   } finally {
     client.release();
+  }
+});
+
+/* ─────────────────────────────────────────────────────────────────────
+   notifyAcademicYearActivated — async email fan-out + audit logging.
+   Recipients: every ACTIVE Head of Department / Nodal Officer in the
+   institution (resolved from user_roles — never hardcoded). Each email is
+   retried once on failure and written to academic_year_notification_logs.
+─────────────────────────────────────────────────────────────────────── */
+function notifyAcademicYearActivated(pool, { institutionId, academicYear, activeFormsCount }) {
+  setImmediate(async () => {
+    try {
+      const { rows: instRows } = await pool.query(
+        `SELECT institution_name FROM institutions WHERE institution_id = $1`,
+        [institutionId]
+      );
+      const institutionName = instRows[0]?.institution_name || "Your Institution";
+
+      // Department leads under this institution: Head of Department, Nodal
+      // Officer, and Department Admin (the department head in practice).
+      const { rows: recipients } = await pool.query(
+        `SELECT DISTINCT u.email
+         FROM users u
+         JOIN user_roles ur ON ur.user_id = u.id
+         JOIN roles r       ON r.id = ur.role_id
+         WHERE u.institution_id = $1
+           AND u.account_status = 'ACTIVE'
+           AND u.email IS NOT NULL
+           AND r.name IN ('head_of_department', 'nodal_officer', 'department_admin')`,
+        [institutionId]
+      );
+
+      for (const { email } of recipients) {
+        let ok = false, lastErr = null;
+        for (let attempt = 0; attempt < 2 && !ok; attempt++) {
+          try {
+            await sendAcademicYearActivatedEmail({ to: email, institutionName, academicYear, activeFormsCount });
+            ok = true;
+          } catch (e) {
+            lastErr = e.message || String(e);
+          }
+        }
+        await pool.query(
+          `INSERT INTO academic_year_notification_logs
+             (institution_id, academic_year, recipient, status, sent_at, error)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [institutionId, academicYear, email, ok ? "sent" : "failed", ok ? new Date() : null, ok ? null : lastErr]
+        );
+      }
+      logger.info(`Academic year ${academicYear} activation emails processed for ${recipients.length} recipient(s).`);
+    } catch (err) {
+      logger.error("notifyAcademicYearActivated failed", { stack: err.stack });
+    }
+  });
+}
+
+/* ─────────────────────────────────────────────────────────────────────
+   PATCH /api/academic-years/:academicYear/lock   Body: { locked: boolean }
+   Institution-scoped view-only toggle. Only this institution's row changes.
+─────────────────────────────────────────────────────────────────────── */
+router.patch("/:academicYear/lock", requireRole(MANAGE_ROLES), async (req, res) => {
+  const pool = req.app.locals.pool;
+  const { academicYear } = req.params;
+  const locked = req.body?.locked !== false; // default → lock
+  try {
+    const institutionId = await resolveInstitutionId(pool, req);
+    if (!institutionId)
+      return res.status(400).json({ success: false, message: "Institution ID required." });
+
+    const { rowCount } = await pool.query(
+      `UPDATE academic_year_master
+       SET is_locked = $3,
+           locked_at = CASE WHEN $3 THEN now() ELSE NULL END,
+           locked_by = CASE WHEN $3 THEN $4::uuid ELSE NULL END
+       WHERE institution_id = $1 AND academic_year = $2`,
+      [institutionId, academicYear, locked, req.user.userId || null]
+    );
+    if (!rowCount)
+      return res.status(404).json({ success: false, message: "Academic year not found." });
+
+    return res.json({ success: true, academicYear, is_locked: locked });
+  } catch (err) {
+    logger.error("PATCH /api/academic-years/:academicYear/lock", { stack: err.stack });
+    return res.status(500).json({ success: false, message: "Failed to update lock state." });
+  }
+});
+
+/* ─────────────────────────────────────────────────────────────────────
+   PATCH /api/academic-years/:academicYear/archive  Body: { archived: boolean }
+   Hides the year from the top bar / create / reports (records preserved).
+─────────────────────────────────────────────────────────────────────── */
+router.patch("/:academicYear/archive", requireRole(MANAGE_ROLES), async (req, res) => {
+  const pool = req.app.locals.pool;
+  const { academicYear } = req.params;
+  const archived = req.body?.archived !== false; // default → archive
+  try {
+    const institutionId = await resolveInstitutionId(pool, req);
+    if (!institutionId)
+      return res.status(400).json({ success: false, message: "Institution ID required." });
+
+    const { rowCount } = await pool.query(
+      `UPDATE academic_year_master
+       SET is_archived = $3,
+           archived_at = CASE WHEN $3 THEN now() ELSE NULL END,
+           archived_by = CASE WHEN $3 THEN $4::uuid ELSE NULL END,
+           active = CASE WHEN $3 THEN false ELSE active END
+       WHERE institution_id = $1 AND academic_year = $2`,
+      [institutionId, academicYear, archived, req.user.userId || null]
+    );
+    if (!rowCount)
+      return res.status(404).json({ success: false, message: "Academic year not found." });
+
+    return res.json({ success: true, academicYear, is_archived: archived });
+  } catch (err) {
+    logger.error("PATCH /api/academic-years/:academicYear/archive", { stack: err.stack });
+    return res.status(500).json({ success: false, message: "Failed to update archive state." });
   }
 });
 
@@ -495,6 +623,102 @@ router.patch("/:academicYear/activate", requireRole(MANAGE_ROLES), async (req, r
   } catch (err) {
     logger.error("PATCH /api/academic-years/:academicYear/activate", { stack: err.stack });
     return res.status(500).json({ success: false, message: "Failed to set current year." });
+  }
+});
+
+/* ─────────────────────────────────────────────────────────────────────
+   GET /api/academic-years/:academicYear/notifications
+   Activation-email audit for this institution + year (for the Mail Status UI):
+   per-recipient status (sent/failed) + a rollup summary.
+─────────────────────────────────────────────────────────────────────── */
+router.get("/:academicYear/notifications", async (req, res) => {
+  const pool = req.app.locals.pool;
+  const { academicYear } = req.params;
+  try {
+    const institutionId = await resolveInstitutionId(pool, req);
+    if (!institutionId)
+      return res.status(400).json({ success: false, message: "Institution ID required." });
+
+    const { rows } = await pool.query(
+      `SELECT recipient, status, error, sent_at, created_at
+       FROM academic_year_notification_logs
+       WHERE institution_id = $1 AND academic_year = $2
+       ORDER BY created_at DESC`,
+      [institutionId, academicYear]
+    );
+    const summary = {
+      total:  rows.length,
+      sent:   rows.filter((r) => r.status === "sent").length,
+      failed: rows.filter((r) => r.status === "failed").length,
+    };
+    return res.json({ success: true, academicYear, summary, logs: rows });
+  } catch (err) {
+    logger.error("GET /api/academic-years/:academicYear/notifications", { stack: err.stack });
+    return res.status(500).json({ success: false, message: "Failed to load notification status." });
+  }
+});
+
+/* ─────────────────────────────────────────────────────────────────────
+   POST /api/academic-years/:academicYear/notifications/retry
+   Re-sends ONLY the failed activation emails for this institution + year and
+   updates their log rows. Returns the refreshed summary.
+─────────────────────────────────────────────────────────────────────── */
+router.post("/:academicYear/notifications/retry", requireRole(MANAGE_ROLES), async (req, res) => {
+  const pool = req.app.locals.pool;
+  const { academicYear } = req.params;
+  try {
+    const institutionId = await resolveInstitutionId(pool, req);
+    if (!institutionId)
+      return res.status(400).json({ success: false, message: "Institution ID required." });
+
+    const { rows: failed } = await pool.query(
+      `SELECT id, recipient FROM academic_year_notification_logs
+       WHERE institution_id = $1 AND academic_year = $2 AND status = 'failed'`,
+      [institutionId, academicYear]
+    );
+
+    if (failed.length) {
+      const { rows: instRows } = await pool.query(
+        `SELECT institution_name FROM institutions WHERE institution_id = $1`,
+        [institutionId]
+      );
+      const institutionName = instRows[0]?.institution_name || "Your Institution";
+      const { rows: cfgRows } = await pool.query(
+        `SELECT active_forms_json FROM academic_year_form_config
+         WHERE institution_id = $1 AND academic_year = $2`,
+        [institutionId, academicYear]
+      );
+      const activeFormsCount = Array.isArray(cfgRows[0]?.active_forms_json)
+        ? cfgRows[0].active_forms_json.length : 0;
+
+      for (const row of failed) {
+        let ok = false, errMsg = null;
+        try {
+          await sendAcademicYearActivatedEmail({ to: row.recipient, institutionName, academicYear, activeFormsCount });
+          ok = true;
+        } catch (e) { errMsg = e.message || String(e); }
+        await pool.query(
+          `UPDATE academic_year_notification_logs
+           SET status = $2, sent_at = $3, error = $4 WHERE id = $1`,
+          [row.id, ok ? "sent" : "failed", ok ? new Date() : null, ok ? null : errMsg]
+        );
+      }
+    }
+
+    const { rows: all } = await pool.query(
+      `SELECT status FROM academic_year_notification_logs
+       WHERE institution_id = $1 AND academic_year = $2`,
+      [institutionId, academicYear]
+    );
+    const summary = {
+      total:  all.length,
+      sent:   all.filter((r) => r.status === "sent").length,
+      failed: all.filter((r) => r.status === "failed").length,
+    };
+    return res.json({ success: true, retried: failed.length, summary });
+  } catch (err) {
+    logger.error("POST /api/academic-years/:academicYear/notifications/retry", { stack: err.stack });
+    return res.status(500).json({ success: false, message: "Failed to retry notifications." });
   }
 });
 

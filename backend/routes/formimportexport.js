@@ -9,6 +9,7 @@ const logger  = require("../utils/logger");
 const { getLogContext } = logger;
 const { translateSentence, transliteratePhrase, lookupLabel, translateRow, resolveTranslationMode } = require("../services/translationService");
 const { getReadUrl } = require("../utils/s3");
+const { getAcademicYearLockBlockForReq } = require("../services/academicYearService");
 
 /* 7 days — maximum presigned URL lifetime for long-term IAM credentials */
 const DOC_URL_TTL = 7 * 24 * 3600;
@@ -417,6 +418,13 @@ router.post("/:formName/import/execute-chunk", async (req, res) => {
 
     const { schemaRow, fields } = result;
     const formYear = Number(year) || schemaRow.year;
+
+    /* Academic-year lock — checks the SELECTED year (header), blocks import. */
+    if (chunkIndex === 0) {
+      const ayLock = await getAcademicYearLockBlockForReq(pool, req, ctx.institutionId, formYear);
+      if (ayLock.locked)
+        return res.status(403).json({ success: false, message: ayLock.message });
+    }
 
     /* Build fileCol → schemaCol lookup */
     const fieldToCol = {};

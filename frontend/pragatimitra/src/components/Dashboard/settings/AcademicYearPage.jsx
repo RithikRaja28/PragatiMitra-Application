@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
+import { createPortal } from "react-dom";
 import {
   CalendarRange, Plus, Check, Archive, ArchiveRestore, Ban,
-  Lock, Unlock, History, X, ChevronRight, Loader2, CheckCircle2,
+  Lock, Unlock, History, X, ChevronRight, Loader2, CheckCircle2, RefreshCw,
 } from "lucide-react";
 import { useApi } from "../../../hooks/useApi";
 import { useAcademicYear } from "../../../store/AcademicYearContext";
@@ -22,6 +23,7 @@ const SUBMISSION_BADGE = {
 };
 
 const card = { background: CARD, border: "1px solid rgba(0,0,0,0.07)", borderRadius: 14, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" };
+const ayIconBtn = { display: "inline-flex", alignItems: "center", justifyContent: "center", width: 30, height: 30, borderRadius: 8, border: "1px solid #e2e8f0", background: "#fff", cursor: "pointer", color: "#475569" };
 const iconBtn = { display: "inline-flex", alignItems: "center", justifyContent: "center", width: 32, height: 32, borderRadius: 8, border: "1px solid #e2e8f0", background: "#fff", cursor: "pointer", color: "#475569" };
 
 function Badge({ kind }) {
@@ -65,6 +67,9 @@ export default function AcademicYearPage() {
   const [toast, setToast]       = useState(null);
 
   const [wizardOpen, setWizardOpen] = useState(false);
+  const [confirm, setConfirm]       = useState(null); // { kind: "lock"|"archive", year }
+  const [mailStatus, setMailStatus] = useState(null); // { total, sent, failed } for viewYear
+  const [retrying, setRetrying]     = useState(false);
 
   const showToast = (message, type = "success") => {
     setToast({ message, type });
@@ -110,6 +115,32 @@ export default function AcademicYearPage() {
 
   useEffect(() => { loadForms(viewYear); }, [viewYear, loadForms]);
 
+  /* ── Activation-email status for the viewed year ── */
+  useEffect(() => {
+    if (!viewYear) { setMailStatus(null); return; }
+    let cancelled = false;
+    apiFetch(`/api/academic-years/${encodeURIComponent(viewYear)}/notifications`)
+      .then((r) => r.json())
+      .then((d) => { if (!cancelled) setMailStatus(d?.success ? d.summary : null); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [viewYear, apiFetch]);
+
+  /* Retry only the failed activation emails for the viewed year. */
+  async function retryEmails() {
+    if (!viewYear || retrying) return;
+    setRetrying(true);
+    try {
+      const res = await apiFetch(`/api/academic-years/${encodeURIComponent(viewYear)}/notifications/retry`, { method: "POST" });
+      const data = await res.json();
+      if (data.success) {
+        setMailStatus(data.summary);
+        showToast(`Retried ${data.retried} email${data.retried !== 1 ? "s" : ""} — ${data.summary.failed} still failing`);
+      } else showToast(data.message || "Retry failed.", "error");
+    } catch (err) { if (!isAuthError(err)) showToast("Network error.", "error"); }
+    finally { setRetrying(false); }
+  }
+
   /* ── Lifecycle actions ── */
   async function setStatus(form, status) {
     try {
@@ -142,12 +173,45 @@ export default function AcademicYearPage() {
     } catch (err) { if (!isAuthError(err)) showToast("Network error.", "error"); }
   }
 
+  /* Lock / Open — institution-scoped view-only toggle for the year. */
+  async function setLock(ay, locked) {
+    try {
+      const res = await apiFetch(`/api/academic-years/${encodeURIComponent(ay)}/lock`, {
+        method: "PATCH", body: JSON.stringify({ locked }),
+      });
+      const data = await res.json();
+      if (data.success) { showToast(`${ay} ${locked ? "locked — now view-only" : "unlocked"}`); loadYears(); academicCtx?.reload(); }
+      else showToast(data.message || "Failed to update lock.", "error");
+    } catch (err) { if (!isAuthError(err)) showToast("Network error.", "error"); }
+  }
+
+  /* Archive / Restore — hide the year from top bar / create / reports. */
+  async function setArchive(ay, archived) {
+    try {
+      const res = await apiFetch(`/api/academic-years/${encodeURIComponent(ay)}/archive`, {
+        method: "PATCH", body: JSON.stringify({ archived }),
+      });
+      const data = await res.json();
+      if (data.success) { showToast(`${ay} ${archived ? "archived" : "restored"}`); loadYears(); academicCtx?.reload(); }
+      else showToast(data.message || "Failed to update archive.", "error");
+    } catch (err) { if (!isAuthError(err)) showToast("Network error.", "error"); }
+  }
+
+  function runConfirm() {
+    if (!confirm) return;
+    const { kind, year } = confirm;
+    setConfirm(null);
+    if (kind === "lock") setLock(year, true);
+    if (kind === "archive") setArchive(year, true);
+  }
+
   const visibleForms = forms.filter((f) =>
     filter === "all" ? true : filter === "active" ? f.status === "active" : f.status === "archived" || f.status === "disabled"
   );
 
   return (
     <div style={{ fontFamily: "var(--sh-font, 'Plus Jakarta Sans', sans-serif)", color: "#1e293b", maxWidth: 1080 }}>
+      <style>{`@keyframes ay-spin { to { transform: rotate(360deg) } }`}</style>
       {toast && <Toast message={toast.message} type={toast.type} />}
 
       {/* Header */}
@@ -192,23 +256,60 @@ export default function AcademicYearPage() {
               {years.length === 0 ? (
                 <div style={{ fontSize: 13, color: "#94a3b8" }}>No academic years yet.</div>
               ) : (
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                   {years.map((y) => {
                     const isView = y.academic_year === viewYear;
                     return (
-                      <div key={y.id} style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "6px 10px", borderRadius: 10, border: `1.5px solid ${isView ? ACCENT : "#e2e8f0"}`, background: isView ? ACCENT + "0d" : "#fff" }}>
-                        <button onClick={() => setViewYear(y.academic_year)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 700, color: isView ? ACCENT : "#475569" }}>
+                      <div key={y.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderRadius: 10, border: `1.5px solid ${isView ? ACCENT : "#e2e8f0"}`, background: isView ? ACCENT + "0d" : "#fff", width: "100%", boxSizing: "border-box", opacity: y.is_archived ? 0.7 : 1 }}>
+                        <button onClick={() => setViewYear(y.academic_year)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 13.5, fontWeight: 700, color: isView ? ACCENT : "#475569", whiteSpace: "nowrap" }}>
                           {y.academic_year}
                         </button>
-                        {y.active ? (
-                          <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10.5, fontWeight: 700, color: "#16a34a" }}>
-                            <CheckCircle2 size={12} /> Current
+
+                        {/* badges */}
+                        {y.active && (
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10, fontWeight: 700, color: "#16a34a", background: "#16a34a14", borderRadius: 12, padding: "2px 7px" }}>
+                            <CheckCircle2 size={11} /> Current
                           </span>
-                        ) : (
-                          <button title="Set as current year" onClick={() => setCurrentYear(y.academic_year)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 10.5, fontWeight: 700, color: "#94a3b8" }}>
-                            Set current
-                          </button>
                         )}
+                        {y.is_locked && (
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10, fontWeight: 700, color: "#dc2626", background: "#fef2f2", borderRadius: 12, padding: "2px 7px" }}>
+                            <Lock size={11} /> Locked
+                          </span>
+                        )}
+                        {y.is_archived && (
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10, fontWeight: 700, color: "#64748b", background: "#f1f5f9", borderRadius: 12, padding: "2px 7px" }}>
+                            <Archive size={11} /> Archived
+                          </span>
+                        )}
+
+                        {/* actions (icon only) */}
+                        <div style={{ display: "inline-flex", alignItems: "center", gap: 6, marginLeft: "auto" }}>
+                          {!y.active && !y.is_archived && (
+                            <button title="Set as current year" onClick={() => setCurrentYear(y.academic_year)} style={ayIconBtn}>
+                              <Check size={15} />
+                            </button>
+                          )}
+                          {!y.is_archived && (
+                            y.is_locked ? (
+                              <button title="Open (unlock) year" onClick={() => setLock(y.academic_year, false)} style={{ ...ayIconBtn, color: "#16a34a", borderColor: "#bbf7d0" }}>
+                                <Unlock size={15} />
+                              </button>
+                            ) : (
+                              <button title="Lock year (view-only)" onClick={() => setConfirm({ kind: "lock", year: y.academic_year })} style={{ ...ayIconBtn, color: "#dc2626", borderColor: "#fecaca" }}>
+                                <Lock size={15} />
+                              </button>
+                            )
+                          )}
+                          {y.is_archived ? (
+                            <button title="Restore year" onClick={() => setArchive(y.academic_year, false)} style={{ ...ayIconBtn, color: ACCENT, borderColor: ACCENT + "55" }}>
+                              <ArchiveRestore size={15} />
+                            </button>
+                          ) : (
+                            <button title="Archive year (hide)" onClick={() => setConfirm({ kind: "archive", year: y.academic_year })} style={ayIconBtn}>
+                              <Archive size={15} />
+                            </button>
+                          )}
+                        </div>
                       </div>
                     );
                   })}
@@ -220,8 +321,30 @@ export default function AcademicYearPage() {
           {/* Forms-for-year lifecycle table */}
           <div style={card}>
             <div style={{ padding: "14px 18px", borderBottom: "1px solid #eef2f6", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-              <div style={{ fontSize: 14, fontWeight: 700 }}>
-                Forms {viewYear && <span style={{ color: "#94a3b8", fontWeight: 600 }}>· {viewYear}</span>}
+              <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                <div style={{ fontSize: 14, fontWeight: 700 }}>
+                  Forms {viewYear && <span style={{ color: "#94a3b8", fontWeight: 600 }}>· {viewYear}</span>}
+                </div>
+                {mailStatus && mailStatus.total > 0 && (
+                  <span
+                    title={`Activation emails: ${mailStatus.sent} sent, ${mailStatus.failed} failed`}
+                    style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 700, borderRadius: 20, padding: "2px 9px",
+                             color: mailStatus.failed > 0 ? "#d97706" : "#16a34a",
+                             background: mailStatus.failed > 0 ? "#fffbeb" : "#f0fdf4" }}>
+                    <CheckCircle2 size={12} /> Email: {mailStatus.sent}/{mailStatus.total} sent{mailStatus.failed > 0 ? ` · ${mailStatus.failed} failed` : ""}
+                  </span>
+                )}
+                {mailStatus && mailStatus.failed > 0 && (
+                  <button
+                    onClick={retryEmails}
+                    disabled={retrying}
+                    title="Retry the failed activation emails"
+                    style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 700, borderRadius: 8, padding: "3px 10px", border: "1px solid #fcd34d", background: "#fff", color: "#b45309", cursor: retrying ? "not-allowed" : "pointer" }}
+                  >
+                    <RefreshCw size={12} style={retrying ? { animation: "ay-spin 0.8s linear infinite" } : undefined} />
+                    {retrying ? "Retrying…" : "Retry failed"}
+                  </button>
+                )}
               </div>
               <div style={{ display: "inline-flex", borderRadius: 9, border: "1px solid #e2e8f0", overflow: "hidden" }}>
                 {[
@@ -304,7 +427,48 @@ export default function AcademicYearPage() {
           onError={(m) => showToast(m, "error")}
         />
       )}
+
+      {confirm && (
+        <ConfirmModal
+          kind={confirm.kind}
+          year={confirm.year}
+          onCancel={() => setConfirm(null)}
+          onConfirm={runConfirm}
+        />
+      )}
     </div>
+  );
+}
+
+/* ── Confirmation modal for Lock / Archive (centered, SaaS theme) ── */
+function ConfirmModal({ kind, year, onCancel, onConfirm }) {
+  const isLock = kind === "lock";
+  const title  = isLock ? "Lock Academic Year" : "Archive Academic Year";
+  const message = isLock
+    ? "Locking this academic year will make all forms and records view-only for departments and institution users."
+    : "Archived academic years remain stored but hidden from the top bar, form creation, and reports. You can restore them anytime.";
+  const cta = isLock ? "Lock Year" : "Archive Year";
+  return createPortal(
+    <div style={{ position: "fixed", inset: 0, zIndex: 10000, background: "rgba(15,23,42,0.55)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }} onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}>
+      <div style={{ background: "#fff", borderRadius: 12, width: "100%", maxWidth: 440, boxShadow: "0 24px 64px rgba(0,0,0,0.22)", overflow: "hidden" }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ padding: "22px 24px 16px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+            <span style={{ display: "inline-flex", width: 36, height: 36, borderRadius: 10, alignItems: "center", justifyContent: "center", background: isLock ? "#fef2f2" : "#f1f5f9", color: isLock ? "#dc2626" : "#475569" }}>
+              {isLock ? <Lock size={18} /> : <Archive size={18} />}
+            </span>
+            <div style={{ fontSize: 16, fontWeight: 800, color: "#1e293b" }}>{title}</div>
+          </div>
+          <div style={{ fontSize: 13, color: "#64748b", lineHeight: 1.6 }}>
+            <strong style={{ color: "#1e293b" }}>{year}</strong> — {message}
+          </div>
+        </div>
+        <div style={{ padding: "14px 24px", borderTop: "1px solid #f1f5f9", display: "flex", justifyContent: "flex-end", gap: 10, background: "#f8fafc" }}>
+          <button onClick={onCancel} style={{ height: 40, padding: "0 16px", borderRadius: 8, border: "1px solid #cbd5e1", background: "#fff", fontSize: 13, fontWeight: 600, color: "#475569", cursor: "pointer" }}>Cancel</button>
+          <button onClick={onConfirm} style={{ height: 40, padding: "0 20px", borderRadius: 8, border: "none", background: isLock ? "#dc2626" : ACCENT, fontSize: 13, fontWeight: 700, color: "#fff", cursor: "pointer" }}>{cta}</button>
+        </div>
+      </div>
+    </div>,
+    document.body
   );
 }
 
@@ -365,7 +529,7 @@ function CreateYearWizard({ apiFetch, onClose, onCreated, onError }) {
 
   const allForms = preview ? [...preview.previouslyActive, ...preview.previouslyArchived] : [];
 
-  return (
+  return createPortal(
     <div style={{ position: "fixed", inset: 0, zIndex: 10000, background: "rgba(15,23,42,0.55)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }} onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 620, maxHeight: "90vh", display: "flex", flexDirection: "column", boxShadow: "0 24px 64px rgba(0,0,0,0.22)", overflow: "hidden" }} onClick={(e) => e.stopPropagation()}>
         <div style={{ padding: "18px 22px", borderBottom: "1px solid #f1f5f9", display: "flex", alignItems: "center", justifyContent: "space-between", background: "#fafafa" }}>
@@ -431,7 +595,8 @@ function CreateYearWizard({ apiFetch, onClose, onCreated, onError }) {
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 

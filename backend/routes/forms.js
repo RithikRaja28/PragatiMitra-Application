@@ -5,7 +5,14 @@ const { verifyToken, requireRole } = require("../middleware/auth");
 const { writeAuditLog } = require("../utils/audit");
 const logger = require("../utils/logger");
 const { translateSentence, enrichSchemaLabels } = require("../services/translationService");
-const { formatAcademicYear, ensureYearRows, setFormStatusForYear } = require("../services/academicYearService");
+const { formatAcademicYear, ensureYearRows, setFormStatusForYear, getAcademicYearLockBlockForReq } = require("../services/academicYearService");
+
+/* Academic-year lock guard for form-management writes. Checks the SELECTED year
+   (X-Academic-Year header), falling back to the request's year / current year. */
+async function ayLockGuard(pool, req, institutionId) {
+  const fallback = Number(req.body?.year) || new Date().getFullYear();
+  return getAcademicYearLockBlockForReq(pool, req, institutionId, fallback);
+}
 
 /* Auto-fill label.hi for any field missing it, using Google Translate.
    Only runs when translate_to_hindi is true. Mutates schema.fields in-place. */
@@ -396,6 +403,11 @@ router.post(
         return res.status(400).json({ success: false, message: "Institution ID is required." });
       }
 
+      // Academic-year lock — block form creation when the selected year is locked.
+      const ayLock = await ayLockGuard(pool, req, institutionId);
+      if (ayLock.locked)
+        return res.status(403).json({ success: false, message: ayLock.message });
+
       // Auto-fill missing Hindi labels before persisting
       if (translateToHindi) await autoFillHindiLabels(schema);
 
@@ -542,6 +554,11 @@ router.post(
         return res.status(400).json({ success: false, message: "Institution ID required." });
       }
 
+      // Academic-year lock — block adopting templates when the year is locked.
+      const ayLock = await ayLockGuard(pool, req, institutionId);
+      if (ayLock.locked)
+        return res.status(403).json({ success: false, message: ayLock.message });
+
       const client = await pool.connect();
       try {
         await client.query("BEGIN");
@@ -637,6 +654,11 @@ router.put(
       if (!institutionId) {
         return res.status(400).json({ success: false, message: "Institution ID required." });
       }
+
+      // Academic-year lock — block schema edits when the selected year is locked.
+      const ayLock = await ayLockGuard(pool, req, institutionId);
+      if (ayLock.locked)
+        return res.status(403).json({ success: false, message: ayLock.message });
 
       // Auto-fill missing Hindi labels before persisting.
       // translate_to_hindi may be toggled in this same request; default to true if not specified.
@@ -927,6 +949,11 @@ router.put(
       if (!institutionId) {
         return res.status(400).json({ success: false, message: "Institution ID required." });
       }
+
+      // Academic-year lock — block deadline changes when the year is locked.
+      const ayLock = await ayLockGuard(pool, req, institutionId);
+      if (ayLock.locked)
+        return res.status(403).json({ success: false, message: ayLock.message });
 
       const { rows } = await pool.query(
         `INSERT INTO form_lock_config (form_name, institution_id, is_locked, deadline_at, auto_locked)

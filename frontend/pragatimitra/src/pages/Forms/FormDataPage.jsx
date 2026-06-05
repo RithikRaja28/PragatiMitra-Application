@@ -1021,10 +1021,11 @@ export default function FormDataPage() {
   const { apiFetch }    = useApi();
   const { accessToken } = useAuth();
   const { lang }        = useLanguage();
-  const { selectedYear, years } = useAcademicYear() || {};
+  const { selectedYear, years, selectedYearLocked } = useAcademicYear() || {};
   // Year-aware filtering only kicks in once the institution has created academic
   // years (opted into the lifecycle). Otherwise behave exactly as before.
   const yearAware       = (years?.length || 0) > 0;
+  const ayLocked        = !!selectedYearLocked; // academic year locked → view-only
   const getToken        = useCallback(() => accessToken, [accessToken]);
 
   const [view, setView]                 = useState("forms");
@@ -1216,8 +1217,8 @@ export default function FormDataPage() {
                 blocks it. Editing a Hindi row updates that row only; editing an
                 English row regenerates its Hindi mirror (handled by the backend). */
   const viewingTranslated = lang === "hi";
-  const readOnly = lockInfo.is_locked || viewingTranslated;
-  const canEdit  = !lockInfo.is_locked;
+  const readOnly = lockInfo.is_locked || viewingTranslated || ayLocked;
+  const canEdit  = !lockInfo.is_locked && !ayLocked;
 
   /* ── Derived: sorted records (applied after search filter) ── */
   const sortedRecords = [...filteredRecords].sort((a, b) => {
@@ -1463,6 +1464,21 @@ export default function FormDataPage() {
           onClose={() => setImportOpen(false)}
           onDone={() => { setImportOpen(false); showToast("Import complete!"); loadRecords(selectedForm); }}
         />
+      )}
+
+      {/* ── Academic-year locked banner (view-only) ── */}
+      {ayLocked && (
+        <div style={{ display: "flex", alignItems: "center", gap: 12, background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 10, padding: "12px 18px", marginBottom: 20 }}>
+          <Lock size={18} color="#b91c1c" strokeWidth={2} style={{ flexShrink: 0 }} />
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#b91c1c" }}>
+              This academic year is locked — view-only mode.
+            </div>
+            <div style={{ fontSize: 12, color: "#dc2626", marginTop: 2 }}>
+              Adding, editing, deleting and importing are disabled. You can still view, search and export.
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ── Locked banner ── */}

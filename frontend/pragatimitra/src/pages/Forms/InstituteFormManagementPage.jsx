@@ -476,8 +476,9 @@ export default function InstituteFormManagementPage() {
   const { lang }        = useLanguage();
   // Academic-year context — the top-bar year scopes which forms are Active /
   // Archived here, and Archive/Activate write to academic_year_form_config.
-  const { selectedYear, academicYear, years } = useAcademicYear() || {};
+  const { selectedYear, academicYear, years, selectedYearLocked } = useAcademicYear() || {};
   const yearAware = (years?.length || 0) > 0;
+  const ayLocked  = !!selectedYearLocked; // academic year locked → view-only
 
   const [view, setView]               = useState("list");
   const [builderMode, setBuilderMode] = useState(null);
@@ -661,6 +662,11 @@ export default function InstituteFormManagementPage() {
         description="Comprehensive control panel for all institutional form-based data collection."
         actions={
           <>
+            {ayLocked && (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#fef2f2", color: "#b91c1c", border: "1px solid #fecaca", borderRadius: 8, padding: "0 12px", height: 34, fontSize: 12, fontWeight: 800, letterSpacing: 0.4, textTransform: "uppercase" }}>
+                <IconLock /> View Only
+              </span>
+            )}
             <button
               onClick={load}
               style={{
@@ -673,12 +679,14 @@ export default function InstituteFormManagementPage() {
               <IconRefresh /> Refresh List
             </button>
             <button
-              onClick={openCreate}
+              onClick={() => { if (ayLocked) { showToast("This academic year is locked. You can only view records.", "error"); return; } openCreate(); }}
+              disabled={ayLocked}
+              title={ayLocked ? "Academic year is locked" : "Create a new form"}
               style={{
                 display: "inline-flex", alignItems: "center", gap: 7,
-                background: ACCENT, color: "#fff", border: "none", borderRadius: 8,
-                padding: "0 16px", height: 34, fontSize: 12.5, fontWeight: 700, cursor: "pointer",
-                boxShadow: `0 2px 8px ${ACCENT}40`,
+                background: ayLocked ? "#94a3b8" : ACCENT, color: "#fff", border: "none", borderRadius: 8,
+                padding: "0 16px", height: 34, fontSize: 12.5, fontWeight: 700, cursor: ayLocked ? "not-allowed" : "pointer",
+                boxShadow: ayLocked ? "none" : `0 2px 8px ${ACCENT}40`,
               }}
             >
               <IconPlus /> Create New Form
@@ -835,7 +843,8 @@ export default function InstituteFormManagementPage() {
                             icon={<IconCalendar />}
                             label="Deadline"
                             onClick={() => setDeadlineForm(form)}
-                            title="Manage this form's deadline for your institution"
+                            disabled={ayLocked}
+                            title={ayLocked ? "Academic year is locked" : "Manage this form's deadline for your institution"}
                           />
                           <ExportDropdown
                             formName={form.form_name}
@@ -852,7 +861,8 @@ export default function InstituteFormManagementPage() {
                             icon={<IconSettings />}
                             iconOnly
                             onClick={() => openManage(form)}
-                            title="Manage Form"
+                            disabled={ayLocked}
+                            title={ayLocked ? "Academic year is locked" : "Manage Form"}
                           />
                           {yearAware && (
                             (form.lifecycle_status ?? "active") === "active" ? (
@@ -860,7 +870,8 @@ export default function InstituteFormManagementPage() {
                                 icon={<Archive size={15} />}
                                 iconOnly
                                 onClick={() => setLifecycle(form, "archived")}
-                                title={`Archive for ${academicYear}`}
+                                disabled={ayLocked}
+                                title={ayLocked ? "Academic year is locked" : `Archive for ${academicYear}`}
                               />
                             ) : (
                               <ActionButton
@@ -868,7 +879,8 @@ export default function InstituteFormManagementPage() {
                                 iconOnly
                                 variant="success"
                                 onClick={() => setLifecycle(form, "active")}
-                                title={`Activate for ${academicYear}`}
+                                disabled={ayLocked}
+                                title={ayLocked ? "Academic year is locked" : `Activate for ${academicYear}`}
                               />
                             )
                           )}
@@ -877,8 +889,8 @@ export default function InstituteFormManagementPage() {
                             iconOnly
                             variant={form.is_locked ? "danger" : "success"}
                             onClick={() => handleToggleLock(form)}
-                            disabled={lockBusy}
-                            title={form.is_locked ? "Unlock Form" : "Lock Form"}
+                            disabled={lockBusy || ayLocked}
+                            title={ayLocked ? "Academic year is locked" : form.is_locked ? "Unlock Form" : "Lock Form"}
                           />
                         </ActionButtonGroup>
                       </td>
