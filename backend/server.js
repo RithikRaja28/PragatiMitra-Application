@@ -149,6 +149,11 @@ const { ensureAcademicYearTables } = require("./services/academicYearService");
 ensureAcademicYearTables(pool)
   .catch((e) => logger.error("Failed to ensure academic year tables", { stack: e.stack }));
 
+/* ── Department form management: ensure the additive department_* tables ── */
+const { ensureDepartmentFormTables } = require("./services/departmentFormService");
+ensureDepartmentFormTables(pool)
+  .catch((e) => logger.error("Failed to ensure department form tables", { stack: e.stack }));
+
 /* ── Import session cache: rows stored server-side after parse ───── */
 app.locals.importSessions = new Map();
 // Purge sessions older than 1 hour every 30 minutes
@@ -181,6 +186,8 @@ app.use("/api/notification-templates", notificationTemplatesRouter);
 app.use("/api/radiology",              radiologyRoutes);   // ← radiology mounted
 app.use("/api/kpi",                    require("./routes/kpi"));
 app.use("/api/forms",                  require("./routes/forms"));
+app.use("/api/department-forms",       require("./routes/departmentForms"));
+app.use("/api/department-form-data",   require("./routes/departmentFormData"));
 app.use("/api/academic-years",         require("./routes/academicYear"));
 app.use("/api/form-data",              require("./routes/formData"));
 app.use("/api/form-data",              require("./routes/formimportexport"));

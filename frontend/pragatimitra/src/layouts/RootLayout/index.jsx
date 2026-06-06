@@ -89,7 +89,7 @@ export default function RootLayout() {
     // "Back" as a regular nav item at the very top
     {
       group: "",
-      items: [{ id: SETTINGS_BACK_ID, label: "← Back to Dashboard", icon: "ArrowLeft" }],
+      items: [{ id: SETTINGS_BACK_ID, label: "Back to Dashboard", icon: "ArrowLeft" }],
     },
     // All settings groups (Communication, Security, Preferences, Administration…)
     ...settingsGroups,

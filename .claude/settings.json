@@ -10,7 +10,11 @@
       "Bash(node server.js)",
       "Bash(node -e \"const s=require\\('./package.json'\\).scripts; console.log\\(JSON.stringify\\(s,null,2\\)\\)\")",
       "Bash(node _inspect_ay.js)",
-      "Bash(node _inspect3.js)"
+      "Bash(node _inspect3.js)",
+      "Bash(node --check routes/departmentFormData.js)",
+      "Bash(node --check routes/departmentForms.js)",
+      "Bash(node -e \"require\\('exceljs'\\); console.log\\('exceljs OK'\\)\")",
+      "Bash(node --check services/departmentFormService.js)"
     ]
   }
 }
