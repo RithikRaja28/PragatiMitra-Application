@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { Landmark, Pencil, Trash2 } from "lucide-react";
+import { createPortal } from "react-dom";
+import { Landmark, Pencil, Trash2, MoreHorizontal, Power, PowerOff, Plus } from "lucide-react";
 import { useApi } from "../../../hooks/useApi";
 import FormScreen from "../../../components/shared/FormScreen";
 import { S, Toast, isAuthError } from "../../../components/shared/formUtils";
 import PageHeader from "../../../components/shared/PageHeader";
-import { ActionButton, ActionButtonGroup } from "../../../components/shared/ActionButtons";
-import { StatusBadge, tableCardStyle } from "../../../components/shared/ui";
+import { Button, Badge, EmptyState, DataTable, Dropdown, MenuItem } from "../../../ui";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { t } from "../../../i18n/translations";
 
@@ -18,9 +18,9 @@ const TYPE_COLORS = {
 };
 const DEFAULT_COLOR = { bg: "#f8fafc", text: "#64748b" };
 
-/* ─── Slim overlay used only for the delete confirmation ──── */
+/* ─── Slim overlay used only for the delete confirmation (portaled + centered) ──── */
 function Overlay({ children }) {
-  return (
+  return createPortal(
     <div
       style={{
         position: "fixed",
@@ -31,12 +31,13 @@ function Overlay({ children }) {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        zIndex: 900,
+        zIndex: 10000,
         padding: 16,
       }}
     >
       {children}
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -734,13 +735,14 @@ export default function CommitteeManagementPage() {
               </div>
             )}
             {isReady && !institutionsError && institutions.length > 0 && (
-              <ActionButton
+              <Button
                 variant="primary"
+                icon={<Plus size={17} strokeWidth={2} />}
                 onClick={() => setFormView({ mode: "create", entity: null })}
-                style={{ height: 38, alignSelf: "flex-end" }}
+                style={{ alignSelf: "flex-end" }}
               >
-                <span style={{ fontSize: 18, lineHeight: 1 }}>+</span> {t("+ New Committee", lang)}
-              </ActionButton>
+                {t("New Committee", lang)}
+              </Button>
             )}
           </>
         }
@@ -833,149 +835,75 @@ export default function CommitteeManagementPage() {
       )}
 
       {/* ── Committees table ── */}
-      <div style={tableCardStyle}>
-        {loadingMeta || loadingCommittees ? (
-          <div style={{ padding: "48px 24px", textAlign: "center", color: "#94a3b8", fontSize: 13 }}>
-            {t("Loading committees…", lang)}
-          </div>
-        ) : filteredCommittees.length > 0 ? (
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 960 }}>
-              <thead>
-                <tr style={{ background: "#f8fafc" }}>
-                  {[
-                    { label: t("Committee", lang), align: "left" },
-                    { label: t("Finance Year", lang), align: "left" },
-                    { label: t("Position", lang), align: "left" },
-                    { label: t("Members", lang), align: "left" },
-                    { label: t("Contact", lang), align: "left" },
-                    { label: t("Status", lang), align: "left" },
-                    { label: t("Actions", lang), align: "right" },
-                  ].map((h) => (
-                    <th
-                      key={h.label}
-                      style={{
-                        padding: "10px 16px",
-                        textAlign: h.align,
-                        fontSize: 10.5,
-                        fontWeight: 700,
-                        color: "#94a3b8",
-                        textTransform: "uppercase",
-                        letterSpacing: 0.5,
-                        borderBottom: "1px solid #eef2f6",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {h.label}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {filteredCommittees.map((c) => {
-                  const isActive = c.status === "ACTIVE";
-                  const busy = togglingId === c.id;
-                  const colors = TYPE_COLORS[c.committee_type] ?? DEFAULT_COLOR;
-                  const members = Array.isArray(c.members) ? c.members : [];
-                  return (
-                    <tr
-                      key={c.id}
-                      style={{ borderBottom: "1px solid #f1f5f9", transition: "background .1s" }}
-                      onMouseEnter={(e) => (e.currentTarget.style.background = "#f8fafc")}
-                      onMouseLeave={(e) => (e.currentTarget.style.background = "")}
-                    >
-                      {/* Committee (type + avatar) */}
-                      <td style={{ padding: "12px 16px" }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                          <div
-                            style={{
-                              minWidth: 34, height: 34, borderRadius: 9,
-                              background: colors.bg, color: colors.text,
-                              display: "flex", alignItems: "center", justifyContent: "center",
-                              fontSize: 9, fontWeight: 800, letterSpacing: 0.3,
-                              padding: "0 5px", textAlign: "center", lineHeight: 1.1,
-                            }}
-                          >
-                            {getTypeLabel(c.committee_type).split(" ").map((w) => w[0]).join("").slice(0, 4)}
-                          </div>
-                          <span style={{ fontSize: 13.5, fontWeight: 700, color: "#1e293b" }}>
-                            {getTypeLabel(c.committee_type)}
-                          </span>
-                        </div>
-                      </td>
-
-                      {/* Finance year */}
-                      <td style={{ padding: "12px 16px" }}>
-                        <span style={{ fontSize: 12.5, color: "#475569", fontWeight: 600 }}>{c.finance_year}</span>
-                      </td>
-
-                      {/* Position */}
-                      <td style={{ padding: "12px 16px" }}>
-                        <span style={{ fontSize: 12.5, color: "#64748b" }}>{getPosLabel(c.position)}</span>
-                      </td>
-
-                      {/* Members */}
-                      <td style={{ padding: "12px 16px" }}>
-                        <span style={{ fontSize: 13.5, fontWeight: 600, color: "#1e293b" }}>{members.length}</span>
-                      </td>
-
-                      {/* Contact */}
-                      <td style={{ padding: "12px 16px" }}>
-                        <span style={{ fontSize: 12.5, color: "#64748b" }}>{c.contact || "—"}</span>
-                      </td>
-
-                      {/* Status */}
-                      <td style={{ padding: "12px 16px" }}>
-                        <StatusBadge tone={isActive ? "active" : "inactive"}>
-                          {isActive ? t("Active", lang) : t("Inactive", lang)}
-                        </StatusBadge>
-                      </td>
-
-                      {/* Actions */}
-                      <td style={{ padding: "8px 16px", verticalAlign: "middle" }}>
-                        <ActionButtonGroup justify="flex-end">
-                          <ActionButton onClick={() => setFormView({ mode: "edit", entity: c })}>
-                            {t("Edit", lang)}
-                          </ActionButton>
-                          <ActionButton
-                            variant={isActive ? "danger" : "success"}
-                            onClick={() => handleToggleStatus(c)}
-                            disabled={busy}
-                          >
-                            {busy ? "…" : isActive ? t("Deactivate", lang) : t("Activate", lang)}
-                          </ActionButton>
-                          <ActionButton
-                            variant="delete"
-                            onClick={() => { setDeletingItem(c); setConfirmDelete(true); }}
-                            title={t("Delete", lang)}
-                          >
-                            {t("Delete", lang)}
-                          </ActionButton>
-                        </ActionButtonGroup>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          isReady && (
-            <div style={{ textAlign: "center", padding: "64px 24px", color: "#94a3b8" }}>
-              <div style={{ fontSize: 15, fontWeight: 600, color: "#64748b", marginBottom: 6 }}>
-                {typeFilter !== "ALL" || yearFilter !== "ALL" || statusFilter !== "ALL" || searchQuery
-                  ? "No committees match the current filters"
-                  : "No committees yet"}
-              </div>
-              <div style={{ fontSize: 13 }}>
-                {typeFilter === "ALL" && yearFilter === "ALL" && statusFilter === "ALL" && !searchQuery
-                  ? 'Click "New Committee" to add the first one.'
-                  : "Try adjusting the filters above."}
-              </div>
-            </div>
-          )
-        )}
-      </div>
+      <DataTable
+        minWidth={960}
+        loading={loadingMeta || loadingCommittees || loadingInstitutions}
+        rows={filteredCommittees}
+        rowKey="id"
+        columns={[
+          {
+            key: "committee", header: t("Committee", lang),
+            render: (c) => {
+              const colors = TYPE_COLORS[c.committee_type] ?? DEFAULT_COLOR;
+              return (
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <div style={{
+                    minWidth: 34, height: 34, borderRadius: 9, background: colors.bg, color: colors.text,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    fontSize: 9, fontWeight: 800, letterSpacing: 0.3, padding: "0 5px", textAlign: "center", lineHeight: 1.1,
+                  }}>
+                    {getTypeLabel(c.committee_type).split(" ").map((w) => w[0]).join("").slice(0, 4)}
+                  </div>
+                  <span style={{ fontSize: 13.5, fontWeight: 700, color: "#1e293b" }}>{getTypeLabel(c.committee_type)}</span>
+                </div>
+              );
+            },
+          },
+          { key: "finance_year", header: t("Finance Year", lang), width: 130, render: (c) => <span style={{ fontSize: 12.5, color: "#475569", fontWeight: 600 }}>{c.finance_year}</span> },
+          { key: "position", header: t("Position", lang), width: 180, ellipsis: true, render: (c) => <span style={{ fontSize: 12.5, color: "#64748b" }}>{getPosLabel(c.position)}</span> },
+          { key: "members", header: t("Members", lang), width: 110, render: (c) => <span style={{ fontSize: 13.5, fontWeight: 600, color: "#1e293b" }}>{(Array.isArray(c.members) ? c.members : []).length}</span> },
+          { key: "contact", header: t("Contact", lang), width: 180, ellipsis: true, render: (c) => <span style={{ fontSize: 12.5, color: "#64748b" }}>{c.contact || "—"}</span> },
+          {
+            key: "status", header: t("Status", lang), width: 120,
+            render: (c) => <Badge tone={c.status === "ACTIVE" ? "success" : "neutral"}>{c.status === "ACTIVE" ? t("Active", lang) : t("Inactive", lang)}</Badge>,
+          },
+          {
+            key: "actions", header: t("Actions", lang), align: "right", width: 90,
+            render: (c) => {
+              const isActive = c.status === "ACTIVE";
+              const busy = togglingId === c.id;
+              return (
+                <Dropdown
+                  align="right"
+                  width={200}
+                  button={({ toggle }) => (
+                    <Button variant="ghost" iconOnly icon={<MoreHorizontal size={18} strokeWidth={2} />} onClick={toggle} aria-label="Row actions" />
+                  )}
+                >
+                  <MenuItem icon={<Pencil size={16} strokeWidth={1.9} />} onClick={() => setFormView({ mode: "edit", entity: c })}>{t("Edit", lang)}</MenuItem>
+                  {isActive ? (
+                    <MenuItem icon={<PowerOff size={16} strokeWidth={1.9} />} disabled={busy} onClick={() => handleToggleStatus(c)}>{busy ? "…" : t("Deactivate", lang)}</MenuItem>
+                  ) : (
+                    <MenuItem icon={<Power size={16} strokeWidth={1.9} />} disabled={busy} onClick={() => handleToggleStatus(c)}>{busy ? "…" : t("Activate", lang)}</MenuItem>
+                  )}
+                  <MenuItem icon={<Trash2 size={16} strokeWidth={1.9} />} danger onClick={() => { setDeletingItem(c); setConfirmDelete(true); }}>{t("Delete", lang)}</MenuItem>
+                </Dropdown>
+              );
+            },
+          },
+        ]}
+        empty={
+          <EmptyState
+            icon={<Landmark size={26} strokeWidth={1.6} />}
+            title={(typeFilter !== "ALL" || yearFilter !== "ALL" || statusFilter !== "ALL" || searchQuery)
+              ? "No committees match the current filters"
+              : "No committees yet"}
+            description={(typeFilter === "ALL" && yearFilter === "ALL" && statusFilter === "ALL" && !searchQuery)
+              ? 'Click "New Committee" to add the first one.'
+              : "Try adjusting the filters above."}
+          />
+        }
+      />
     </div>
   );
 }

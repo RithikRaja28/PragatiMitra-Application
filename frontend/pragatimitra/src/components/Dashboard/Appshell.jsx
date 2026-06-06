@@ -1,6 +1,4 @@
 import {
-  createContext,
-  useContext,
   useState,
   useEffect,
   useCallback,
@@ -10,13 +8,15 @@ import {
 } from "react";
 import * as Icons from "lucide-react";
 import { useAuth } from "../../store/AuthContext";
+import { useAcademicYear } from "../../store/AcademicYearContext";
 import { useLanguage } from "../../i18n/LanguageContext";
 import { t } from "../../i18n/translations";
 import NotificationBell from "./NotificationBell";
+import { ShellContext } from "./shellContext";
 
-/* ─── Context ───────────────────────────────────────────────── */
-const ShellContext = createContext(null);
-export const useShell = () => useContext(ShellContext);
+/* ─── Context ───────────────────────────────────────────────────
+   ShellContext + useShell live in ./shellContext so this file exports ONLY the
+   AppShell component → React Fast Refresh works (the top bar hot-reloads). */
 
 /* ─── Icon resolver ─────────────────────────────────────────── */
 function DynIcon({ name, size = 18 }) {
@@ -464,6 +464,17 @@ const CSS = `
   .sh-ay-opt:hover { background: #f8fafc; color: #1e293b; }
   .sh-ay-opt.sel { color: #2563eb; font-weight: 700; background: rgba(37,99,235,0.05); }
   .sh-ay-check { color: #2563eb; flex-shrink: 0; }
+  .sh-ay-search { padding: 8px 10px; border-bottom: 1px solid #f1f5f9; }
+  .sh-ay-search input {
+    width: 100%; height: 32px; border: 1px solid #e2e8f0; border-radius: 8px;
+    padding: 0 10px; font-size: 12.5px; font-family: var(--sh-font);
+    outline: none; color: #1e293b; box-sizing: border-box;
+  }
+  .sh-ay-search input:focus { border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37,99,235,0.12); }
+  .sh-ay-list { max-height: 240px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #cbd5e1 transparent; }
+  .sh-ay-list::-webkit-scrollbar { width: 7px; }
+  .sh-ay-list::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 7px; }
+  .sh-ay-empty { padding: 14px; text-align: center; color: #94a3b8; font-size: 12px; }
 
   /* ── Global form-field focus (unified blue accent) ── */
   .sh-content input:not([type="checkbox"]):not([type="radio"]):focus,
@@ -525,12 +536,29 @@ function injectCSS(id, css) {
   el.textContent = css;
 }
 
-/* ─── Academic Year Picker ──────────────────────────────────── */
-const ACADEMIC_YEARS = ["2021-22", "2022-23", "2023-24", "2024-25", "2025-26"];
-
-function AcademicYearPicker({ selectedYear, onChange }) {
+/* ─── Academic Year Picker ───────────────────────────────────────
+   Institution-scoped "current academic year" selector. Reads/writes the
+   global AcademicYearContext (dynamic options from academic_year_master,
+   session-persisted). Selecting a year drives form creation + visibility. */
+function AcademicYearPicker() {
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
   const wrapRef = useRef(null);
+
+  const ay = useAcademicYear();
+  const options  = ay?.options || [];
+  const selected = ay?.selectedYear ?? null;
+  const locked   = !!ay?.selectedYearLocked;
+  const currentLabel =
+    options.find((o) => o.value === selected)?.label ??
+    (selected != null ? `${selected}–${selected + 1}` : "—");
+
+  // Show the search box only when the list is long enough to benefit from it.
+  const showSearch = options.length > 6;
+  const q = query.trim().toLowerCase();
+  const filtered = q
+    ? options.filter((o) => String(o.label).toLowerCase().includes(q) || String(o.value).includes(q))
+    : options;
 
   useEffect(() => {
     if (!open) return;
@@ -541,7 +569,8 @@ function AcademicYearPicker({ selectedYear, onChange }) {
     return () => document.removeEventListener("mousedown", handler);
   }, [open]);
 
-  const yr = selectedYear || "2024-25";
+  // Reset the search each time the menu closes.
+  useEffect(() => { if (!open) setQuery(""); }, [open]);
 
   return (
     <div className="sh-ay-wrap" ref={wrapRef}>
@@ -554,7 +583,12 @@ function AcademicYearPicker({ selectedYear, onChange }) {
       >
         <Icons.GraduationCap size={13} style={{ opacity: 0.75, flexShrink: 0 }} />
         <span className="sh-ay-tag">AY</span>
-        <span className="sh-ay-val">{yr}</span>
+        <span className="sh-ay-val">{currentLabel}</span>
+        {locked && (
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 3, marginLeft: 2, fontSize: 9.5, fontWeight: 800, letterSpacing: 0.4, color: "#fff", background: "#dc2626", borderRadius: 12, padding: "1px 7px", textTransform: "uppercase" }}>
+            <Icons.Lock size={9} /> Locked
+          </span>
+        )}
         <Icons.ChevronDown size={12} className="sh-ay-chevron" />
       </button>
 
@@ -564,18 +598,41 @@ function AcademicYearPicker({ selectedYear, onChange }) {
             <Icons.CalendarDays size={11} style={{ opacity: 0.6 }} />
             Academic Year
           </div>
-          {ACADEMIC_YEARS.map((y) => (
-            <button
-              key={y}
-              className={`sh-ay-opt${yr === y ? " sel" : ""}`}
-              role="option"
-              aria-selected={yr === y}
-              onClick={() => { onChange?.(y); setOpen(false); }}
-            >
-              {y}
-              {yr === y && <Icons.Check size={13} className="sh-ay-check" />}
-            </button>
-          ))}
+          {showSearch && (
+            <div className="sh-ay-search">
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search year…"
+                autoFocus
+                aria-label="Search academic year"
+              />
+            </div>
+          )}
+          <div className="sh-ay-list">
+            {filtered.length === 0 ? (
+              <div className="sh-ay-empty">No matching year</div>
+            ) : filtered.map((o) => (
+              <button
+                key={o.value}
+                className={`sh-ay-opt${o.value === selected ? " sel" : ""}`}
+                role="option"
+                aria-selected={o.value === selected}
+                onClick={() => { ay?.setYear(o.value); setOpen(false); }}
+              >
+                <span style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                  {o.label}
+                  {o.active && (
+                    <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: 0.3, color: "#16a34a", background: "#16a34a18", borderRadius: 12, padding: "1px 6px", textTransform: "uppercase" }}>
+                      Current
+                    </span>
+                  )}
+                  {o.locked && <Icons.Lock size={11} style={{ color: "#dc2626" }} />}
+                </span>
+                {o.value === selected && <Icons.Check size={13} className="sh-ay-check" />}
+              </button>
+            ))}
+          </div>
         </div>
       )}
     </div>
@@ -595,8 +652,6 @@ function Topbar({
   navItems,
   onNavClick,
   onSettingsClick,
-  selectedYear,
-  onYearChange,
 }) {
   const [query,       setQuery]       = useState("");
   const [menuOpen,    setMenuOpen]    = useState(false);
@@ -748,8 +803,8 @@ function Topbar({
       <div className="sh-actions">
         {headerActions}
 
-        {/* Academic Year */}
-        <AcademicYearPicker selectedYear={selectedYear} onChange={onYearChange} />
+        {/* Academic Year — institution-scoped context (drives forms + visibility) */}
+        <AcademicYearPicker />
 
         {/* Notifications */}
         <NotificationBell />
@@ -887,8 +942,6 @@ export default function AppShell({
   onNavigate,
   onSettingsClick,
   defaultCollapsed  = false,
-  defaultYear       = "2024-25",
-  onYearChange,
   onCollapseChange, // optional — called with new boolean when sidebar is collapsed/expanded
 }) {
   injectCSS("app-shell-v4", CSS);
@@ -898,7 +951,6 @@ export default function AppShell({
   const [collapsed,    setCollapsed]    = useState(defaultCollapsed);
   const [mobileOpen,   setMobileOpen]   = useState(false);
   const [pageKey,      setPageKey]      = useState(0);
-  const [selectedYear, setSelectedYear] = useState(defaultYear);
 
   useEffect(() => {
     const fn = () => { if (window.innerWidth > 768) setMobileOpen(false); };
@@ -912,6 +964,8 @@ export default function AppShell({
     if (!cancelled) { setActiveId(id); setPageKey((k) => k + 1); setMobileOpen(false); }
   }, [onNavigate]);
 
+  // Toggle collapse and notify the parent so the state survives the
+  // dashboard ⇄ settings remount (RootLayout lifts it via onCollapseChange).
   const handleCollapse = useCallback(() => {
     setCollapsed((c) => {
       const next = !c;
@@ -920,10 +974,6 @@ export default function AppShell({
     });
   }, [onCollapseChange]);
 
-  const handleYearChange = useCallback((yr) => {
-    setSelectedYear(yr); onYearChange?.(yr);
-  }, [onYearChange]);
-
   const currentPage = pages[activeId] ?? (
     <div style={{ padding: 40, color: "var(--sh-muted)", fontFamily: "var(--sh-font)" }}>
       No page registered for <code style={{ fontFamily: "var(--sh-mono)" }}>"{activeId}"</code>.
@@ -931,7 +981,7 @@ export default function AppShell({
   );
 
   return (
-    <ShellContext.Provider value={{ activeId, setActiveId: handleNavClick, collapsed, setCollapsed, selectedYear }}>
+    <ShellContext.Provider value={{ activeId, setActiveId: handleNavClick, collapsed, setCollapsed }}>
       <div className="sh-root">
         <Topbar
           appName={appName}
@@ -945,8 +995,6 @@ export default function AppShell({
           navItems={navItems}
           onNavClick={handleNavClick}
           onSettingsClick={onSettingsClick}
-          selectedYear={selectedYear}
-          onYearChange={handleYearChange}
         />
 
         <div className="sh-body">

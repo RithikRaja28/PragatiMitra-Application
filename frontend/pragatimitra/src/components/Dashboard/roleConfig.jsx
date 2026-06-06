@@ -19,6 +19,7 @@ import React from "react";
 import PlaceholderPage from "../shared/PlaceholderPage";
 
 /* ── Super Admin page imports ───────────────────────────────── */
+import SuperAdminOverviewPage    from "../../pages/Roles/superadmin/SuperAdminOverviewPage";
 import UserManagementPage        from "../../pages/Roles/superadmin/UserManagementPage";
 import AuditLogsPage             from "../../pages/Roles/superadmin/AuditLogsPage";
 import DepartmentManagementPage  from "../../pages/Roles/superadmin/DepartmentManagementPage";
@@ -44,11 +45,13 @@ import DeptAdminDashboardPage from "../../pages/Roles/departmentadmin/DeptAdminD
 import DeptUsersPage          from "../../pages/Roles/departmentadmin/DeptUsersPage";
 import TaskOverviewPage       from "../../pages/Roles/departmentadmin/TaskOverviewPage";
 import FormDataPage           from "../../pages/Forms/FormDataPage";
+import DepartmentFormManagementPage from "../../pages/Forms/DepartmentFormManagementPage";
 
 /* ── Dept Nodal Officer page imports ─────────────────────────── */
 import NodalDashboardPage    from "../../pages/Roles/departmentnodalofficer/NodalDashboardPage";
 import AssignedSectionsPage  from "../../pages/Roles/departmentnodalofficer/AssignedSectionsPage";
 import SubmissionsPage       from "../../pages/Roles/departmentnodalofficer/SubmissionsPage";
+import DepartmentFormFillPage from "../../pages/Forms/DepartmentFormFillPage";
 
 /* ── Finance Officer page imports ───────────────────────────── */
 import FinanceOverviewPage from "../../pages/Roles/financeofficer/FinanceOverviewPage";
@@ -60,7 +63,6 @@ import BalanceSheetPage    from "../../pages/Roles/financeofficer/BalanceSheetPa
 export { default as PlaceholderPage } from "../shared/PlaceholderPage";
 
 /* ── Super Admin placeholders ───────────────────────────────── */
-const SuperAdminOverviewPage   = () => <PlaceholderPage title="Overview"    subtitle="Platform-wide summary and key metrics"                color="#2563eb" />;
 const SuperAdminMasterDataPage = () => <PlaceholderPage title="Master Data" subtitle="Manage lookup values, categories, and reference data" color="#2563eb" />;
 
 /* ── Institute Admin placeholders ───────────────────────────── */
@@ -425,6 +427,17 @@ export const ROLE_CONFIG = {
         ],
       },
       {
+        group: "Forms",
+        items: [
+          {
+            id: "da-dept-forms",
+            label: "Department Forms",
+            icon: "FileStack",
+            permission: null,
+          },
+        ],
+      },
+      {
         group: "Data Entry",
         items: [
           {
@@ -441,6 +454,7 @@ export const ROLE_CONFIG = {
       "da-users": <DeptUsersPage />,
       "da-tasks": <TaskOverviewPage />,
       "da-kpi":   <DeptKpiPage />,
+      "da-dept-forms": <DepartmentFormManagementPage />,
       "da-form-data": <FormDataPage />,
     },
     defaultPage: "da-dashboard",
@@ -488,11 +502,23 @@ export const ROLE_CONFIG = {
           },
         ],
       },
+      {
+        group: "Forms",
+        items: [
+          {
+            id: "dno-dept-forms",
+            label: "Department Forms",
+            icon: "FileStack",
+            permission: null,
+          },
+        ],
+      },
     ],
     pages: {
       "dno-dashboard": <NodalDashboardPage />,
       "dno-sections": <AssignedSectionsPage />,
       "dno-submissions": <SubmissionsPage />,
+      "dno-dept-forms": <DepartmentFormFillPage />,
     },
     defaultPage: "dno-dashboard",
     user: { name: "Nodal Officer", initials: "NO", org: "Samhita Siddhanta" },

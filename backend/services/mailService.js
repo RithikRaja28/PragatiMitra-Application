@@ -251,10 +251,41 @@ async function sendRoleUpdatedEmail(pool, { full_name, email, new_role, login_ur
   }
 }
 
+/* ── Academic year activated email ──────────────────────────────────
+   Sent to each department HOD / Nodal Officer when a new academic year is
+   created. Reuses the existing sendMail transport — sends ONE email; the
+   caller handles recipient resolution, async/retry, and audit logging. */
+async function sendAcademicYearActivatedEmail({ to, institutionName, academicYear, activeFormsCount }) {
+  const subject = `New Academic Year Activated — ${academicYear}`;
+  const html = `
+    <div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f6f8;padding:24px;">
+      <div style="background:#ffffff;border-radius:12px;padding:28px 32px;border:1px solid #e2e8f0;">
+        <h2 style="margin:0 0 4px;font-size:18px;color:#1e293b;">${institutionName}</h2>
+        <div style="font-size:13px;color:#64748b;margin-bottom:20px;">Academic Year Notification</div>
+        <p style="font-size:14px;color:#334155;line-height:1.7;margin:0 0 16px;">Dear Department Team,</p>
+        <p style="font-size:14px;color:#334155;line-height:1.7;margin:0 0 16px;">
+          Academic Year <strong>${academicYear}</strong> has been activated.
+        </p>
+        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px 18px;margin:0 0 16px;">
+          <div style="font-size:12px;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;">Active forms available</div>
+          <div style="font-size:24px;font-weight:700;color:#2563eb;">${activeFormsCount}</div>
+        </div>
+        <p style="font-size:14px;color:#334155;line-height:1.7;margin:0 0 16px;">
+          Please review assigned forms and complete submissions before their deadlines.
+        </p>
+        <p style="font-size:14px;color:#334155;line-height:1.7;margin:24px 0 0;">
+          Regards,<br/>Institution Administration
+        </p>
+      </div>
+    </div>`;
+  return sendMail({ to, subject, html });
+}
+
 module.exports = {
   sendWelcomeEmail,
   sendPasswordResetEmail,
   sendAccountSuspendedEmail,
   sendAccountReactivatedEmail,
   sendRoleUpdatedEmail,
+  sendAcademicYearActivatedEmail,
 };

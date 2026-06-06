@@ -1,36 +1,17 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { Building2, Pencil, Landmark } from "lucide-react";
+import {
+  Building2, Pencil, Landmark, MoreHorizontal, Power, PowerOff,
+  Plus, Upload, Download, FileText, FileSpreadsheet,
+} from "lucide-react";
 import { useApi } from "../../../hooks/useApi";
 import FormScreen from "../../../components/shared/FormScreen";
 import FormWizard, { ReviewGroup, ReviewItem } from "../../../components/shared/FormWizard";
 import ImportWizard from "../../../components/shared/ImportWizard";
 import { S, Toast, isAuthError, formatDate } from "../../../components/shared/formUtils";
 import PageHeader from "../../../components/shared/PageHeader";
-import { ActionButton, ActionButtonGroup } from "../../../components/shared/ActionButtons";
-import { StatusBadge, tableCardStyle } from "../../../components/shared/ui";
+import { Button, Badge, EmptyState, DataTable, Dropdown, MenuItem, MenuLabel } from "../../../ui";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { t } from "../../../i18n/translations";
-
-/* ── SVG icons ───────────────────────────────────────────────────── */
-const IconDownload = () => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-    <polyline points="7 10 12 15 17 10"/>
-    <line x1="12" y1="15" x2="12" y2="3"/>
-  </svg>
-);
-const IconUpload = () => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-    <polyline points="17 8 12 3 7 8"/>
-    <line x1="12" y1="3" x2="12" y2="15"/>
-  </svg>
-);
-const IconChevron = () => (
-  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-    <polyline points="6 9 12 15 18 9"/>
-  </svg>
-);
 
 const INDIA_STATES = [
   "Andhra Pradesh","Arunachal Pradesh","Assam","Bihar","Chhattisgarh",
@@ -438,53 +419,20 @@ function InstitutionForm({ mode, entity, onCreated, onSaved, onBack }) {
 }
 
 
+/* Icon-only, viewport-aware export menu (shared Dropdown → never clipped). */
 function ExportMenu({ loading, onExport }) {
-  const [open, setOpen] = useState(false);
   return (
-    <div style={{ position: "relative" }}>
-      <button
-        onClick={() => setOpen((v) => !v)}
-        disabled={!!loading}
-        style={{
-          display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6,
-          height: 34, minHeight: 34, padding: "0 14px", borderRadius: 6,
-          border: "1px solid #cbd5e1", background: "#fff",
-          fontSize: 12.5, fontWeight: 600, color: "#334155", whiteSpace: "nowrap",
-          cursor: loading ? "not-allowed" : "pointer",
-          opacity: loading ? 0.6 : 1,
-        }}
-      >
-        <IconDownload /> {loading ? "Exporting…" : "Export"} <IconChevron />
-      </button>
-      {open && (
-        <>
-          <div style={{ position: "fixed", inset: 0, zIndex: 99 }} onClick={() => setOpen(false)} />
-          <div style={{
-            position: "absolute", top: "calc(100% + 6px)", right: 0, zIndex: 100,
-            background: "#fff", border: "1.5px solid #e2e8f0", borderRadius: 10,
-            boxShadow: "0 8px 24px rgba(0,0,0,0.12)", minWidth: 190, overflow: "hidden",
-          }}>
-            {[
-              { fmt: "csv",  label: "Export as CSV"   },
-              { fmt: "xlsx", label: "Export as Excel"  },
-            ].map(({ fmt, label }) => (
-              <button key={fmt}
-                onClick={() => { setOpen(false); onExport(fmt); }}
-                style={{
-                  display: "block", width: "100%", padding: "10px 16px",
-                  background: "none", border: "none", textAlign: "left",
-                  fontSize: 13, color: "#1e293b", cursor: "pointer", fontWeight: 500,
-                }}
-                onMouseEnter={(e) => e.currentTarget.style.background = "#f8fafc"}
-                onMouseLeave={(e) => e.currentTarget.style.background = "none"}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        </>
+    <Dropdown
+      align="right"
+      width={200}
+      button={({ toggle }) => (
+        <Button variant="secondary" iconOnly loading={!!loading} icon={<Download size={18} strokeWidth={1.9} />} onClick={toggle} aria-label="Export" title="Export" />
       )}
-    </div>
+    >
+      <MenuLabel>Export</MenuLabel>
+      <MenuItem icon={<FileText size={16} strokeWidth={1.9} />} onClick={() => onExport("csv")}>Export as CSV</MenuItem>
+      <MenuItem icon={<FileSpreadsheet size={16} strokeWidth={1.9} />} onClick={() => onExport("xlsx")}>Export as Excel</MenuItem>
+    </Dropdown>
   );
 }
 
@@ -690,19 +638,15 @@ export default function InstitutionManagementPage() {
         title={t("Institutions", lang)}
         description="Create and manage institutions on the platform."
         actions={
-          <>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <ExportMenu loading={exportingFormat} onExport={handleExport} />
-            <ActionButton icon={<IconUpload />} onClick={() => setShowImport(true)}>
+            <Button variant="secondary" icon={<Upload size={17} strokeWidth={1.9} />} onClick={() => setShowImport(true)}>
               {t("Import", lang)}
-            </ActionButton>
-            <ActionButton
-              variant="primary"
-              onClick={() => setFormView({ mode: "create", entity: null })}
-              style={{ height: 38 }}
-            >
-              <span style={{ fontSize: 18, lineHeight: 1 }}>+</span> {t("New Institution", lang)}
-            </ActionButton>
-          </>
+            </Button>
+            <Button variant="primary" icon={<Plus size={17} strokeWidth={2} />} onClick={() => setFormView({ mode: "create", entity: null })}>
+              {t("New Institution", lang)}
+            </Button>
+          </div>
         }
       />
 
@@ -723,167 +667,117 @@ export default function InstitutionManagementPage() {
       )}
 
       {!error && (
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            marginBottom: 20,
-            flexWrap: "wrap",
-            gap: 12,
-          }}
-        >
-          <div style={{ fontSize: 13, color: "#64748b" }}>
-            {loading ? (
-              t("Loading institutions…", lang)
-            ) : (
-              <>
-                <strong style={{ color: "#1e293b" }}>{filtered.length}</strong>{" "}
-                {statusFilter === "ALL"
-                  ? "institution(s)"
-                  : `${statusFilter.toLowerCase()} institution(s)`}
-              </>
-            )}
-          </div>
-          <StyledSelect value={statusFilter} onChange={setStatusFilter} minWidth={150}>
-            <option value="ALL">{t("All Statuses", lang)}</option>
-            <option value="ACTIVE">{t("Active", lang)}</option>
-            <option value="INACTIVE">{t("Inactive", lang)}</option>
-          </StyledSelect>
-        </div>
-      )}
-
-      {/* ── Institutions table ── */}
-      <div style={tableCardStyle}>
-        {loading ? (
-          <div style={{ padding: "48px 24px", textAlign: "center", color: "#94a3b8", fontSize: 13 }}>
-            {t("Loading institutions…", lang)}
-          </div>
-        ) : filtered.length > 0 ? (
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 940 }}>
-              <thead>
-                <tr style={{ background: "#f8fafc" }}>
-                  {[
-                    { label: t("Code", lang), align: "left" },
-                    { label: t("Institution Name", lang), align: "left" },
-                    { label: t("Location", lang), align: "left" },
-                    { label: t("Departments", lang), align: "left" },
-                    { label: t("Users", lang), align: "left" },
-                    { label: t("Status", lang), align: "left" },
-                    { label: t("Actions", lang), align: "right" },
-                  ].map((h) => (
-                    <th
-                      key={h.label}
-                      style={{
-                        padding: "10px 16px",
-                        textAlign: h.align,
-                        fontSize: 10.5,
-                        fontWeight: 700,
-                        color: "#94a3b8",
-                        textTransform: "uppercase",
-                        letterSpacing: 0.5,
-                        borderBottom: "1px solid #eef2f6",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {h.label}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {paginated.map((inst) => {
-                  const isActive = inst.status === "ACTIVE";
-                  const busy = togglingId === inst.institution_id;
-                  return (
-                    <tr
-                      key={inst.institution_id}
-                      style={{ borderBottom: "1px solid #f1f5f9", transition: "background .1s" }}
-                      onMouseEnter={(e) => (e.currentTarget.style.background = "#f8fafc")}
-                      onMouseLeave={(e) => (e.currentTarget.style.background = "")}
-                    >
-                      {/* Code */}
-                      <td style={{ padding: "12px 16px" }}>
-                        <span style={{ fontFamily: "monospace", fontSize: 12.5, fontWeight: 600, color: isActive ? "#2563eb" : "#94a3b8" }}>
-                          {inst.code || "—"}
-                        </span>
-                      </td>
-
-                      {/* Institution name */}
-                      <td style={{ padding: "12px 16px" }}>
-                        <div style={{ fontSize: 13.5, fontWeight: 700, color: "#1e293b" }}>
-                          {inst.institution_name}
-                        </div>
-                        <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>
-                          {t("Since", lang)} {formatDate(inst.created_at)} · @{inst.email_domain}
-                        </div>
-                      </td>
-
-                      {/* Location */}
-                      <td style={{ padding: "12px 16px" }}>
-                        <span style={{ fontSize: 12.5, color: "#64748b" }}>
-                          {[inst.city, inst.state].filter(Boolean).join(", ") || "—"}
-                        </span>
-                      </td>
-
-                      {/* Departments */}
-                      <td style={{ padding: "12px 16px" }}>
-                        <span style={{ fontSize: 13.5, fontWeight: 600, color: "#1e293b" }}>
-                          {Number(inst.department_count || 0)}
-                        </span>
-                      </td>
-
-                      {/* Users */}
-                      <td style={{ padding: "12px 16px" }}>
-                        <span style={{ fontSize: 13.5, fontWeight: 600, color: "#1e293b" }}>
-                          {Number(inst.user_count || 0)}
-                        </span>
-                      </td>
-
-                      {/* Status */}
-                      <td style={{ padding: "12px 16px" }}>
-                        <StatusBadge tone={isActive ? "active" : "inactive"}>
-                          {isActive ? t("Active", lang) : t("Inactive", lang)}
-                        </StatusBadge>
-                      </td>
-
-                      {/* Actions */}
-                      <td style={{ padding: "8px 16px", verticalAlign: "middle" }}>
-                        <ActionButtonGroup justify="flex-end">
-                          <ActionButton onClick={() => setFormView({ mode: "edit", entity: inst })}>
-                            {t("Edit", lang)}
-                          </ActionButton>
-                          <ActionButton
-                            variant={isActive ? "danger" : "success"}
-                            onClick={() => handleToggleStatus(inst)}
-                            disabled={busy}
-                          >
-                            {busy ? "…" : isActive ? t("Deactivate", lang) : t("Activate", lang)}
-                          </ActionButton>
-                        </ActionButtonGroup>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <div style={{ textAlign: "center", padding: "64px 24px", color: "#94a3b8" }}>
-            <div style={{ fontSize: 15, fontWeight: 600, color: "#64748b", marginBottom: 6 }}>
-              {statusFilter !== "ALL"
-                ? `No ${statusFilter.toLowerCase()} institutions`
-                : "No institutions yet"}
-            </div>
-            <div style={{ fontSize: 13 }}>
-              {statusFilter === "ALL"
+        <DataTable
+          minWidth={940}
+          loading={loading}
+          rows={paginated}
+          rowKey="institution_id"
+          toolbar={
+            <>
+              <div style={{ fontSize: 13, color: "#64748b" }}>
+                {loading ? (
+                  t("Loading institutions…", lang)
+                ) : (
+                  <>
+                    <strong style={{ color: "#1e293b" }}>{filtered.length}</strong>{" "}
+                    {statusFilter === "ALL"
+                      ? "institution(s)"
+                      : `${statusFilter.toLowerCase()} institution(s)`}
+                  </>
+                )}
+              </div>
+              <StyledSelect value={statusFilter} onChange={setStatusFilter} minWidth={150}>
+                <option value="ALL">{t("All Statuses", lang)}</option>
+                <option value="ACTIVE">{t("Active", lang)}</option>
+                <option value="INACTIVE">{t("Inactive", lang)}</option>
+              </StyledSelect>
+            </>
+          }
+          columns={[
+            {
+              key: "code", header: t("Code", lang), width: 120,
+              render: (inst) => (
+                <span style={{ fontFamily: "monospace", fontSize: 12.5, fontWeight: 600, color: inst.status === "ACTIVE" ? "#2563eb" : "#94a3b8" }}>
+                  {inst.code || "—"}
+                </span>
+              ),
+            },
+            {
+              key: "institution_name", header: t("Institution Name", lang),
+              render: (inst) => (
+                <div>
+                  <div style={{ fontSize: 13.5, fontWeight: 700, color: "#1e293b" }}>{inst.institution_name}</div>
+                  <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>
+                    {t("Since", lang)} {formatDate(inst.created_at)} · @{inst.email_domain}
+                  </div>
+                </div>
+              ),
+            },
+            {
+              key: "location", header: t("Location", lang), width: 200, ellipsis: true,
+              render: (inst) => (
+                <span style={{ fontSize: 12.5, color: "#64748b" }}>
+                  {[inst.city, inst.state].filter(Boolean).join(", ") || "—"}
+                </span>
+              ),
+            },
+            {
+              key: "department_count", header: t("Departments", lang), width: 120,
+              render: (inst) => <span style={{ fontSize: 13.5, fontWeight: 600, color: "#1e293b" }}>{Number(inst.department_count || 0)}</span>,
+            },
+            {
+              key: "user_count", header: t("Users", lang), width: 100,
+              render: (inst) => <span style={{ fontSize: 13.5, fontWeight: 600, color: "#1e293b" }}>{Number(inst.user_count || 0)}</span>,
+            },
+            {
+              key: "status", header: t("Status", lang), width: 120,
+              render: (inst) => (
+                <Badge tone={inst.status === "ACTIVE" ? "success" : "neutral"}>
+                  {inst.status === "ACTIVE" ? t("Active", lang) : t("Inactive", lang)}
+                </Badge>
+              ),
+            },
+            {
+              key: "actions", header: t("Actions", lang), align: "right", width: 90,
+              render: (inst) => {
+                const isActive = inst.status === "ACTIVE";
+                const busy = togglingId === inst.institution_id;
+                return (
+                  <Dropdown
+                    align="right"
+                    width={190}
+                    button={({ toggle }) => (
+                      <Button variant="ghost" iconOnly icon={<MoreHorizontal size={18} strokeWidth={2} />} onClick={toggle} aria-label="Row actions" />
+                    )}
+                  >
+                    <MenuItem icon={<Pencil size={16} strokeWidth={1.9} />} onClick={() => setFormView({ mode: "edit", entity: inst })}>
+                      {t("Edit", lang)}
+                    </MenuItem>
+                    {isActive ? (
+                      <MenuItem icon={<PowerOff size={16} strokeWidth={1.9} />} danger disabled={busy} onClick={() => handleToggleStatus(inst)}>
+                        {busy ? "…" : t("Deactivate", lang)}
+                      </MenuItem>
+                    ) : (
+                      <MenuItem icon={<Power size={16} strokeWidth={1.9} />} disabled={busy} onClick={() => handleToggleStatus(inst)}>
+                        {busy ? "…" : t("Activate", lang)}
+                      </MenuItem>
+                    )}
+                  </Dropdown>
+                );
+              },
+            },
+          ]}
+          empty={
+            <EmptyState
+              icon={<Landmark size={26} strokeWidth={1.6} />}
+              title={statusFilter !== "ALL" ? `No ${statusFilter.toLowerCase()} institutions` : "No institutions yet"}
+              description={statusFilter === "ALL"
                 ? 'Click "New Institution" to add the first one.'
                 : 'Try switching the filter to "All Statuses".'}
-            </div>
-          </div>
-        )}
-      </div>
+            />
+          }
+        />
+      )}
 
       {!loading && filtered.length > 0 && (
         <InstPagination

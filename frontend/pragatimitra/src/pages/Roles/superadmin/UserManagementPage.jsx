@@ -1,37 +1,18 @@
 import { useState, useEffect, useCallback } from "react";
-import { User, UsersRound } from "lucide-react";
+import {
+  User, UsersRound, MoreHorizontal, Power, PowerOff,
+  Pencil, Plus, Upload, Download, FileText, FileSpreadsheet,
+} from "lucide-react";
 import { useApi } from "../../../hooks/useApi";
 import { S, Toast } from "../../../components/shared/formUtils";
 import FormScreen from "../../../components/shared/FormScreen";
 import PageHeader from "../../../components/shared/PageHeader";
-import { ActionButton, ActionButtonGroup } from "../../../components/shared/ActionButtons";
-import { StatusBadge, tableCardStyle } from "../../../components/shared/ui";
+import { Button, Badge, EmptyState, DataTable, Dropdown, MenuItem, MenuLabel } from "../../../ui";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { t } from "../../../i18n/translations";
 import ImportWizard from "../../../components/shared/ImportWizard";
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
-
-/* ── SVG icons ───────────────────────────────────────────────────── */
-const IconDownload = () => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-    <polyline points="7 10 12 15 17 10"/>
-    <line x1="12" y1="15" x2="12" y2="3"/>
-  </svg>
-);
-const IconUpload = () => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-    <polyline points="17 8 12 3 7 8"/>
-    <line x1="12" y1="3" x2="12" y2="15"/>
-  </svg>
-);
-const IconChevron = () => (
-  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-    <polyline points="6 9 12 15 18 9"/>
-  </svg>
-);
 
 /* ── Constants & pure helpers ──────────────────────────────────── */
 const STATUS_OPTIONS = ["ACTIVE", "INACTIVE", "SUSPENDED"];
@@ -74,9 +55,9 @@ function RoleBadge({ name, display_name }) {
 }
 
 function StatusDot({ status }) {
-  const tone = status === "ACTIVE" ? "active" : status === "INACTIVE" ? "inactive" : "neutral";
+  const tone = status === "ACTIVE" ? "success" : status === "SUSPENDED" ? "danger" : "neutral";
   const label = status.charAt(0) + status.slice(1).toLowerCase();
-  return <StatusBadge tone={tone}>{label}</StatusBadge>;
+  return <Badge tone={tone}>{label}</Badge>;
 }
 
 function Spinner() {
@@ -616,89 +597,76 @@ function UserList({ apiFetch, onEdit }) {
       </div>
 
       {/* Table */}
-      <div style={tableCardStyle}>
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
-          <thead>
-            <tr style={{ background: "#f8fafc", borderBottom: "1px solid rgba(0,0,0,0.06)" }}>
-              {["User", "Institution", "Department", "Role(s)", "Status", "Last Login", "Actions"].map((h) => (
-                <th key={h} style={{
-                  padding: "12px 16px", textAlign: "left", fontSize: 11,
-                  fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.8,
+      <DataTable
+        minWidth={920}
+        rows={paginated}
+        rowKey="id"
+        columns={[
+          {
+            key: "user", header: t("User", lang),
+            render: (u) => (
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{
+                  width: 36, height: 36, borderRadius: 10,
+                  background: `hsl(${u.full_name.charCodeAt(0) * 37 % 360}, 55%, 85%)`,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 12, fontWeight: 700,
+                  color: `hsl(${u.full_name.charCodeAt(0) * 37 % 360}, 55%, 30%)`,
+                  flexShrink: 0,
                 }}>
-                  {t(h, lang)}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {paginated.map((u, i) => (
-              <tr key={u.id} style={{
-                borderBottom: i < paginated.length - 1 ? "1px solid rgba(0,0,0,0.04)" : "none",
-              }}>
-                <td style={{ padding: "14px 16px" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <div style={{
-                      width: 36, height: 36, borderRadius: 10,
-                      background: `hsl(${u.full_name.charCodeAt(0) * 37 % 360}, 55%, 85%)`,
-                      display: "flex", alignItems: "center", justifyContent: "center",
-                      fontSize: 12, fontWeight: 700,
-                      color: `hsl(${u.full_name.charCodeAt(0) * 37 % 360}, 55%, 30%)`,
-                      flexShrink: 0,
-                    }}>
-                      {initials(u.full_name)}
-                    </div>
-                    <div>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: "#1e293b" }}>{u.full_name}</div>
-                      <div style={{ fontSize: 11, color: "#94a3b8" }}>{u.email}</div>
-                    </div>
-                  </div>
-                </td>
-                <td style={{ padding: "14px 16px", fontSize: 13, color: "#475569" }}>
-                  {u.institution_name || "—"}
-                </td>
-                <td style={{ padding: "14px 16px", fontSize: 13, color: "#475569" }}>
-                  {u.department_name || "—"}
-                </td>
-                <td style={{ padding: "14px 16px" }}>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-                    {(u.roles || []).length > 0
-                      ? u.roles.map((r) => <RoleBadge key={r.name} {...r} />)
-                      : <span style={{ fontSize: 12, color: "#cbd5e1" }}>{t("No role", lang)}</span>
-                    }
-                  </div>
-                </td>
-                <td style={{ padding: "14px 16px" }}>
-                  <StatusDot status={u.account_status} />
-                </td>
-                <td style={{ padding: "14px 16px", fontSize: 12, color: "#94a3b8" }}>
-                  {formatDate(u.last_login_at)}
-                </td>
-                <td style={{ padding: "14px 16px", verticalAlign: "middle" }}>
-                  <ActionButtonGroup>
-                    <ActionButton onClick={() => onEdit(u)}>
-                      {t("Edit", lang)}
-                    </ActionButton>
-                    <ActionButton
-                      variant={u.account_status === "ACTIVE" ? "danger" : "success"}
-                      onClick={() => toggleStatus(u)}
-                      disabled={toggling === u.id}
-                    >
-                      {toggling === u.id ? "…" : u.account_status === "ACTIVE" ? t("Deactivate", lang) : t("Activate", lang)}
-                    </ActionButton>
-                  </ActionButtonGroup>
-                </td>
-              </tr>
-            ))}
-            {filtered.length === 0 && (
-              <tr>
-                <td colSpan={7} style={{ padding: 40, textAlign: "center", color: "#94a3b8", fontSize: 13 }}>
-                  {t("No users match your filters.", lang)}
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+                  {initials(u.full_name)}
+                </div>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: "#1e293b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.full_name}</div>
+                  <div style={{ fontSize: 11, color: "#94a3b8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.email}</div>
+                </div>
+              </div>
+            ),
+          },
+          { key: "institution_name", header: t("Institution", lang), width: 180, ellipsis: true, render: (u) => <span style={{ fontSize: 13, color: "#475569" }}>{u.institution_name || "—"}</span> },
+          { key: "department_name", header: t("Department", lang), width: 160, ellipsis: true, render: (u) => <span style={{ fontSize: 13, color: "#475569" }}>{u.department_name || "—"}</span> },
+          {
+            key: "roles", header: t("Role(s)", lang), width: 200,
+            render: (u) => (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                {(u.roles || []).length > 0
+                  ? u.roles.map((r) => <RoleBadge key={r.name} {...r} />)
+                  : <span style={{ fontSize: 12, color: "#cbd5e1" }}>{t("No role", lang)}</span>}
+              </div>
+            ),
+          },
+          { key: "status", header: t("Status", lang), width: 120, render: (u) => <StatusDot status={u.account_status} /> },
+          { key: "last_login_at", header: t("Last Login", lang), width: 130, render: (u) => <span style={{ fontSize: 12, color: "#94a3b8" }}>{formatDate(u.last_login_at)}</span> },
+          {
+            key: "actions", header: t("Actions", lang), align: "right", width: 90,
+            render: (u) => {
+              const busy = toggling === u.id;
+              const isActive = u.account_status === "ACTIVE";
+              return (
+                <Dropdown
+                  align="right"
+                  width={190}
+                  button={({ toggle }) => (
+                    <Button variant="ghost" iconOnly icon={<MoreHorizontal size={18} strokeWidth={2} />} onClick={toggle} aria-label="Row actions" />
+                  )}
+                >
+                  <MenuItem icon={<Pencil size={16} strokeWidth={1.9} />} onClick={() => onEdit(u)}>{t("Edit", lang)}</MenuItem>
+                  {isActive ? (
+                    <MenuItem icon={<PowerOff size={16} strokeWidth={1.9} />} danger disabled={busy} onClick={() => toggleStatus(u)}>
+                      {busy ? "…" : t("Deactivate", lang)}
+                    </MenuItem>
+                  ) : (
+                    <MenuItem icon={<Power size={16} strokeWidth={1.9} />} disabled={busy} onClick={() => toggleStatus(u)}>
+                      {busy ? "…" : t("Activate", lang)}
+                    </MenuItem>
+                  )}
+                </Dropdown>
+              );
+            },
+          },
+        ]}
+        empty={<EmptyState icon={<UsersRound size={26} strokeWidth={1.6} />} title={t("No users match your filters.", lang)} description="Adjust the filters or search to see more users." />}
+      />
 
       <Pagination
         page={page}
@@ -864,26 +832,15 @@ export default function UserManagementPage() {
         title={t("Users", lang)}
         description="Create, edit, activate/deactivate, and manage roles for all platform users."
         actions={
-          <>
-            {/* Export dropdown */}
-            <div style={{ position: "relative" }}>
-              <ExportMenu loading={exportingFormat} onExport={handleExport} />
-            </div>
-
-            {/* Import button */}
-            <ActionButton icon={<IconUpload />} onClick={() => setShowImport(true)}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <ExportMenu loading={exportingFormat} onExport={handleExport} />
+            <Button variant="secondary" icon={<Upload size={17} strokeWidth={1.9} />} onClick={() => setShowImport(true)}>
               {t("Import", lang)}
-            </ActionButton>
-
-            {/* New user button */}
-            <ActionButton
-              variant="primary"
-              onClick={() => setFormView({ mode: "create", entity: null })}
-              style={{ height: 38 }}
-            >
-              {t("+ New User", lang)}
-            </ActionButton>
-          </>
+            </Button>
+            <Button variant="primary" icon={<Plus size={17} strokeWidth={2} />} onClick={() => setFormView({ mode: "create", entity: null })}>
+              {t("New User", lang)}
+            </Button>
+          </div>
         }
       />
 
@@ -896,53 +853,19 @@ export default function UserManagementPage() {
   );
 }
 
-/* ── Export dropdown menu ────────────────────────────────────────── */
+/* ── Icon-only, viewport-aware export menu (shared Dropdown) ──────── */
 function ExportMenu({ loading, onExport }) {
-  const [open, setOpen] = useState(false);
   return (
-    <div style={{ position: "relative" }}>
-      <button
-        onClick={() => setOpen((v) => !v)}
-        disabled={!!loading}
-        style={{
-          display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6,
-          height: 34, minHeight: 34, padding: "0 14px", borderRadius: 6,
-          border: "1px solid #cbd5e1", background: "#fff",
-          fontSize: 12.5, fontWeight: 600, color: "#334155", whiteSpace: "nowrap",
-          cursor: loading ? "not-allowed" : "pointer",
-          opacity: loading ? 0.6 : 1,
-        }}
-      >
-        <IconDownload /> {loading ? "Exporting…" : "Export"} <IconChevron />
-      </button>
-      {open && (
-        <>
-          <div style={{ position: "fixed", inset: 0, zIndex: 99 }} onClick={() => setOpen(false)} />
-          <div style={{
-            position: "absolute", top: "calc(100% + 6px)", right: 0, zIndex: 100,
-            background: "#fff", border: "1.5px solid #e2e8f0", borderRadius: 10,
-            boxShadow: "0 8px 24px rgba(0,0,0,0.12)", minWidth: 190, overflow: "hidden",
-          }}>
-            {[
-              { fmt: "csv",  label: "Export as CSV"   },
-              { fmt: "xlsx", label: "Export as Excel"  },
-            ].map(({ fmt, label }) => (
-              <button key={fmt}
-                onClick={() => { setOpen(false); onExport(fmt); }}
-                style={{
-                  display: "block", width: "100%", padding: "10px 16px",
-                  background: "none", border: "none", textAlign: "left",
-                  fontSize: 13, color: "#1e293b", cursor: "pointer", fontWeight: 500,
-                }}
-                onMouseEnter={(e) => e.currentTarget.style.background = "#f8fafc"}
-                onMouseLeave={(e) => e.currentTarget.style.background = "none"}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        </>
+    <Dropdown
+      align="right"
+      width={200}
+      button={({ toggle }) => (
+        <Button variant="secondary" iconOnly loading={!!loading} icon={<Download size={18} strokeWidth={1.9} />} onClick={toggle} aria-label="Export" title="Export" />
       )}
-    </div>
+    >
+      <MenuLabel>Export</MenuLabel>
+      <MenuItem icon={<FileText size={16} strokeWidth={1.9} />} onClick={() => onExport("csv")}>Export as CSV</MenuItem>
+      <MenuItem icon={<FileSpreadsheet size={16} strokeWidth={1.9} />} onClick={() => onExport("xlsx")}>Export as Excel</MenuItem>
+    </Dropdown>
   );
 }
