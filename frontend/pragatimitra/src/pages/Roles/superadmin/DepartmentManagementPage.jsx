@@ -1,13 +1,15 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { Building, Pencil } from "lucide-react";
+import {
+  Building, Pencil, MoreHorizontal, Power, PowerOff,
+  Plus, Upload, Download, FileSpreadsheet, FileText,
+} from "lucide-react";
 import { useApi } from "../../../hooks/useApi";
 import FormScreen from "../../../components/shared/FormScreen";
 import FormWizard, { ReviewGroup, ReviewItem } from "../../../components/shared/FormWizard";
 import ImportWizard from "../../../components/shared/ImportWizard";
 import { S, Toast, isAuthError, formatDate } from "../../../components/shared/formUtils";
 import PageHeader from "../../../components/shared/PageHeader";
-import { ActionButton, ActionButtonGroup } from "../../../components/shared/ActionButtons";
-import { StatusBadge, tableCardStyle } from "../../../components/shared/ui";
+import { Button, Badge, EmptyState, DataTable, Dropdown, MenuItem, MenuLabel } from "../../../ui";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { t } from "../../../i18n/translations";
 
@@ -322,31 +324,8 @@ function StyledSelect({ value, onChange, children, minWidth = 180 }) {
   );
 }
 
-/* ─── SVG icons ──────────────────────────────────────────────── */
-const IconDownload = () => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-    <polyline points="7 10 12 15 17 10"/>
-    <line x1="12" y1="15" x2="12" y2="3"/>
-  </svg>
-);
-const IconUpload = () => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-    <polyline points="17 8 12 3 7 8"/>
-    <line x1="12" y1="3" x2="12" y2="15"/>
-  </svg>
-);
-const IconChevron = () => (
-  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-    <polyline points="6 9 12 15 18 9"/>
-  </svg>
-);
-
-/* ─── Export dropdown menu ───────────────────────────────────── */
+/* ─── Icon-only, viewport-aware export menu (shared Dropdown) ─── */
 function ExportMenu({ selectedInstitutionId }) {
-  const [open, setOpen] = useState(false);
-
   function triggerDownload(url) {
     const a = document.createElement("a");
     a.href = url;
@@ -355,7 +334,6 @@ function ExportMenu({ selectedInstitutionId }) {
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
-    setOpen(false);
   }
 
   const exportUrl = selectedInstitutionId
@@ -363,47 +341,17 @@ function ExportMenu({ selectedInstitutionId }) {
     : `${API_BASE}/api/departments/export`;
 
   return (
-    <div style={{ position: "relative" }}>
-      <button
-        onClick={() => setOpen((v) => !v)}
-        style={{
-          display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6,
-          height: 34, minHeight: 34, padding: "0 14px", borderRadius: 6,
-          border: "1px solid #cbd5e1", background: "#fff",
-          fontSize: 12.5, fontWeight: 600, color: "#334155", whiteSpace: "nowrap", cursor: "pointer",
-        }}
-      >
-        <IconDownload /> Export <IconChevron />
-      </button>
-      {open && (
-        <>
-          <div style={{ position: "fixed", inset: 0, zIndex: 99 }} onClick={() => setOpen(false)} />
-          <div style={{
-            position: "absolute", top: "calc(100% + 6px)", right: 0, zIndex: 100,
-            background: "#fff", border: "1.5px solid #e2e8f0", borderRadius: 10,
-            boxShadow: "0 8px 24px rgba(0,0,0,0.12)", minWidth: 220, overflow: "hidden",
-          }}>
-            {[
-              { label: "Export Departments (.xlsx)", onClick: () => triggerDownload(exportUrl) },
-              { label: "Download Import Template",   onClick: () => triggerDownload(`${API_BASE}/api/departments/export/sample`) },
-            ].map(({ label, onClick }) => (
-              <button key={label}
-                onClick={onClick}
-                style={{
-                  display: "block", width: "100%", padding: "10px 16px",
-                  background: "none", border: "none", textAlign: "left",
-                  fontSize: 13, color: "#1e293b", cursor: "pointer", fontWeight: 500,
-                }}
-                onMouseEnter={(e) => e.currentTarget.style.background = "#f8fafc"}
-                onMouseLeave={(e) => e.currentTarget.style.background = "none"}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        </>
+    <Dropdown
+      align="right"
+      width={240}
+      button={({ toggle }) => (
+        <Button variant="secondary" iconOnly icon={<Download size={18} strokeWidth={1.9} />} onClick={toggle} aria-label="Export" title="Export" />
       )}
-    </div>
+    >
+      <MenuLabel>Export</MenuLabel>
+      <MenuItem icon={<FileSpreadsheet size={16} strokeWidth={1.9} />} onClick={() => triggerDownload(exportUrl)}>Export Departments (.xlsx)</MenuItem>
+      <MenuItem icon={<FileText size={16} strokeWidth={1.9} />} onClick={() => triggerDownload(`${API_BASE}/api/departments/export/sample`)}>Download Import Template</MenuItem>
+    </Dropdown>
   );
 }
 
@@ -743,22 +691,13 @@ export default function DepartmentManagementPage() {
 
             {!loadingInstitutions && !institutionsError && institutions.length > 0 && (
               <>
-                {/* Export dropdown — self-contained */}
                 <ExportMenu selectedInstitutionId={selectedInstitutionId} />
-
-                {/* Import button */}
-                <ActionButton icon={<IconUpload />} onClick={() => setShowImport(true)}>
+                <Button variant="secondary" icon={<Upload size={17} strokeWidth={1.9} />} onClick={() => setShowImport(true)}>
                   {t("Import", lang)}
-                </ActionButton>
-
-                {/* New Department button */}
-                <ActionButton
-                  variant="primary"
-                  onClick={() => setFormView({ mode: "create", entity: null })}
-                  style={{ height: 38 }}
-                >
-                  + {t("New Department", lang)}
-                </ActionButton>
+                </Button>
+                <Button variant="primary" icon={<Plus size={17} strokeWidth={2} />} onClick={() => setFormView({ mode: "create", entity: null })}>
+                  {t("New Department", lang)}
+                </Button>
               </>
             )}
           </div>
@@ -822,138 +761,80 @@ export default function DepartmentManagementPage() {
       )}
 
       {/* ── Departments table ── */}
-      <div style={tableCardStyle}>
-        {loadingDepts ? (
-          <div style={{ padding: "48px 24px", textAlign: "center", color: "#94a3b8", fontSize: 13 }}>
-            {t("Loading departments…", lang)}
-          </div>
-        ) : paginated.length > 0 ? (
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 880 }}>
-              <thead>
-                <tr style={{ background: "#f8fafc" }}>
-                  {[
-                    { label: t("Code", lang), align: "left" },
-                    { label: t("Department Name", lang), align: "left" },
-                    { label: t("Creation Date", lang), align: "left" },
-                    { label: t("Members", lang), align: "left" },
-                    { label: t("Status", lang), align: "left" },
-                    { label: t("Actions", lang), align: "right" },
-                  ].map((h) => (
-                    <th
-                      key={h.label}
-                      style={{
-                        padding: "10px 16px",
-                        textAlign: h.align,
-                        fontSize: 10.5,
-                        fontWeight: 700,
-                        color: "#94a3b8",
-                        textTransform: "uppercase",
-                        letterSpacing: 0.5,
-                        borderBottom: "1px solid #eef2f6",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {h.label}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {paginated.map((dept) => {
-                  const isActive = dept.status === "ACTIVE";
-                  const busy = togglingId === dept.department_id;
-                  return (
-                    <tr
-                      key={dept.department_id}
-                      style={{ borderBottom: "1px solid #f1f5f9", transition: "background .1s" }}
-                      onMouseEnter={(e) => (e.currentTarget.style.background = "#f8fafc")}
-                      onMouseLeave={(e) => (e.currentTarget.style.background = "")}
-                    >
-                      {/* Code */}
-                      <td style={{ padding: "12px 16px" }}>
-                        <span
-                          style={{
-                            fontFamily: "monospace",
-                            fontSize: 12.5,
-                            fontWeight: 600,
-                            color: isActive ? "#2563eb" : "#94a3b8",
-                          }}
-                        >
-                          {dept.code || "—"}
-                        </span>
-                      </td>
-
-                      {/* Department name */}
-                      <td style={{ padding: "12px 16px" }}>
-                        <span style={{ fontSize: 13.5, fontWeight: 700, color: "#1e293b" }}>
-                          {dept.name}
-                        </span>
-                      </td>
-
-                      {/* Creation date */}
-                      <td style={{ padding: "12px 16px" }}>
-                        <span style={{ fontSize: 12.5, color: "#64748b" }}>
-                          {t("Since", lang)} {formatDate(dept.created_at)}
-                        </span>
-                      </td>
-
-                      {/* Members */}
-                      <td style={{ padding: "12px 16px" }}>
-                        <span style={{ fontSize: 13.5, fontWeight: 600, color: "#1e293b" }}>
-                          {Number(dept.member_count)}
-                        </span>
-                      </td>
-
-                      {/* Status */}
-                      <td style={{ padding: "12px 16px" }}>
-                        <StatusBadge tone={isActive ? "active" : "inactive"}>
-                          {isActive ? t("Active", lang) : t("Inactive", lang)}
-                        </StatusBadge>
-                      </td>
-
-                      {/* Actions */}
-                      <td style={{ padding: "8px 16px", verticalAlign: "middle" }}>
-                        <ActionButtonGroup justify="flex-end">
-                          <ActionButton
-                            onClick={() => setFormView({ mode: "edit", entity: dept })}
-                            title={t("Edit department", lang)}
-                          >
-                            {t("Edit", lang)}
-                          </ActionButton>
-                          <ActionButton
-                            variant={isActive ? "danger" : "success"}
-                            onClick={() => handleToggleStatus(dept)}
-                            disabled={busy}
-                            title={isActive ? t("Deactivate department", lang) : t("Activate department", lang)}
-                          >
-                            {busy ? "…" : isActive ? t("Deactivate", lang) : t("Activate", lang)}
-                          </ActionButton>
-                        </ActionButtonGroup>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          !loadingInstitutions && (
-            <div style={{ textAlign: "center", padding: "64px 24px", color: "#94a3b8" }}>
-              <div style={{ fontSize: 15, fontWeight: 600, color: "#64748b", marginBottom: 6 }}>
-                {statusFilter !== "ALL"
-                  ? `No ${statusFilter.toLowerCase()} departments`
-                  : "No departments yet"}
-              </div>
-              <div style={{ fontSize: 13 }}>
-                {statusFilter === "ALL"
-                  ? 'Click "New Department" to add the first one.'
-                  : 'Try switching the filter to "All Statuses".'}
-              </div>
-            </div>
-          )
-        )}
-      </div>
+      <DataTable
+        minWidth={880}
+        loading={loadingDepts || loadingInstitutions}
+        rows={paginated}
+        rowKey="department_id"
+        columns={[
+          {
+            key: "code", header: t("Code", lang), width: 120,
+            render: (dept) => (
+              <span style={{ fontFamily: "monospace", fontSize: 12.5, fontWeight: 600, color: dept.status === "ACTIVE" ? "#2563eb" : "#94a3b8" }}>
+                {dept.code || "—"}
+              </span>
+            ),
+          },
+          {
+            key: "name", header: t("Department Name", lang), ellipsis: true,
+            render: (dept) => <span style={{ fontSize: 13.5, fontWeight: 700, color: "#1e293b" }}>{dept.name}</span>,
+          },
+          {
+            key: "created_at", header: t("Creation Date", lang), width: 180,
+            render: (dept) => <span style={{ fontSize: 12.5, color: "#64748b" }}>{t("Since", lang)} {formatDate(dept.created_at)}</span>,
+          },
+          {
+            key: "member_count", header: t("Members", lang), width: 110,
+            render: (dept) => <span style={{ fontSize: 13.5, fontWeight: 600, color: "#1e293b" }}>{Number(dept.member_count)}</span>,
+          },
+          {
+            key: "status", header: t("Status", lang), width: 120,
+            render: (dept) => (
+              <Badge tone={dept.status === "ACTIVE" ? "success" : "neutral"}>
+                {dept.status === "ACTIVE" ? t("Active", lang) : t("Inactive", lang)}
+              </Badge>
+            ),
+          },
+          {
+            key: "actions", header: t("Actions", lang), align: "right", width: 90,
+            render: (dept) => {
+              const isActive = dept.status === "ACTIVE";
+              const busy = togglingId === dept.department_id;
+              return (
+                <Dropdown
+                  align="right"
+                  width={200}
+                  button={({ toggle }) => (
+                    <Button variant="ghost" iconOnly icon={<MoreHorizontal size={18} strokeWidth={2} />} onClick={toggle} aria-label="Row actions" />
+                  )}
+                >
+                  <MenuItem icon={<Pencil size={16} strokeWidth={1.9} />} onClick={() => setFormView({ mode: "edit", entity: dept })}>
+                    {t("Edit", lang)}
+                  </MenuItem>
+                  {isActive ? (
+                    <MenuItem icon={<PowerOff size={16} strokeWidth={1.9} />} danger disabled={busy} onClick={() => handleToggleStatus(dept)}>
+                      {busy ? "…" : t("Deactivate", lang)}
+                    </MenuItem>
+                  ) : (
+                    <MenuItem icon={<Power size={16} strokeWidth={1.9} />} disabled={busy} onClick={() => handleToggleStatus(dept)}>
+                      {busy ? "…" : t("Activate", lang)}
+                    </MenuItem>
+                  )}
+                </Dropdown>
+              );
+            },
+          },
+        ]}
+        empty={
+          <EmptyState
+            icon={<Building size={26} strokeWidth={1.6} />}
+            title={statusFilter !== "ALL" ? `No ${statusFilter.toLowerCase()} departments` : "No departments yet"}
+            description={statusFilter === "ALL"
+              ? 'Click "New Department" to add the first one.'
+              : 'Try switching the filter to "All Statuses".'}
+          />
+        }
+      />
 
       {/* ── Pagination ── */}
       {!loadingDepts && filteredDepts.length > pageSize && (

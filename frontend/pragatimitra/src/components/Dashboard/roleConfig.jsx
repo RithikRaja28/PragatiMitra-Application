@@ -19,6 +19,7 @@ import React from "react";
 import PlaceholderPage from "../shared/PlaceholderPage";
 
 /* ── Super Admin page imports ───────────────────────────────── */
+import SuperAdminOverviewPage    from "../../pages/Roles/superadmin/SuperAdminOverviewPage";
 import UserManagementPage        from "../../pages/Roles/superadmin/UserManagementPage";
 import AuditLogsPage             from "../../pages/Roles/superadmin/AuditLogsPage";
 import DepartmentManagementPage  from "../../pages/Roles/superadmin/DepartmentManagementPage";
@@ -60,7 +61,6 @@ import BalanceSheetPage    from "../../pages/Roles/financeofficer/BalanceSheetPa
 export { default as PlaceholderPage } from "../shared/PlaceholderPage";
 
 /* ── Super Admin placeholders ───────────────────────────────── */
-const SuperAdminOverviewPage   = () => <PlaceholderPage title="Overview"    subtitle="Platform-wide summary and key metrics"                color="#2563eb" />;
 const SuperAdminMasterDataPage = () => <PlaceholderPage title="Master Data" subtitle="Manage lookup values, categories, and reference data" color="#2563eb" />;
 
 /* ── Institute Admin placeholders ───────────────────────────── */

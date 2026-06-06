@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo, useLayoutEffect } from "react";
 import ReactDOM from "react-dom";
 import { createPortal } from "react-dom";
-import { Trash2, FileText, FilePlus, Lock, Clock, Globe, SearchX } from "lucide-react";
+import { Trash2, FileText, FilePlus, Lock, Clock, Globe, SearchX, Table2, LayoutGrid } from "lucide-react";
 import { useApi } from "../../hooks/useApi";
 import { useAuth } from "../../store/AuthContext";
 import { useAcademicYear } from "../../store/AcademicYearContext";
@@ -281,6 +281,22 @@ function RecordModal({ fields, record, onSave, onClose, saving, error, getToken,
     el.textContent = `
       .pm-rec-grid { display:grid; grid-template-columns:1fr 1fr; gap:24px; }
       @media (max-width: 860px){ .pm-rec-grid { grid-template-columns:1fr; } }
+      /* Enterprise form-fill inputs — scoped to the record modal only. */
+      .pm-rec-modal input:not([type=radio]):not([type=checkbox]),
+      .pm-rec-modal textarea,
+      .pm-rec-modal select {
+        height: 48px !important;
+        border-radius: 10px !important;
+        font-size: 14px !important;
+        padding: 0 15px !important;
+      }
+      .pm-rec-modal textarea { height: auto !important; min-height: 96px !important; padding: 13px 15px !important; line-height: 1.55; }
+      .pm-rec-modal label { font-size: 13.5px !important; font-weight: 500 !important; text-transform: none !important; }
+      .pm-rec-modal input:focus, .pm-rec-modal textarea:focus, .pm-rec-modal select:focus {
+        border-color: #2563eb !important;
+        box-shadow: 0 0 0 3px rgba(37,99,235,0.14) !important;
+        outline: none !important;
+      }
     `;
     document.head.appendChild(el);
   }, []);
@@ -361,10 +377,11 @@ function RecordModal({ fields, record, onSave, onClose, saving, error, getToken,
         onClick={e => { if (e.target === e.currentTarget) onClose(); }}
       >
         <div
+          className="pm-rec-modal"
           style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: showReference ? 1100 : 560, boxShadow: "0 24px 64px rgba(0,0,0,0.22)", overflow: "hidden", maxHeight: "90vh", display: "flex", flexDirection: "column" }}
           onClick={e => e.stopPropagation()}
         >
-          <div style={{ padding: "20px 24px", borderBottom: "1px solid #f1f5f9", display: "flex", alignItems: "center", justifyContent: "space-between", background: "#fafafa" }}>
+          <div style={{ padding: "20px 24px", borderBottom: "1px solid #f1f5f9", display: "flex", alignItems: "center", justifyContent: "space-between", background: "#fafafa", flexShrink: 0 }}>
             <div>
               <div style={{ fontSize: 15, fontWeight: 700, color: "#1e293b" }}>{isEdit ? "Edit Record" : "Add New Record"}</div>
               <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 2 }}>
@@ -375,8 +392,9 @@ function RecordModal({ fields, record, onSave, onClose, saving, error, getToken,
             </div>
             <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 20, color: "#94a3b8", cursor: "pointer", lineHeight: 1, padding: "4px 8px", borderRadius: 6 }}>×</button>
           </div>
-          <form onSubmit={handleSubmit} style={{ overflowY: "auto", flex: 1 }}>
-            <div style={{ padding: "20px 24px" }}>
+          {/* Body scrolls; the save bar below stays pinned (sticky footer). */}
+          <form onSubmit={handleSubmit} style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+            <div style={{ padding: "20px 24px", overflowY: "auto", flex: 1 }}>
               {showReference ? (
                 <div className="pm-rec-grid">
                   {leftPane}
@@ -391,7 +409,7 @@ function RecordModal({ fields, record, onSave, onClose, saving, error, getToken,
                 </div>
               )}
             </div>
-            <div style={{ padding: "16px 24px", borderTop: "1px solid #f1f5f9", display: "flex", justifyContent: "flex-end", gap: 10, background: "#fafafa" }}>
+            <div style={{ padding: "16px 24px", borderTop: "1px solid #f1f5f9", display: "flex", justifyContent: "flex-end", gap: 10, background: "#fafafa", flexShrink: 0 }}>
               <button type="button" onClick={onClose} style={S.btnGhost} disabled={saving}>Cancel</button>
               <button type="submit" style={S.btnPrimary(saving)} disabled={saving}>
                 {saving ? "Saving…" : isEdit ? "Update Record" : "Add Record"}
@@ -1092,6 +1110,9 @@ export default function FormDataPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize]       = useState(100);
 
+  /* Records view: dense table (default) or browseable cards. */
+  const [viewMode, setViewMode] = useState("table");
+
   const [toast, setToast] = useState(null);
 
   const showToast = (message, type = "success") => {
@@ -1259,6 +1280,10 @@ export default function FormDataPage() {
   const totalPages   = Math.max(1, Math.ceil(sortedRecords.length / pageSize));
   const pagedRecords = sortedRecords.slice((currentPage - 1) * pageSize, currentPage * pageSize);
   const pagedIds     = pagedRecords.map(r => r.id);
+
+  /* Virtualize the table only when a page is large; small pages render fully. */
+  const virtualize = viewMode === "table" && pagedRecords.length > VIRTUAL_THRESHOLD;
+  const vTable = useWindowVirtual(pagedRecords.length, { enabled: virtualize });
   const allPageSelected = pagedIds.length > 0 && pagedIds.every(id => selectedIds.has(id));
   const somePageSelected = pagedIds.some(id => selectedIds.has(id));
 
@@ -1611,25 +1636,42 @@ export default function FormDataPage() {
                 </span>
               )}
             </div>
-            <div style={{ position: "relative", width: 260 }}>
-              <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "#94a3b8", display: "flex" }}>
-                <IcoSearch />
-              </span>
-              <input
-                value={searchInput}
-                onChange={(e) => setSearchInput(e.target.value)}
-                placeholder="Search records..."
-                style={{ width: "100%", padding: "7px 30px 7px 32px", fontSize: 13, color: "#1e293b", border: "1px solid #e2e8f0", borderRadius: 8, outline: "none", background: "#fff" }}
-              />
-              {searchInput && (
-                <button
-                  onClick={() => setSearchInput("")}
-                  title="Clear"
-                  style={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", color: "#94a3b8", fontSize: 16, lineHeight: 1, cursor: "pointer", padding: "2px 6px" }}
-                >
-                  ×
-                </button>
-              )}
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              {/* Table / Cards view toggle — both reuse the same handlers */}
+              <div style={{ display: "inline-flex", border: "1px solid #e2e8f0", borderRadius: 9, overflow: "hidden", background: "#fff" }}>
+                {[
+                  { id: "table", Icon: Table2, title: "Table view" },
+                  { id: "cards", Icon: LayoutGrid, title: "Card view" },
+                ].map(({ id, Icon, title }) => {
+                  const on = viewMode === id;
+                  return (
+                    <button key={id} onClick={() => setViewMode(id)} title={title} aria-label={title} aria-pressed={on}
+                      style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 34, height: 32, border: "none", cursor: "pointer", background: on ? ACCENT : "#fff", color: on ? "#fff" : "#94a3b8" }}>
+                      <Icon size={16} strokeWidth={1.9} />
+                    </button>
+                  );
+                })}
+              </div>
+              <div style={{ position: "relative", width: 260 }}>
+                <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "#94a3b8", display: "flex" }}>
+                  <IcoSearch />
+                </span>
+                <input
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
+                  placeholder="Search records..."
+                  style={{ width: "100%", padding: "7px 30px 7px 32px", fontSize: 13, color: "#1e293b", border: "1px solid #e2e8f0", borderRadius: 8, outline: "none", background: "#fff" }}
+                />
+                {searchInput && (
+                  <button
+                    onClick={() => setSearchInput("")}
+                    title="Clear"
+                    style={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", color: "#94a3b8", fontSize: 16, lineHeight: 1, cursor: "pointer", padding: "2px 6px" }}
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         )}
@@ -1652,8 +1694,29 @@ export default function FormDataPage() {
             <div style={{ fontSize: 14, fontWeight: 600, color: "#64748b", marginBottom: 6 }}>No matching records</div>
             <div style={{ fontSize: 13 }}>Try a different search term or clear the search to see all records.</div>
           </div>
+        ) : viewMode === "cards" ? (
+          /* ── Cards view — reuses the exact same edit/delete/select handlers ── */
+          <div style={{ padding: 16, display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 12 }}>
+            {pagedRecords.map((rec, i) => (
+              <RecordCard
+                key={rec.id}
+                rec={rec}
+                serial={(currentPage - 1) * pageSize + i + 1}
+                fields={schemaFields}
+                lang={lang}
+                getToken={getToken}
+                selected={selectedIds.has(rec.id)}
+                onSelect={() => toggleSelectOne(rec.id)}
+                onEdit={(e) => { e.stopPropagation(); setEditRecord(rec); setModalError(""); setModalOpen(true); }}
+                onDelete={(e) => { e.stopPropagation(); setDeleteTarget(rec.id); }}
+                canEdit={canEdit}
+                readOnly={readOnly}
+                viewingTranslated={viewingTranslated}
+              />
+            ))}
+          </div>
         ) : (
-          <div style={{ overflowX: "auto" }}>
+          <div ref={vTable.containerRef} style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 600 }}>
               <thead>
                 <tr style={{ background: "#f8fafc" }}>
@@ -1681,7 +1744,14 @@ export default function FormDataPage() {
                 </tr>
               </thead>
               <tbody>
-                {pagedRecords.map((rec, i) => {
+                {/* Top spacer for virtualized rows above the viewport */}
+                {vTable.padTop > 0 && (
+                  <tr style={{ height: vTable.padTop }}>
+                    <td colSpan={(!readOnly ? 1 : 0) + 1 + schemaFields.length + 1 + (canEdit ? 1 : 0)} style={{ padding: 0, border: "none" }} />
+                  </tr>
+                )}
+                {pagedRecords.slice(vTable.start, vTable.end).map((rec, localIdx) => {
+                  const i = vTable.start + localIdx;
                   const isSelected = selectedIds.has(rec.id);
                   return (
                     <tr
@@ -1690,6 +1760,7 @@ export default function FormDataPage() {
                         borderBottom: i < pagedRecords.length - 1 ? "1px solid #f8fafc" : "none",
                         transition: "background .1s",
                         background: isSelected ? `${ACCENT}08` : undefined,
+                        ...(virtualize ? { height: ROW_HEIGHT } : {}),
                       }}
                       onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = "#f8fafc"; }}
                       onMouseLeave={e => { e.currentTarget.style.background = isSelected ? `${ACCENT}08` : ""; }}
@@ -1713,14 +1784,14 @@ export default function FormDataPage() {
                       </td>
                       {schemaFields.map(f => {
                         const col = dbCol(f.column_name); const raw = rec[col];
-                        let cell;
-                        if (f.type === "boolean") cell = raw===true||raw==="true" ? "Yes" : raw===false||raw==="false" ? "No" : "—";
-                        else if (f.type === "document") cell = <DocumentCell fileKey={raw} getToken={getToken} lang={lang} />;
-                        else cell = raw ?? <span style={{ color: "#cbd5e1" }}>—</span>;
-                        return <td key={col} style={tdStyle}><span style={{ fontSize: 13, color: "#1e293b" }}>{cell}</span></td>;
+                        let cell, titleText;
+                        if (f.type === "boolean") { cell = raw===true||raw==="true" ? "Yes" : raw===false||raw==="false" ? "No" : "—"; titleText = String(cell); }
+                        else if (f.type === "document") { cell = <DocumentCell fileKey={raw} getToken={getToken} lang={lang} />; titleText = undefined; }
+                        else { cell = raw ?? <span style={{ color: "#cbd5e1" }}>—</span>; titleText = raw != null ? String(raw) : undefined; }
+                        return <td key={col} style={tdStyle}><span style={cellEllipsis} title={titleText}>{cell}</span></td>;
                       })}
                       <td style={tdStyle}>
-                        <span style={{ fontSize: 12, color: sortField === "created_at" ? "#475569" : "#64748b", fontWeight: sortField === "created_at" ? 600 : 400 }}>
+                        <span style={{ fontSize: 12, color: sortField === "created_at" ? "#475569" : "#64748b", fontWeight: sortField === "created_at" ? 600 : 400, whiteSpace: "nowrap" }}>
                           {formatDate(rec.created_at)}
                         </span>
                       </td>
@@ -1750,6 +1821,12 @@ export default function FormDataPage() {
                     </tr>
                   );
                 })}
+                {/* Bottom spacer for virtualized rows below the viewport */}
+                {vTable.padBottom > 0 && (
+                  <tr style={{ height: vTable.padBottom }}>
+                    <td colSpan={(!readOnly ? 1 : 0) + 1 + schemaFields.length + 1 + (canEdit ? 1 : 0)} style={{ padding: 0, border: "none" }} />
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -1815,6 +1892,89 @@ export default function FormDataPage() {
     </div>
   );
 }
+
+/* ── Window-scroll virtualization ────────────────────────────────────────
+   Renders only the rows near the viewport for large pages, using the page's
+   own scroll (no inner scroll container → UX unchanged). Rows are kept a
+   fixed height via ellipsis cells, so the row-height estimate stays accurate.
+   Disabled (renders everything) when the row count is small.                 */
+const VIRTUAL_THRESHOLD = 60;
+const ROW_HEIGHT = 47;       // fixed row height (ellipsis cells, 13px font)
+const HEADER_HEIGHT = 41;
+
+function useWindowVirtual(count, { rowHeight = ROW_HEIGHT, headerHeight = HEADER_HEIGHT, overscan = 8, enabled = true } = {}) {
+  const containerRef = useRef(null);
+  const [range, setRange] = useState({ start: 0, end: count });
+
+  useEffect(() => {
+    if (!enabled) { setRange({ start: 0, end: count }); return; }
+    const compute = () => {
+      const el = containerRef.current;
+      if (!el) return;
+      const top = el.getBoundingClientRect().top + window.scrollY; // table top in document
+      const viewTop = window.scrollY - top - headerHeight;
+      const start = Math.max(0, Math.floor(viewTop / rowHeight) - overscan);
+      const visible = Math.ceil(window.innerHeight / rowHeight) + overscan * 2;
+      const end = Math.min(count, start + visible);
+      setRange((prev) => (prev.start === start && prev.end === end ? prev : { start, end }));
+    };
+    compute();
+    window.addEventListener("scroll", compute, { passive: true });
+    window.addEventListener("resize", compute);
+    return () => {
+      window.removeEventListener("scroll", compute);
+      window.removeEventListener("resize", compute);
+    };
+  }, [count, rowHeight, headerHeight, overscan, enabled]);
+
+  const padTop    = enabled ? range.start * rowHeight : 0;
+  const padBottom = enabled ? Math.max(0, (count - range.end) * rowHeight) : 0;
+  return { containerRef, start: enabled ? range.start : 0, end: enabled ? range.end : count, padTop, padBottom };
+}
+
+/* ── Record card (Cards view) — reuses the same edit/delete/select handlers ── */
+function RecordCard({ rec, serial, fields, lang, getToken, selected, onSelect, onEdit, onDelete, canEdit, readOnly, viewingTranslated }) {
+  return (
+    <div style={{
+      background: "#fff", border: `1px solid ${selected ? ACCENT : "#e5e7eb"}`, borderRadius: 12,
+      padding: "14px 16px", display: "flex", flexDirection: "column", gap: 10,
+      boxShadow: selected ? `0 0 0 3px ${ACCENT}1f` : "0 1px 2px rgba(16,24,40,0.04)", transition: "border-color .12s, box-shadow .12s",
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        {!readOnly && (
+          <input type="checkbox" checked={selected} onChange={onSelect} style={{ width: 15, height: 15, accentColor: ACCENT, cursor: "pointer", flexShrink: 0 }} />
+        )}
+        <span style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", flexShrink: 0 }}>#{serial}</span>
+        <span style={{ marginLeft: "auto", fontSize: 11.5, color: "#94a3b8", whiteSpace: "nowrap" }}>{formatDate(rec.created_at)}</span>
+        {canEdit && (
+          <div style={{ display: "inline-flex", gap: 6, flexShrink: 0 }}>
+            <button onClick={onEdit} style={actionBtn} title={viewingTranslated ? "Edit Hindi record" : "Edit record"}><IcoEdit /></button>
+            {!readOnly && <button onClick={onDelete} style={{ ...actionBtn, color: "#dc2626", borderColor: "#fecaca" }} title="Delete record"><IcoTrash /></button>}
+          </div>
+        )}
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "10px 18px" }}>
+        {fields.map((f) => {
+          const col = dbCol(f.column_name); const raw = rec[col];
+          let val;
+          if (f.type === "boolean") val = raw === true || raw === "true" ? "Yes" : raw === false || raw === "false" ? "No" : "—";
+          else if (f.type === "document") val = <DocumentCell fileKey={raw} getToken={getToken} lang={lang} />;
+          else val = raw ?? "—";
+          return (
+            <div key={col} style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 10.5, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 2 }}>
+                {f.label?.[lang] || f.label?.en || displayCol(f.column_name)}
+              </div>
+              <div style={{ fontSize: 13, color: "#1e293b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{val}</div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+const cellEllipsis = { display: "block", maxWidth: 280, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 13, color: "#1e293b" };
 
 const thStyle   = { padding: "10px 16px", textAlign: "left", fontSize: 11, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.6, borderBottom: "1px solid #f1f5f9", whiteSpace: "nowrap" };
 const tdStyle   = { padding: "13px 16px", verticalAlign: "middle" };

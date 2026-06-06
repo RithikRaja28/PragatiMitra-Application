@@ -1,224 +1,209 @@
-import React from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell,
-} from "recharts";
+  ClipboardList, DoorOpen, Lock, Clock, CalendarRange, ArrowRight, FileText,
+} from "lucide-react";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { t } from "../../../i18n/translations";
+import { useApi } from "../../../hooks/useApi";
+import { useAuth } from "../../../store/AuthContext";
+import { useAcademicYear } from "../../../store/AcademicYearContext";
 import KpiDashboardPanel from "../../../components/KPI/KpiDashboardPanel";
 import PageHeader from "../../../components/shared/PageHeader";
+import { isAuthError } from "../../../components/shared/formUtils";
 
+/* Enterprise SaaS palette — shared with Institution Admin. */
 const C = {
-  primary:   "#2563eb",
-  primaryLt: "#dbeafe",
-  primaryMid:"#60a5fa",
-  text:      "#1e293b",
-  textSub:   "#64748b",
-  border:    "rgba(37,99,235,0.12)",
-  bg:        "#f8f9fb",
-  surface:   "#ffffff",
+  primary: "#2563eb",
+  success: "#16a34a",
+  warning: "#f59e0b",
+  danger:  "#dc2626",
+  text:    "#111827",
+  muted:   "#6b7280",
+  border:  "#e5e7eb",
+  bg:      "#f5f7fa",
+  surface: "#ffffff",
 };
 
 const card = {
   background: C.surface,
-  border: `1px solid #e2e8f0`,
-  borderRadius: 12,
-  padding: "16px 20px",
-  boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
+  border: `1px solid ${C.border}`,
+  borderRadius: 14,
+  boxShadow: "0 1px 3px rgba(16,24,40,0.04)",
 };
 
-const SECTIONS = [
-  { name: "Ayurvedic Principles",  pct: 85, status: "In Progress",  assigned: "Dr. Rao",    lastUpdate: "2h ago",  overdue: false },
-  { name: "Clinical Studies",      pct: 60, status: "Under Review", assigned: "R. Menon",   lastUpdate: "1d ago",  overdue: false },
-  { name: "Research Publications", pct: 40, status: "Overdue",      assigned: "M. Nair",    lastUpdate: "3d ago",  overdue: true  },
-  { name: "Lab Reports",           pct: 95, status: "Completed",    assigned: "A. Pillai",  lastUpdate: "4h ago",  overdue: false },
-  { name: "Annual Statistics",     pct: 20, status: "Overdue",      assigned: "Dr. Sharma", lastUpdate: "5d ago",  overdue: true  },
-  { name: "Patient Case Studies",  pct: 72, status: "In Progress",  assigned: "P. Kumar",   lastUpdate: "6h ago",  overdue: false },
-];
-
-const BAR_DATA = SECTIONS.map(s => ({ name: s.name.split(" ")[0], pct: s.pct }));
-
-const PIE_DATA = [
-  { name: "Completed",    value: 1, color: "#059669" },
-  { name: "In Progress",  value: 2, color: "#34d399" },
-  { name: "Under Review", value: 1, color: "#2563eb" },
-  { name: "Overdue",      value: 2, color: "#dc2626" },
-];
-
-const STATUS_STYLE = {
-  "Completed":    { bg: "#d1fae5", color: "#065f46" },
-  "In Progress":  { bg: "#d1fae5", color: "#059669" },
-  "Under Review": { bg: "#dbeafe", color: "#1e40af" },
-  "Overdue":      { bg: "#fee2e2", color: "#991b1b" },
-};
-
-const barFill = (pct) => pct >= 80 ? "#059669" : pct >= 50 ? "#34d399" : "#dc2626";
-
-const CustomBar = ({ x, y, width, height, value }) => (
-  <rect x={x} y={y} width={width} height={height} rx={4} fill={barFill(value)} />
-);
+function titleCase(s = "") {
+  return String(s).replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
 
 export default function DeptAdminDashboardPage() {
   const { lang } = useLanguage();
-  return (
-    <div style={{ padding: "24px 28px", fontFamily: "'Plus Jakarta Sans', sans-serif",
-      display: "flex", flexDirection: "column", gap: 14, background: C.bg, minHeight: "100vh" }}>
+  const { apiFetch } = useApi();
+  const { user } = useAuth() || {};
+  const { academicYear, selectedYear, years } = useAcademicYear() || {};
 
-      {/* Header */}
+  const [forms, setForms]     = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  const yearAware = (years?.length || 0) > 0;
+
+  const loadForms = useCallback(async () => {
+    setLoading(true);
+    try {
+      const qs   = selectedYear != null ? `?year=${selectedYear}` : "";
+      const res  = await apiFetch(`/api/forms/institution-forms${qs}`);
+      const data = await res.json();
+      if (data.success) {
+        const all = data.forms || [];
+        setForms(yearAware ? all.filter((f) => (f.lifecycle_status ?? "active") === "active") : all);
+      }
+    } catch (err) {
+      if (!isAuthError(err)) { /* dashboard stays empty on error */ }
+    } finally {
+      setLoading(false);
+    }
+  }, [apiFetch, selectedYear, yearAware]);
+
+  useEffect(() => { loadForms(); }, [loadForms]);
+
+  /* ── Derived, real status counts (mirrors the Forms & Data page) ── */
+  const now       = Date.now();
+  const isExpired = (f) => f.deadline_at && new Date(f.deadline_at).getTime() <= now;
+  const total   = forms.length;
+  const locked  = forms.filter((f) => f.is_locked).length;
+  const expired = forms.filter((f) => !f.is_locked && isExpired(f)).length;
+  const open    = forms.filter((f) => !f.is_locked && !isExpired(f)).length;
+
+  const deptName =
+    user?.department?.name || user?.departmentName || user?.department_name ||
+    user?.department || "Your Department";
+  const personName = user?.name || user?.fullName || "there";
+
+  const stats = [
+    { label: "Assigned Forms", value: total,   color: C.primary, bg: "#eff4ff", Icon: ClipboardList, hint: "Accessible to your dept" },
+    { label: "Open",           value: open,    color: C.success, bg: "#f0fdf4", Icon: DoorOpen,      hint: "Available to fill" },
+    { label: "Locked",         value: locked,  color: C.danger,  bg: "#fef2f2", Icon: Lock,          hint: "View-only" },
+    { label: "Expired",        value: expired, color: C.warning, bg: "#fffbeb", Icon: Clock,         hint: "Past deadline" },
+  ];
+
+  /* Up-next: nearest open deadlines first, then the rest. */
+  const upcoming = [...forms]
+    .sort((a, b) => {
+      const ad = a.deadline_at ? new Date(a.deadline_at).getTime() : Infinity;
+      const bd = b.deadline_at ? new Date(b.deadline_at).getTime() : Infinity;
+      return ad - bd;
+    })
+    .slice(0, 6);
+
+  function statusBadge(f) {
+    if (f.is_locked)   return { label: "LOCKED",  color: C.danger,  bg: "#fef2f2" };
+    if (isExpired(f))  return { label: "EXPIRED", color: C.warning, bg: "#fffbeb" };
+    return { label: "OPEN", color: C.success, bg: "#f0fdf4" };
+  }
+
+  return (
+    <div style={{ padding: "24px 28px", fontFamily: "'Plus Jakarta Sans', sans-serif", background: C.bg, minHeight: "100%", display: "flex", flexDirection: "column", gap: 16 }}>
       <PageHeader
         breadcrumb={[t("Home", lang), t("Department", lang), t("Dashboard", lang)]}
         title={t("Department Dashboard", lang)}
-        description="Annual Report 2026 — Samhita Siddhanta Dept."
-        actions={
-          <button style={{ background: C.primary, border: "none", color: "#fff",
-            borderRadius: 8, padding: "9px 18px", fontSize: 12, fontWeight: 600, cursor: "pointer",
-            boxShadow: "0 2px 8px rgba(5,150,105,0.28)" }}>
-            {t("Export Report", lang)}
-          </button>
-        }
+        description={`${titleCase(deptName)}${academicYear ? ` · Academic Year ${academicYear}` : ""}`}
       />
 
-      {/* Stat cards */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 10 }}>
-        {[
-          { label: "Total Sections",  value: 6, sub: "Assigned to dept",   color: C.primary, bar: 100 },
-          { label: "In Progress",     value: 2, sub: "Being worked on",    color: "#2563eb", bar: 33  },
-          { label: "Completed",       value: 1, sub: "Submitted & closed", color: "#059669", bar: 17  },
-          { label: "Overdue",         value: 2, sub: "Need attention",     color: "#dc2626", bar: 33  },
-        ].map(s => (
-          <div key={s.label} style={{ ...card, padding: "16px 18px", position: "relative", overflow: "hidden" }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: C.textSub, textTransform: "uppercase",
-              letterSpacing: "0.07em", marginBottom: 8 }}>{t(s.label, lang)}</div>
-            <div style={{ fontSize: 32, fontWeight: 700, color: s.color, lineHeight: 1, marginBottom: 4 }}>{s.value}</div>
-            <div style={{ fontSize: 11, color: C.textSub }}>{t(s.sub, lang)}</div>
-            <div style={{ position: "absolute", bottom: 0, left: 0, height: 3,
-              width: `${s.bar}%`, background: s.color, borderRadius: "0 2px 2px 0" }} />
+      {/* Welcome banner */}
+      <div style={{ ...card, padding: "18px 22px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
+        <div>
+          <div style={{ fontSize: 18, fontWeight: 800, color: C.text, letterSpacing: -0.3 }}>
+            Welcome back, {personName}
+          </div>
+          <div style={{ fontSize: 13, color: C.muted, marginTop: 4 }}>
+            Here’s what needs your attention in {titleCase(deptName)}.
+          </div>
+        </div>
+        {academicYear && (
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "#eff4ff", color: C.primary, border: `1px solid ${C.primary}22`, borderRadius: 10, padding: "9px 14px", fontSize: 13, fontWeight: 700 }}>
+            <CalendarRange size={16} /> {academicYear}
+          </div>
+        )}
+      </div>
+
+      {/* Stat cards — real form counts */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
+        {stats.map(({ label, value, color, bg, Icon, hint }) => (
+          <div key={label} style={{ ...card, padding: "16px 18px", display: "flex", alignItems: "center", gap: 14 }}>
+            <div style={{ width: 44, height: 44, borderRadius: 11, background: bg, color, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              <Icon size={20} strokeWidth={1.9} />
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 26, fontWeight: 800, color: C.text, lineHeight: 1, letterSpacing: -0.5 }}>
+                {loading ? "—" : value}
+              </div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginTop: 5 }}>{t(label, lang)}</div>
+              <div style={{ fontSize: 11, color: C.muted, marginTop: 1 }}>{t(hint, lang)}</div>
+            </div>
           </div>
         ))}
       </div>
 
-      {/* KPI Dashboard Panel */}
-      <div style={{ ...card, padding: "16px 20px" }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 2 }}>{t("KPI Overview", lang)}</div>
-        <div style={{ fontSize: 11, color: C.textSub, marginBottom: 12 }}>
-          Charts from KPIs pinned to the dashboard — configure in KPI Charts
+      {/* KPI panel — real, configurable charts */}
+      <div style={{ ...card, padding: "18px 20px" }}>
+        <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 2 }}>{t("KPI Overview", lang)}</div>
+        <div style={{ fontSize: 12, color: C.muted, marginBottom: 14 }}>
+          Charts from KPIs pinned to the dashboard — configure in KPI Charts.
         </div>
         <KpiDashboardPanel />
       </div>
 
-      {/* Main grid */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 280px", gap: 12 }}>
-
-        {/* Chart + table */}
-        <div style={card}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 2 }}>{t("Section-wise Completion", lang)}</div>
-          <div style={{ fontSize: 11, color: C.textSub, marginBottom: 14 }}>Progress per section — Annual Report 2026</div>
-
-          <ResponsiveContainer width="100%" height={155}>
-            <BarChart data={BAR_DATA} barSize={30} margin={{ top: 4, right: 4, left: -24, bottom: 0 }}>
-              <CartesianGrid vertical={false} stroke="rgba(5,150,105,0.07)" />
-              <XAxis dataKey="name" tick={{ fontSize: 10, fill: C.textSub }} axisLine={false} tickLine={false} />
-              <YAxis domain={[0,100]} tick={{ fontSize: 10, fill: C.textSub }} axisLine={false} tickLine={false}
-                tickFormatter={v => `${v}%`} />
-              <Tooltip formatter={v => [`${v}%`, "Completion"]}
-                contentStyle={{ fontSize: 11, borderRadius: 8, border: `0.5px solid ${C.border}` }} />
-              <Bar dataKey="pct" radius={[4,4,0,0]} shape={<CustomBar />} />
-            </BarChart>
-          </ResponsiveContainer>
-
-          <div style={{ marginTop: 16 }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: C.textSub, textTransform: "uppercase",
-              letterSpacing: "0.07em", marginBottom: 10 }}>{t("Section status — last update", lang)}</div>
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
-              <thead>
-                <tr>
-                  {["Section", "Assigned To", "Completion", "Status", "Last Update"].map(h => (
-                    <th key={h} style={{ fontSize: 10, fontWeight: 700, color: C.textSub, textTransform: "uppercase",
-                      letterSpacing: "0.06em", padding: "0 0 8px", textAlign: "left" }}>{t(h, lang)}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {SECTIONS.map((s, i) => (
-                  <tr key={i}>
-                    <td style={{ padding: "8px 0", borderTop: `0.5px solid ${C.border}`, fontSize: 12, fontWeight: 600, color: C.text }}>{s.name}</td>
-                    <td style={{ padding: "8px 0", borderTop: `0.5px solid ${C.border}`, fontSize: 11, color: C.textSub }}>{s.assigned}</td>
-                    <td style={{ padding: "8px 0", borderTop: `0.5px solid ${C.border}` }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <div style={{ width: 60, height: 5, background: "#e0e7ff", borderRadius: 3, overflow: "hidden" }}>
-                          <div style={{ height: "100%", width: `${s.pct}%`, background: barFill(s.pct), borderRadius: 3 }} />
-                        </div>
-                        <span style={{ fontSize: 11, color: C.textSub }}>{s.pct}%</span>
-                      </div>
-                    </td>
-                    <td style={{ padding: "8px 0", borderTop: `0.5px solid ${C.border}` }}>
-                      <span style={{ fontSize: 10, fontWeight: 600, padding: "2px 8px", borderRadius: 20,
-                        background: STATUS_STYLE[s.status]?.bg, color: STATUS_STYLE[s.status]?.color }}>
-                        {s.status}
-                      </span>
-                    </td>
-                    <td style={{ padding: "8px 0", borderTop: `0.5px solid ${C.border}`, fontSize: 11, color: C.textSub }}>{s.lastUpdate}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      {/* Up next — real forms with deadlines/status */}
+      <div style={card}>
+        <div style={{ padding: "14px 20px", borderBottom: `1px solid #eef2f6`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>{t("Your Forms", lang)}</div>
+          <div style={{ fontSize: 12, color: C.muted }}>
+            {loading ? "Loading…" : `${total} form${total !== 1 ? "s" : ""}`}
           </div>
         </div>
 
-        {/* Right column */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-
-          {/* Pie */}
-          <div style={card}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 2 }}>{t("Status distribution", lang)}</div>
-            <div style={{ fontSize: 11, color: C.textSub, marginBottom: 8 }}>6 sections total</div>
-            <ResponsiveContainer width="100%" height={120}>
-              <PieChart>
-                <Pie data={PIE_DATA} cx="50%" cy="50%" innerRadius={34} outerRadius={52} dataKey="value" stroke="none">
-                  {PIE_DATA.map((e, i) => <Cell key={i} fill={e.color} />)}
-                </Pie>
-                <Tooltip formatter={(v, n) => [v, n]}
-                  contentStyle={{ fontSize: 11, borderRadius: 8, border: `0.5px solid ${C.border}` }} />
-              </PieChart>
-            </ResponsiveContainer>
-            <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-              {PIE_DATA.map(p => (
-                <div key={p.name} style={{ display: "flex", justifyContent: "space-between", fontSize: 11 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, color: C.textSub }}>
-                    <span style={{ width: 8, height: 8, borderRadius: "50%", background: p.color }} />{p.name}
+        {loading ? (
+          <div style={{ padding: "40px 24px", textAlign: "center", color: C.muted, fontSize: 13 }}>Loading forms…</div>
+        ) : upcoming.length === 0 ? (
+          <div style={{ textAlign: "center", padding: "44px 24px", color: C.muted }}>
+            <div style={{ width: 52, height: 52, borderRadius: 13, margin: "0 auto 14px", background: "#f1f5f9", border: `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <FileText size={24} strokeWidth={1.6} color={C.muted} />
+            </div>
+            <div style={{ fontSize: 13.5, fontWeight: 600, color: "#475569", marginBottom: 4 }}>No forms assigned yet</div>
+            <div style={{ fontSize: 12.5 }}>Forms shared with your department will appear here.</div>
+          </div>
+        ) : (
+          <div>
+            {upcoming.map((f, i) => {
+              const b = statusBadge(f);
+              const deadline = f.deadline_at
+                ? new Date(f.deadline_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })
+                : "No deadline";
+              return (
+                <div key={f.id} style={{ display: "flex", alignItems: "center", gap: 14, padding: "13px 20px", borderTop: i === 0 ? "none" : "1px solid #f1f5f9" }}>
+                  <div style={{ width: 34, height: 34, borderRadius: 9, background: "#eff4ff", color: C.primary, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 800, flexShrink: 0 }}>
+                    {String(f.form_name).slice(0, 2).toUpperCase()}
                   </div>
-                  <span style={{ fontWeight: 700, color: C.text }}>{p.value}</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13.5, fontWeight: 700, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {titleCase(f.form_name)}
+                    </div>
+                    <div style={{ fontSize: 11.5, color: C.muted, marginTop: 1, display: "flex", alignItems: "center", gap: 6 }}>
+                      <Clock size={12} /> {deadline}
+                    </div>
+                  </div>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700, background: b.bg, color: b.color, letterSpacing: 0.3, whiteSpace: "nowrap" }}>
+                    <span style={{ width: 6, height: 6, borderRadius: "50%", background: b.color }} />
+                    {b.label}
+                  </span>
                 </div>
-              ))}
+              );
+            })}
+            <div style={{ padding: "12px 20px", borderTop: "1px solid #f1f5f9", display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, color: C.muted }}>
+              <span>Open <strong style={{ color: C.text }}>Form Data</strong> from the sidebar to fill or manage records</span>
+              <ArrowRight size={14} />
             </div>
           </div>
-
-          {/* Bottleneck alerts */}
-          <div style={{ ...card, background: "#fff7ed", border: "0.5px solid #fed7aa" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 10 }}>
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-                <circle cx="8" cy="8" r="6.5" stroke="#c2410c" strokeWidth="1.5"/>
-                <path d="M8 5v3.5" stroke="#c2410c" strokeWidth="1.5" strokeLinecap="round"/>
-                <circle cx="8" cy="11" r="0.75" fill="#c2410c"/>
-              </svg>
-              <span style={{ fontSize: 12, fontWeight: 700, color: "#7c2d12" }}>{t("Bottleneck Alerts", lang)}</span>
-            </div>
-            {SECTIONS.filter(s => s.overdue || s.status === "Under Review").map((s, i) => (
-              <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 8,
-                padding: "6px 0", borderTop: i > 0 ? "0.5px solid #fed7aa" : "none" }}>
-                <span style={{ width: 6, height: 6, borderRadius: "50%", marginTop: 4, flexShrink: 0,
-                  background: s.overdue ? "#dc2626" : "#d97706" }} />
-                <div>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: "#7c2d12" }}>{s.name}</div>
-                  <div style={{ fontSize: 10, color: "#c2410c" }}>
-                    {s.overdue ? `Overdue · ${s.lastUpdate}` : `Under Review · ${s.assigned}`}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-
-        </div>
+        )}
       </div>
     </div>
   );

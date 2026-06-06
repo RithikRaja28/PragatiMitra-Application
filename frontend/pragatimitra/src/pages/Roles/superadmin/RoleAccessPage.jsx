@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
-import { Users, FileText, BarChart3, Wallet, ShieldCheck } from "lucide-react";
+import { Users, FileText, BarChart3, Wallet, ShieldCheck, Plus } from "lucide-react";
 import { useApi } from "../../../hooks/useApi";
 import PageHeader from "../../../components/shared/PageHeader";
-import { ActionButton } from "../../../components/shared/ActionButtons";
+import { Button } from "../../../ui";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { t } from "../../../i18n/translations";
 
@@ -1321,9 +1321,9 @@ function RoleList({ roles, onEdit, onDelete, onCreate, deleting }) {
         title={t("Roles & Permissions", lang)}
         description="Define what each role can access and do across the platform."
         actions={
-          <ActionButton variant="primary" onClick={onCreate} style={{ height: 38 }}>
-            {t("+ Create Role", lang)}
-          </ActionButton>
+          <Button variant="primary" icon={<Plus size={17} strokeWidth={2} />} onClick={onCreate}>
+            {t("Create Role", lang)}
+          </Button>
         }
       />
 
