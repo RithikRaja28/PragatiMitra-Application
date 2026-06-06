@@ -244,21 +244,17 @@ function ModalPane({ title, reference, helper, loading, children }) {
 }
 
 /* ════════════════════════════════════════════════════════════════════
-   RecordModal — dual-pane editor rendered via ModalPortal.
-   One side is editable (driven by the row's language), the other is a
-   read-only reference of the linked translation:
-     • Editing English → LEFT editable EN · RIGHT LIVE Hindi preview
-     • Editing Hindi    → LEFT English reference · RIGHT editable HI
-   Translation-disabled forms collapse to a single editable pane.
+   RecordEditPage — DEDICATED in-shell edit page (replaces the large overlay
+   dialog). Navbar + sidebar stay visible; no overlay. English editable on the
+   left, current Hindi shown read-only on the right (60/40). NO live translation
+   — the read-only preview is the saved DB values and refreshes only AFTER save.
+   onSave(formData) → Promise<{ success, message }> (parent performs the API
+   call; the page stays open and refreshes the preview on success).
 ════════════════════════════════════════════════════════════════════ */
-function RecordModal({ fields, record, onSave, onClose, saving, error, getToken, formName, apiFetch, translationEnabled = true }) {
+function RecordEditPage({ fields, record, onSave, onBack, getToken, formName, formTitle, apiFetch, translationEnabled = true, viewOnly = false }) {
   const isEdit = !!record;
-  // The editable language follows the ROW (a Hindi mirror has language === "hi").
-  // New records are always authored in English.
   const editLang = record?.language === "hi" ? "hi" : "en";
   const refLang  = editLang === "hi" ? "en" : "hi";
-  // Reference pane shows the CURRENT linked translation — only meaningful when
-  // editing an existing record (a brand-new record has no translation yet).
   const showReference = translationEnabled !== false && !!record?.id;
 
   const [formData, setFormData] = useState(() => {
@@ -268,157 +264,128 @@ function RecordModal({ fields, record, onSave, onClose, saving, error, getToken,
   });
   const [refData, setRefData]       = useState({});
   const [refLoading, setRefLoading] = useState(false);
+  const [saving, setSaving]         = useState(false);
+  const [error, setError]           = useState("");
 
   function handleChange(col, val) { setFormData(prev => ({ ...prev, [col]: val })); }
-  function handleSubmit(e) { e.preventDefault(); onSave(formData); }
 
-  /* Inject responsive grid CSS once (desktop side-by-side → tablet stacked). */
+  /* Inject scoped CSS once: 60/40 split (stacks on tablet) + enterprise inputs. */
   useEffect(() => {
-    const id = "pm-rec-modal-css";
+    const id = "pm-rec-edit-css";
     if (document.getElementById(id)) return;
     const el = document.createElement("style");
     el.id = id;
     el.textContent = `
-      .pm-rec-grid { display:grid; grid-template-columns:1fr 1fr; gap:24px; }
-      @media (max-width: 860px){ .pm-rec-grid { grid-template-columns:1fr; } }
-      /* Enterprise form-fill inputs — scoped to the record modal only. */
-      .pm-rec-modal input:not([type=radio]):not([type=checkbox]),
-      .pm-rec-modal textarea,
-      .pm-rec-modal select {
-        height: 48px !important;
-        border-radius: 10px !important;
-        font-size: 14px !important;
-        padding: 0 15px !important;
+      .pm-rec-grid { display:grid; grid-template-columns:1.5fr 1fr; gap:32px; }
+      @media (max-width: 1000px){ .pm-rec-grid { grid-template-columns:1fr; gap:24px; } }
+      .pm-rec-edit input:not([type=radio]):not([type=checkbox]),
+      .pm-rec-edit textarea, .pm-rec-edit select {
+        height: 48px !important; border-radius: 10px !important; font-size: 14px !important; padding: 0 15px !important;
       }
-      .pm-rec-modal textarea { height: auto !important; min-height: 96px !important; padding: 13px 15px !important; line-height: 1.55; }
-      .pm-rec-modal label { font-size: 13.5px !important; font-weight: 500 !important; text-transform: none !important; }
-      .pm-rec-modal input:focus, .pm-rec-modal textarea:focus, .pm-rec-modal select:focus {
-        border-color: #2563eb !important;
-        box-shadow: 0 0 0 3px rgba(37,99,235,0.14) !important;
-        outline: none !important;
+      .pm-rec-edit textarea { height: auto !important; min-height: 96px !important; padding: 13px 15px !important; line-height: 1.55; }
+      .pm-rec-edit label { font-size: 14px !important; font-weight: 500 !important; text-transform: none !important; }
+      .pm-rec-edit input:focus, .pm-rec-edit textarea:focus, .pm-rec-edit select:focus {
+        border-color: #2563eb !important; box-shadow: 0 0 0 3px rgba(37,99,235,0.14) !important; outline: none !important;
       }
     `;
     document.head.appendChild(el);
   }, []);
 
-  /* Reference pane is a ONE-TIME, read-only snapshot of the linked translated
-     row — fetched once when the dialog opens and never again. NO live preview,
-     NO translation API calls while typing. The fresh translation runs only on
-     Update (server-side, inside the PUT handler), after which the table reloads.
-       • Editing English → shows the current Hindi mirror row
-       • Editing Hindi   → shows the English source row                         */
-  useEffect(() => {
+  /* One-time read-only fetch of the linked translated row. NO live preview, NO
+     translation API call while typing — refreshed only after a successful save. */
+  const refetchCounterpart = useCallback(() => {
     if (!showReference || !record?.id) return;
-    let cancelled = false;
     setRefLoading(true);
     apiFetch(`/api/form-data/${formName}/records/${record.id}/counterpart`)
       .then(r => r.json())
       .then(d => {
-        if (cancelled) return;
         const ref = d?.record || {};
         const next = {};
         fields.forEach(f => { const col = dbCol(f.column_name); next[col] = ref[col] ?? ""; });
         setRefData(next);
       })
       .catch(() => {})
-      .finally(() => { if (!cancelled) setRefLoading(false); });
-    return () => { cancelled = true; };
+      .finally(() => setRefLoading(false));
   }, [showReference, record?.id, formName, apiFetch, fields]);
 
-  const noFields = (
-    <div style={{ textAlign: "center", color: "#94a3b8", fontSize: 13, padding: "24px 0" }}>
-      No schema fields configured for this form.
-    </div>
-  );
+  useEffect(() => { refetchCounterpart(); }, [refetchCounterpart]);
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (viewOnly) return;
+    setSaving(true); setError("");
+    const res = await onSave(formData);
+    setSaving(false);
+    if (res?.success) {
+      // Stay on the page; refresh the Hindi preview once the server-side
+      // translation has had a moment to run (it's async on the backend).
+      if (showReference) setTimeout(refetchCounterpart, 1200);
+    } else {
+      setError(res?.message || "Failed to save record.");
+    }
+  }
+
+  const noFields = <div style={{ textAlign: "center", color: "#94a3b8", fontSize: 13, padding: "24px 0" }}>No schema fields configured for this form.</div>;
 
   const editablePane = (
-    <ModalPane
-      title={editLang === "hi" ? "Hindi (Editable)" : "English (Editable)"}
-    >
+    <ModalPane title={viewOnly ? (editLang === "hi" ? "Hindi" : "English") : (editLang === "hi" ? "Hindi (Editable)" : "English (Editable)")}>
       {fields.length === 0 ? noFields : fields.map(field => (
-        <FieldInput
-          key={dbCol(field.column_name)}
-          field={field}
-          value={formData[dbCol(field.column_name)]}
-          onChange={handleChange}
-          getToken={getToken}
-          lang={editLang}
-        />
+        viewOnly
+          ? <ReadOnlyField key={dbCol(field.column_name)} field={field} value={formData[dbCol(field.column_name)]} lang={editLang} />
+          : <FieldInput key={dbCol(field.column_name)} field={field} value={formData[dbCol(field.column_name)]} onChange={handleChange} getToken={getToken} lang={editLang} />
       ))}
     </ModalPane>
   );
 
   const referencePane = (
-    <ModalPane
-      title={editLang === "hi" ? "English Reference (Current)" : "Hindi Reference (Current)"}
-      reference
-      loading={refLoading}
-      helper="Reference values update after saving."
-    >
+    <ModalPane title={editLang === "hi" ? "English Reference (Current)" : "Hindi Reference (Current)"} reference loading={refLoading} helper="Translation updates after save.">
       {fields.length === 0 ? noFields : fields.map(field => (
-        <ReadOnlyField
-          key={dbCol(field.column_name)}
-          field={field}
-          value={refData[dbCol(field.column_name)]}
-          lang={refLang}
-        />
+        <ReadOnlyField key={dbCol(field.column_name)} field={field} value={refData[dbCol(field.column_name)]} lang={refLang} />
       ))}
     </ModalPane>
   );
 
-  // Order swaps so English is always on the left, Hindi always on the right.
   const leftPane  = editLang === "hi" ? referencePane : editablePane;
   const rightPane = editLang === "hi" ? editablePane  : referencePane;
 
   return (
-    <ModalPortal>
-      <div
-        style={{ position: "fixed", inset: 0, zIndex: 10000, background: "rgba(15,23,42,0.55)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}
-        onClick={e => { if (e.target === e.currentTarget) onClose(); }}
-      >
-        <div
-          className="pm-rec-modal"
-          style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: showReference ? 1100 : 560, boxShadow: "0 24px 64px rgba(0,0,0,0.22)", overflow: "hidden", maxHeight: "90vh", display: "flex", flexDirection: "column" }}
-          onClick={e => e.stopPropagation()}
-        >
-          <div style={{ padding: "20px 24px", borderBottom: "1px solid #f1f5f9", display: "flex", alignItems: "center", justifyContent: "space-between", background: "#fafafa", flexShrink: 0 }}>
-            <div>
-              <div style={{ fontSize: 15, fontWeight: 700, color: "#1e293b" }}>{isEdit ? "Edit Record" : "Add New Record"}</div>
-              <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 2 }}>
-                {showReference
-                  ? (editLang === "hi" ? "Edit the Hindi values — English shown for reference" : "Edit the English values — Hindi updates after you save")
-                  : (isEdit ? "Update the fields below" : "Fill in the details below")}
-              </div>
-            </div>
-            <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 20, color: "#94a3b8", cursor: "pointer", lineHeight: 1, padding: "4px 8px", borderRadius: 6 }}>×</button>
-          </div>
-          {/* Body scrolls; the save bar below stays pinned (sticky footer). */}
-          <form onSubmit={handleSubmit} style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
-            <div style={{ padding: "20px 24px", overflowY: "auto", flex: 1 }}>
-              {showReference ? (
-                <div className="pm-rec-grid">
-                  {leftPane}
-                  {rightPane}
-                </div>
-              ) : (
-                editablePane
-              )}
-              {error && (
-                <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, padding: "10px 14px", fontSize: 13, color: "#b91c1c", marginTop: 16 }}>
-                  {error}
-                </div>
-              )}
-            </div>
-            <div style={{ padding: "16px 24px", borderTop: "1px solid #f1f5f9", display: "flex", justifyContent: "flex-end", gap: 10, background: "#fafafa", flexShrink: 0 }}>
-              <button type="button" onClick={onClose} style={S.btnGhost} disabled={saving}>Cancel</button>
+    <div className="pm-rec-edit" style={{ padding: "20px 28px 96px", fontFamily: "'Plus Jakarta Sans', sans-serif", minHeight: "100%", maxWidth: 1440 }}>
+      <PageHeader
+        breadcrumb={["Home", { label: "Forms & Data Entry", onClick: onBack }, formTitle, isEdit ? "Edit Record" : "Add Record"]}
+        title={isEdit ? "Edit Record" : "Add Record"}
+        description={isEdit ? "Update data and review translated values." : "Fill in the details below."}
+        actions={
+          <button onClick={onBack} style={{ ...S.btnGhost, display: "inline-flex", alignItems: "center", gap: 6 }}>← Back</button>
+        }
+      />
+
+      {viewOnly && (
+        <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#fef2f2", border: "1px solid #fecaca", color: "#b91c1c", borderRadius: 8, padding: "6px 12px", fontSize: 12, fontWeight: 700, marginBottom: 16 }}>
+          <Lock size={13} strokeWidth={2.2} /> VIEW ONLY
+        </div>
+      )}
+
+      <form onSubmit={handleSubmit}>
+        <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 16, padding: 32, boxShadow: "0 1px 3px rgba(16,24,40,0.04)" }}>
+          {showReference ? <div className="pm-rec-grid">{leftPane}{rightPane}</div> : editablePane}
+        </div>
+        {error && (
+          <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, padding: "10px 14px", fontSize: 13, color: "#b91c1c", marginTop: 16 }}>{error}</div>
+        )}
+
+        {/* Sticky action footer (72px) — stays visible, never overlaps the shell. */}
+        <div style={{ position: "sticky", bottom: 0, marginTop: 24 }}>
+          <div style={{ height: 72, margin: "0 -28px", padding: "0 28px", background: "#fff", borderTop: "1px solid #e5e7eb", boxShadow: "0 -4px 16px rgba(16,24,40,0.06)", display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 12 }}>
+            <button type="button" onClick={onBack} style={S.btnGhost} disabled={saving}>Cancel</button>
+            {!viewOnly && (
               <button type="submit" style={S.btnPrimary(saving)} disabled={saving}>
                 {saving ? "Saving…" : isEdit ? "Update Record" : "Add Record"}
               </button>
-            </div>
-          </form>
+            )}
+          </div>
         </div>
-      </div>
-    </ModalPortal>
+      </form>
+    </div>
   );
 }
 
@@ -1093,6 +1060,8 @@ export default function FormDataPage() {
   /* ── Modal state ── */
   const [modalOpen, setModalOpen]       = useState(false);
   const [editRecord, setEditRecord]     = useState(null);
+  /* Dedicated edit page target: null = list · "new" = add · record = edit. */
+  const [editTarget, setEditTarget]     = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const [saving, setSaving]             = useState(false);
@@ -1179,19 +1148,26 @@ export default function FormDataPage() {
     setLockInfo({ is_locked: false, locked_by: null, locked_at: null });
   }
 
-  async function handleSave(formData) {
-    setSaving(true); setModalError("");
+  /* Save from the dedicated edit page. Returns { success, message } and does NOT
+     navigate — the page stays open and refreshes its read-only preview. The
+     records list is refreshed in the background so it's current on Back. */
+  async function saveRecord(formData) {
+    const editing = editTarget && editTarget !== "new" ? editTarget : null;
     try {
-      const res = editRecord
-        ? await apiFetch(`/api/form-data/${selectedForm.form_name}/records/${editRecord.id}`, { method: "PUT",  body: JSON.stringify({ data: formData }) })
-        : await apiFetch(`/api/form-data/${selectedForm.form_name}/records`,                  { method: "POST", body: JSON.stringify({ data: formData }) });
+      const res = editing
+        ? await apiFetch(`/api/form-data/${selectedForm.form_name}/records/${editing.id}`, { method: "PUT",  body: JSON.stringify({ data: formData }) })
+        : await apiFetch(`/api/form-data/${selectedForm.form_name}/records`,                { method: "POST", body: JSON.stringify({ data: formData }) });
       const data = await res.json();
       if (data.success) {
-        setModalOpen(false); setEditRecord(null);
-        showToast(data.message); loadRecords(selectedForm);
-      } else setModalError(data.message || "Failed to save record.");
-    } catch (err) { if (!isAuthError(err)) setModalError("Network error. Please try again."); }
-    finally { setSaving(false); }
+        showToast(data.message);
+        loadRecords(selectedForm);
+        return { success: true, message: data.message };
+      }
+      return { success: false, message: data.message || "Failed to save record." };
+    } catch (err) {
+      if (!isAuthError(err)) return { success: false, message: "Network error. Please try again." };
+      return { success: false };
+    }
   }
 
   async function handleDelete() {
@@ -1464,6 +1440,29 @@ export default function FormDataPage() {
   }
 
   /* ══════════════════════════════════════════════════════
+     VIEW 2b — Dedicated record edit/add page (in-shell, no overlay)
+  ══════════════════════════════════════════════════════ */
+  if (editTarget && selectedForm) {
+    return (
+      <>
+        {toast && <Toast message={toast.message} type={toast.type} />}
+        <RecordEditPage
+          fields={schemaFields}
+          record={editTarget === "new" ? null : editTarget}
+          formName={selectedForm.form_name}
+          formTitle={selectedForm.form_name.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
+          apiFetch={apiFetch}
+          getToken={getToken}
+          translationEnabled={selectedForm.translate_to_hindi !== false}
+          viewOnly={readOnly && editTarget !== "new"}
+          onSave={saveRecord}
+          onBack={() => { setEditTarget(null); loadRecords(selectedForm); }}
+        />
+      </>
+    );
+  }
+
+  /* ══════════════════════════════════════════════════════
      VIEW 2 — Records table for selected form
   ══════════════════════════════════════════════════════ */
   return (
@@ -1471,20 +1470,6 @@ export default function FormDataPage() {
       {toast && <Toast message={toast.message} type={toast.type} />}
 
       {/* ── Modals ── */}
-      {modalOpen && (
-        <RecordModal
-          fields={schemaFields}
-          record={editRecord}
-          onSave={handleSave}
-          onClose={() => { setModalOpen(false); setEditRecord(null); setModalError(""); }}
-          saving={saving}
-          error={modalError}
-          getToken={getToken}
-          formName={selectedForm?.form_name}
-          apiFetch={apiFetch}
-          translationEnabled={selectedForm?.translate_to_hindi !== false}
-        />
-      )}
       {deleteTarget !== null && (
         <DeleteModal
           count={1}
@@ -1594,7 +1579,7 @@ export default function FormDataPage() {
               <IcoUpload /> Import
             </button>
             <button
-              onClick={() => { if (!readOnly) { setEditRecord(null); setModalError(""); setModalOpen(true); } }}
+              onClick={() => { if (!readOnly) setEditTarget("new"); }}
               disabled={readOnly}
               title={lockInfo.is_locked ? "Form is locked — contact your institution admin" : viewingTranslated ? "Switch to English (EN) to add records" : ""}
               style={{ display: "inline-flex", alignItems: "center", gap: 7, background: readOnly ? "#94a3b8" : ACCENT, color: "#fff", border: "none", borderRadius: 10, padding: "9px 18px", fontSize: 13, fontWeight: 700, cursor: readOnly ? "not-allowed" : "pointer", boxShadow: readOnly ? "none" : `0 2px 8px ${ACCENT}40` }}
@@ -1707,7 +1692,7 @@ export default function FormDataPage() {
                 getToken={getToken}
                 selected={selectedIds.has(rec.id)}
                 onSelect={() => toggleSelectOne(rec.id)}
-                onEdit={(e) => { e.stopPropagation(); setEditRecord(rec); setModalError(""); setModalOpen(true); }}
+                onEdit={(e) => { e.stopPropagation(); setEditTarget(rec); }}
                 onDelete={(e) => { e.stopPropagation(); setDeleteTarget(rec.id); }}
                 canEdit={canEdit}
                 readOnly={readOnly}
@@ -1799,7 +1784,7 @@ export default function FormDataPage() {
                         <td style={{ ...tdStyle, textAlign: "right" }}>
                           <div style={{ display: "inline-flex", gap: 6 }}>
                             <button
-                              onClick={(e) => { e.stopPropagation(); setEditRecord(rec); setModalError(""); setModalOpen(true); }}
+                              onClick={(e) => { e.stopPropagation(); setEditTarget(rec); }}
                               style={actionBtn}
                               title={viewingTranslated ? "Edit Hindi record" : "Edit record"}
                             >
