@@ -16,6 +16,9 @@
  */
 
 import React from "react";
+/* ── Collaborative Report Builder ──────────────────────────── */
+import ReportBuilderListPage    from "../../pages/Roles/shared/builder/ReportBuilderListPage";
+import MyAssignedSectionsPage   from "../../pages/Roles/shared/builder/MyAssignedSectionsPage";
 
 /* ── Super Admin page imports ───────────────────────────────── */
 import UserManagementPage        from "../../pages/Roles/superadmin/UserManagementPage";
@@ -56,7 +59,6 @@ import EstimatesPage       from "../../pages/Roles/financeofficer/EstimatesPage"
 import AuditsPage          from "../../pages/Roles/financeofficer/AuditsPage";
 import BalanceSheetPage    from "../../pages/Roles/financeofficer/BalanceSheetPage";
 
-/* ── Shared placeholder (swap for real components as built) ─── */
 export function PlaceholderPage({ title, subtitle, color = "#2563eb" }) {
   return (
     <div style={{ padding: "32px 36px", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
@@ -204,6 +206,14 @@ export const ROLE_CONFIG = {
       },
 
       {
+        group: "Reports",
+        items: [
+          { id: "report-builder",  label: "Report Builder", icon: "BookOpen",  permission: null },
+          { id: "sa-my-sections",  label: "My Sections",    icon: "FileEdit",  permission: null },
+        ],
+      },
+
+      {
         group: "Access & Data",
         items: [
           {
@@ -240,8 +250,10 @@ export const ROLE_CONFIG = {
       committees: <CommitteeManagementPage />,
       "role-access": <RoleAccessPage />,
       "master-data": <SuperAdminMasterDataPage />,
-      "audit-logs": <AuditLogsPage />,
-      "kpi": <KPIPage />,
+      "audit-logs":     <AuditLogsPage />,
+      "kpi":            <KPIPage />,
+      "report-builder": <ReportBuilderListPage />,
+      "sa-my-sections": <MyAssignedSectionsPage />,
     },
     defaultPage: "overview",
     user: { name: "Super Admin", initials: "SA", org: "PragatiMitra HQ" },
@@ -281,6 +293,24 @@ export const ROLE_CONFIG = {
             id: "ia-report-setup",
             label: "Report Setup",
             icon: "FileText",
+            permission: null,
+          },
+          {
+            id: "ia-report-builder",
+            label: "Report Builder",
+            icon: "BookOpen",
+            permission: null,
+          },
+          {
+            id: "ia-my-sections",
+            label: "My Sections",
+            icon: "FileEdit",
+            permission: null,
+          },
+          {
+            id: "ia-review-queue",
+            label: "Review Queue",
+            icon: "ClipboardList",
             permission: null,
           },
         ],
@@ -337,6 +367,9 @@ export const ROLE_CONFIG = {
       "ia-users":           <InstituteAdminUserManagementPage />,
       "ia-departments":     <InstituteAdminDepartmentPage />,
       "ia-report-setup":    <ReportSetupPage />,
+      "ia-report-builder":  <ReportBuilderListPage />,
+      "ia-my-sections":     <MyAssignedSectionsPage />,
+      "ia-review-queue":    <ReviewQueuePage />,
       "ia-sections":        <SectionsPage />,
       "ia-workflow":        <WorkflowPage />,
       "ia-task-workflow":   <TaskWorkflowPage />,
@@ -345,32 +378,6 @@ export const ROLE_CONFIG = {
     },
     defaultPage: "ia-overview",
     user: { name: "Institute Admin", initials: "IA", org: "PragatiMitra" },
-  },
-
-  /* ── DEPARTMENT ADMIN ────────────────────────────────────── */
-  // ✅ key = "department_admin" — matches backend exactly
-  department_admin: {
-    navItems: [
-      {
-        group: "",
-        items: [
-          { id: "da-overview", label: "Dashboard",       icon: "LayoutDashboard", permission: null },
-        ],
-      },
-      {
-        group: "User Management",
-        items: [
-          { id: "da-users",    label: "User Management", icon: "Users",           permission: null },
-        ],
-      },
-      
-    ],
-    pages: {
-      "da-overview": <DepartmentAdminDashboardPage />,
-      "da-users":    <DepartmentAdminUserManagementPage />,
-    },
-    defaultPage: "da-overview",
-    user: { name: "Department Admin", initials: "DA", org: "PragatiMitra" },
   },
 
   /* ── FINANCE OFFICER ──────────────────────────────────────── */
@@ -411,12 +418,24 @@ export const ROLE_CONFIG = {
           },
         ],
       },
+      {
+        group: "Report Sections",
+        items: [
+          {
+            id: "fo-my-sections",
+            label: "My Sections",
+            icon: "FileEdit",
+            permission: null,
+          },
+        ],
+      },
     ],
     pages: {
-      "fo-overview": <FinanceOverviewPage />,
-      "fo-estimates": <EstimatesPage />,
-      "fo-audits": <AuditsPage />,
-      "fo-balance-sheet": <BalanceSheetPage />,
+      "fo-overview":     <FinanceOverviewPage />,
+      "fo-estimates":    <EstimatesPage />,
+      "fo-audits":       <AuditsPage />,
+      "fo-balance-sheet":<BalanceSheetPage />,
+      "fo-my-sections":  <MyAssignedSectionsPage />,
     },
     defaultPage: "fo-overview",
     user: { name: "Finance Officer", initials: "FO", org: "PragatiMitra" },
@@ -448,10 +467,22 @@ export const ROLE_CONFIG = {
           },
         ],
       },
+      {
+        group: "Report Sections",
+        items: [
+          {
+            id: "do-my-sections",
+            label: "My Sections",
+            icon: "FileEdit",
+            permission: null,
+          },
+        ],
+      },
     ],
     pages: {
-      "do-dashboard": <DirectorsDashboardPage />,
+      "do-dashboard":    <DirectorsDashboardPage />,
       "do-review-queue": <ReviewQueuePage />,
+      "do-my-sections":  <MyAssignedSectionsPage />,
     },
     defaultPage: "do-dashboard",
     user: {
@@ -498,11 +529,30 @@ export const ROLE_CONFIG = {
           },
         ],
       },
+      {
+        group: "Report Sections",
+        items: [
+          {
+            id: "da-my-sections",
+            label: "My Sections",
+            icon: "FileEdit",
+            permission: null,
+          },
+          {
+            id: "da-review-queue",
+            label: "Review Queue",
+            icon: "ClipboardList",
+            permission: null,
+          },
+        ],
+      },
     ],
     pages: {
-      "da-dashboard": <DeptAdminDashboardPage />,
-      "da-users": <DeptUsersPage />,
-      "da-tasks": <TaskOverviewPage />,
+      "da-dashboard":    <DeptAdminDashboardPage />,
+      "da-users":        <DeptUsersPage />,
+      "da-tasks":        <TaskOverviewPage />,
+      "da-my-sections":  <MyAssignedSectionsPage />,
+      "da-review-queue": <ReviewQueuePage />,
     },
     defaultPage: "da-dashboard",
     user: {
@@ -551,34 +601,103 @@ export const ROLE_CONFIG = {
       },
     ],
     pages: {
-      "dno-dashboard": <NodalDashboardPage />,
-      "dno-sections": <AssignedSectionsPage />,
+      "dno-dashboard":   <NodalDashboardPage />,
+      "dno-sections":    <MyAssignedSectionsPage />,
       "dno-submissions": <SubmissionsPage />,
     },
     defaultPage: "dno-dashboard",
     user: { name: "Nodal Officer", initials: "NO", org: "Samhita Siddhanta" },
   },
 
-  /* ── FALLBACK ───────────────────────────────────────────────── */
-  __fallback__: {
+  /* ── CONTRIBUTOR ─────────────────────────────────────────────── */
+  // Users assigned to report sections as contributors/owners
+  contributor: {
     navItems: [
-      { group: "", items: [{ id: "home", label: "Home", icon: "Home" }] },
+      {
+        group: "My Work",
+        items: [
+          { id: "c-sections", label: "My Sections", icon: "FileEdit", permission: null },
+        ],
+      },
     ],
     pages: {
-      home: (
-        <div
-          style={{ padding: 40, fontFamily: "'Plus Jakarta Sans', sans-serif" }}
-        >
-          <h2 style={{ color: "#1e293b" }}>Access Restricted</h2>
-          <p style={{ color: "#94a3b8", marginTop: 8 }}>
-            Your role does not have a configured dashboard. Please contact your
-            administrator.
-          </p>
-        </div>
-      ),
+      "c-sections": <MyAssignedSectionsPage />,
     },
-    defaultPage: "home",
-    user: { name: "Unknown", initials: "?", org: "" },
+    defaultPage: "c-sections",
+    user: { name: "Contributor", initials: "CT", org: "PragatiMitra" },
+  },
+
+  /* ── REVIEWER ────────────────────────────────────────────────── */
+  reviewer: {
+    navItems: [
+      {
+        group: "My Work",
+        items: [
+          { id: "rv-sections",     label: "My Sections",   icon: "FileEdit",     permission: null },
+          { id: "rv-review-queue", label: "Review Queue",  icon: "ClipboardList", permission: null },
+        ],
+      },
+    ],
+    pages: {
+      "rv-sections":     <MyAssignedSectionsPage />,
+      "rv-review-queue": <ReviewQueuePage />,
+    },
+    defaultPage: "rv-sections",
+    user: { name: "Reviewer", initials: "RV", org: "PragatiMitra" },
+  },
+
+  /* ── HEAD OF DEPARTMENT ──────────────────────────────────────── */
+  head_of_department: {
+    navItems: [
+      {
+        group: "My Work",
+        items: [
+          { id: "hod-sections",     label: "My Sections",  icon: "FileEdit",      permission: null },
+          { id: "hod-review-queue", label: "Review Queue", icon: "ClipboardList", permission: null },
+        ],
+      },
+    ],
+    pages: {
+      "hod-sections":     <MyAssignedSectionsPage />,
+      "hod-review-queue": <ReviewQueuePage />,
+    },
+    defaultPage: "hod-sections",
+    user: { name: "Head of Department", initials: "HD", org: "PragatiMitra" },
+  },
+
+  /* ── PUBLICATION CELL ────────────────────────────────────────── */
+  publication_cell: {
+    navItems: [
+      {
+        group: "My Work",
+        items: [
+          { id: "pc-sections", label: "My Sections", icon: "FileEdit", permission: null },
+        ],
+      },
+    ],
+    pages: {
+      "pc-sections": <MyAssignedSectionsPage />,
+    },
+    defaultPage: "pc-sections",
+    user: { name: "Publication Cell", initials: "PC", org: "PragatiMitra" },
+  },
+
+  /* ── FALLBACK ───────────────────────────────────────────────────
+     Safety net: any unrecognised role still sees My Sections so
+     assigned users are never locked out of their work.
+  ─────────────────────────────────────────────────────────────── */
+  __fallback__: {
+    navItems: [
+      {
+        group: "My Work",
+        items: [{ id: "fb-sections", label: "My Sections", icon: "FileEdit" }],
+      },
+    ],
+    pages: {
+      "fb-sections": <MyAssignedSectionsPage />,
+    },
+    defaultPage: "fb-sections",
+    user: { name: "User", initials: "U", org: "" },
   },
 };
 

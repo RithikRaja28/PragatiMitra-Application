@@ -263,6 +263,29 @@ export default function ReportSetupPage() {
   const [secType,    setSecType]    = useState("Section");
   const [secDataSrc, setSecDataSrc] = useState("Manual");
 
+  /* ── Document Branding ── */
+  const [coverImageUrl, setCoverImageUrl] = useState("");
+  const [logoUrl,       setLogoUrl]       = useState("");
+  const [bgImageUrl,    setBgImageUrl]    = useState("");
+  const [brandingAssignments, setBrandingAssignments] = useState([
+    { id: "cover",  label: "Cover Page Image", url: "", assignee: "Unassigned" },
+    { id: "logo",   label: "Institution Logo",  url: "", assignee: "Unassigned" },
+    { id: "bg",     label: "Background Image",  url: "", assignee: "Unassigned" },
+  ]);
+  const [brandingOpen, setBrandingOpen] = useState(false);
+
+  const DEMO_USERS = ["Unassigned", "Dr. Sharma", "R. Patel", "M. Nair", "S. Kumar"];
+
+  const updateBrandingUrl = (id, url) => {
+    setBrandingAssignments(p => p.map(b => b.id === id ? { ...b, url } : b));
+    if (id === "cover") setCoverImageUrl(url);
+    if (id === "logo")  setLogoUrl(url);
+    if (id === "bg")    setBgImageUrl(url);
+  };
+
+  const updateBrandingAssignee = (id, assignee) =>
+    setBrandingAssignments(p => p.map(b => b.id === id ? { ...b, assignee } : b));
+
   useEffect(() => {
     if (selectedSub) { setSecName(selectedSub.name); setSecType(selectedSub.type); setSecDataSrc(selectedSub.dataSource); }
     else if (selected) { setSecName(selected.name); setSecType("Section"); setSecDataSrc("Manual"); }
@@ -538,6 +561,127 @@ export default function ReportSetupPage() {
 
         </div>
       </div>
+
+      {/* ── Document Design / Branding ── */}
+      <div style={card}>
+        <div
+          onClick={() => setBrandingOpen(o => !o)}
+          style={{ ...panelHead, cursor: "pointer", userSelect: "none" }}
+        >
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+            <rect x="1" y="1" width="14" height="14" rx="2.5" stroke={C.primary} strokeWidth="1.5"/>
+            <circle cx="5.5" cy="5.5" r="1.5" stroke={C.primary} strokeWidth="1.2"/>
+            <path d="M1 11l4-4 3 3 2-2 5 5" stroke={C.primary} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+          <span style={{ fontSize: 12, fontWeight: 700, color: C.text }}>Document Design &amp; Branding</span>
+          <span style={{ marginLeft: "auto", fontSize: 10, color: C.primary, fontWeight: 600 }}>
+            {brandingOpen ? "▲ Collapse" : "▼ Expand"}
+          </span>
+        </div>
+
+        {brandingOpen && (
+          <div style={panelBody}>
+            <p style={{ fontSize: 12, color: C.textSub, marginBottom: 16, lineHeight: 1.6 }}>
+              Set report-level visual assets. Assign each item to a team member who will supply the final asset —
+              assigned users will see the task in their <em>My Sections</em> page.
+            </p>
+
+            {/* Live preview strip */}
+            <div style={{ display: "flex", gap: 12, marginBottom: 20, flexWrap: "wrap" }}>
+              <div style={{ flex: "1 1 140px", border: `0.5px solid ${C.border}`, borderRadius: 10, overflow: "hidden" }}>
+                <div style={{
+                  height: 90, background: coverImageUrl
+                    ? `url(${coverImageUrl}) center/cover no-repeat`
+                    : C.bg,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                }}>
+                  {!coverImageUrl && <span style={{ fontSize: 26, opacity: 0.35 }}>🖼</span>}
+                </div>
+                <div style={{ padding: "6px 10px", fontSize: 10, color: C.textSub, textAlign: "center", fontWeight: 600 }}>Cover Page</div>
+              </div>
+
+              <div style={{ flex: "1 1 100px", border: `0.5px solid ${C.border}`, borderRadius: 10, overflow: "hidden" }}>
+                <div style={{ height: 90, background: C.bg, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  {logoUrl
+                    ? <img src={logoUrl} alt="Logo" style={{ maxHeight: 70, maxWidth: "90%", objectFit: "contain" }}
+                        onError={(e) => { e.currentTarget.style.display = "none"; }} />
+                    : <span style={{ fontSize: 26, opacity: 0.35 }}>🏛</span>}
+                </div>
+                <div style={{ padding: "6px 10px", fontSize: 10, color: C.textSub, textAlign: "center", fontWeight: 600 }}>Logo</div>
+              </div>
+
+              <div style={{ flex: "1 1 140px", border: `0.5px solid ${C.border}`, borderRadius: 10, overflow: "hidden" }}>
+                <div style={{
+                  height: 90, background: bgImageUrl
+                    ? `url(${bgImageUrl}) center/cover no-repeat`
+                    : C.bg,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                }}>
+                  {!bgImageUrl && <span style={{ fontSize: 26, opacity: 0.35 }}>🎨</span>}
+                </div>
+                <div style={{ padding: "6px 10px", fontSize: 10, color: C.textSub, textAlign: "center", fontWeight: 600 }}>Page Background</div>
+              </div>
+            </div>
+
+            {/* Asset rows table */}
+            <div style={{ border: `0.5px solid ${C.border}`, borderRadius: 10, overflow: "hidden" }}>
+              <div style={{
+                display: "grid", gridTemplateColumns: "170px 1fr 170px",
+                background: C.bg, borderBottom: `0.5px solid ${C.border}`,
+                padding: "7px 14px", gap: 0,
+              }}>
+                {["Asset", "URL / Link", "Assigned To"].map(h => (
+                  <span key={h} style={{ fontSize: 10, fontWeight: 700, color: C.textSub, textTransform: "uppercase", letterSpacing: "0.06em" }}>{h}</span>
+                ))}
+              </div>
+
+              {brandingAssignments.map((b, i) => (
+                <div key={b.id} style={{
+                  display: "grid", gridTemplateColumns: "170px 1fr 170px",
+                  alignItems: "center", gap: 0, padding: "10px 14px",
+                  borderBottom: i < brandingAssignments.length - 1 ? `0.5px solid ${C.border}` : "none",
+                  background: "#fff",
+                }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 16 }}>
+                      {b.id === "cover" ? "🖼" : b.id === "logo" ? "🏛" : "🎨"}
+                    </span>
+                    <div>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: C.text }}>{b.label}</div>
+                      {b.assignee !== "Unassigned" && (
+                        <div style={{ fontSize: 10, color: C.primary, fontWeight: 600 }}>Assigned ✓</div>
+                      )}
+                    </div>
+                  </div>
+
+                  <input
+                    value={b.url}
+                    onChange={e => updateBrandingUrl(b.id, e.target.value)}
+                    placeholder="Paste image URL…"
+                    style={{ ...inputSt, margin: "0 10px", fontSize: 11, padding: "6px 10px" }}
+                  />
+
+                  <select
+                    value={b.assignee}
+                    onChange={e => updateBrandingAssignee(b.id, e.target.value)}
+                    style={{ ...inputSt, cursor: "pointer", fontSize: 11, padding: "6px 10px" }}
+                  >
+                    {DEMO_USERS.map(u => <option key={u}>{u}</option>)}
+                  </select>
+                </div>
+              ))}
+            </div>
+
+            <button style={{
+              ...btn("primary"), marginTop: 14, padding: "9px 22px",
+              fontSize: 12, borderRadius: 9, boxShadow: "0 2px 8px rgba(99,102,241,0.25)",
+            }}>
+              ✓ Save Branding
+            </button>
+          </div>
+        )}
+      </div>
+
     </div>
   );
 }

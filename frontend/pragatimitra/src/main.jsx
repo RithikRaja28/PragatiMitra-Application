@@ -6,15 +6,18 @@ import store from "./store";
 import router from "./router";
 import { AuthProvider } from "./store/AuthContext";
 import { LanguageProvider } from "./i18n/LanguageContext";
+import { ToastProvider } from "./components/shared/Toast";
 import "./index.css";
 
 createRoot(document.getElementById("root")).render(
   <StrictMode>
     <Provider store={store}>
       <AuthProvider>
-        <LanguageProvider>
-          <RouterProvider router={router} />
-        </LanguageProvider>
+        <ToastProvider>
+          <LanguageProvider>
+            <RouterProvider router={router} />
+          </LanguageProvider>
+        </ToastProvider>
       </AuthProvider>
     </Provider>
   </StrictMode>
