@@ -9,46 +9,51 @@ import { t } from "../../../i18n/translations";
 const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
 /* ═══════════════════════════════════════════════════════════════
-   ENTITY CARDS CONFIG
+   NAVIGATION CONFIG — category groups + per-entity chips
 ═══════════════════════════════════════════════════════════════ */
-const ENTITY_CARDS = [
+const CATEGORY_GROUPS = [
   {
-    key: "USER", label: "Users",
-    icon: (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>),
-    bg: "#ede9fe", accent: "#6d28d9", lightBg: "#f5f3ff",
-    description: "User created, updated, deactivated",
+    key: null, label: "All Logs",
+    accent: "#475569", bg: "#f1f5f9", lightBg: "#f8fafc",
+    icon: (<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>),
+    entityKeys: [],
   },
   {
-    key: "DEPARTMENT", label: "Departments",
-    icon: (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>),
-    bg: "#d1fae5", accent: "#065f46", lightBg: "#ecfdf5",
-    description: "Dept created, settings changed",
+    key: "ADMINISTRATION", label: "Administration",
+    accent: "#6d28d9", bg: "#ede9fe", lightBg: "#f5f3ff",
+    icon: (<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>),
+    entityKeys: ["USER", "DEPARTMENT", "INSTITUTION", "ROLE", "COMMITTEE"],
   },
   {
-    key: "INSTITUTION", label: "Institutions",
-    icon: (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>),
-    bg: "#dbeafe", accent: "#1d4ed8", lightBg: "#eff6ff",
-    description: "Institution registered or updated",
+    key: "FORMS", label: "Forms",
+    accent: "#0e7490", bg: "#cffafe", lightBg: "#ecfeff",
+    icon: (<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>),
+    entityKeys: ["FORM", "FORM_DATA"],
   },
   {
-    key: "ROLE", label: "Roles",
-    icon: (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>),
-    bg: "#fef3c7", accent: "#d97706", lightBg: "#fffbeb",
-    description: "Role created, permissions changed, assigned/revoked",
+    key: "KPI", label: "KPI",
+    accent: "#059669", bg: "#d1fae5", lightBg: "#ecfdf5",
+    icon: (<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>),
+    entityKeys: ["KPI"],
   },
   {
-    key: "COMMITTEE", label: "Committees",
-    icon: (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>),
-    bg: "#fff1f2", accent: "#be123c", lightBg: "#fff1f2",
-    description: "Committee created, updated, activated/deactivated, deleted",
+    key: "SESSIONS", label: "Sessions",
+    accent: "#0369a1", bg: "#e0f2fe", lightBg: "#f0f9ff",
+    icon: (<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>),
+    entityKeys: ["SESSION"],
   },
-  // ── NEW ────────────────────────────────────────────────────────
-  {
-    key: "SESSION", label: "Sessions",
-    icon: (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>),
-    bg: "#e0f2fe", accent: "#0369a1", lightBg: "#f0f9ff",
-    description: "Logins, logouts, failed attempts, token events",
-  },
+];
+
+const ALL_ENTITY_CARDS = [
+  { key: "USER",        category: "ADMINISTRATION", label: "Users",        accent: "#6d28d9", bg: "#ede9fe", description: "User created, updated, deactivated" },
+  { key: "DEPARTMENT",  category: "ADMINISTRATION", label: "Departments",  accent: "#065f46", bg: "#d1fae5", description: "Dept created, settings changed" },
+  { key: "INSTITUTION", category: "ADMINISTRATION", label: "Institutions", accent: "#1d4ed8", bg: "#dbeafe", description: "Institution registered or updated" },
+  { key: "ROLE",        category: "ADMINISTRATION", label: "Roles",        accent: "#d97706", bg: "#fef3c7", description: "Role created, permissions changed" },
+  { key: "COMMITTEE",   category: "ADMINISTRATION", label: "Committees",   accent: "#be123c", bg: "#fff1f2", description: "Committee created, updated" },
+  { key: "FORM",        category: "FORMS",          label: "Form Config",  accent: "#0e7490", bg: "#cffafe", description: "Form created, updated, locked" },
+  { key: "FORM_DATA",   category: "FORMS",          label: "Form Data",    accent: "#7c3aed", bg: "#ede9fe", description: "Data added, updated, deleted, imported, exported" },
+  { key: "KPI",         category: "KPI",            label: "KPI",          accent: "#059669", bg: "#d1fae5", description: "KPI charts created" },
+  { key: "SESSION",     category: "SESSIONS",       label: "Sessions",     accent: "#0369a1", bg: "#e0f2fe", description: "Logins, logouts, failed attempts" },
 ];
 
 /* ═══════════════════════════════════════════════════════════════
@@ -100,6 +105,26 @@ const ACTION_META = {
   LOGOUT:                   { label: "Logout",              bg: "#f1f5f9", color: "#475569" },
   SESSION_TOKEN_REUSE:      { label: "Token Reuse",         bg: "#fef3c7", color: "#b45309" },
 
+  // ── Form Config ───────────────────────────────────────────────
+  CREATE_FORM:              { label: "Form Created",        bg: "#dcfce7", color: "#15803d" },
+  UPDATE_FORM:              { label: "Form Updated",        bg: "#dbeafe", color: "#1d4ed8" },
+  LOCK_FORM:                { label: "Form Locked",         bg: "#fef3c7", color: "#d97706" },
+  UNLOCK_FORM:              { label: "Form Unlocked",       bg: "#d1fae5", color: "#065f46" },
+  SET_FORM_DEADLINE:        { label: "Deadline Set",        bg: "#ede9fe", color: "#6d28d9" },
+  FORM_DEADLINE_UPDATED:    { label: "Deadline Updated",    bg: "#dbeafe", color: "#1d4ed8" },
+  REMOVE_FORM_DEADLINE:     { label: "Deadline Removed",    bg: "#fee2e2", color: "#b91c1c" },
+
+  // ── Form Data ─────────────────────────────────────────────────
+  FORM_DATA_CREATED:        { label: "Data Added",          bg: "#dcfce7", color: "#15803d" },
+  FORM_DATA_UPDATED:        { label: "Data Updated",        bg: "#dbeafe", color: "#1d4ed8" },
+  FORM_DATA_DELETED:        { label: "Data Deleted",        bg: "#fee2e2", color: "#b91c1c" },
+  FORM_DATA_BULK_DELETED:   { label: "Bulk Deleted",        bg: "#fee2e2", color: "#b91c1c" },
+  FORM_DATA_IMPORTED:       { label: "Data Imported",       bg: "#ede9fe", color: "#6d28d9" },
+  FORM_DATA_EXPORTED:       { label: "Data Exported",       bg: "#d1fae5", color: "#065f46" },
+
+  // ── KPI ───────────────────────────────────────────────────────
+  KPI_CREATED:              { label: "KPI Created",         bg: "#dcfce7", color: "#059669" },
+
   DEFAULT:                  { label: "Event",               bg: "#f1f5f9", color: "#64748b" },
 };
 
@@ -109,11 +134,14 @@ const TYPE_META = {
   INSTITUTION: { label: "Institution", bg: "#dbeafe", color: "#1d4ed8" },
   ROLE:        { label: "Role",        bg: "#fef3c7", color: "#d97706" },
   COMMITTEE:   { label: "Committee",   bg: "#fff1f2", color: "#be123c" },
-  // ── NEW ───────────────────────────────────────────────────────
   SESSION:     { label: "Session",     bg: "#e0f2fe", color: "#0369a1" },
+  FORM:        { label: "Form",        bg: "#cffafe", color: "#0e7490" },
+  FORM_DATA:   { label: "Form Data",   bg: "#f3e8ff", color: "#7c3aed" },
+  FORM_LOCK:   { label: "Form Lock",   bg: "#fef3c7", color: "#d97706" },
+  KPI:         { label: "KPI",         bg: "#d1fae5", color: "#059669" },
 };
 
-const ENTITY_ICON = { USER: User, DEPARTMENT: Building, INSTITUTION: Landmark, ROLE: Shield, COMMITTEE: FileText, SESSION: Lock };
+const ENTITY_ICON = { USER: User, DEPARTMENT: Building, INSTITUTION: Landmark, ROLE: Shield, COMMITTEE: FileText, SESSION: Lock, FORM: FileText, FORM_DATA: FileText, FORM_LOCK: Lock, KPI: FileText };
 
 /* ═══════════════════════════════════════════════════════════════
    BROWSER GLYPH
@@ -796,18 +824,19 @@ export default function AuditLogsPage() {
   const { lang } = useLanguage();
   const { accessToken } = useAuth();
 
-  const [activeCard,      setActiveCard]  = useState(null);
-  const [logs,            setLogs]        = useState([]);
-  const [summary,         setSummary]     = useState({});
-  const [search,          setSearch]      = useState("");
-  const [debouncedSearch, setDebounced]   = useState("");
-  const [page,            setPage]        = useState(1);
-  const [totalPages,      setTotalPages]  = useState(1);
-  const [total,           setTotal]       = useState(0);
-  const [loading,         setLoading]     = useState(false);
-  const [expanded,        setExpanded]    = useState(null);
-  const [error,           setError]       = useState(null);
-  const LIMIT = 15;
+  const [activeCategory,  setActiveCategory] = useState(null);
+  const [activeCard,      setActiveCard]     = useState(null);
+  const [logs,            setLogs]           = useState([]);
+  const [summary,         setSummary]        = useState({});
+  const [search,          setSearch]         = useState("");
+  const [debouncedSearch, setDebounced]      = useState("");
+  const [page,            setPage]           = useState(1);
+  const [totalPages,      setTotalPages]     = useState(1);
+  const [total,           setTotal]          = useState(0);
+  const [loading,         setLoading]        = useState(false);
+  const [expanded,        setExpanded]       = useState(null);
+  const [error,           setError]          = useState(null);
+  const LIMIT = 50;
 
   const authHeaders = useCallback(() => ({
     "Content-Type": "application/json",
@@ -819,7 +848,7 @@ export default function AuditLogsPage() {
     return () => clearTimeout(timer);
   }, [search]);
 
-  useEffect(() => { setPage(1); setExpanded(null); }, [activeCard, debouncedSearch]);
+  useEffect(() => { setPage(1); setExpanded(null); }, [activeCategory, activeCard, debouncedSearch]);
 
   useEffect(() => {
     if (!accessToken) return;
@@ -832,7 +861,12 @@ export default function AuditLogsPage() {
     setLoading(true); setError(null);
     try {
       const params = new URLSearchParams({ page, limit: LIMIT });
-      if (activeCard)      params.set("entity_type", activeCard);
+      if (activeCard) {
+        params.set("entity_type", activeCard);
+      } else if (activeCategory !== null) {
+        const catEntities = ALL_ENTITY_CARDS.filter((e) => e.category === activeCategory);
+        if (catEntities.length > 0) params.set("entity_types", catEntities.map((e) => e.key).join(","));
+      }
       if (debouncedSearch) params.set("search", debouncedSearch);
       const res = await fetch(`${BASE_URL}/audit-logs?${params}`, { credentials: "include", headers: authHeaders() });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -840,11 +874,17 @@ export default function AuditLogsPage() {
       if (result.success) { setLogs(result.data); setTotalPages(result.pagination.totalPages); setTotal(result.pagination.total); }
     } catch (e) { setError(e.message); }
     finally { setLoading(false); }
-  }, [accessToken, activeCard, debouncedSearch, page, authHeaders]);
+  }, [accessToken, activeCategory, activeCard, debouncedSearch, page, authHeaders]);
 
   useEffect(() => { loadLogs(); }, [loadLogs]);
 
-  const activeCardMeta = ENTITY_CARDS.find((c) => c.key === activeCard);
+  const activeCategoryMeta  = CATEGORY_GROUPS.find((c) => c.key === activeCategory) || CATEGORY_GROUPS[0];
+  const activeCardMeta      = ALL_ENTITY_CARDS.find((c) => c.key === activeCard);
+  const visibleEntityCards  = activeCategory === null
+    ? ALL_ENTITY_CARDS
+    : ALL_ENTITY_CARDS.filter((e) => e.category === activeCategory);
+
+  const totalEvents = Object.values(summary).reduce((s, n) => s + (Number(n) || 0), 0);
 
   return (
     <div style={{ padding: "32px 36px", fontFamily: "'Plus Jakarta Sans', sans-serif", maxWidth: 1200 }}>
@@ -853,32 +893,97 @@ export default function AuditLogsPage() {
       <PageHeader
         breadcrumb={[t("Home", lang), t("Audit", lang), t("Logs", lang)]}
         title={t("Audit Logs", lang)}
-        description="Click a card to filter by entity. Full history of system events and user actions."
+        description="Filter by category or entity type. Full history of system events and user actions."
       />
 
-      {/* Entity cards — single row, 6 equal columns */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 10, marginBottom: 24 }}>
-        {ENTITY_CARDS.map((card) => {
-          const count    = summary[card.key.toLowerCase()] ?? "—";
-          const isActive = activeCard === card.key;
-          return (
-            <button key={card.key} onClick={() => setActiveCard((p) => (p === card.key ? null : card.key))}
-              style={{ display: "flex", flexDirection: "column", gap: 8, padding: "14px 16px", borderRadius: 12, border: `2px solid ${isActive ? card.accent : "#e2e8f0"}`, background: isActive ? card.bg : "#fff", cursor: "pointer", textAlign: "left", outline: "none", transition: "all 0.18s ease", boxShadow: isActive ? `0 4px 14px ${card.accent}22` : "0 1px 3px rgba(0,0,0,0.05)", transform: isActive ? "translateY(-2px)" : "none", minWidth: 0 }}
-            >
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <div style={{ width: 34, height: 34, borderRadius: 9, background: isActive ? card.accent : card.lightBg, color: isActive ? "#fff" : card.accent, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                  {/* scale icon down */}
-                  <span style={{ transform: "scale(0.85)", display: "flex" }}>{card.icon}</span>
-                </div>
-                <span style={{ fontSize: 22, fontWeight: 700, color: isActive ? card.accent : "#1e293b", lineHeight: 1 }}>{count}</span>
-              </div>
-              <div>
-                <div style={{ fontSize: 13, fontWeight: 700, color: isActive ? card.accent : "#1e293b", marginBottom: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{card.label}</div>
-                <div style={{ fontSize: 11, color: "#94a3b8", lineHeight: 1.4, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{card.description}</div>
-              </div>
-            </button>
-          );
-        })}
+      {/* ── Category Tabs ────────────────────────────────────────── */}
+      <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, padding: "16px 20px", marginBottom: 16, boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
+        {/* Tab row */}
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: visibleEntityCards.length > 0 ? 14 : 0 }}>
+          {CATEGORY_GROUPS.map((cat) => {
+            const isActive = activeCategory === cat.key;
+            const catCount = cat.key === null
+              ? totalEvents
+              : ALL_ENTITY_CARDS
+                  .filter((e) => e.category === cat.key)
+                  .reduce((s, e) => s + (Number(summary[e.key.toLowerCase()]) || 0), 0);
+            return (
+              <button
+                key={String(cat.key)}
+                onClick={() => {
+                  const newCat = activeCategory === cat.key ? null : cat.key;
+                  setActiveCategory(newCat);
+                  // clear entity chip if it doesn't belong to new category
+                  if (activeCard && newCat !== null) {
+                    const belongs = ALL_ENTITY_CARDS.find((e) => e.key === activeCard)?.category === newCat;
+                    if (!belongs) setActiveCard(null);
+                  }
+                }}
+                style={{
+                  display: "flex", alignItems: "center", gap: 6,
+                  padding: "7px 14px", borderRadius: 10,
+                  border: `1.5px solid ${isActive ? cat.accent : "#e2e8f0"}`,
+                  background: isActive ? cat.bg : "#f8fafc",
+                  color: isActive ? cat.accent : "#64748b",
+                  fontSize: 13, fontWeight: isActive ? 700 : 500,
+                  cursor: "pointer", fontFamily: "inherit",
+                  transition: "all 0.15s ease",
+                  boxShadow: isActive ? `0 2px 8px ${cat.accent}22` : "none",
+                  outline: "none",
+                }}>
+                <span style={{ display: "flex", color: isActive ? cat.accent : "#94a3b8" }}>{cat.icon}</span>
+                <span>{cat.label}</span>
+                {catCount > 0 && (
+                  <span style={{
+                    padding: "1px 7px", borderRadius: 10,
+                    fontSize: 11, fontWeight: 700,
+                    background: isActive ? cat.accent : "#e2e8f0",
+                    color: isActive ? "#fff" : "#64748b",
+                  }}>{catCount.toLocaleString()}</span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Entity chips — only shown when there are chips to display */}
+        {visibleEntityCards.length > 0 && (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 7, paddingTop: 12, borderTop: "1px solid #f1f5f9" }}>
+            {visibleEntityCards.map((entity) => {
+              const isSelected = activeCard === entity.key;
+              const count = Number(summary[entity.key.toLowerCase()]) || 0;
+              return (
+                <button
+                  key={entity.key}
+                  onClick={() => setActiveCard(isSelected ? null : entity.key)}
+                  title={entity.description}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 6,
+                    padding: "5px 13px", borderRadius: 20,
+                    border: `1.5px solid ${isSelected ? entity.accent : "#e2e8f0"}`,
+                    background: isSelected ? entity.bg : "#fff",
+                    color: isSelected ? entity.accent : "#64748b",
+                    fontSize: 12, fontWeight: isSelected ? 700 : 500,
+                    cursor: "pointer", fontFamily: "inherit",
+                    transition: "all 0.12s ease",
+                    boxShadow: isSelected ? `0 2px 6px ${entity.accent}22` : "none",
+                    outline: "none",
+                  }}>
+                  <span style={{ width: 7, height: 7, borderRadius: "50%", background: entity.accent, display: "inline-block", opacity: isSelected ? 1 : 0.45, flexShrink: 0 }} />
+                  {entity.label}
+                  {count > 0 && (
+                    <span style={{
+                      padding: "0 6px", borderRadius: 10,
+                      fontSize: 10.5, fontWeight: 700,
+                      background: isSelected ? entity.accent : "#f1f5f9",
+                      color: isSelected ? "#fff" : "#94a3b8",
+                    }}>{count.toLocaleString()}</span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Search */}
@@ -888,13 +993,13 @@ export default function AuditLogsPage() {
             <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
           </svg>
           <input
-            placeholder={activeCard ? `Search ${activeCardMeta?.label} logs…` : "Search action, message, IP, browser, or actor…"}
+            placeholder={activeCard ? `Search ${activeCardMeta?.label} logs…` : activeCategory ? `Search ${activeCategoryMeta?.label} logs…` : "Search action, message, IP, browser, or actor…"}
             value={search} onChange={(e) => setSearch(e.target.value)}
             style={{ width: "100%", padding: "10px 14px 10px 38px", border: "1.5px solid #e2e8f0", borderRadius: 10, fontSize: 13, outline: "none", boxSizing: "border-box", fontFamily: "inherit" }}
           />
         </div>
-        {(activeCard || search) && (
-          <button onClick={() => { setActiveCard(null); setSearch(""); }}
+        {(activeCard || activeCategory || search) && (
+          <button onClick={() => { setActiveCard(null); setActiveCategory(null); setSearch(""); }}
             style={{ padding: "10px 16px", border: "1.5px solid #e2e8f0", borderRadius: 10, background: "#fff", cursor: "pointer", fontSize: 13, color: "#64748b", fontFamily: "inherit", whiteSpace: "nowrap" }}>
             {t("Clear filters", lang)}
           </button>

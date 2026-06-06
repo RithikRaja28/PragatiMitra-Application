@@ -3,6 +3,7 @@
 const express = require("express");
 const { verifyToken } = require("../middleware/auth");
 const logger = require("../utils/logger");
+const { writeAuditLog } = require("../utils/audit");
 const { translateRow, resolveTranslationMode, enrichSchemaLabels } = require("../services/translationService");
 
 const router = express.Router();
@@ -324,6 +325,14 @@ router.post("/:formName/records", async (req, res) => {
     );
     const enRow = rows[0];
 
+    await writeAuditLog(req, {
+      actionType: "FORM_DATA_CREATED",
+      entityType: "form_data",
+      entityId: enRow.id,
+      newValue: { form_name: formName, institution_id: ctx.institutionId, department_id: ctx.departmentId },
+      message: `Form Data Added - "${formName}"`,
+    });
+
     // Only auto-generate a Hindi row for English submissions AND when this
     // form has the Hindi translation toggle enabled. When disabled we store
     // only the English row — no translation/transliteration API call is made.
@@ -423,6 +432,14 @@ router.put("/:formName/records/:id", async (req, res) => {
     if (!rows.length)
       return res.status(404).json({ success: false, message: "Record not found." });
 
+    await writeAuditLog(req, {
+      actionType: "FORM_DATA_UPDATED",
+      entityType: "form_data",
+      entityId: id,
+      newValue: { form_name: formName, institution_id: ctx.institutionId },
+      message: `Form Data Updated - "${formName}"`,
+    });
+
     // Asynchronously update the linked Hindi row — ONLY when an English row was
     // edited AND this form has Hindi translation enabled. When a Hindi row is
     // edited directly (editedLanguage === "hi") the UPDATE above already saved
@@ -513,6 +530,16 @@ router.delete("/:formName/records/bulk-delete", async (req, res) => {
     const deleted = rowCount ?? 0;
     const failed  = ids.length - deleted;
 
+    if (deleted > 0) {
+      await writeAuditLog(req, {
+        actionType: "FORM_DATA_BULK_DELETED",
+        entityType: "form_data",
+        entityId: null,
+        newValue: { form_name: formName, institution_id: ctx.institutionId, deleted_count: deleted, requested_count: ids.length },
+        message: `Form Data Deleted - "${formName}" (${deleted} record${deleted !== 1 ? "s" : ""})`,
+      });
+    }
+
     logger.info(`Bulk delete ${formName}: ${deleted} deleted, ${failed} not matched`, {
       institutionId: ctx.institutionId,
       departmentId:  ctx.departmentId,
@@ -572,6 +599,14 @@ router.delete("/:formName/records/:id", async (req, res) => {
 
     if (!rowCount)
       return res.status(404).json({ success: false, message: "Record not found." });
+
+    await writeAuditLog(req, {
+      actionType: "FORM_DATA_DELETED",
+      entityType: "form_data",
+      entityId: id,
+      newValue: { form_name: formName, institution_id: ctx.institutionId },
+      message: `Form Data Deleted - "${formName}"`,
+    });
 
     return res.json({ success: true, message: "Record deleted successfully." });
   } catch (err) {
