@@ -14,6 +14,7 @@
 const express         = require("express");
 const router          = express.Router();
 const { verifyToken } = require("../middleware/auth");
+const { writeAuditLog } = require("../utils/audit");
 
 router.use((req, _res, next) => { req.pool = req.app.locals.pool; next(); });
 router.use(verifyToken);
@@ -368,6 +369,21 @@ router.post("/configs", async (req, res) => {
     );
     const savedRow   = rows[0];
     const queryResult = await runConfigQuery(req.pool, savedRow);
+
+    await writeAuditLog(req, {
+      actionType: "KPI_CREATED",
+      entityType: "kpi",
+      entityId: String(savedRow.id), // SERIAL int — stored in metadata.entity_ref by audit utility
+      newValue: {
+        title:         savedRow.title,
+        scope:         savedRow.scope,
+        table_name:    savedRow.table_name,
+        institute_id:  savedRow.institute_id,
+        department_id: savedRow.department_id,
+      },
+      message: `KPI Created - "${savedRow.title}"`,
+    });
+
     res.status(201).json({ ok: true, data: savedRow, query_result: queryResult, updated: false });
 
   } catch (err) {

@@ -512,6 +512,7 @@ router.post(
           entityType: "form",
           entityId: schemaId,
           newValue: { form_name: normalizedName, records_table: recordsTable, share_table, institution_id: institutionId },
+          message: `Form Created - "${normalizedName}"`,
         });
 
         return res.json({
@@ -750,6 +751,14 @@ router.put(
 
         await client.query("COMMIT");
 
+        await writeAuditLog(req, {
+          actionType: "UPDATE_FORM",
+          entityType: "form",
+          entityId: sRows[0].id,
+          newValue: { form_name: formName, year: formYear, institution_id: institutionId },
+          message: `Form Updated - "${formName}"`,
+        });
+
         return res.json({
           success: true,
           message: "Schema updated successfully.",
@@ -957,8 +966,14 @@ router.put(
         return res.status(400).json({ success: false, message: "Institution ID required." });
       }
 
-      // Academic-year lock — block deadline changes when the year is locked.
-      const ayLock = await ayLockGuard(pool, req, institutionId);
+      // Read the current deadline so we can log SET vs UPDATE correctly.
+      const { rows: existingDeadlineRows } = await pool.query(
+        `SELECT deadline_at FROM form_lock_config WHERE form_name = $1 AND institution_id = $2`,
+        [formName, institutionId]
+      );
+      const previousDeadline = existingDeadlineRows[0]?.deadline_at ?? null;
+
+         const ayLock = await ayLockGuard(pool, req, institutionId);
       if (ayLock.locked)
         return res.status(403).json({ success: false, message: ayLock.message });
 
@@ -983,11 +998,23 @@ router.put(
         [formName, institutionId, newDeadline]
       );
 
+      const deadlineActionType = !newDeadline
+        ? "REMOVE_FORM_DEADLINE"
+        : !previousDeadline
+          ? "SET_FORM_DEADLINE"
+          : "FORM_DEADLINE_UPDATED";
+
       await writeAuditLog(req, {
-        actionType: newDeadline ? "SET_FORM_DEADLINE" : "REMOVE_FORM_DEADLINE",
+        actionType: deadlineActionType,
         entityType: "form_lock",
         entityId: null,
+        oldValue: { form_name: formName, institution_id: institutionId, deadline_at: previousDeadline },
         newValue: { form_name: formName, institution_id: institutionId, deadline_at: newDeadline },
+        message: !newDeadline
+          ? `Form Deadline Removed - "${formName}"`
+          : !previousDeadline
+            ? `Form Deadline Set - "${formName}" | Deadline: ${new Date(newDeadline).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}`
+            : `Form Deadline Updated - "${formName}" | New Deadline: ${new Date(newDeadline).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}`,
       });
 
       return res.json({
@@ -1036,6 +1063,7 @@ router.post(
         entityType: "form_lock",
         entityId: rows[0].id,
         newValue: { form_name: formName, institution_id: institutionId, is_locked: true },
+        message: `Form Locked - "${formName}"`,
       });
 
       return res.json({ success: true, message: `Form "${formName}" locked.`, lock: rows[0] });
@@ -1080,6 +1108,7 @@ router.post(
         entityType: "form_lock",
         entityId: rows[0].id,
         newValue: { form_name: formName, institution_id: institutionId, is_locked: false },
+        message: `Form Unlocked - "${formName}"`,
       });
 
       return res.json({ success: true, message: `Form "${formName}" unlocked.`, lock: rows[0] });

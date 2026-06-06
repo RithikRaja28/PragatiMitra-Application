@@ -138,6 +138,12 @@ pool
   .query(`ALTER TABLE table_list ADD COLUMN IF NOT EXISTS translate_to_hindi BOOLEAN NOT NULL DEFAULT TRUE`)
   .catch((e) => logger.error("Failed to ensure table_list.translate_to_hindi column", { stack: e.stack }));
 
+/* ── audit_logs: ensure columns added after initial table creation ── */
+pool.query(`ALTER TABLE public.audit_logs ADD COLUMN IF NOT EXISTS browser_name VARCHAR(50)`)
+  .catch((e) => logger.error("Failed to ensure audit_logs.browser_name column", { stack: e.stack }));
+pool.query(`ALTER TABLE public.audit_logs ADD COLUMN IF NOT EXISTS session_id UUID`)
+  .catch((e) => logger.error("Failed to ensure audit_logs.session_id column", { stack: e.stack }));
+
 /* ── Form deadline auto-lock: ensure columns, then start periodic checker ── */
 const { ensureDeadlineColumns, startDeadlineScheduler } = require("./services/formDeadlineService");
 ensureDeadlineColumns(pool)
