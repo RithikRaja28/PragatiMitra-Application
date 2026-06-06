@@ -1,8 +1,9 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import {
   CalendarRange, Plus, Check, Archive, ArchiveRestore, Ban,
   Lock, Unlock, History, X, ChevronRight, Loader2, CheckCircle2, RefreshCw,
+  Search, Mail,
 } from "lucide-react";
 import { useApi } from "../../../hooks/useApi";
 import { useAcademicYear } from "../../../store/AcademicYearContext";
@@ -211,7 +212,13 @@ export default function AcademicYearPage() {
 
   return (
     <div style={{ fontFamily: "var(--sh-font, 'Plus Jakarta Sans', sans-serif)", color: "#1e293b", maxWidth: 1080 }}>
-      <style>{`@keyframes ay-spin { to { transform: rotate(360deg) } }`}</style>
+      <style>{`
+        @keyframes ay-spin { to { transform: rotate(360deg) } }
+        .ay-scroll { scrollbar-width: thin; scrollbar-color: #cbd5e1 transparent; }
+        .ay-scroll::-webkit-scrollbar { width: 8px; }
+        .ay-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 8px; }
+        .ay-scroll::-webkit-scrollbar-track { background: transparent; }
+      `}</style>
       {toast && <Toast message={toast.message} type={toast.type} />}
 
       {/* Header */}
@@ -473,18 +480,35 @@ function ConfirmModal({ kind, year, onCancel, onConfirm }) {
 }
 
 /* ════════════════════════════════════════════════════════════════════
-   CreateYearWizard — Step 1: pick start year · Step 2: review prev-year forms
+   CreateYearWizard — 3 steps:
+     1) Scrollable / searchable start-year picker (2000–2055) + live preview
+     2) Carry-forward review (previous-year forms → active / archived)
+     3) Review & confirm
 ════════════════════════════════════════════════════════════════════ */
+const FIRST_YEAR = 2000;
+const LAST_YEAR  = 2055;
+const ALL_YEARS  = Array.from({ length: LAST_YEAR - FIRST_YEAR + 1 }, (_, i) => FIRST_YEAR + i);
+
 function CreateYearWizard({ apiFetch, onClose, onCreated, onError }) {
   const thisYear = new Date().getFullYear();
-  const YEAR_OPTIONS = Array.from({ length: 7 }, (_, i) => thisYear - 3 + i);
 
-  const [step, setStep]           = useState(1);
-  const [startYear, setStartYear] = useState(thisYear);
-  const [preview, setPreview]     = useState(null);
-  const [checked, setChecked]     = useState(() => new Set());   // form ids → active in new year
-  const [loading, setLoading]     = useState(false);
-  const [saving, setSaving]       = useState(false);
+  const [step, setStep]             = useState(1);
+  const [startYear, setStartYear]   = useState(thisYear);
+  const [yearSearch, setYearSearch] = useState("");
+  const [preview, setPreview]       = useState(null);
+  const [checked, setChecked]       = useState(() => new Set());   // form ids → active in new year
+  const [loading, setLoading]       = useState(false);
+  const [saving, setSaving]         = useState(false);
+
+  const selRef  = useRef(null);
+  const listRef = useRef(null);
+
+  // Scroll the selected year into view when the picker first renders.
+  useEffect(() => {
+    if (step === 1 && selRef.current && listRef.current) {
+      selRef.current.scrollIntoView({ block: "center" });
+    }
+  }, [step]);
 
   async function goReview() {
     setLoading(true);
@@ -527,39 +551,100 @@ function CreateYearWizard({ apiFetch, onClose, onCreated, onError }) {
     }
   }
 
-  const allForms = preview ? [...preview.previouslyActive, ...preview.previouslyArchived] : [];
+  const allForms      = preview ? [...preview.previouslyActive, ...preview.previouslyArchived] : [];
+  const activeCount   = allForms.filter((f) => checked.has(f.id)).length;
+  const archivedCount = allForms.length - activeCount;
+
+  const q = yearSearch.trim();
+  const filteredYears = q
+    ? ALL_YEARS.filter((y) => String(y).includes(q) || `${y}-${y + 1}`.includes(q) || `${y}–${y + 1}`.includes(q))
+    : ALL_YEARS;
+
+  const subtitle = step === 1
+    ? "Select the start year — the label is generated automatically."
+    : step === 2
+      ? `Choose which forms carry over into ${preview?.academicYear}.`
+      : `Confirm the details for ${preview?.academicYear}.`;
 
   return createPortal(
     <div style={{ position: "fixed", inset: 0, zIndex: 10000, background: "rgba(15,23,42,0.55)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }} onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 620, maxHeight: "90vh", display: "flex", flexDirection: "column", boxShadow: "0 24px 64px rgba(0,0,0,0.22)", overflow: "hidden" }} onClick={(e) => e.stopPropagation()}>
-        <div style={{ padding: "18px 22px", borderBottom: "1px solid #f1f5f9", display: "flex", alignItems: "center", justifyContent: "space-between", background: "#fafafa" }}>
-          <div>
-            <div style={{ fontSize: 15, fontWeight: 800 }}>Create New Academic Year</div>
-            <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 2 }}>
-              {step === 1 ? "Select the start year — the label is generated automatically." : `Review forms carried over into ${preview?.academicYear}`}
+      <div style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 660, maxHeight: "90vh", display: "flex", flexDirection: "column", boxShadow: "0 24px 64px rgba(0,0,0,0.22)", overflow: "hidden", fontFamily: "var(--sh-font, 'Plus Jakarta Sans', sans-serif)" }} onClick={(e) => e.stopPropagation()}>
+        {/* Header + slim step rail */}
+        <div style={{ padding: "18px 22px 16px", borderBottom: "1px solid #f1f5f9", background: "#fafafa" }}>
+          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
+            <div>
+              <div style={{ fontSize: 16, fontWeight: 800, color: "#1e293b" }}>Create New Academic Year</div>
+              <div style={{ fontSize: 12.5, color: "#94a3b8", marginTop: 3 }}>{subtitle}</div>
             </div>
+            <button onClick={onClose} aria-label="Close" style={{ background: "none", border: "none", color: "#94a3b8", cursor: "pointer", lineHeight: 1 }}><X size={20} /></button>
           </div>
-          <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 20, color: "#94a3b8", cursor: "pointer", lineHeight: 1 }}><X size={20} /></button>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 14 }}>
+            {["Start Year", "Carry Forward", "Review"].map((lbl, i) => {
+              const idx = i + 1, done = idx < step, active = idx === step;
+              return (
+                <div key={lbl} style={{ display: "flex", alignItems: "center", gap: 6, flex: i < 2 ? 1 : "0 0 auto" }}>
+                  <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 20, height: 20, borderRadius: "50%", fontSize: 10.5, fontWeight: 800, flexShrink: 0,
+                    background: done ? ACCENT : active ? ACCENT : "#e2e8f0", color: done || active ? "#fff" : "#94a3b8" }}>
+                    {done ? <Check size={11} strokeWidth={3} /> : idx}
+                  </span>
+                  <span style={{ fontSize: 11.5, fontWeight: active ? 700 : 600, color: active ? ACCENT : done ? "#475569" : "#94a3b8", whiteSpace: "nowrap" }}>{lbl}</span>
+                  {i < 2 && <span style={{ flex: 1, height: 2, background: done ? ACCENT : "#e2e8f0", borderRadius: 2, minWidth: 16 }} />}
+                </div>
+              );
+            })}
+          </div>
         </div>
 
         <div style={{ padding: "20px 22px", overflowY: "auto", flex: 1 }}>
-          {step === 1 ? (
-            <div>
-              <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#475569", marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.4 }}>Start Year</label>
-              <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
-                <select value={startYear} onChange={(e) => setStartYear(Number(e.target.value))}
-                  style={{ height: 44, padding: "0 16px", fontSize: 15, fontWeight: 700, border: "1.5px solid #cbd5e1", borderRadius: 10, color: "#1e293b", background: "#fff", cursor: "pointer", minWidth: 120 }}>
-                  {YEAR_OPTIONS.map((y) => <option key={y} value={y}>{y}</option>)}
-                </select>
-                <ChevronRight size={18} color="#94a3b8" />
-                <div style={{ fontSize: 22, fontWeight: 800, color: ACCENT }}>{startYear}–{startYear + 1}</div>
+          {/* ── Step 1: scrollable year picker ── */}
+          {step === 1 && (
+            <div style={{ display: "flex", gap: 16, flexWrap: "wrap", alignItems: "stretch" }}>
+              <div style={{ flex: "1 1 280px", minWidth: 240 }}>
+                <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#475569", marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.4 }}>Select Start Year</label>
+                <div style={{ position: "relative", marginBottom: 10 }}>
+                  <Search size={15} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "#94a3b8" }} />
+                  <input
+                    value={yearSearch}
+                    onChange={(e) => setYearSearch(e.target.value.replace(/[^0-9]/g, ""))}
+                    placeholder="Search year, e.g. 2030"
+                    inputMode="numeric"
+                    style={{ width: "100%", height: 42, padding: "0 14px 0 36px", border: "1.5px solid #cbd5e1", borderRadius: 10, fontSize: 14, outline: "none", boxSizing: "border-box", color: "#1e293b" }}
+                  />
+                </div>
+                <div ref={listRef} className="ay-scroll" style={{ maxHeight: 252, overflowY: "auto", border: "1px solid #e2e8f0", borderRadius: 12, padding: 8, display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6, background: "#fff" }}>
+                  {filteredYears.length === 0 ? (
+                    <div style={{ gridColumn: "1 / -1", textAlign: "center", color: "#94a3b8", fontSize: 12.5, padding: "20px 0" }}>No year matches “{q}”.</div>
+                  ) : filteredYears.map((y) => {
+                    const sel = y === startYear;
+                    return (
+                      <button key={y} ref={sel ? selRef : null} onClick={() => setStartYear(y)} style={{
+                        padding: "9px 0", borderRadius: 8, border: `1.5px solid ${sel ? ACCENT : "#e2e8f0"}`,
+                        background: sel ? ACCENT : "#fff", color: sel ? "#fff" : "#475569",
+                        fontSize: 13.5, fontWeight: 700, cursor: "pointer", transition: "all .12s",
+                      }}>
+                        {y}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-              <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 14, lineHeight: 1.6 }}>
-                The previous year’s forms will be loaded for review. Forms you keep checked become <strong style={{ color: "#16a34a" }}>Active</strong>; unchecked forms become <strong style={{ color: "#64748b" }}>Archived</strong>.
+              <div style={{ flex: "1 1 220px", minWidth: 200, background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 12, padding: 22, display: "flex", flexDirection: "column", justifyContent: "center", gap: 10 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.5 }}>New Academic Year</div>
+                <div style={{ fontSize: 34, fontWeight: 800, color: ACCENT, letterSpacing: -0.5 }}>{startYear}–{startYear + 1}</div>
+                <div style={{ fontSize: 12.5, color: "#64748b", lineHeight: 1.6 }}>
+                  The label is generated from the start year. The previous year’s forms load next for carry-forward.
+                </div>
               </div>
             </div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+          )}
+
+          {/* ── Step 2: carry forward ── */}
+          {step === 2 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <CountCard color="#16a34a" bg="#f0fdf4" label="Will be Active" value={activeCount} />
+                <CountCard color="#64748b" bg="#f1f5f9" label="Will be Archived" value={archivedCount} />
+              </div>
               {preview.previousYear && (
                 <div style={{ fontSize: 12, color: "#64748b" }}>Carried over from <strong>{preview.previousYear}</strong>.</div>
               )}
@@ -568,10 +653,8 @@ function CreateYearWizard({ apiFetch, onClose, onCreated, onError }) {
                   {preview.academicYear} already exists — saving will update its form classification.
                 </div>
               )}
-
               <FormChecklist title="Previously Active" subtitle="Checked → active in new year" forms={preview.previouslyActive} checked={checked} toggle={toggle} />
               <FormChecklist title="Previously Archived" subtitle="Check to activate in new year" forms={preview.previouslyArchived} checked={checked} toggle={toggle} />
-
               {allForms.length === 0 && (
                 <div style={{ fontSize: 13, color: "#94a3b8", textAlign: "center", padding: "12px 0" }}>
                   No accessible forms found for your institution.
@@ -579,15 +662,32 @@ function CreateYearWizard({ apiFetch, onClose, onCreated, onError }) {
               )}
             </div>
           )}
+
+          {/* ── Step 3: review ── */}
+          {step === 3 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 0, border: "1px solid #f1f5f9", borderRadius: 12, overflow: "hidden" }}>
+              <ReviewRow label="New Academic Year" value={`${startYear}–${startYear + 1}`} strong />
+              <ReviewRow label="Forms Active" value={`${activeCount} form${activeCount !== 1 ? "s" : ""}`} />
+              <ReviewRow label="Forms Archived" value={`${archivedCount} form${archivedCount !== 1 ? "s" : ""}`} />
+              <ReviewRow label="Current Year" value="Yes — set as the current academic year" />
+              <ReviewRow label="Submission Lock" value="Open (unlocked)" />
+              <ReviewRow label="Notifications" value="Department admins & nodal officers are emailed on activation" icon={<Mail size={14} color="#94a3b8" />} last />
+            </div>
+          )}
         </div>
 
+        {/* Footer */}
         <div style={{ padding: "14px 22px", borderTop: "1px solid #f1f5f9", display: "flex", justifyContent: "space-between", alignItems: "center", background: "#fafafa" }}>
-          <div>{step === 2 && <button onClick={() => setStep(1)} style={ghostBtn}>← Back</button>}</div>
+          <div>{step > 1 && <button onClick={() => setStep(step - 1)} style={ghostBtn}>← Back</button>}</div>
           <div style={{ display: "flex", gap: 10 }}>
             <button onClick={onClose} style={ghostBtn}>Cancel</button>
-            {step === 1 ? (
+            {step === 1 && (
               <button onClick={goReview} disabled={loading} style={primaryBtn(loading)}>{loading ? "Loading…" : "Next →"}</button>
-            ) : (
+            )}
+            {step === 2 && (
+              <button onClick={() => setStep(3)} style={primaryBtn(false)}>Review →</button>
+            )}
+            {step === 3 && (
               <button onClick={save} disabled={saving} style={primaryBtn(saving)}>
                 {saving ? "Creating…" : `Create ${preview?.academicYear}`}
               </button>
@@ -597,6 +697,24 @@ function CreateYearWizard({ apiFetch, onClose, onCreated, onError }) {
       </div>
     </div>,
     document.body
+  );
+}
+
+function CountCard({ color, bg, label, value }) {
+  return (
+    <div style={{ flex: "1 1 140px", display: "flex", alignItems: "center", gap: 12, background: bg, border: `1px solid ${color}22`, borderRadius: 12, padding: "12px 16px" }}>
+      <div style={{ fontSize: 24, fontWeight: 800, color, letterSpacing: -0.5, minWidth: 28 }}>{value}</div>
+      <div style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>{label}</div>
+    </div>
+  );
+}
+
+function ReviewRow({ label, value, strong, icon, last }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "13px 16px", borderBottom: last ? "none" : "1px solid #f1f5f9", background: "#fff" }}>
+      <span style={{ fontSize: 12, fontWeight: 600, color: "#94a3b8", minWidth: 150, display: "flex", alignItems: "center", gap: 7 }}>{icon}{label}</span>
+      <span style={{ fontSize: strong ? 15 : 13, fontWeight: strong ? 800 : 600, color: strong ? ACCENT : "#1e293b" }}>{value}</span>
+    </div>
   );
 }
 

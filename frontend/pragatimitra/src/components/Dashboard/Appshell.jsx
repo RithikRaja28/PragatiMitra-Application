@@ -464,6 +464,17 @@ const CSS = `
   .sh-ay-opt:hover { background: #f8fafc; color: #1e293b; }
   .sh-ay-opt.sel { color: #2563eb; font-weight: 700; background: rgba(37,99,235,0.05); }
   .sh-ay-check { color: #2563eb; flex-shrink: 0; }
+  .sh-ay-search { padding: 8px 10px; border-bottom: 1px solid #f1f5f9; }
+  .sh-ay-search input {
+    width: 100%; height: 32px; border: 1px solid #e2e8f0; border-radius: 8px;
+    padding: 0 10px; font-size: 12.5px; font-family: var(--sh-font);
+    outline: none; color: #1e293b; box-sizing: border-box;
+  }
+  .sh-ay-search input:focus { border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37,99,235,0.12); }
+  .sh-ay-list { max-height: 240px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #cbd5e1 transparent; }
+  .sh-ay-list::-webkit-scrollbar { width: 7px; }
+  .sh-ay-list::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 7px; }
+  .sh-ay-empty { padding: 14px; text-align: center; color: #94a3b8; font-size: 12px; }
 
   /* ── Global form-field focus (unified blue accent) ── */
   .sh-content input:not([type="checkbox"]):not([type="radio"]):focus,
@@ -531,6 +542,7 @@ function injectCSS(id, css) {
    session-persisted). Selecting a year drives form creation + visibility. */
 function AcademicYearPicker() {
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
   const wrapRef = useRef(null);
 
   const ay = useAcademicYear();
@@ -541,6 +553,13 @@ function AcademicYearPicker() {
     options.find((o) => o.value === selected)?.label ??
     (selected != null ? `${selected}–${selected + 1}` : "—");
 
+  // Show the search box only when the list is long enough to benefit from it.
+  const showSearch = options.length > 6;
+  const q = query.trim().toLowerCase();
+  const filtered = q
+    ? options.filter((o) => String(o.label).toLowerCase().includes(q) || String(o.value).includes(q))
+    : options;
+
   useEffect(() => {
     if (!open) return;
     const handler = (e) => {
@@ -549,6 +568,9 @@ function AcademicYearPicker() {
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [open]);
+
+  // Reset the search each time the menu closes.
+  useEffect(() => { if (!open) setQuery(""); }, [open]);
 
   return (
     <div className="sh-ay-wrap" ref={wrapRef}>
@@ -576,26 +598,41 @@ function AcademicYearPicker() {
             <Icons.CalendarDays size={11} style={{ opacity: 0.6 }} />
             Academic Year
           </div>
-          {options.map((o) => (
-            <button
-              key={o.value}
-              className={`sh-ay-opt${o.value === selected ? " sel" : ""}`}
-              role="option"
-              aria-selected={o.value === selected}
-              onClick={() => { ay?.setYear(o.value); setOpen(false); }}
-            >
-              <span style={{ display: "flex", alignItems: "center", gap: 7 }}>
-                {o.label}
-                {o.active && (
-                  <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: 0.3, color: "#16a34a", background: "#16a34a18", borderRadius: 12, padding: "1px 6px", textTransform: "uppercase" }}>
-                    Current
-                  </span>
-                )}
-                {o.locked && <Icons.Lock size={11} style={{ color: "#dc2626" }} />}
-              </span>
-              {o.value === selected && <Icons.Check size={13} className="sh-ay-check" />}
-            </button>
-          ))}
+          {showSearch && (
+            <div className="sh-ay-search">
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search year…"
+                autoFocus
+                aria-label="Search academic year"
+              />
+            </div>
+          )}
+          <div className="sh-ay-list">
+            {filtered.length === 0 ? (
+              <div className="sh-ay-empty">No matching year</div>
+            ) : filtered.map((o) => (
+              <button
+                key={o.value}
+                className={`sh-ay-opt${o.value === selected ? " sel" : ""}`}
+                role="option"
+                aria-selected={o.value === selected}
+                onClick={() => { ay?.setYear(o.value); setOpen(false); }}
+              >
+                <span style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                  {o.label}
+                  {o.active && (
+                    <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: 0.3, color: "#16a34a", background: "#16a34a18", borderRadius: 12, padding: "1px 6px", textTransform: "uppercase" }}>
+                      Current
+                    </span>
+                  )}
+                  {o.locked && <Icons.Lock size={11} style={{ color: "#dc2626" }} />}
+                </span>
+                {o.value === selected && <Icons.Check size={13} className="sh-ay-check" />}
+              </button>
+            ))}
+          </div>
         </div>
       )}
     </div>

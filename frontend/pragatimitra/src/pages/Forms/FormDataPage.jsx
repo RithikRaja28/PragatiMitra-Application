@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useRef, useMemo, useLayoutEffect } from "react";
 import ReactDOM from "react-dom";
 import { createPortal } from "react-dom";
 import { Trash2, FileText, FilePlus, Lock, Clock, Globe, SearchX } from "lucide-react";
@@ -797,6 +797,22 @@ function FormImportWizard({ formName, onClose, onDone, apiFetch, getToken }) {
   );
 }
 
+/* Viewport-aware dropdown direction: when there isn't room below the trigger,
+   the menu opens upward instead of being clipped at the bottom of the screen.
+   Returns [wrapperRef, openUp] — attach the ref to the position:relative wrapper
+   and place the menu with top OR bottom: "calc(100% + 6px)" accordingly. */
+function useDropDirection(open, estimatedHeight = 240) {
+  const ref = useRef(null);
+  const [openUp, setOpenUp] = useState(false);
+  useLayoutEffect(() => {
+    if (!open || !ref.current) return;
+    const r = ref.current.getBoundingClientRect();
+    const below = window.innerHeight - r.bottom;
+    setOpenUp(below < estimatedHeight && r.top > below);
+  }, [open, estimatedHeight]);
+  return [ref, openUp];
+}
+
 /* ── Export dropdown with progress bar ── */
 function ExportDropdown({ formName, accessToken, language = "en" }) {
   const [open, setOpen]                   = useState(false);
@@ -827,8 +843,10 @@ function ExportDropdown({ formName, accessToken, language = "en" }) {
     { key: "xlsx", label: "Export as Excel", action: () => download(`/api/form-data/${formName}/export?format=xlsx&language=${language}`, `${formName}${langTag}_export.xlsx`, "xlsx") },
   ];
 
+  const [wrapRef, openUp] = useDropDirection(open && !exporting, 130);
+
   return (
-    <div style={{ position: "relative" }}>
+    <div ref={wrapRef} style={{ position: "relative" }}>
       <button onClick={() => setOpen(v => !v)} disabled={!!exporting}
         style={{ display: "inline-flex", alignItems: "center", gap: 7, background: "#fff", color: "#475569", border: "1.5px solid #e2e8f0", borderRadius: 10, padding: "9px 14px", fontSize: 13, fontWeight: 600, cursor: exporting ? "not-allowed" : "pointer", boxShadow: "0 1px 3px rgba(0,0,0,0.06)", opacity: exporting ? 0.85 : 1 }}>
         <IcoDownload />
@@ -848,7 +866,7 @@ function ExportDropdown({ formName, accessToken, language = "en" }) {
       {open && !exporting && (
         <>
           <div style={{ position: "fixed", inset: 0, zIndex: 99 }} onClick={() => setOpen(false)} />
-          <div style={{ position: "absolute", top: "calc(100% + 6px)", right: 0, zIndex: 100, background: "#fff", borderRadius: 10, border: "1.5px solid #e2e8f0", boxShadow: "0 8px 24px rgba(0,0,0,0.12)", minWidth: 200, overflow: "hidden" }}>
+          <div style={{ position: "absolute", ...(openUp ? { bottom: "calc(100% + 6px)" } : { top: "calc(100% + 6px)" }), right: 0, zIndex: 100, background: "#fff", borderRadius: 10, border: "1.5px solid #e2e8f0", boxShadow: "0 8px 24px rgba(0,0,0,0.12)", minWidth: 200, overflow: "hidden" }}>
             {options.map(({ key, label, action }) => (
               <button key={key} onClick={action}
                 style={{ display: "block", width: "100%", padding: "10px 16px", background: "none", border: "none", textAlign: "left", fontSize: 13, color: "#1e293b", cursor: "pointer", fontWeight: 500 }}
@@ -879,8 +897,10 @@ function SortDropdown({ sortDir, onSort }) {
 
   function pick(key) { setOpen(false); onSort(key); }
 
+  const [wrapRef, openUp] = useDropDirection(open, 140);
+
   return (
-    <div style={{ position: "relative" }}>
+    <div ref={wrapRef} style={{ position: "relative" }}>
       {/* Trigger — identical styling to ExportDropdown */}
       <button
         onClick={() => setOpen(v => !v)}
@@ -904,7 +924,7 @@ function SortDropdown({ sortDir, onSort }) {
 
           {/* Panel */}
           <div style={{
-            position: "absolute", top: "calc(100% + 6px)", right: 0, zIndex: 100,
+            position: "absolute", ...(openUp ? { bottom: "calc(100% + 6px)" } : { top: "calc(100% + 6px)" }), right: 0, zIndex: 100,
             background: "#fff", borderRadius: 12, border: "1.5px solid #e2e8f0",
             boxShadow: "0 8px 24px rgba(0,0,0,0.12)", minWidth: 200,
             padding: 6,
