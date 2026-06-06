@@ -6,6 +6,7 @@ const { writeAuditLog } = require("../utils/audit");
 const logger = require("../utils/logger");
 const { translateSentence, enrichSchemaLabels } = require("../services/translationService");
 const { formatAcademicYear, ensureYearRows, setFormStatusForYear, getAcademicYearLockBlockForReq } = require("../services/academicYearService");
+const { ensureSchemaExists } = require("../services/schemaPropagationService");
 
 /* Academic-year lock guard for form-management writes. Checks the SELECTED year
    (X-Academic-Year header), falling back to the request's year / current year. */
@@ -503,6 +504,9 @@ router.post(
 
         await client.query("COMMIT");
 
+        // Future auto-fix: backfill schemas for any institution sharing this form (insert-only, non-blocking).
+        if (share_table) ensureSchemaExists(pool, normalizedName).catch(() => {});
+
         await writeAuditLog(req, {
           actionType: "CREATE_FORM",
           entityType: "form",
@@ -603,6 +607,9 @@ router.post(
         );
 
         await client.query("COMMIT");
+
+        // Future auto-fix: ensure all institutions sharing this form have a schema (insert-only, non-blocking).
+        ensureSchemaExists(pool, form_name).catch(() => {});
 
         return res.json({
           success: true,

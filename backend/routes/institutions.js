@@ -9,6 +9,7 @@ const { writeAuditLog } = require("../utils/audit");
 
 const logger            = require("../utils/logger");
 const { getLogContext } = logger;
+const { propagateAllSharedSchemas } = require("../services/schemaPropagationService");
 
 const router = express.Router();
 
@@ -688,6 +689,12 @@ router.post("/", async (req, res) => {
        ON CONFLICT (form_name, institution_id) DO NOTHING`,
       [newInst.institution_id]
     );
+
+    // The new institution was just added to every shared form's institute_access.
+    // INSERT-ONLY backfill its missing schema rows (clone of the shared template)
+    // so those forms open immediately — keeps the fix fully dynamic on new
+    // institution creation. Never throws (errors are swallowed + logged inside).
+    await propagateAllSharedSchemas(pool);
 
     await writeAuditLog(req, {
       actionType: "INST_CREATED",

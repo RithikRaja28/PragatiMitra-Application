@@ -154,6 +154,13 @@ const { ensureDepartmentFormTables } = require("./services/departmentFormService
 ensureDepartmentFormTables(pool)
   .catch((e) => logger.error("Failed to ensure department form tables", { stack: e.stack }));
 
+/* ── Shared-form schema repair: INSERT-ONLY backfill of missing schema rows for
+   institutions that can access a shared form but never got their own schema
+   (fixes "No active schema found"). Idempotent, non-destructive. ── */
+const { propagateAllSharedSchemas } = require("./services/schemaPropagationService");
+propagateAllSharedSchemas(pool)
+  .catch((e) => logger.error("Failed to propagate shared form schemas", { stack: e.stack }));
+
 /* ── Import session cache: rows stored server-side after parse ───── */
 app.locals.importSessions = new Map();
 // Purge sessions older than 1 hour every 30 minutes
