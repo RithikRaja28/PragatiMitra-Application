@@ -140,7 +140,7 @@ function FieldRow({ field, index, total, isFixed, onChange, onRemove, onMoveUp, 
   return (
     <div style={{
       border: `1.5px solid ${isFixed ? "#e0f2fe" : "#e2e8f0"}`,
-      borderRadius: 12, overflow: "hidden", marginBottom: 10,
+      borderRadius: 8, overflow: "hidden", marginBottom: 10,
       background: isFixed ? "#f0f9ff" : "#fff",
     }}>
       {/* header row — clicking toggles expansion */}
@@ -813,7 +813,7 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
               {activeFields.length === 0 && !isAdapt && (
                 <div style={{
                   textAlign: "center", padding: "32px 16px", color: "#94a3b8", fontSize: 13,
-                  border: "1.5px dashed #e2e8f0", borderRadius: 12, marginBottom: 16,
+                  border: "1.5px dashed #e2e8f0", borderRadius: 8, marginBottom: 16,
                 }}>
                   No fields yet — click "Add Field" to start building your schema.
                 </div>
@@ -1069,7 +1069,7 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
 /* ── shared layout sub-components ── */
 
 const card = {
-  background: "#fff", borderRadius: 14, border: "1px solid rgba(15,23,42,0.06)",
+  background: "#fff", borderRadius: 8, border: "1px solid rgba(15,23,42,0.06)",
   boxShadow: "0 8px 28px rgba(15,23,42,0.07), 0 2px 6px rgba(15,23,42,0.04)",
   overflow: "hidden",
 };

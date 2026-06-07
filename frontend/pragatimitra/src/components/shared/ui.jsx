@@ -53,7 +53,7 @@ export function Card({ children, style, padding, ...rest }) {
       style={{
         background: "#fff",
         border: "1px solid #e6eaf0",
-        borderRadius: 14,
+        borderRadius: 8,
         boxShadow: "0 1px 2px rgba(16,24,40,0.04), 0 4px 12px rgba(16,24,40,0.05)",
         ...(padding != null ? { padding } : null),
         ...style,
@@ -74,7 +74,7 @@ export function Card({ children, style, padding, ...rest }) {
 export const tableCardStyle = {
   background: "#fff",
   border: "1px solid #e6eaf0",
-  borderRadius: 14,
+  borderRadius: 8,
   boxShadow: "0 1px 2px rgba(16,24,40,0.04), 0 4px 12px rgba(16,24,40,0.05)",
   overflow: "hidden",
 };

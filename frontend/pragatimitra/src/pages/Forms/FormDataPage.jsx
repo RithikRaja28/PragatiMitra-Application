@@ -233,7 +233,7 @@ function ModalPane({ title, reference, helper, loading, children }) {
       <div
         style={
           reference
-            ? { display: "flex", flexDirection: "column", gap: 16, background: "#F8FAFC", opacity: 0.95, pointerEvents: "none", borderRadius: 12, padding: 16, border: "1px dashed #e2e8f0" }
+            ? { display: "flex", flexDirection: "column", gap: 16, background: "#F8FAFC", opacity: 0.95, pointerEvents: "none", borderRadius: 8, padding: 16, border: "1px dashed #e2e8f0" }
             : { display: "flex", flexDirection: "column", gap: 16 }
         }
       >
@@ -358,7 +358,7 @@ function RecordEditPage({ fields, record, onSave, onBack, getToken, formName, fo
       )}
 
       <form onSubmit={handleSubmit}>
-        <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 16, padding: 32, boxShadow: "0 1px 3px rgba(16,24,40,0.04)" }}>
+        <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 8, padding: 32, boxShadow: "0 1px 3px rgba(16,24,40,0.04)" }}>
           {showReference ? <div className="pm-rec-grid">{leftPane}{rightPane}</div> : editablePane}
         </div>
         {error && (
@@ -393,7 +393,7 @@ function DeleteModal({ count = 1, onConfirm, onClose, deleting }) {
         onClick={e => { if (e.target === e.currentTarget) onClose(); }}
       >
         <div
-          style={{ background: "#fff", borderRadius: 16, width: 400, padding: "32px 28px", boxShadow: "0 24px 64px rgba(0,0,0,0.22)", textAlign: "center" }}
+          style={{ background: "#fff", borderRadius: 8, width: 400, padding: "32px 28px", boxShadow: "0 24px 64px rgba(0,0,0,0.22)", textAlign: "center" }}
           onClick={e => e.stopPropagation()}
         >
           <div style={{ width: 56, height: 56, borderRadius: "50%", background: "#fef2f2", border: "2px solid #fecaca", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px", fontSize: 24 }}>🗑️</div>
@@ -433,7 +433,7 @@ function ProgressBar({ percent, color = ACCENT, height = 8 }) {
 
 function ImportProgressPanel({ total, processed, remaining, percent, chunksDone, chunksTotal }) {
   return (
-    <div style={{ background: "#f8fafc", border: `1.5px solid ${ACCENT}30`, borderRadius: 12, padding: "16px 18px", marginTop: 16 }}>
+    <div style={{ background: "#f8fafc", border: `1.5px solid ${ACCENT}30`, borderRadius: 8, padding: "16px 18px", marginTop: 16 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <div style={{ width: 16, height: 16, borderRadius: "50%", border: `2.5px solid ${ACCENT}30`, borderTopColor: ACCENT, animation: "spin 0.8s linear infinite" }} />
@@ -587,7 +587,7 @@ function FormImportWizard({ formName, onClose, onDone, apiFetch, getToken }) {
         style={{ position: "fixed", inset: 0, zIndex: 10000, background: "rgba(15,23,42,0.5)", overflowY: "auto", padding: "20px", display: "flex", alignItems: "flex-start", justifyContent: "center" }}
         onClick={e => { if (e.target === e.currentTarget && !executing) onClose(); }}
       >
-        <div style={{ background: "#fff", borderRadius: 18, width: "100%", maxWidth: 640, boxShadow: "0 28px 72px rgba(0,0,0,0.2)", overflow: "hidden", margin: "20px auto" }} onClick={e => e.stopPropagation()}>
+        <div style={{ background: "#fff", borderRadius: 8, width: "100%", maxWidth: 640, boxShadow: "0 28px 72px rgba(0,0,0,0.2)", overflow: "hidden", margin: "20px auto" }} onClick={e => e.stopPropagation()}>
           {/* Header + step indicator */}
           <div style={{ padding: "14px 24px", borderBottom: "1px solid #f1f5f9" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
@@ -898,7 +898,7 @@ function SortDropdown({ sortDir, onSort }) {
           {/* Panel */}
           <div style={{
             position: "absolute", ...(openUp ? { bottom: "calc(100% + 6px)" } : { top: "calc(100% + 6px)" }), right: 0, zIndex: 100,
-            background: "#fff", borderRadius: 12, border: "1.5px solid #e2e8f0",
+            background: "#fff", borderRadius: 8, border: "1.5px solid #e2e8f0",
             boxShadow: "0 8px 24px rgba(0,0,0,0.12)", minWidth: 200,
             padding: 6,
           }}>
@@ -1307,7 +1307,7 @@ export default function FormDataPage() {
         {/* Summary stats cards */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12, marginBottom: 18 }}>
           {summary.map((s) => (
-            <div key={s.label} style={{ background: "#fff", border: "1px solid rgba(0,0,0,0.07)", borderRadius: 12, padding: "12px 14px", boxShadow: "0 1px 4px rgba(0,0,0,0.04)", display: "flex", alignItems: "center", gap: 12 }}>
+            <div key={s.label} style={{ background: "#fff", border: "1px solid rgba(0,0,0,0.07)", borderRadius: 8, padding: "12px 14px", boxShadow: "0 1px 4px rgba(0,0,0,0.04)", display: "flex", alignItems: "center", gap: 12 }}>
               <div style={{ width: 40, height: 40, borderRadius: 10, background: s.bg, color: s.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17, fontWeight: 800, flexShrink: 0, letterSpacing: -0.3 }}>
                 {s.value}
               </div>
@@ -1334,7 +1334,7 @@ export default function FormDataPage() {
             <div style={{ padding: "48px 24px", textAlign: "center", color: "#94a3b8", fontSize: 13 }}>Loading forms…</div>
           ) : forms.length === 0 ? (
             <div style={{ textAlign: "center", padding: "48px 24px", color: "#94a3b8" }}>
-              <div style={{ width: 56, height: 56, borderRadius: 14, margin: "0 auto 16px", background: "#f1f5f9", border: "1px solid #e2e8f0", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <div style={{ width: 56, height: 56, borderRadius: 8, margin: "0 auto 16px", background: "#f1f5f9", border: "1px solid #e2e8f0", display: "flex", alignItems: "center", justifyContent: "center" }}>
                 <FileText size={26} strokeWidth={1.6} color="#94a3b8" />
               </div>
               <div style={{ fontSize: 13.5, fontWeight: 600, color: "#64748b", marginBottom: 4 }}>No forms available</div>
@@ -1653,7 +1653,7 @@ export default function FormDataPage() {
           <div style={{ padding: "60px 24px", textAlign: "center", color: "#94a3b8", fontSize: 13 }}>Loading records…</div>
         ) : records.length === 0 ? (
           <div style={{ textAlign: "center", padding: "56px 24px", color: "#94a3b8" }}>
-            <div style={{ width: 56, height: 56, borderRadius: 14, margin: "0 auto 16px", background: "#f1f5f9", border: "1px solid #e2e8f0", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <div style={{ width: 56, height: 56, borderRadius: 8, margin: "0 auto 16px", background: "#f1f5f9", border: "1px solid #e2e8f0", display: "flex", alignItems: "center", justifyContent: "center" }}>
               <FilePlus size={26} strokeWidth={1.6} color="#94a3b8" />
             </div>
             <div style={{ fontSize: 14, fontWeight: 600, color: "#64748b", marginBottom: 6 }}>No records yet</div>
@@ -1661,7 +1661,7 @@ export default function FormDataPage() {
           </div>
         ) : sortedRecords.length === 0 ? (
           <div style={{ textAlign: "center", padding: "56px 24px", color: "#94a3b8" }}>
-            <div style={{ width: 56, height: 56, borderRadius: 14, margin: "0 auto 16px", background: "#f1f5f9", border: "1px solid #e2e8f0", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <div style={{ width: 56, height: 56, borderRadius: 8, margin: "0 auto 16px", background: "#f1f5f9", border: "1px solid #e2e8f0", display: "flex", alignItems: "center", justifyContent: "center" }}>
               <SearchX size={26} strokeWidth={1.6} color="#94a3b8" />
             </div>
             <div style={{ fontSize: 14, fontWeight: 600, color: "#64748b", marginBottom: 6 }}>No matching records</div>
@@ -1909,7 +1909,7 @@ function useWindowVirtual(count, { rowHeight = ROW_HEIGHT, headerHeight = HEADER
 function RecordCard({ rec, serial, fields, lang, getToken, selected, onSelect, onEdit, onDelete, canEdit, readOnly, viewingTranslated }) {
   return (
     <div style={{
-      background: "#fff", border: `1px solid ${selected ? ACCENT : "#e5e7eb"}`, borderRadius: 12,
+      background: "#fff", border: `1px solid ${selected ? ACCENT : "#e5e7eb"}`, borderRadius: 8,
       padding: "14px 16px", display: "flex", flexDirection: "column", gap: 10,
       boxShadow: selected ? `0 0 0 3px ${ACCENT}1f` : "0 1px 2px rgba(16,24,40,0.04)", transition: "border-color .12s, box-shadow .12s",
     }}>

@@ -37,7 +37,7 @@ const inputStyle = (err) => ({
   borderRadius: 10, fontSize: 14, color: color.text, outline: "none", boxSizing: "border-box", background: "#fff",
 });
 const labelStyle = { display: "block", fontSize: 13, fontWeight: 500, color: "#334155", marginBottom: 6 };
-const card = { background: "#fff", borderRadius: 16, border: `1px solid ${color.border}`, boxShadow: "0 1px 3px rgba(16,24,40,0.04)", overflow: "hidden" };
+const card = { background: "#fff", borderRadius: 8, border: `1px solid ${color.border}`, boxShadow: "0 1px 3px rgba(16,24,40,0.04)", overflow: "hidden" };
 
 function Stepper({ step }) {
   const steps = ["Form Details", "Schema Builder", "Roles & Review"];
@@ -85,7 +85,7 @@ function FieldRow({ field, index, total, languages, onChange, onRemove, onMove }
   const [open, setOpen] = useState(true);
   const typeLabel = FIELD_TYPES.find((t) => t.value === field.type)?.label || field.type;
   return (
-    <div style={{ border: `1px solid ${color.border}`, borderRadius: 12, marginBottom: 10, overflow: "hidden", background: "#fff" }}>
+    <div style={{ border: `1px solid ${color.border}`, borderRadius: 8, marginBottom: 10, overflow: "hidden", background: "#fff" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", cursor: "pointer" }} onClick={() => setOpen((o) => !o)}>
         <div style={{ width: 22, height: 22, borderRadius: 6, background: color.primarySoft, color: color.primary, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, flexShrink: 0 }}>{index + 1}</div>
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -295,7 +295,7 @@ export default function DepartmentFormBuilderPage({ mode, initialData, onDone, o
               <CardHeader icon={<Wrench size={18} />} title="Define Schema" subtitle="Add the fields this form will collect." />
               <div style={{ padding: "16px 20px" }}>
                 {fields.length === 0 && (
-                  <div style={{ textAlign: "center", padding: "28px 16px", color: color.muted, fontSize: 13, border: `1.5px dashed ${color.border}`, borderRadius: 12, marginBottom: 14 }}>
+                  <div style={{ textAlign: "center", padding: "28px 16px", color: color.muted, fontSize: 13, border: `1.5px dashed ${color.border}`, borderRadius: 8, marginBottom: 14 }}>
                     No fields yet — click “Add Field” to start.
                   </div>
                 )}
@@ -343,7 +343,7 @@ export default function DepartmentFormBuilderPage({ mode, initialData, onDone, o
                   </div>
                   <div style={{ fontSize: 11.5, color: color.muted, marginTop: 8 }}>Leave empty to keep the form visible to the whole department. Access also requires the same institution &amp; department.</div>
                 </div>
-                <div style={{ border: `1px solid ${color.border}`, borderRadius: 12, overflow: "hidden" }}>
+                <div style={{ border: `1px solid ${color.border}`, borderRadius: 8, overflow: "hidden" }}>
                   <div style={{ background: color.hover, padding: "10px 16px", fontSize: 11, fontWeight: 700, color: color.muted, textTransform: "uppercase", letterSpacing: 0.6 }}>Summary</div>
                   <div style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: 8, fontSize: 13 }}>
                     <Row label="Form Name" value={name || identifier} />

@@ -389,7 +389,7 @@ export default function InstituteFormRecordsPage({ form, onBack }) {
         ) : filteredRows.length === 0 ? (
           <div style={{ padding: "60px 24px", textAlign: "center", color: "#94a3b8" }}>
             <div style={{
-              width: 56, height: 56, borderRadius: 14, margin: "0 auto 16px",
+              width: 56, height: 56, borderRadius: 8, margin: "0 auto 16px",
               background: "#f1f5f9", border: "1px solid #e2e8f0",
               display: "flex", alignItems: "center", justifyContent: "center",
             }}>
@@ -445,7 +445,7 @@ export default function InstituteFormRecordsPage({ form, onBack }) {
                       <td style={tdStyle}>
                         <span style={{
                           display: "inline-flex", alignItems: "center", gap: 6,
-                          padding: "3px 10px", borderRadius: 14,
+                          padding: "3px 10px", borderRadius: 8,
                           background: ACCENT + "14", color: ACCENT,
                           fontSize: 12, fontWeight: isNewGroup ? 700 : 600,
                         }}>

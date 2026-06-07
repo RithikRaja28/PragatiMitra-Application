@@ -152,7 +152,7 @@ function RecordEditView({ form, fields, record, allowedRoles, year, viewOnly = f
   );
 
   const refPane = (
-    <div style={{ display: "flex", flexDirection: "column", gap: 14, background: "#F8FAFC", borderRadius: 12, padding: 16, border: `1px dashed ${color.border}` }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 14, background: "#F8FAFC", borderRadius: 8, padding: 16, border: `1px dashed ${color.border}` }}>
       <div>
         <div style={{ ...paneTitle, color: "#64748b", marginBottom: 4 }}>{editLang === "hi" ? "English Reference" : "Hindi Reference"} {refLoading && <span style={{ fontWeight: 600, color: "#94a3b8" }}>· loading…</span>}</div>
         <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 8 }}>Translation updates after save.</div>
@@ -176,7 +176,7 @@ function RecordEditView({ form, fields, record, allowedRoles, year, viewOnly = f
         <Badge tone="danger" icon={<Lock size={12} strokeWidth={2.2} />} style={{ marginBottom: 16 }}>VIEW ONLY</Badge>
       )}
       <form onSubmit={save}>
-        <div style={{ background: "#fff", border: `1px solid ${color.border}`, borderRadius: 16, padding: 32, boxShadow: "0 1px 3px rgba(16,24,40,0.04)" }}>
+        <div style={{ background: "#fff", border: `1px solid ${color.border}`, borderRadius: 8, padding: 32, boxShadow: "0 1px 3px rgba(16,24,40,0.04)" }}>
           {showReference ? <div className="pm-dept-grid">{editLang === "hi" ? refPane : editPane}{editLang === "hi" ? editPane : refPane}</div> : editPane}
         </div>
         {error && <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 8, padding: "10px 14px", fontSize: 13, color: "#B91C1C", marginTop: 16 }}>{error}</div>}
@@ -347,7 +347,7 @@ export default function DepartmentFormRecordsPage({ form, year = null, onBack })
         </div>
       )}
 
-      {error && <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 12, padding: "12px 16px", fontSize: 13, color: "#B91C1C", marginBottom: 20 }}>{error}</div>}
+      {error && <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 8, padding: "12px 16px", fontSize: 13, color: "#B91C1C", marginBottom: 20 }}>{error}</div>}
 
       <DataTable
         columns={columns}

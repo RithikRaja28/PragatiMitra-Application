@@ -26,7 +26,9 @@ export const color = {
 };
 
 export const space  = { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, "2xl": 24, "3xl": 32 };
-export const radius = { sm: 8, md: 10, lg: 12, xl: 16, pill: 9999 };
+/* Squared, professional scale — cards/modals/tables stay crisp (8px), controls
+   6px (matches the app shell). Lowered from the old 10–16 "bubbly" values. */
+export const radius = { sm: 4, md: 6, lg: 8, xl: 8, pill: 9999 };
 
 export const shadow = {
   card:  "0 1px 2px rgba(16,24,40,0.04)",
