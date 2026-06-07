@@ -6,6 +6,8 @@ const logger = require("../utils/logger");
 const { writeAuditLog } = require("../utils/audit");
 const { translateRow, resolveTranslationMode, enrichSchemaLabels } = require("../services/translationService");
 const { getAcademicYearLockBlockForReq } = require("../services/academicYearService");
+const { getEffectiveState, messageFor, canWrite } = require("../services/stateResolver");
+const { SOURCE_LANGUAGE, isDerivedRow } = require("../services/translationOwnership");
 
 /* Latest active schema year for a form+institution — used to resolve which
    academic year a record operation belongs to (for academic-year lock checks). */
@@ -120,17 +122,18 @@ async function getLockBlock(pool, formName, institutionId) {
     [formName, institutionId]
   );
   const row = rows[0];
-  if (!row?.is_locked) return { locked: false, message: null };
 
-  const expired =
-    row.auto_locked ||
-    (row.deadline_at && new Date(row.deadline_at).getTime() <= Date.now());
+  // Single source of truth for lock/deadline precedence (see stateResolver.js).
+  // Archive is not a concept on form_lock_config, so it's never set here.
+  const state = getEffectiveState({
+    archived: false,
+    locked: !!row?.is_locked,
+    autoLocked: !!row?.auto_locked,
+    deadlineAt: row?.deadline_at ?? null,
+  });
 
-  const message = expired
-    ? "This form deadline has expired for your institution. The form is automatically locked."
-    : "This form is currently locked by the institution admin. You can only view the records.";
-
-  return { locked: true, message };
+  if (canWrite(state)) return { locked: false, message: null };
+  return { locked: true, message: messageFor(state) };
 }
 
 /* Map each field's DB column → its resolved translation mode
@@ -153,7 +156,7 @@ function buildFieldModes(fields) {
 router.get("/:formName/records", async (req, res) => {
   const pool = req.app.locals.pool;
   const { formName } = req.params;
-  const { year, language = "en" } = req.query;
+  const { year, language = SOURCE_LANGUAGE } = req.query;
 
   if (!validateFormName(formName))
     return res.status(400).json({ success: false, message: "Invalid form name." });
@@ -268,7 +271,8 @@ router.get("/:formName/records/:id/counterpart", async (req, res) => {
     const self = selfRows[0];
     let counterpart = null;
 
-    if (self.language === "hi" && self.source_row_id) {
+    if (isDerivedRow(self)) {
+      // Derived (Hindi) row → its counterpart is the English source it points to.
       const { rows } = await pool.query(
         `SELECT * FROM ${formName}_records WHERE id = $1 AND institution_id = $2`,
         [self.source_row_id, ctx.institutionId]
@@ -297,7 +301,7 @@ router.get("/:formName/records/:id/counterpart", async (req, res) => {
 router.post("/:formName/records", async (req, res) => {
   const pool = req.app.locals.pool;
   const { formName } = req.params;
-  const { data, year, language = "en" } = req.body;
+  const { data, year, language = SOURCE_LANGUAGE } = req.body;
 
   if (!validateFormName(formName))
     return res.status(400).json({ success: false, message: "Invalid form name." });

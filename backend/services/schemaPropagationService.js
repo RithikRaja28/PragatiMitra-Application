@@ -18,6 +18,7 @@
  * ───────────────────────────────────────────────────────────────────────── */
 
 const logger = require("../utils/logger");
+const { getCanonicalSchema } = require("./schemaResolver");
 
 /* Audit log of inserted schema rows (created only; never modified). */
 async function ensureSchemaPropagationLog(pool) {
@@ -49,17 +50,11 @@ async function ensureSchemaExists(pool, formName) {
   const access = (tl[0].institute_access || []).map(String).filter(Boolean);
   if (access.length === 0) return { created: 0 };
 
-  // 2. Template = the form's existing active schema (the source to clone).
-  //    Prefer the creator institution's row (earliest), else any active schema.
-  const { rows: tmpl } = await pool.query(
-    `SELECT * FROM custom_field_schemas
-      WHERE form_name = $1 AND is_active = true
-      ORDER BY created_at ASC NULLS LAST, year ASC
-      LIMIT 1`,
-    [formName]
-  );
-  if (!tmpl.length) return { created: 0 }; // nothing to clone from — leave untouched
-  const t = tmpl[0];
+  // 2. Template = the form's CANONICAL schema (single source of truth — the
+  //    creator/earliest active row). Resolved via schemaResolver so "canonical"
+  //    has one definition shared with every reader.
+  const t = await getCanonicalSchema(pool, formName);
+  if (!t) return { created: 0 }; // nothing to clone from — leave untouched
 
   // 3. Institutions that ALREADY have any active schema for this form.
   const { rows: have } = await pool.query(

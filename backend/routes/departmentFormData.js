@@ -19,9 +19,34 @@ const { verifyToken } = require("../middleware/auth");
 const logger = require("../utils/logger");
 const { translateRow, resolveTranslationMode, enrichSchemaLabels } = require("../services/translationService");
 const { resolveDeptContext, deptRecordsTable } = require("../services/departmentFormService");
+const { getEffectiveState, STATE } = require("../services/stateResolver");
+const { resolveActiveAcademicYear } = require("../services/academicYearService");
+const { SOURCE_LANGUAGE, isDerivedRow } = require("../services/translationOwnership");
 
 const router = express.Router();
 router.use(verifyToken);
+
+/* OWNERSHIP: institution owns the academic year; department inherits it. When a
+   request carries no explicit year, resolve the institution's active year so the
+   fallback inherits it (not the calendar year). Lookup runs only on the no-year
+   path, so normal flows (always ?year) cost nothing. See departmentForms.js. */
+function hasExplicitYear(req) {
+  return Number.isInteger(Number(req.query.year))
+    || Number.isInteger(Number(req.get("X-Academic-Year")))
+    || Number.isInteger(Number(req.body?.year));
+}
+router.use(async (req, _res, next) => {
+  try {
+    if (!hasExplicitYear(req)) {
+      const pool = req.app.locals.pool;
+      const { institutionId } = await resolveDeptContext(pool, req);
+      req.institutionAcademicYear = await resolveActiveAcademicYear(pool, institutionId);
+    }
+  } catch {
+    /* leave undefined → calendar-year fallback */
+  }
+  next();
+});
 
 const ensuredSourceRowIdTables = new Set();
 async function ensureSourceRowIdColumn(pool, tableName) {
@@ -37,6 +62,7 @@ function resolveYear(req) {
   const q = Number(req.query.year); if (Number.isInteger(q)) return q;
   const h = Number(req.get("X-Academic-Year")); if (Number.isInteger(h)) return h;
   const b = Number(req.body?.year); if (Number.isInteger(b)) return b;
+  if (Number.isInteger(req.institutionAcademicYear)) return req.institutionAcademicYear;
   return new Date().getFullYear();
 }
 
@@ -97,9 +123,17 @@ async function deptLockBlock(pool, form, year) {
   );
   const row = lc[0] || {};
   const deadlineExpired = !!(row.deadline && new Date(row.deadline).getTime() <= Date.now());
-  const locked = ym[0]?.is_locked === true || row.is_locked === true || deadlineExpired;
-  if (!locked) return { locked: false, message: null };
-  const message = (deadlineExpired || row.auto_locked)
+  // anyLock folds every blocking source (per-year lock, manual lock, expired
+  // deadline) so the shared resolver can pick the precedence + which message
+  // applies. Dept keeps its own wording (departments ≠ institutions).
+  const anyLock = ym[0]?.is_locked === true || row.is_locked === true || deadlineExpired;
+  const state = getEffectiveState({
+    locked: anyLock,
+    autoLocked: !!row.auto_locked,
+    deadlineAt: row.deadline ?? null,
+  });
+  if (state === STATE.ACTIVE) return { locked: false, message: null };
+  const message = state === STATE.DEADLINE_EXPIRED
     ? "This form's deadline has expired for your department — it is now view-only."
     : "This form is locked for your department. You can only view records.";
   return { locked: true, message };
@@ -110,7 +144,7 @@ async function deptLockBlock(pool, form, year) {
 ───────────────────────────────────────────────────────────────────── */
 router.get("/:id/records", async (req, res) => {
   const pool = req.app.locals.pool;
-  const { language = "en" } = req.query;
+  const { language = SOURCE_LANGUAGE } = req.query;
   try {
     const { form, departmentId, error } = await loadForm(pool, req, req.params.id);
     if (error) return res.status(404).json({ success: false, message: error });
@@ -186,7 +220,8 @@ router.get("/:id/records/:recordId/counterpart", async (req, res) => {
     if (!selfRows.length) return res.status(404).json({ success: false, message: "Record not found." });
     const self = selfRows[0];
     let counterpart = null;
-    if (self.language === "hi" && self.source_row_id) {
+    if (isDerivedRow(self)) {
+      // Derived (Hindi) row → its counterpart is the English source it points to.
       const { rows } = await pool.query(`SELECT * FROM ${table} WHERE id = $1 AND department_id = $2`, [self.source_row_id, departmentId]);
       counterpart = rows[0] || null;
     } else {
@@ -205,7 +240,7 @@ router.get("/:id/records/:recordId/counterpart", async (req, res) => {
 ───────────────────────────────────────────────────────────────────── */
 router.post("/:id/records", async (req, res) => {
   const pool = req.app.locals.pool;
-  const { data, role_name = null, language = "en" } = req.body;
+  const { data, role_name = null, language = SOURCE_LANGUAGE } = req.body;
   if (!data || typeof data !== "object")
     return res.status(400).json({ success: false, message: "data is required." });
   try {
@@ -354,7 +389,7 @@ router.delete("/:id/records/bulk-delete", async (req, res) => {
 ───────────────────────────────────────────────────────────────────── */
 router.get("/:id/export", async (req, res) => {
   const pool = req.app.locals.pool;
-  const { format = "csv", language = "en" } = req.query;
+  const { format = "csv", language = SOURCE_LANGUAGE } = req.query;
   try {
     const { form, departmentId, error } = await loadForm(pool, req, req.params.id);
     if (error) return res.status(404).json({ success: false, message: error });

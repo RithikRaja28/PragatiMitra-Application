@@ -19,15 +19,42 @@ const {
   resolveDeptContext, ensureDeptYearRow, pgType, slugify,
   deptRecordsTable, collectColumnNames, buildDeptRecordsTableDDL,
 } = require("../services/departmentFormService");
+const { resolveActiveAcademicYear } = require("../services/academicYearService");
 
 const router = express.Router();
 router.use(verifyToken);
 
+/* OWNERSHIP: the INSTITUTION owns the academic year; a department only INHERITS
+   it. Departments never create / delete / lock academic years here (no route in
+   this module writes academic_year_master) — they only override per-form Active/
+   Archive/Roles/Deadline/Visibility. This middleware makes the inheritance
+   explicit: when a request carries NO explicit year, it resolves the
+   institution's active year so the fallback inherits it instead of guessing the
+   calendar year. It does the lookup ONLY on the no-year path, so normal flows
+   (which always send ?year) pay nothing. */
+function hasExplicitYear(req) {
+  return Number.isInteger(Number(req.query.year))
+    || Number.isInteger(Number(req.get("X-Academic-Year")))
+    || Number.isInteger(Number(req.body?.year));
+}
+router.use(async (req, _res, next) => {
+  try {
+    if (!hasExplicitYear(req)) {
+      const pool = req.app.locals.pool;
+      const { institutionId } = await resolveDeptContext(pool, req);
+      req.institutionAcademicYear = await resolveActiveAcademicYear(pool, institutionId);
+    }
+  } catch {
+    /* leave req.institutionAcademicYear undefined → calendar-year fallback */
+  }
+  next();
+});
+
 const WRITE_ROLES = ["department_admin"];
 
 /* Selected academic-year (start year int): ?year → X-Academic-Year header →
-   body.year → current calendar year. Mirrors how the institution side reads
-   the top-bar year. */
+   body.year → institution's active year (inherited) → current calendar year.
+   Mirrors how the institution side reads the top-bar year. */
 function resolveYear(req) {
   const fromQuery = Number(req.query.year);
   if (Number.isInteger(fromQuery)) return fromQuery;
@@ -35,6 +62,7 @@ function resolveYear(req) {
   if (Number.isInteger(fromHeader)) return fromHeader;
   const fromBody = Number(req.body?.year);
   if (Number.isInteger(fromBody)) return fromBody;
+  if (Number.isInteger(req.institutionAcademicYear)) return req.institutionAcademicYear;
   return new Date().getFullYear();
 }
 

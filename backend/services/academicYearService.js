@@ -21,6 +21,8 @@
  * arrays — forms are never duplicated, only referenced.
  */
 
+const { getEffectiveState, STATE } = require("./stateResolver");
+
 const EN_DASH = "–";
 
 /* Ensure the two tables exist. Idempotent — safe to run on every boot, mirrors
@@ -101,7 +103,10 @@ async function getAcademicYearLockBlock(pool, institutionId, year) {
        WHERE institution_id = $1 AND start_year = $2`,
       [institutionId, Number(year)]
     );
-    if (rows[0]?.is_locked) {
+    // Precedence via the shared resolver (see stateResolver.js). The academic
+    // year exposes a manual lock only, so this resolves to LOCKED when set.
+    const state = getEffectiveState({ locked: !!rows[0]?.is_locked });
+    if (state === STATE.LOCKED) {
       return {
         locked: true,
         message: "This academic year is locked. Records are available in view-only mode.",
@@ -122,6 +127,27 @@ async function getAcademicYearLockBlockForReq(pool, req, institutionId, fallback
   const headerYear = Number(req?.headers?.["x-academic-year"]);
   const year = Number.isInteger(headerYear) ? headerYear : fallbackYear;
   return getAcademicYearLockBlock(pool, institutionId, year);
+}
+
+/* The institution's CURRENTLY ACTIVE academic year (start-year int), or null if
+   the institution hasn't created any years yet. The institution OWNS the
+   academic year; departments INHERIT it. This is the value a department request
+   should fall back to (instead of guessing the calendar year) when no explicit
+   year is supplied. Read-only; never blocks on error. */
+async function resolveActiveAcademicYear(pool, institutionId) {
+  if (!institutionId) return null;
+  try {
+    const { rows } = await pool.query(
+      `SELECT start_year FROM academic_year_master
+        WHERE institution_id = $1 AND active = true
+        ORDER BY start_year DESC
+        LIMIT 1`,
+      [institutionId]
+    );
+    return rows[0]?.start_year ?? null;
+  } catch {
+    return null;
+  }
 }
 
 /* 2025 → "2025–2026"  (en-dash, matches the spec's display format) */
@@ -191,4 +217,5 @@ module.exports = {
   setFormStatusForYear,
   getAcademicYearLockBlock,
   getAcademicYearLockBlockForReq,
+  resolveActiveAcademicYear,
 };
