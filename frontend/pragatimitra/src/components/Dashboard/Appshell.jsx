@@ -31,9 +31,10 @@ const CSS = `
   @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
 
   :root {
-    --sh-topbar:    #080d1b;
-    --sh-topbar-b:  rgba(255,255,255,0.07);
-    --sh-sidebar:   #060a16;
+    /* Unified dark navy — topbar = sidebar = settings sidebar (one seamless frame) */
+    --sh-topbar:    #0b1220;
+    --sh-topbar-b:  rgba(255,255,255,0.08);
+    --sh-sidebar:   #0b1220;
     --sh-bg:        #dfe3ec;
     --sh-border:    #e2e8f0;
     --sh-accent:    #2563eb;
@@ -80,8 +81,8 @@ const CSS = `
     padding: 0 16px;
     height: var(--sh-topbar-h);
     background: var(--sh-topbar);
-    border-bottom: 1px solid rgba(255,255,255,0.05);
-    box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+    border-bottom: 1px solid rgba(255,255,255,0.07);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.10);
     flex-shrink: 0;
     overflow: visible;
     z-index: 60;
@@ -98,7 +99,7 @@ const CSS = `
   }
   .sh-logo-mark {
     width: 32px; height: 32px;
-    border-radius: 8px;
+    border-radius: 6px;
     background: linear-gradient(135deg, var(--sh-accent), var(--sh-accent2));
     display: flex; align-items: center; justify-content: center;
     font-size: 12px; font-weight: 800; color: #fff; letter-spacing: -.5px;
@@ -126,7 +127,7 @@ const CSS = `
     width: 100%;
     background: rgba(255,255,255,0.06);
     border: 1px solid rgba(255,255,255,0.08);
-    border-radius: 10px;
+    border-radius: 6px;
     padding: 0 12px;
     height: 38px;
     transition: border-color .15s, background .15s;
@@ -152,7 +153,7 @@ const CSS = `
   .sh-search-dropdown {
     position: absolute; top: calc(100% + 8px); left: 0;
     width: 100%; min-width: 340px;
-    background: #fff; border-radius: 14px;
+    background: #fff; border-radius: 8px;
     border: 1px solid rgba(0,0,0,0.08);
     box-shadow: 0 16px 48px rgba(0,0,0,0.18);
     z-index: 9999; overflow: hidden;
@@ -198,7 +199,7 @@ const CSS = `
 
   .sh-icon-btn {
     display: flex; align-items: center; justify-content: center;
-    width: 36px; height: 36px; border-radius: 10px;
+    width: 36px; height: 36px; border-radius: 6px;
     border: 1px solid rgba(255,255,255,0.08);
     background: transparent; color: rgba(255,255,255,0.55);
     cursor: pointer; transition: background var(--sh-ease), color var(--sh-ease);
@@ -214,14 +215,14 @@ const CSS = `
 
   .sh-avatar {
     display: flex; align-items: center; gap: 10px;
-    padding: 4px 10px 4px 4px; border-radius: 10px;
+    padding: 4px 10px 4px 4px; border-radius: 6px;
     border: 1px solid rgba(255,255,255,0.08);
     background: transparent; cursor: pointer;
     transition: background var(--sh-ease); flex-shrink: 0; margin-left: 2px;
   }
   .sh-avatar:hover { background: rgba(255,255,255,0.06); }
   .sh-avatar-circle {
-    width: 36px; height: 36px; border-radius: 50%;
+    width: 36px; height: 36px; border-radius: 7px;
     background: linear-gradient(135deg, var(--sh-accent), var(--sh-accent2));
     display: flex; align-items: center; justify-content: center;
     font-size: 13px; font-weight: 700; color: #fff; flex-shrink: 0;
@@ -233,7 +234,7 @@ const CSS = `
 
   .sh-hamburger {
     display: none; align-items: center; justify-content: center;
-    width: 34px; height: 34px; border-radius: 8px;
+    width: 34px; height: 34px; border-radius: 6px;
     border: 1px solid rgba(255,255,255,0.12);
     background: transparent; color: rgba(255,255,255,0.55);
     cursor: pointer; flex-shrink: 0;
@@ -291,7 +292,7 @@ const CSS = `
 
   .sh-nav-item {
     display: flex; align-items: center; gap: 10px;
-    padding: 0 12px; height: 40px; margin: 1px 8px; border-radius: 8px;
+    padding: 0 12px; height: 40px; margin: 1px 8px; border-radius: 6px;
     cursor: pointer; white-space: nowrap; overflow: hidden;
     position: relative; border: none; background: transparent;
     color: var(--sh-side-text); font-family: var(--sh-font);
@@ -322,7 +323,7 @@ const CSS = `
 
   .sh-item-badge {
     margin-left: auto; background: var(--sh-accent); color: #fff;
-    font-size: 10px; font-weight: 700; border-radius: 20px;
+    font-size: 10px; font-weight: 700; border-radius: 5px;
     padding: 1px 6px; flex-shrink: 0;
   }
 
@@ -333,7 +334,7 @@ const CSS = `
   }
   .sh-collapse-btn {
     display: flex; align-items: center; justify-content: center;
-    width: 100%; height: 36px; border-radius: 8px;
+    width: 100%; height: 36px; border-radius: 6px;
     border: 1px solid var(--sh-side-border); background: transparent;
     color: var(--sh-side-muted); cursor: pointer; font-family: var(--sh-font);
     transition: background var(--sh-ease), color var(--sh-ease);
@@ -354,7 +355,7 @@ const CSS = `
   .sh-user-wrap { position: relative; }
   .sh-user-menu {
     position: absolute; top: calc(100% + 8px); right: 0;
-    background: #fff; border-radius: 14px;
+    background: #fff; border-radius: 8px;
     border: 1px solid rgba(0,0,0,0.08);
     box-shadow: 0 12px 40px rgba(0,0,0,0.16);
     min-width: 232px; z-index: 9999; overflow: hidden;
@@ -368,7 +369,7 @@ const CSS = `
     padding: 16px 16px 12px; background: #fafbfc; border-bottom: 1px solid #f1f5f9;
   }
   .sh-menu-avatar {
-    width: 38px; height: 38px; border-radius: 10px;
+    width: 38px; height: 38px; border-radius: 7px;
     background: linear-gradient(135deg, var(--sh-accent), var(--sh-accent2));
     display: flex; align-items: center; justify-content: center;
     font-size: 13px; font-weight: 700; color: #fff; flex-shrink: 0;
@@ -390,7 +391,7 @@ const CSS = `
   /* ── Language toggle ── */
   .sh-lang-toggle {
     display: flex; align-items: center;
-    border-radius: 20px;
+    border-radius: 6px;
     border: 1px solid rgba(255,255,255,0.08);
     background: rgba(255,255,255,0.06);
     overflow: hidden; flex-shrink: 0;
@@ -398,7 +399,7 @@ const CSS = `
   }
   .sh-lang-opt {
     display: flex; align-items: center; justify-content: center;
-    padding: 0 12px; height: 100%; border-radius: 16px;
+    padding: 0 12px; height: 100%; border-radius: 4px;
     font-family: var(--sh-font); font-size: 11.5px; font-weight: 700;
     color: rgba(255,255,255,0.4); letter-spacing: 0.3px;
     cursor: pointer; border: none; background: transparent;
@@ -412,7 +413,7 @@ const CSS = `
 
   .sh-ay-btn {
     display: flex; align-items: center; gap: 5px;
-    height: 34px; padding: 0 11px; border-radius: 8px;
+    height: 34px; padding: 0 11px; border-radius: 6px;
     border: 1px solid rgba(255,255,255,0.15);
     background: rgba(255,255,255,0.08);
     color: #fff; cursor: pointer;
@@ -440,7 +441,7 @@ const CSS = `
 
   .sh-ay-dropdown {
     position: absolute; top: calc(100% + 8px); right: 0;
-    background: #fff; border-radius: 12px;
+    background: #fff; border-radius: 8px;
     border: 1px solid rgba(0,0,0,0.09);
     box-shadow: 0 14px 40px rgba(0,0,0,0.16);
     min-width: 175px; z-index: 9999; overflow: hidden;
@@ -499,7 +500,7 @@ const CSS = `
 
   .sh-ay-dropdown {
     position: absolute; top: calc(100% + 8px); right: 0;
-    background: #fff; border-radius: 12px;
+    background: #fff; border-radius: 8px;
     border: 1px solid rgba(0,0,0,0.09);
     box-shadow: 0 14px 40px rgba(0,0,0,0.16);
     min-width: 175px; z-index: 9999; overflow: hidden;
