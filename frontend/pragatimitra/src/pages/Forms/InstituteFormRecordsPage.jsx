@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useApi } from "../../hooks/useApi";
 import { useLanguage } from "../../i18n/LanguageContext";
-import { Lock, Inbox } from "lucide-react";
+import { Lock, Inbox, Search as SearchIcon } from "lucide-react";
 import { S, Toast, isAuthError, formatDate } from "../../components/shared/formUtils";
 import PageHeader from "../../components/shared/PageHeader";
 import { tableCardStyle } from "../../components/shared/ui";
+import { Input, Select, Button } from "../../ui";
 
 const ACCENT = "#2563eb";
 
@@ -291,29 +292,22 @@ export default function InstituteFormRecordsPage({ form, onBack }) {
             : `${totalRecords} ${lang === "hi" ? "रिकॉर्ड" : "record"}${totalRecords !== 1 ? (lang === "hi" ? "" : "s") : ""} ${lang === "hi" ? "में से" : "across"} ${departments.length} ${lang === "hi" ? "विभाग" : "department"}${departments.length !== 1 ? (lang === "hi" ? "" : "s") : ""}`
         }
         actions={
-          <button
+          <Button
+            variant={lockInfo.is_locked ? "outlineSuccess" : "danger"}
             onClick={handleToggleLock}
+            loading={lockToggling}
             disabled={lockToggling || loading}
+            icon={lockInfo.is_locked ? <IconUnlock /> : <IconLock />}
             title={lockInfo.is_locked
               ? (lang === "hi" ? "इस फॉर्म को अनलॉक करें" : "Unlock this form")
               : (lang === "hi" ? "इस फॉर्म को लॉक करें" : "Lock this form")}
-            style={{
-              display: "inline-flex", alignItems: "center", gap: 7,
-              background: lockInfo.is_locked ? "#16a34a" : "#dc2626",
-              color: "#fff", border: "none", borderRadius: 10,
-              padding: "0 16px", height: 34, fontSize: 12.5, fontWeight: 700,
-              cursor: lockToggling || loading ? "not-allowed" : "pointer",
-              opacity: lockToggling || loading ? 0.7 : 1,
-              boxShadow: `0 2px 8px ${lockInfo.is_locked ? "#16a34a40" : "#dc262640"}`,
-              flexShrink: 0, alignSelf: "flex-start",
-            }}
           >
             {lockToggling
               ? (lang === "hi" ? "कृपया प्रतीक्षा करें…" : "Please wait…")
               : lockInfo.is_locked
-                ? <><IconUnlock /> {lang === "hi" ? "फॉर्म अनलॉक करें" : "Unlock Form"}</>
-                : <><IconLock /> {lang === "hi" ? "फॉर्म लॉक करें" : "Lock Form"}</>}
-          </button>
+                ? (lang === "hi" ? "फॉर्म अनलॉक करें" : "Unlock Form")
+                : (lang === "hi" ? "फॉर्म लॉक करें" : "Lock Form")}
+          </Button>
         }
       />
 
@@ -356,10 +350,10 @@ export default function InstituteFormRecordsPage({ form, onBack }) {
             </span>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <select
+            <Select
               value={deptFilter}
               onChange={(e) => setDeptFilter(e.target.value)}
-              style={{ ...S.select(false), width: "auto", minWidth: 180, height: 36, padding: "0 32px 0 12px", fontSize: 12 }}
+              style={{ width: "auto", minWidth: 180 }}
             >
               <option value="__all__">
                 {lang === "hi" ? "सभी विभाग" : "All departments"} ({totalRecords})
@@ -369,24 +363,19 @@ export default function InstituteFormRecordsPage({ form, onBack }) {
                   {d.name} ({d.count})
                 </option>
               ))}
-            </select>
+            </Select>
             <div style={{ position: "relative", width: 240 }}>
               <span style={{
-                position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)",
-                color: "#94a3b8", display: "flex",
+                position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)",
+                color: "#94a3b8", display: "flex", pointerEvents: "none",
               }}>
-                <IconSearch />
+                <SearchIcon size={16} strokeWidth={1.75} />
               </span>
-              <input
+              <Input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder={lang === "hi" ? "रिकॉर्ड खोजें…" : "Search records…"}
-                style={{
-                  width: "100%", padding: "7px 10px 7px 30px",
-                  fontSize: 12, color: "#1e293b",
-                  border: "1px solid #e2e8f0", borderRadius: 8, outline: "none",
-                  background: "#fff",
-                }}
+                style={{ paddingLeft: 36 }}
               />
             </div>
           </div>
@@ -509,24 +498,16 @@ export default function InstituteFormRecordsPage({ form, onBack }) {
               <strong>{Math.min(page * PAGE_SIZE, filteredRows.length)}</strong>{" "}
               {lang === "hi" ? "में से" : "of"} <strong>{filteredRows.length}</strong>
             </span>
-            <div style={{ display: "inline-flex", gap: 6 }}>
-              <button
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page === 1}
-                style={pagerBtn(page === 1)}
-              >
+            <div style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
+              <Button variant="secondary" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}>
                 ‹ {lang === "hi" ? "पिछला" : "Prev"}
-              </button>
-              <span style={{ alignSelf: "center", fontSize: 12, fontWeight: 600, color: "#1e293b" }}>
+              </Button>
+              <span style={{ alignSelf: "center", fontSize: 12, fontWeight: 600, color: "#1e293b", padding: "0 4px" }}>
                 {page} / {totalPages}
               </span>
-              <button
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                disabled={page === totalPages}
-                style={pagerBtn(page === totalPages)}
-              >
+              <Button variant="secondary" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages}>
                 {lang === "hi" ? "अगला" : "Next"} ›
-              </button>
+              </Button>
             </div>
           </div>
         )}

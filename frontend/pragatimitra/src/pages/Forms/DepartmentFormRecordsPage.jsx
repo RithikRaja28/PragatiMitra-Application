@@ -3,7 +3,7 @@ import { Plus, Pencil, Trash2, Lock, FilePlus, Download, FileText as FileCsv, Fi
 import { useApi } from "../../hooks/useApi";
 import { useAuth } from "../../store/AuthContext";
 import { Toast, isAuthError, formatDate } from "../../components/shared/formUtils";
-import { color, Button, PageHeader, Badge, EmptyState, Modal, DataTable, Dropdown, MenuItem, MenuLabel } from "../../ui";
+import { color, Button, PageHeader, Badge, EmptyState, Modal, DataTable, Dropdown, MenuItem, MenuLabel, Input, Textarea, Select, FieldLabel } from "../../ui";
 
 async function downloadDeptExport(formId, format, language, accessToken, year) {
   const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
@@ -107,7 +107,7 @@ function RecordEditView({ form, fields, record, allowedRoles, year, viewOnly = f
     if (f.type === "boolean") {
       return (
         <div key={c}>
-          <label style={labelStyle}>{label}{f.required && " *"}</label>
+          <FieldLabel required={f.required}>{label}</FieldLabel>
           <div style={{ display: "flex", gap: 16 }}>
             {[["true", "Yes"], ["false", "No"]].map(([val, txt]) => (
               <label key={val} style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 13, cursor: "pointer" }}>
@@ -121,16 +121,16 @@ function RecordEditView({ form, fields, record, allowedRoles, year, viewOnly = f
     if (f.type === "textarea" || f.type === "description") {
       return (
         <div key={c}>
-          <label style={labelStyle}>{label}{f.required && " *"}</label>
-          <textarea style={{ ...inputStyle, height: "auto", minHeight: 96, padding: "13px 15px", resize: "vertical" }} value={data[c] || ""} onChange={(e) => set(c, e.target.value)} />
+          <FieldLabel required={f.required}>{label}</FieldLabel>
+          <Textarea value={data[c] || ""} onChange={(e) => set(c, e.target.value)} />
         </div>
       );
     }
     const type = f.type === "number" ? "number" : f.type === "date" ? "date" : f.type === "email" ? "email" : f.type === "phone" ? "tel" : "text";
     return (
       <div key={c}>
-        <label style={labelStyle}>{label}{f.required && " *"}</label>
-        <input style={inputStyle} type={type} value={data[c] || ""} onChange={(e) => set(c, e.target.value)} />
+        <FieldLabel required={f.required}>{label}</FieldLabel>
+        <Input type={type} value={data[c] || ""} onChange={(e) => set(c, e.target.value)} />
       </div>
     );
   }
@@ -140,11 +140,11 @@ function RecordEditView({ form, fields, record, allowedRoles, year, viewOnly = f
       <div style={{ ...paneTitle, color: viewOnly ? "#64748b" : color.primary }}>{editLang === "hi" ? "Hindi" : "English"}{!viewOnly && " (Editable)"}</div>
       {!isEdit && !viewOnly && allowedRoles.length > 0 && (
         <div>
-          <label style={labelStyle}>Role</label>
-          <select style={inputStyle} value={roleName} onChange={(e) => setRoleName(e.target.value)}>
+          <FieldLabel>Role</FieldLabel>
+          <Select value={roleName} onChange={(e) => setRoleName(e.target.value)}>
             <option value="">— None —</option>
             {allowedRoles.map((r) => <option key={r} value={r}>{titleOf(r)}</option>)}
-          </select>
+          </Select>
         </div>
       )}
       {fields.map(renderInput)}

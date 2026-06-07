@@ -9,6 +9,7 @@ import { useLanguage } from "../../i18n/LanguageContext";
 import { S, Toast, isAuthError, formatDate } from "../../components/shared/formUtils";
 import PageHeader from "../../components/shared/PageHeader";
 import { tableCardStyle } from "../../components/shared/ui";
+import { Button, Input, Textarea, FieldLabel, Badge } from "../../ui";
 
 const ACCENT = "#2563eb";
 const CHUNK_SIZE = 500;
@@ -151,10 +152,9 @@ function FieldInput({ field, value, onChange, getToken, lang = "en" }) {
   const col = dbCol(field.column_name);
   const label = field.label?.[lang] || field.label?.en || displayCol(field.column_name);
   const type = field.type;
-  const commonStyle = S.input(false);
   if (type === "boolean") return (
-    <div><label style={S.label}>{label}{field.required && " *"}</label>
-      <div style={{ display: "flex", gap: 16, marginTop: 4 }}>
+    <div><FieldLabel required={field.required}>{label}</FieldLabel>
+      <div style={{ display: "flex", gap: 16, marginTop: 2 }}>
         {[{val:"true",text:"Yes"},{val:"false",text:"No"}].map(({val,text}) => (
           <label key={val} style={{ display: "flex", alignItems: "center", gap: 7, cursor: "pointer", fontSize: 13 }}>
             <input type="radio" name={col} value={val} checked={String(value)===val} onChange={() => onChange(col, val==="true")} style={{ accentColor: ACCENT, width: 15, height: 15 }} /> {text}
@@ -163,10 +163,10 @@ function FieldInput({ field, value, onChange, getToken, lang = "en" }) {
       </div>
     </div>
   );
-  if (type === "textarea" || type === "description") return <div><label style={S.label}>{label}{field.required && " *"}</label><textarea style={{ ...commonStyle, resize: "vertical", minHeight: 80 }} value={value||""} onChange={e => onChange(col, e.target.value)} required={field.required} /></div>;
+  if (type === "textarea" || type === "description") return <div><FieldLabel required={field.required}>{label}</FieldLabel><Textarea value={value||""} onChange={e => onChange(col, e.target.value)} required={field.required} /></div>;
   if (type === "document") return <DocumentUploadField label={label} required={field.required} value={value} onChange={url => onChange(col, url)} getToken={getToken} />;
   const inputType = type==="number"?"number":type==="date"?"date":type==="email"?"email":type==="phone"?"tel":"text";
-  return <div><label style={S.label}>{label}{field.required && " *"}</label><input style={commonStyle} type={inputType} value={value||""} onChange={e => onChange(col, e.target.value)} required={field.required} /></div>;
+  return <div><FieldLabel required={field.required}>{label}</FieldLabel><Input type={inputType} value={value||""} onChange={e => onChange(col, e.target.value)} required={field.required} /></div>;
 }
 
 /* ── Read-only field renderer (reference pane of the edit dialog) ──────── */
@@ -185,11 +185,11 @@ function ReadOnlyField({ field, value, lang = "en" }) {
 
   return (
     <div>
-      <label style={S.label}>{label}</label>
+      <FieldLabel>{label}</FieldLabel>
       <div
         style={{
           width: "100%",
-          minHeight: isArea ? 80 : 40,
+          minHeight: isArea ? 80 : 44,
           padding: isArea ? "10px 14px" : "0 14px",
           display: "flex",
           alignItems: isArea ? "flex-start" : "center",
@@ -269,7 +269,8 @@ function RecordEditPage({ fields, record, onSave, onBack, getToken, formName, fo
 
   function handleChange(col, val) { setFormData(prev => ({ ...prev, [col]: val })); }
 
-  /* Inject scoped CSS once: 60/40 split (stacks on tablet) + enterprise inputs. */
+  /* Inject scoped CSS once: 60/40 split layout (stacks on tablet). Field styling
+     now comes from the standard ui Input/Textarea (src/ui/Field). */
   useEffect(() => {
     const id = "pm-rec-edit-css";
     if (document.getElementById(id)) return;
@@ -278,15 +279,6 @@ function RecordEditPage({ fields, record, onSave, onBack, getToken, formName, fo
     el.textContent = `
       .pm-rec-grid { display:grid; grid-template-columns:1.5fr 1fr; gap:32px; }
       @media (max-width: 1000px){ .pm-rec-grid { grid-template-columns:1fr; gap:24px; } }
-      .pm-rec-edit input:not([type=radio]):not([type=checkbox]),
-      .pm-rec-edit textarea, .pm-rec-edit select {
-        height: 48px !important; border-radius: 10px !important; font-size: 14px !important; padding: 0 15px !important;
-      }
-      .pm-rec-edit textarea { height: auto !important; min-height: 96px !important; padding: 13px 15px !important; line-height: 1.55; }
-      .pm-rec-edit label { font-size: 14px !important; font-weight: 500 !important; text-transform: none !important; }
-      .pm-rec-edit input:focus, .pm-rec-edit textarea:focus, .pm-rec-edit select:focus {
-        border-color: #2563eb !important; box-shadow: 0 0 0 3px rgba(37,99,235,0.14) !important; outline: none !important;
-      }
     `;
     document.head.appendChild(el);
   }, []);
@@ -355,7 +347,7 @@ function RecordEditPage({ fields, record, onSave, onBack, getToken, formName, fo
         title={isEdit ? "Edit Record" : "Add Record"}
         description={isEdit ? "Update data and review translated values." : "Fill in the details below."}
         actions={
-          <button onClick={onBack} style={{ ...S.btnGhost, display: "inline-flex", alignItems: "center", gap: 6 }}>← Back</button>
+          <Button variant="ghost" onClick={onBack} icon={<span style={{ fontSize: 15, lineHeight: 1 }}>←</span>}>Back</Button>
         }
       />
 
@@ -376,11 +368,11 @@ function RecordEditPage({ fields, record, onSave, onBack, getToken, formName, fo
         {/* Sticky action footer (72px) — stays visible, never overlaps the shell. */}
         <div style={{ position: "sticky", bottom: 0, marginTop: 24 }}>
           <div style={{ height: 72, margin: "0 -28px", padding: "0 28px", background: "#fff", borderTop: "1px solid #e5e7eb", boxShadow: "0 -4px 16px rgba(16,24,40,0.06)", display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 12 }}>
-            <button type="button" onClick={onBack} style={S.btnGhost} disabled={saving}>Cancel</button>
+            <Button type="button" variant="secondary" onClick={onBack} disabled={saving}>Cancel</Button>
             {!viewOnly && (
-              <button type="submit" style={S.btnPrimary(saving)} disabled={saving}>
+              <Button type="submit" variant="primary" loading={saving} disabled={saving}>
                 {saving ? "Saving…" : isEdit ? "Update Record" : "Add Record"}
-              </button>
+              </Button>
             )}
           </div>
         </div>
@@ -419,14 +411,10 @@ function DeleteModal({ count = 1, onConfirm, onClose, deleting }) {
             </div>
           )}
           <div style={{ display: "flex", gap: 10, justifyContent: "center", marginTop: isBulk ? 0 : 20 }}>
-            <button onClick={onClose} style={S.btnGhost} disabled={deleting}>Cancel</button>
-            <button
-              onClick={onConfirm}
-              disabled={deleting}
-              style={{ ...S.btnPrimary(deleting), background: deleting ? "#fca5a5" : "#dc2626", borderColor: "#dc2626" }}
-            >
+            <Button variant="secondary" onClick={onClose} disabled={deleting}>Cancel</Button>
+            <Button variant="danger" onClick={onConfirm} loading={deleting} disabled={deleting}>
               {deleting ? "Deleting…" : isBulk ? `Delete ${count} Records` : "Delete Record"}
-            </button>
+            </Button>
           </div>
         </div>
       </div>
