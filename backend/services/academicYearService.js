@@ -22,6 +22,7 @@
  */
 
 const { getEffectiveState, STATE } = require("./stateResolver");
+const { assertEquivalent } = require("./equivalenceGuard");
 
 const EN_DASH = "–";
 
@@ -103,15 +104,17 @@ async function getAcademicYearLockBlock(pool, institutionId, year) {
        WHERE institution_id = $1 AND start_year = $2`,
       [institutionId, Number(year)]
     );
-    // Precedence via the shared resolver (see stateResolver.js). The academic
-    // year exposes a manual lock only, so this resolves to LOCKED when set.
-    const state = getEffectiveState({ locked: !!rows[0]?.is_locked });
-    if (state === STATE.LOCKED) {
-      return {
-        locked: true,
-        message: "This academic year is locked. Records are available in view-only mode.",
-      };
-    }
+    const isLocked = !!rows[0]?.is_locked;
+    // LEGACY (authoritative): locked when is_locked is set.
+    const legacy = isLocked
+      ? { locked: true, message: "This academic year is locked. Records are available in view-only mode." }
+      : { locked: false, message: null };
+    // CANDIDATE (shadow — shared resolver). Manual lock only → LOCKED when set.
+    const state = getEffectiveState({ locked: isLocked });
+    const candidate = state === STATE.LOCKED
+      ? { locked: true, message: "This academic year is locked. Records are available in view-only mode." }
+      : { locked: false, message: null };
+    return assertEquivalent("academicYearService.getAcademicYearLockBlock", legacy, candidate);
   } catch {
     // Never block a write because the lock lookup failed.
   }
@@ -209,12 +212,47 @@ async function setFormStatusForYear(client, { institutionId, academicYear, formI
   );
 }
 
+/* NON-DESTRUCTIVE archive: place a form into archived_forms_json for one
+   (institution, year) ONLY IF it is not already classified (absent from active,
+   archived AND disabled). Used for shared-form distribution so a consumer that
+   has already made a choice is never demoted. The config row must already exist
+   (call ensureYearRows first). */
+async function ensureFormArchivedIfUnclassified(client, { institutionId, academicYear, formId }) {
+  await client.query(
+    `UPDATE academic_year_form_config
+     SET archived_forms_json = (
+           SELECT COALESCE(jsonb_agg(DISTINCT e), '[]'::jsonb)
+           FROM jsonb_array_elements_text(archived_forms_json || to_jsonb($3::text)) AS e
+         ),
+         updated_at = now()
+     WHERE institution_id = $1 AND academic_year = $2
+       AND NOT (active_forms_json   @> to_jsonb($3::text))
+       AND NOT (archived_forms_json @> to_jsonb($3::text))
+       AND NOT (disabled            @> to_jsonb($3::text))`,
+    [institutionId, academicYear, String(formId)]
+  );
+}
+
+/* The academic-year start years an institution has created (ascending).
+   Accepts a pool or a transaction client. Empty array when it has none. */
+async function getInstitutionStartYears(db, institutionId) {
+  if (!institutionId) return [];
+  const { rows } = await db.query(
+    `SELECT start_year FROM academic_year_master
+      WHERE institution_id = $1 ORDER BY start_year`,
+    [institutionId]
+  );
+  return rows.map((r) => Number(r.start_year));
+}
+
 module.exports = {
   ensureAcademicYearTables,
   formatAcademicYear,
   parseStartYear,
   ensureYearRows,
   setFormStatusForYear,
+  ensureFormArchivedIfUnclassified,
+  getInstitutionStartYears,
   getAcademicYearLockBlock,
   getAcademicYearLockBlockForReq,
   resolveActiveAcademicYear,

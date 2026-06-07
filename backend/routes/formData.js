@@ -8,6 +8,7 @@ const { translateRow, resolveTranslationMode, enrichSchemaLabels } = require("..
 const { getAcademicYearLockBlockForReq } = require("../services/academicYearService");
 const { getEffectiveState, messageFor, canWrite } = require("../services/stateResolver");
 const { SOURCE_LANGUAGE, isDerivedRow } = require("../services/translationOwnership");
+const { assertEquivalent } = require("../services/equivalenceGuard");
 
 /* Latest active schema year for a form+institution — used to resolve which
    academic year a record operation belongs to (for academic-year lock checks). */
@@ -113,7 +114,11 @@ function activeFields(schemaRow) {
 }
 
 /* Returns { locked, message } — chooses the deadline-expired message when the
-   lock is the result of an expired deadline, otherwise the manual-lock message. */
+   lock is the result of an expired deadline, otherwise the manual-lock message.
+
+   Output-equivalence harness (Phase 1): the original inline logic is authoritative
+   (`legacy`); the stateResolver version runs as a shadow `candidate`. They are
+   compared and any divergence is logged — legacy output always wins. */
 async function getLockBlock(pool, formName, institutionId) {
   const { rows } = await pool.query(
     `SELECT flc.is_locked, flc.auto_locked, flc.deadline_at
@@ -123,17 +128,34 @@ async function getLockBlock(pool, formName, institutionId) {
   );
   const row = rows[0];
 
-  // Single source of truth for lock/deadline precedence (see stateResolver.js).
-  // Archive is not a concept on form_lock_config, so it's never set here.
+  // LEGACY (authoritative).
+  let legacy;
+  if (!row?.is_locked) {
+    legacy = { locked: false, message: null };
+  } else {
+    const expired =
+      row.auto_locked ||
+      (row.deadline_at && new Date(row.deadline_at).getTime() <= Date.now());
+    legacy = {
+      locked: true,
+      message: expired
+        ? "This form deadline has expired for your institution. The form is automatically locked."
+        : "This form is currently locked by the institution admin. You can only view the records.",
+    };
+  }
+
+  // CANDIDATE (shadow — stateResolver precedence). Archive isn't a concept here.
   const state = getEffectiveState({
     archived: false,
     locked: !!row?.is_locked,
     autoLocked: !!row?.auto_locked,
     deadlineAt: row?.deadline_at ?? null,
   });
+  const candidate = canWrite(state)
+    ? { locked: false, message: null }
+    : { locked: true, message: messageFor(state) };
 
-  if (canWrite(state)) return { locked: false, message: null };
-  return { locked: true, message: messageFor(state) };
+  return assertEquivalent("formData.getLockBlock", legacy, candidate);
 }
 
 /* Map each field's DB column → its resolved translation mode
@@ -271,7 +293,12 @@ router.get("/:formName/records/:id/counterpart", async (req, res) => {
     const self = selfRows[0];
     let counterpart = null;
 
-    if (isDerivedRow(self)) {
+    // Shadow-equivalence: legacy boolean is authoritative; isDerivedRow is the candidate.
+    const selfIsDerivedLegacy = self.language === "hi" && !!self.source_row_id;
+    const selfIsDerived = assertEquivalent(
+      "formData.isDerivedRow", selfIsDerivedLegacy, isDerivedRow(self)
+    );
+    if (selfIsDerived) {
       // Derived (Hindi) row → its counterpart is the English source it points to.
       const { rows } = await pool.query(
         `SELECT * FROM ${formName}_records WHERE id = $1 AND institution_id = $2`,

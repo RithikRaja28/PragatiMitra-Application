@@ -14,7 +14,9 @@
       "Bash(node --check routes/departmentFormData.js)",
       "Bash(node --check routes/departmentForms.js)",
       "Bash(node -e \"require\\('exceljs'\\); console.log\\('exceljs OK'\\)\")",
-      "Bash(node --check services/departmentFormService.js)"
+      "Bash(node --check services/departmentFormService.js)",
+      "Bash(node -e \"require\\('./server.js'\\); setTimeout\\(\\(\\)=>process.exit\\(0\\), 5000\\);\")",
+      "Bash(node -e \"require\\('./server.js'\\); setTimeout\\(\\(\\)=>process.exit\\(0\\), 6000\\);\")"
     ]
   }
 }

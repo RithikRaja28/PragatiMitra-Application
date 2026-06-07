@@ -22,6 +22,7 @@ const { resolveDeptContext, deptRecordsTable } = require("../services/department
 const { getEffectiveState, STATE } = require("../services/stateResolver");
 const { resolveActiveAcademicYear } = require("../services/academicYearService");
 const { SOURCE_LANGUAGE, isDerivedRow } = require("../services/translationOwnership");
+const { assertEquivalent } = require("../services/equivalenceGuard");
 
 const router = express.Router();
 router.use(verifyToken);
@@ -62,8 +63,11 @@ function resolveYear(req) {
   const q = Number(req.query.year); if (Number.isInteger(q)) return q;
   const h = Number(req.get("X-Academic-Year")); if (Number.isInteger(h)) return h;
   const b = Number(req.body?.year); if (Number.isInteger(b)) return b;
-  if (Number.isInteger(req.institutionAcademicYear)) return req.institutionAcademicYear;
-  return new Date().getFullYear();
+  // Phase-1 shadow: legacy fallback (calendar year) is authoritative; the
+  // institution-active year is the candidate — logged if it would differ, never used.
+  const legacy = new Date().getFullYear();
+  const candidate = Number.isInteger(req.institutionAcademicYear) ? req.institutionAcademicYear : legacy;
+  return assertEquivalent("departmentFormData.resolveYear.fallback", legacy, candidate);
 }
 
 function activeFields(schema) {
@@ -123,20 +127,37 @@ async function deptLockBlock(pool, form, year) {
   );
   const row = lc[0] || {};
   const deadlineExpired = !!(row.deadline && new Date(row.deadline).getTime() <= Date.now());
-  // anyLock folds every blocking source (per-year lock, manual lock, expired
-  // deadline) so the shared resolver can pick the precedence + which message
-  // applies. Dept keeps its own wording (departments ≠ institutions).
+
+  // LEGACY (authoritative): any blocking source locks; deadline/auto → deadline msg.
   const anyLock = ym[0]?.is_locked === true || row.is_locked === true || deadlineExpired;
+  let legacy;
+  if (!anyLock) {
+    legacy = { locked: false, message: null };
+  } else {
+    legacy = {
+      locked: true,
+      message: (deadlineExpired || row.auto_locked)
+        ? "This form's deadline has expired for your department — it is now view-only."
+        : "This form is locked for your department. You can only view records.",
+    };
+  }
+
+  // CANDIDATE (shadow — shared resolver picks precedence; dept keeps its wording).
   const state = getEffectiveState({
     locked: anyLock,
     autoLocked: !!row.auto_locked,
     deadlineAt: row.deadline ?? null,
   });
-  if (state === STATE.ACTIVE) return { locked: false, message: null };
-  const message = state === STATE.DEADLINE_EXPIRED
-    ? "This form's deadline has expired for your department — it is now view-only."
-    : "This form is locked for your department. You can only view records.";
-  return { locked: true, message };
+  const candidate = state === STATE.ACTIVE
+    ? { locked: false, message: null }
+    : {
+        locked: true,
+        message: state === STATE.DEADLINE_EXPIRED
+          ? "This form's deadline has expired for your department — it is now view-only."
+          : "This form is locked for your department. You can only view records.",
+      };
+
+  return assertEquivalent("departmentFormData.deptLockBlock", legacy, candidate);
 }
 
 /* ─────────────────────────────────────────────────────────────────────
@@ -220,7 +241,12 @@ router.get("/:id/records/:recordId/counterpart", async (req, res) => {
     if (!selfRows.length) return res.status(404).json({ success: false, message: "Record not found." });
     const self = selfRows[0];
     let counterpart = null;
-    if (isDerivedRow(self)) {
+    // Shadow-equivalence: legacy boolean is authoritative; isDerivedRow is the candidate.
+    const selfIsDerivedLegacy = self.language === "hi" && !!self.source_row_id;
+    const selfIsDerived = assertEquivalent(
+      "departmentFormData.isDerivedRow", selfIsDerivedLegacy, isDerivedRow(self)
+    );
+    if (selfIsDerived) {
       // Derived (Hindi) row → its counterpart is the English source it points to.
       const { rows } = await pool.query(`SELECT * FROM ${table} WHERE id = $1 AND department_id = $2`, [self.source_row_id, departmentId]);
       counterpart = rows[0] || null;

@@ -20,6 +20,7 @@ const {
   deptRecordsTable, collectColumnNames, buildDeptRecordsTableDDL,
 } = require("../services/departmentFormService");
 const { resolveActiveAcademicYear } = require("../services/academicYearService");
+const { assertEquivalent } = require("../services/equivalenceGuard");
 
 const router = express.Router();
 router.use(verifyToken);
@@ -62,8 +63,11 @@ function resolveYear(req) {
   if (Number.isInteger(fromHeader)) return fromHeader;
   const fromBody = Number(req.body?.year);
   if (Number.isInteger(fromBody)) return fromBody;
-  if (Number.isInteger(req.institutionAcademicYear)) return req.institutionAcademicYear;
-  return new Date().getFullYear();
+  // Phase-1 shadow: legacy fallback (calendar year) is authoritative; the
+  // institution-active year is the candidate — logged if it would differ, never used.
+  const legacy = new Date().getFullYear();
+  const candidate = Number.isInteger(req.institutionAcademicYear) ? req.institutionAcademicYear : legacy;
+  return assertEquivalent("departmentForms.resolveYear.fallback", legacy, candidate);
 }
 
 /* Auto-fill label.hi using Google Translate (only when translation enabled). */
