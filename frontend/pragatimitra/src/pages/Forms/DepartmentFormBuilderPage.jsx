@@ -142,6 +142,11 @@ export default function DepartmentFormBuilderPage({ mode, initialData, onDone, o
   const [allRoles, setAllRoles] = useState([]);
   const [roles, setRoles] = useState([]);            // selected role names
   const [roleSearch, setRoleSearch] = useState("");
+  /* Optional deadline (create flow only — default OFF). Edit manages it from the
+     form list's Deadline modal. Date + time are combined in the local timezone. */
+  const [deadlineEnabled, setDeadlineEnabled] = useState(false);
+  const [deadlineDate, setDeadlineDate] = useState("");
+  const [deadlineTime, setDeadlineTime] = useState("23:59");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [nameErr, setNameErr] = useState("");
@@ -221,9 +226,12 @@ export default function DepartmentFormBuilderPage({ mode, initialData, onDone, o
           method: "PUT", body: JSON.stringify({ schema, translate_enabled: translate }),
         });
       } else {
+        const deadline = (deadlineEnabled && deadlineDate)
+          ? new Date(`${deadlineDate}T${deadlineTime || "23:59"}:00`).toISOString()
+          : null;
         res = await apiFetch("/api/department-forms", {
           method: "POST",
-          body: JSON.stringify({ form_name: identifier, form_description: description.trim(), schema, translate_enabled: translate, roles, year: selectedYear }),
+          body: JSON.stringify({ form_name: identifier, form_description: description.trim(), schema, translate_enabled: translate, roles, year: selectedYear, deadline }),
         });
       }
       const data = await res.json();
@@ -343,6 +351,31 @@ export default function DepartmentFormBuilderPage({ mode, initialData, onDone, o
                   </div>
                   <div style={{ fontSize: 11.5, color: color.muted, marginTop: 8 }}>Leave empty to keep the form visible to the whole department. Access also requires the same institution &amp; department.</div>
                 </div>
+
+                {!isEdit && (
+                  <div>
+                    <label style={{ display: "flex", alignItems: "flex-start", gap: 12, cursor: "pointer", background: color.hover, border: `1px solid ${color.border}`, borderRadius: 10, padding: "12px 14px" }}>
+                      <input type="checkbox" checked={deadlineEnabled} onChange={(e) => setDeadlineEnabled(e.target.checked)} style={{ accentColor: color.primary, width: 16, height: 16, marginTop: 1 }} />
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: color.text }}>Enable submission deadline</div>
+                        <div style={{ fontSize: 12, color: color.muted, marginTop: 2 }}>After this date &amp; time the form auto-locks for your department ({selectedYear != null ? `${selectedYear}–${selectedYear + 1}` : "current year"} only) — members can still view and export. You can change it later.</div>
+                      </div>
+                    </label>
+                    {deadlineEnabled && (
+                      <div style={{ display: "flex", gap: 12, marginTop: 12 }}>
+                        <div style={{ flex: 1.4 }}>
+                          <label style={labelStyle}>Deadline Date</label>
+                          <input type="date" style={inputStyle(false)} value={deadlineDate} min={new Date().toISOString().slice(0, 10)} onChange={(e) => setDeadlineDate(e.target.value)} />
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <label style={labelStyle}>Time</label>
+                          <input type="time" style={inputStyle(false)} value={deadlineTime} onChange={(e) => setDeadlineTime(e.target.value)} />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 <div style={{ border: `1px solid ${color.border}`, borderRadius: 8, overflow: "hidden" }}>
                   <div style={{ background: color.hover, padding: "10px 16px", fontSize: 11, fontWeight: 700, color: color.muted, textTransform: "uppercase", letterSpacing: 0.6 }}>Summary</div>
                   <div style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: 8, fontSize: 13 }}>
@@ -351,6 +384,7 @@ export default function DepartmentFormBuilderPage({ mode, initialData, onDone, o
                     <Row label="Academic Year" value={selectedYear != null ? `${selectedYear}–${selectedYear + 1}` : "current"} />
                     <Row label="Fields" value={String(fields.length)} />
                     <Row label="Translate to Hindi" value={translate ? "Enabled" : "Disabled"} />
+                    {!isEdit && <Row label="Deadline" value={deadlineEnabled && deadlineDate ? `${deadlineDate} ${deadlineTime || "23:59"}` : "None"} />}
                   </div>
                 </div>
                 {error && <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 8, padding: "10px 14px", fontSize: 13, color: "#B91C1C" }}>{error}</div>}

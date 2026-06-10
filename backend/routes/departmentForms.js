@@ -117,17 +117,17 @@ router.get("/", requireRole(WRITE_ROLES), async (req, res) => {
               COALESCE(ym.is_active,   (dtl.academic_year = $2)) AS year_active,
               COALESCE(ym.is_archived, false) AS year_archived,
               COALESCE(ym.is_locked,   false) AS year_locked,
-              lc.deadline,
-              COALESCE(lc.is_locked, false)   AS deadline_locked,
-              COALESCE(lc.auto_locked, false) AS auto_locked,
-              lc.locked_at,
-              (lc.deadline IS NOT NULL AND lc.deadline <= now()) AS deadline_expired,
+              dc.deadline_at                  AS deadline,
+              COALESCE(dc.is_locked, false)   AS deadline_locked,
+              COALESCE(dc.auto_locked, false) AS auto_locked,
+              dc.locked_at,
+              (dc.deadline_at IS NOT NULL AND dc.deadline_at <= now()) AS deadline_expired,
               ARRAY(SELECT role_name FROM department_form_roles r WHERE r.department_form_id = dtl.id ORDER BY role_name) AS roles
          FROM department_table_list dtl
          LEFT JOIN department_form_year_mapping ym
            ON ym.department_form_id = dtl.id AND ym.academic_year = $2
-         LEFT JOIN department_form_lock_config lc
-           ON lc.department_form_id = dtl.id
+         LEFT JOIN department_form_deadline_config dc
+           ON dc.department_form_id = dtl.id AND dc.academic_year = $2
         WHERE dtl.department_id = $1
         ORDER BY dtl.form_name`,
       [departmentId, year]
@@ -282,12 +282,12 @@ router.get("/assigned", async (req, res) => {
     const { rows } = await pool.query(
       `SELECT dtl.id, dtl.form_name, dtl.form_description, dtl.academic_year, dtl.translate_enabled,
               ym.status AS year_status, COALESCE(ym.is_archived, false) AS year_archived, COALESCE(ym.is_locked, false) AS year_locked,
-              lc.deadline, COALESCE(lc.is_locked, false) AS deadline_locked, COALESCE(lc.auto_locked, false) AS auto_locked,
-              (lc.deadline IS NOT NULL AND lc.deadline <= now()) AS deadline_expired,
+              dc.deadline_at AS deadline, COALESCE(dc.is_locked, false) AS deadline_locked, COALESCE(dc.auto_locked, false) AS auto_locked,
+              (dc.deadline_at IS NOT NULL AND dc.deadline_at <= now()) AS deadline_expired,
               ARRAY(SELECT role_name FROM department_form_roles r WHERE r.department_form_id = dtl.id) AS roles
          FROM department_table_list dtl
          LEFT JOIN department_form_year_mapping ym ON ym.department_form_id = dtl.id AND ym.academic_year = $2
-         LEFT JOIN department_form_lock_config lc ON lc.department_form_id = dtl.id
+         LEFT JOIN department_form_deadline_config dc ON dc.department_form_id = dtl.id AND dc.academic_year = $2
         WHERE dtl.department_id = $1 AND (dtl.institution_id = $3 OR dtl.institution_id IS NULL)
         ORDER BY dtl.form_name`,
       [departmentId, year, institutionId]
@@ -366,7 +366,7 @@ router.get("/:id/roles", async (req, res) => {
 ───────────────────────────────────────────────────────────────────── */
 router.post("/", requireRole(WRITE_ROLES), async (req, res) => {
   const pool = req.app.locals.pool;
-  const { form_name, form_description = null, schema, translate_enabled, roles = [] } = req.body;
+  const { form_name, form_description = null, schema, translate_enabled, roles = [], deadline } = req.body;
 
   if (!form_name || !String(form_name).trim())
     return res.status(400).json({ success: false, message: "form_name is required." });
@@ -376,6 +376,14 @@ router.post("/", requireRole(WRITE_ROLES), async (req, res) => {
   const slug = slugify(form_name);
   if (!/^[a-z][a-z0-9_]*$/.test(slug))
     return res.status(400).json({ success: false, message: "form_name must start with a letter and contain only letters, digits, and underscores." });
+
+  // Optional deadline supplied from the create flow ("Enable Deadline"). Scoped
+  // to the creation year. Invalid date → ignored (form still created).
+  let createDeadline = null;
+  if (deadline != null && String(deadline).trim() !== "") {
+    const d = new Date(deadline);
+    if (!isNaN(d.getTime())) createDeadline = d.toISOString();
+  }
 
   const translateEnabled = translate_enabled === false ? false : true;
   const year = resolveYear(req);
@@ -419,6 +427,17 @@ router.post("/", requireRole(WRITE_ROLES), async (req, res) => {
          ON CONFLICT (department_form_id) DO NOTHING`,
         [formId, departmentId]
       );
+
+      // Year-scoped deadline (only when the create flow enabled one).
+      if (createDeadline) {
+        await client.query(
+          `INSERT INTO department_form_deadline_config
+             (department_form_id, institution_id, department_id, academic_year, deadline_at, created_by, updated_by)
+           VALUES ($1, $2, $3, $4, $5, $6, $6)
+           ON CONFLICT (department_form_id, academic_year) DO NOTHING`,
+          [formId, institutionId, departmentId, year, createDeadline, req.user.userId]
+        );
+      }
 
       for (const rn of Array.isArray(roles) ? roles : []) {
         if (!rn || typeof rn !== "string") continue;
@@ -567,20 +586,26 @@ router.put("/:id/deadline", requireRole(WRITE_ROLES), async (req, res) => {
     const { form, departmentId, error } = await loadOwnedForm(pool, req, req.params.id);
     if (error) return res.status(404).json({ success: false, message: error });
 
+    // Deadline is scoped to the SELECTED academic year — a deadline set for one
+    // year is never inherited by another (year isolation). Keyed per (form, year).
+    const year = resolveYear(req);
+
     const { rows } = await pool.query(
-      `INSERT INTO department_form_lock_config (department_form_id, department_id, is_locked, deadline, auto_locked)
-       VALUES ($1, $2, false, $3, false)
-       ON CONFLICT (department_form_id) DO UPDATE SET
-         deadline    = $3,
-         is_locked   = CASE WHEN department_form_lock_config.auto_locked AND ($3 IS NULL OR $3 > NOW())
-                            THEN false ELSE department_form_lock_config.is_locked END,
-         auto_locked = CASE WHEN $3 IS NULL OR $3 > NOW()
-                            THEN false ELSE department_form_lock_config.auto_locked END,
+      `INSERT INTO department_form_deadline_config
+         (department_form_id, institution_id, department_id, academic_year, deadline_at, is_locked, auto_locked, created_by, updated_by)
+       VALUES ($1, $2, $3, $4, $5, false, false, $6, $6)
+       ON CONFLICT (department_form_id, academic_year) DO UPDATE SET
+         deadline_at = $5,
+         is_locked   = CASE WHEN department_form_deadline_config.auto_locked AND ($5 IS NULL OR $5 > NOW())
+                            THEN false ELSE department_form_deadline_config.is_locked END,
+         auto_locked = CASE WHEN $5 IS NULL OR $5 > NOW()
+                            THEN false ELSE department_form_deadline_config.auto_locked END,
+         updated_by  = $6,
          updated_at  = now()
-       RETURNING deadline, is_locked, auto_locked`,
-      [form.id, departmentId, newDeadline]
+       RETURNING deadline_at AS deadline, is_locked, auto_locked, academic_year`,
+      [form.id, form.institution_id, departmentId, year, newDeadline, req.user.userId]
     );
-    await client_safe_audit(req, form, newDeadline);
+    await client_safe_audit(req, form, newDeadline, year);
     return res.json({ success: true, message: newDeadline ? "Deadline saved." : "Deadline removed.", ...rows[0] });
   } catch (err) {
     logger.error("PUT /api/department-forms/:id/deadline", { stack: err.stack });
@@ -588,13 +613,13 @@ router.put("/:id/deadline", requireRole(WRITE_ROLES), async (req, res) => {
   }
 });
 
-async function client_safe_audit(req, form, newDeadline) {
+async function client_safe_audit(req, form, newDeadline, academicYear) {
   try {
     await writeAuditLog(req, {
       actionType: newDeadline ? "SET_DEPARTMENT_FORM_DEADLINE" : "REMOVE_DEPARTMENT_FORM_DEADLINE",
       entityType: "department_form",
       entityId: form.id,
-      newValue: { form_name: form.form_name, deadline_at: newDeadline },
+      newValue: { form_name: form.form_name, academic_year: academicYear, deadline_at: newDeadline },
     });
   } catch { /* audit must never block the request */ }
 }

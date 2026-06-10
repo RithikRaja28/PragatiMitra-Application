@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { Plus, Pencil, Trash2, Lock, FilePlus, Download, FileText as FileCsv, FileSpreadsheet } from "lucide-react";
+import { Plus, Pencil, Trash2, Lock, FilePlus, Download, FileText as FileCsv, FileSpreadsheet, CalendarClock } from "lucide-react";
 import { useApi } from "../../hooks/useApi";
 import { useAuth } from "../../store/AuthContext";
 import { Toast, isAuthError, formatDate } from "../../components/shared/formUtils";
@@ -23,6 +23,17 @@ const dbCol = (c) => c.trim().toLowerCase().replace(/\s+/g, "_");
 const displayCol = (c) => c.replace(/_/g, " ").replace(/\b\w/g, (m) => m.toUpperCase());
 
 function titleOf(s) { return String(s).replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()); }
+
+/* Deadline badge for the records view: OPEN / EXPIRES IN N DAYS / EXPIRED.
+   Driven by the form's year-scoped deadline_at (passed from the list row). */
+function recordsDeadlineBadge(deadlineAt) {
+  if (!deadlineAt) return { tone: "success", label: "OPEN" };
+  const ms = new Date(deadlineAt).getTime() - Date.now();
+  if (ms <= 0) return { tone: "danger", label: "EXPIRED" };
+  const days = Math.ceil(ms / 86400000);
+  if (days <= 1) return { tone: "warning", label: "EXPIRES TODAY" };
+  return { tone: days <= 3 ? "warning" : "success", label: `EXPIRES IN ${days} DAYS` };
+}
 
 /* ── Add / Edit record modal (English-authored; HI mirror is server-side) ── */
 const labelStyle = { display: "block", fontSize: 13, fontWeight: 500, color: "#334155", marginBottom: 6 };
@@ -339,6 +350,20 @@ export default function DepartmentFormRecordsPage({ form, year = null, onBack })
           </>
         }
       />
+
+      {(() => {
+        const b = recordsDeadlineBadge(form.deadline_at);
+        return (
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: lock.is_locked ? 12 : 20 }}>
+            <Badge tone={b.tone} icon={<CalendarClock size={12} strokeWidth={STROKE} />}>{b.label}</Badge>
+            {form.deadline_at && (
+              <span style={{ fontSize: 12, color: color.muted }}>
+                Deadline: {new Date(form.deadline_at).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+              </span>
+            )}
+          </div>
+        );
+      })()}
 
       {lock.is_locked && (
         <div style={{ display: "flex", alignItems: "center", gap: 12, background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 10, padding: "12px 18px", marginBottom: 20 }}>

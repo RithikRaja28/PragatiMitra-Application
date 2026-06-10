@@ -14,29 +14,41 @@ const STROKE = 1.75;
 
 function titleOf(s) { return String(s).replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()); }
 function deadlineInfo(form) {
-  if (!form.deadline_at) return { dateText: "—", tone: null, label: null };
+  if (!form.deadline_at) return { dateText: "No Deadline", tone: null, label: null };
   const d = new Date(form.deadline_at);
   const dateText = d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
   const msLeft = d.getTime() - Date.now();
   if (msLeft <= 0) return { dateText, tone: "danger", label: "EXPIRED" };
   const daysLeft = Math.ceil(msLeft / 86400000);
-  return { dateText, tone: daysLeft <= 3 ? "warning" : "success", label: `${daysLeft} DAY${daysLeft !== 1 ? "S" : ""} LEFT` };
+  if (daysLeft <= 1) return { dateText, tone: "warning", label: "EXPIRES TODAY" };
+  return { dateText, tone: daysLeft <= 3 ? "warning" : "success", label: `${daysLeft} DAYS LEFT` };
 }
 
-/* Deadline modal — department-scoped (PUT by form id). */
-function DeadlineModal({ form, onClose, onSaved, showToast }) {
+/* Local time-zone label, e.g. "Asia/Kolkata". */
+const LOCAL_TZ = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || "local time"; } catch { return "local time"; } })();
+
+/* Deadline modal — department-scoped AND academic-year-scoped (PUT by form id +
+   selected year). The deadline applies only to the selected year. */
+function DeadlineModal({ form, year, onClose, onSaved, showToast }) {
   const { apiFetch } = useApi();
   const [saving, setSaving] = useState(false);
   const [dateVal, setDateVal] = useState(form.deadline_at ? new Date(form.deadline_at).toISOString().slice(0, 10) : "");
+  const [timeVal, setTimeVal] = useState(form.deadline_at
+    ? new Date(form.deadline_at).toTimeString().slice(0, 5)
+    : "23:59");
   const hasDeadline = !!form.deadline_at;
   const expired = hasDeadline && new Date(form.deadline_at).getTime() <= Date.now();
   const todayStr = new Date().toISOString().slice(0, 10);
+  const yearLabel = year != null ? `${year}–${year + 1}` : "current year";
 
   async function save(remove) {
     setSaving(true);
     try {
-      const deadline = remove ? null : (dateVal ? new Date(dateVal + "T23:59:59").toISOString() : null);
-      const res = await apiFetch(`/api/department-forms/${form.id}/deadline`, { method: "PUT", body: JSON.stringify({ deadline }) });
+      // Combine the local date + time into an absolute instant (ISO/UTC).
+      const deadline = remove ? null : (dateVal ? new Date(`${dateVal}T${timeVal || "23:59"}:00`).toISOString() : null);
+      const res = await apiFetch(`/api/department-forms/${form.id}/deadline`, {
+        method: "PUT", body: JSON.stringify({ deadline, year }),
+      });
       const data = await res.json();
       if (data.success) { showToast(remove ? "Deadline removed." : "Deadline saved."); onSaved(); onClose(); }
       else showToast(data.message || "Failed to save deadline.", "error");
@@ -44,9 +56,11 @@ function DeadlineModal({ form, onClose, onSaved, showToast }) {
     finally { setSaving(false); }
   }
 
+  const fieldStyle = { width: "100%", height: 44, padding: "0 12px", border: `1px solid ${color.borderStrong}`, borderRadius: 10, fontSize: 13, color: color.text, outline: "none", boxSizing: "border-box" };
+
   return (
-    <Modal open onClose={onClose} width={480} icon={<CalendarClock size={18} strokeWidth={STROKE} />}
-      title="Manage Deadline" subtitle={`${titleOf(form.form_name)} · your department`}
+    <Modal open onClose={onClose} width={520} icon={<CalendarClock size={18} strokeWidth={STROKE} />}
+      title="Manage Deadline" subtitle={`${titleOf(form.form_name)} · your department · ${yearLabel}`}
       footer={
         <>
           <Button variant="outlineDanger" style={{ marginRight: "auto" }} disabled={saving || !hasDeadline} onClick={() => save(true)}>Remove Deadline</Button>
@@ -55,15 +69,25 @@ function DeadlineModal({ form, onClose, onSaved, showToast }) {
         </>
       }>
       <div style={{ background: hasDeadline ? (expired ? "#FEF2F2" : color.primarySoft) : color.hover, border: `1px solid ${hasDeadline ? (expired ? "#FECACA" : "#BFDBFE") : color.border}`, borderRadius: 10, padding: "12px 16px", marginBottom: 18 }}>
-        <div style={{ fontSize: 11, fontWeight: 700, color: color.muted, textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 4 }}>Current Status</div>
+        <div style={{ fontSize: 11, fontWeight: 700, color: color.muted, textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 4 }}>Current Status · {yearLabel}</div>
         <div style={{ fontSize: 14, fontWeight: 700, color: hasDeadline ? (expired ? "#B91C1C" : "#1D4ED8") : color.muted }}>
-          {hasDeadline ? `Deadline: ${new Date(form.deadline_at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}${expired ? " · Expired" : ""}` : "No deadline set"}
+          {hasDeadline ? `Deadline: ${new Date(form.deadline_at).toLocaleString("en-GB", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" })}${expired ? " · Expired" : ""}` : "No deadline set"}
         </div>
       </div>
-      <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: color.muted, textTransform: "uppercase", letterSpacing: 0.7, marginBottom: 6 }}>{hasDeadline ? "Update Deadline Date" : "Add Deadline Date"}</label>
-      <input type="date" value={dateVal} min={todayStr} onChange={(e) => setDateVal(e.target.value)}
-        style={{ width: "100%", height: 44, padding: "0 12px", border: `1px solid ${color.borderStrong}`, borderRadius: 10, fontSize: 13, color: color.text, outline: "none", boxSizing: "border-box" }} />
-      <div style={{ fontSize: 11.5, color: color.muted, marginTop: 6 }}>The form auto-locks for your department after this date. Members can still view records.</div>
+      <div style={{ display: "flex", gap: 12 }}>
+        <div style={{ flex: 1.4 }}>
+          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: color.muted, textTransform: "uppercase", letterSpacing: 0.7, marginBottom: 6 }}>Date</label>
+          <input type="date" value={dateVal} min={todayStr} onChange={(e) => setDateVal(e.target.value)} style={fieldStyle} />
+        </div>
+        <div style={{ flex: 1 }}>
+          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: color.muted, textTransform: "uppercase", letterSpacing: 0.7, marginBottom: 6 }}>Time</label>
+          <input type="time" value={timeVal} onChange={(e) => setTimeVal(e.target.value)} style={fieldStyle} />
+        </div>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, color: color.muted, marginTop: 8 }}>
+        <span style={{ fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5 }}>Timezone:</span> {LOCAL_TZ}
+      </div>
+      <div style={{ fontSize: 11.5, color: color.muted, marginTop: 8 }}>The form auto-locks for your department after this date &amp; time, for {yearLabel} only. Members can still view and export records.</div>
     </Modal>
   );
 }
@@ -150,10 +174,10 @@ export default function DepartmentFormManagementPage() {
     return (
       <div style={{ display: "inline-flex", alignItems: "center", gap: 6, justifyContent: "flex-end" }}>
         <Button variant="secondary" iconOnly title="View records" icon={<Eye size={18} strokeWidth={STROKE} />} onClick={() => openRecords(form)} />
+        <Button variant="secondary" iconOnly title="Manage deadline" icon={<CalendarClock size={18} strokeWidth={STROKE} />} onClick={() => setDeadlineForm(form)} />
         <Button variant="secondary" iconOnly title="Manage form" icon={<Settings2 size={18} strokeWidth={STROKE} />} onClick={() => openManage(form)} />
         <Dropdown align="right" width={210} button={({ toggle }) => (<Button variant="secondary" iconOnly title="More actions" icon={<MoreHorizontal size={18} strokeWidth={STROKE} />} onClick={toggle} />)}>
           <MenuLabel>Manage</MenuLabel>
-          <MenuItem icon={<CalendarClock size={16} strokeWidth={STROKE} />} onClick={() => setDeadlineForm(form)}>Deadline</MenuItem>
           {form.is_archived
             ? <MenuItem icon={<ArchiveRestore size={16} strokeWidth={STROKE} />} disabled={busyId === form.id} onClick={() => setArchive(form, false)}>Activate for {academicYear || selectedYear}</MenuItem>
             : <MenuItem icon={<Archive size={16} strokeWidth={STROKE} />} disabled={busyId === form.id} onClick={() => setArchive(form, true)}>Archive for {academicYear || selectedYear}</MenuItem>}
@@ -208,7 +232,7 @@ export default function DepartmentFormManagementPage() {
         ? <Badge tone="danger" icon={<Lock size={11} strokeWidth={STROKE} />}>Locked</Badge>
         : <Badge tone="success">Open</Badge>,
     },
-    { key: "actions", header: "", align: "right", width: 150, render: renderActions },
+    { key: "actions", header: "", align: "right", width: 192, render: renderActions },
   ];
 
   const tabBtn = (key, label) => {
@@ -224,7 +248,7 @@ export default function DepartmentFormManagementPage() {
   return (
     <div style={{ padding: "24px 32px", fontFamily: "'Plus Jakarta Sans', sans-serif", minHeight: "100%", maxWidth: 1600, margin: "0 auto" }}>
       {toast && <Toast message={toast.message} type={toast.type} />}
-      {deadlineForm && <DeadlineModal form={deadlineForm} onClose={() => setDeadlineForm(null)} onSaved={load} showToast={showToast} />}
+      {deadlineForm && <DeadlineModal form={deadlineForm} year={selectedYear} onClose={() => setDeadlineForm(null)} onSaved={load} showToast={showToast} />}
 
       <PageHeader
         breadcrumb={["Home", "Department", "Department Forms"]}

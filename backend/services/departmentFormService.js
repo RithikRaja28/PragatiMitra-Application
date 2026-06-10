@@ -121,6 +121,32 @@ async function ensureDepartmentFormTables(pool) {
     )
   `);
 
+  /* Year-scoped deadline config (ownership: institution → department → academic
+     year → form). UNIQUE per (form, academic_year) so switching the academic
+     year never inherits another year's deadline. Fully additive — the older
+     department_form_lock_config is left untouched. */
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS department_form_deadline_config (
+      id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      department_form_id UUID NOT NULL REFERENCES department_table_list(id) ON DELETE CASCADE,
+      institution_id     UUID,
+      department_id      UUID,
+      academic_year      INT  NOT NULL,
+      deadline_at        TIMESTAMPTZ,
+      is_locked          BOOLEAN NOT NULL DEFAULT FALSE,
+      auto_locked        BOOLEAN NOT NULL DEFAULT FALSE,
+      locked_at          TIMESTAMPTZ,
+      created_by         UUID,
+      updated_by         UUID,
+      created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+      UNIQUE (department_form_id, academic_year)
+    )
+  `);
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS idx_dfdc_form_year ON department_form_deadline_config (department_form_id, academic_year)`
+  );
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS department_form_year_mapping (
       id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),

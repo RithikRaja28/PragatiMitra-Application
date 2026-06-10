@@ -121,9 +121,11 @@ async function deptLockBlock(pool, form, year) {
     "SELECT is_locked FROM department_form_year_mapping WHERE department_form_id = $1 AND academic_year = $2",
     [form.id, year]
   );
+  // Deadline is year-scoped: a deadline set for one academic year never affects
+  // another. Keyed per (form, year) in department_form_deadline_config.
   const { rows: lc } = await pool.query(
-    "SELECT is_locked, auto_locked, deadline FROM department_form_lock_config WHERE department_form_id = $1",
-    [form.id]
+    "SELECT is_locked, auto_locked, deadline_at AS deadline FROM department_form_deadline_config WHERE department_form_id = $1 AND academic_year = $2",
+    [form.id, year]
   );
   const row = lc[0] || {};
   const deadlineExpired = !!(row.deadline && new Date(row.deadline).getTime() <= Date.now());
