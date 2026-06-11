@@ -348,7 +348,7 @@ const CSS = `
   }
   .sh-content::-webkit-scrollbar { width: 6px; }
   .sh-content::-webkit-scrollbar-thumb { background: var(--sh-border); border-radius: 4px; }
-  .sh-page-enter { animation: shPageIn .18s ease both; }
+  .sh-page-enter { animation: shPageIn .18s ease both; height: 100%; }
   @keyframes shPageIn { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
 
   /* ── DROPDOWNS ── */

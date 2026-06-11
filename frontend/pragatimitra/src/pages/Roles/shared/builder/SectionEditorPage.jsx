@@ -8,6 +8,332 @@ import { useAuth } from "../../../../store/AuthContext";
 import { useApi }  from "../../../../hooks/useApi";
 import { BLOCK_ICONS, BlockEditor, DEFAULT_CONTENT } from "./BlockEditors";
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   SECTION COMMENTS PANEL  — chat-style sidebar, per-section thread
+═══════════════════════════════════════════════════════════════════════════ */
+const AVATAR_COLORS = ["#4f46e5","#0891b2","#16a34a","#d97706","#dc2626","#7c3aed","#db2777"];
+function avatarColor(id) {
+  const n = (id || "").split("").reduce((a, c) => a + c.charCodeAt(0), 0);
+  return AVATAR_COLORS[n % AVATAR_COLORS.length];
+}
+function initials(name) {
+  if (!name) return "?";
+  const parts = name.trim().split(" ").filter(Boolean);
+  return parts.length >= 2 ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase() : name.slice(0, 2).toUpperCase();
+}
+function timeAgo(ts) {
+  const s = Math.floor((Date.now() - new Date(ts)) / 1000);
+  if (s < 60)  return "just now";
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+  return `${Math.floor(s / 86400)}d ago`;
+}
+
+function SectionCommentsPanel({ sectionId, currentUserId, apiFetch, onClose, showBackToPreview }) {
+  const [comments,  setComments]  = useState([]);
+  const [input,     setInput]     = useState("");
+  const [loading,   setLoading]   = useState(true);
+  const [posting,   setPosting]   = useState(false);
+  const [replyTo,   setReplyTo]   = useState(null); // { id, author }
+  const msgsRef  = useRef(null);
+  const inputRef = useRef(null);
+
+  const load = useCallback(async () => {
+    try {
+      const res  = await apiFetch(`/api/builder/comments/section/${sectionId}`);
+      const json = await res.json();
+      if (json.success) setComments(json.data || []);
+    } catch { setComments([]); } finally { setLoading(false); }
+  }, [sectionId, apiFetch]);
+
+  useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    if (msgsRef.current) msgsRef.current.scrollTop = msgsRef.current.scrollHeight;
+  }, [comments]);
+
+  const post = async () => {
+    const text = input.trim();
+    if (!text || posting) return;
+    setPosting(true);
+    try {
+      const res  = await apiFetch("/api/builder/comments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          section_id: sectionId,
+          content: text,
+          parent_id: replyTo?.id || undefined,
+        }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        setComments(prev => [...prev, json.data]);
+        setInput("");
+        setReplyTo(null);
+      }
+    } catch {} finally { setPosting(false); }
+  };
+
+  /* group top-level + replies */
+  const topLevel = comments.filter(c => !c.parent_id);
+  const repliesFor = (pid) => comments.filter(c => c.parent_id === pid);
+
+  const C = {
+    bg:        "#f8fafc",
+    surface:   "#fff",
+    border:    "#e2e8f0",
+    primary:   "#4f46e5",
+    primaryLt: "#eef2ff",
+    text:      "#0f172a",
+    textSub:   "#64748b",
+    textMuted: "#94a3b8",
+  };
+
+  return (
+    <div style={{
+      display: "flex", flexDirection: "column", height: "100%",
+      background: C.surface, borderLeft: `1px solid ${C.border}`,
+      fontFamily: "'Plus Jakarta Sans', sans-serif",
+    }}>
+
+      {/* ── Header ── */}
+      <div style={{
+        padding: "12px 14px 10px", borderBottom: `1px solid ${C.border}`,
+        flexShrink: 0, background: C.surface,
+      }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+            {/* pulsing live dot */}
+            <span style={{
+              width: 7, height: 7, borderRadius: "50%", background: "#22c55e", flexShrink: 0,
+              display: "inline-block",
+              animation: "cpLiveDot 1.8s ease-in-out infinite",
+            }} />
+            <span style={{ fontSize: 13, fontWeight: 800, color: C.text, letterSpacing: "-0.2px" }}>
+              Comments
+            </span>
+            {comments.length > 0 && (
+              <span style={{
+                fontSize: 10, fontWeight: 700, background: "#e0e7ff", color: C.primary,
+                borderRadius: 20, padding: "1px 7px",
+              }}>{comments.length}</span>
+            )}
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <button onClick={load} title="Refresh" style={{
+              background: "none", border: "none", cursor: "pointer",
+              fontSize: 13, color: C.textMuted, padding: "3px 5px", borderRadius: 5,
+            }}>↻</button>
+            {showBackToPreview ? (
+              <button onClick={onClose} title="Back to preview" style={{
+                display: "flex", alignItems: "center", gap: 4,
+                background: "#f1f5f9", border: "none", cursor: "pointer",
+                fontSize: 11, fontWeight: 600, color: "#475569",
+                padding: "4px 9px", borderRadius: 6, fontFamily: "inherit",
+              }}>
+                ← Preview
+              </button>
+            ) : (
+              <button onClick={onClose} title="Close" style={{
+                background: "#f1f5f9", border: "none", cursor: "pointer",
+                fontSize: 13, color: C.textSub, padding: "4px 7px", borderRadius: 6,
+              }}>✕</button>
+            )}
+          </div>
+        </div>
+        <div style={{ fontSize: 10, color: C.textMuted, marginTop: 2 }}>
+          {topLevel.length} thread{topLevel.length !== 1 ? "s" : ""}
+          {topLevel.length > 0 && ` · ${comments.length - topLevel.length} repl${comments.length - topLevel.length !== 1 ? "ies" : "y"}`}
+        </div>
+      </div>
+
+      {/* ── Messages ── */}
+      <div ref={msgsRef} style={{
+        flex: 1, overflowY: "auto", padding: "12px 12px 4px",
+        display: "flex", flexDirection: "column", gap: 2,
+        minHeight: 0,
+      }}>
+        <style>{`
+          @keyframes cpLiveDot { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.4;transform:scale(.65)} }
+        `}</style>
+
+        {loading && (
+          <div style={{ textAlign: "center", padding: "40px 0", color: C.textMuted, fontSize: 12 }}>
+            Loading…
+          </div>
+        )}
+
+        {!loading && topLevel.length === 0 && (
+          <div style={{ textAlign: "center", padding: "48px 16px" }}>
+            <div style={{ fontSize: 28, marginBottom: 10 }}>💬</div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: C.text, marginBottom: 4 }}>No comments yet</div>
+            <div style={{ fontSize: 11, color: C.textMuted }}>
+              Start the conversation below. Comments are visible to all section collaborators.
+            </div>
+          </div>
+        )}
+
+        {!loading && topLevel.map((msg) => {
+          const isMine = msg.user_id === currentUserId;
+          const replies = repliesFor(msg.id);
+          return (
+            <div key={msg.id} style={{ marginBottom: 10 }}>
+              <ChatBubble
+                msg={msg}
+                isMine={isMine}
+                onReply={() => {
+                  setReplyTo({ id: msg.id, author: msg.user_name || "them" });
+                  setTimeout(() => inputRef.current?.focus(), 50);
+                }}
+              />
+              {/* replies indented */}
+              {replies.length > 0 && (
+                <div style={{
+                  marginLeft: 34, marginTop: 5,
+                  borderLeft: "2px solid #e2e8f0", paddingLeft: 10,
+                  display: "flex", flexDirection: "column", gap: 6,
+                }}>
+                  {replies.map(r => (
+                    <ChatBubble
+                      key={r.id}
+                      msg={r}
+                      isMine={r.user_id === currentUserId}
+                      small
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* ── Reply-to chip ── */}
+      {replyTo && (
+        <div style={{
+          display: "flex", alignItems: "center", gap: 8,
+          padding: "5px 12px", background: "#eef2ff",
+          borderTop: `1px solid ${C.border}`, flexShrink: 0,
+        }}>
+          <span style={{ fontSize: 11, color: C.primary }}>↩ Replying to <b>{replyTo.author}</b></span>
+          <button onClick={() => setReplyTo(null)} style={{ background: "none", border: "none", cursor: "pointer", color: C.textMuted, fontSize: 14, marginLeft: "auto" }}>✕</button>
+        </div>
+      )}
+
+      {/* ── Input ── */}
+      <div style={{
+        padding: "9px 11px 12px", borderTop: `1px solid ${C.border}`, flexShrink: 0,
+      }}>
+        <div style={{ display: "flex", gap: 7, alignItems: "flex-end" }}>
+          <textarea
+            ref={inputRef}
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); post(); } }}
+            placeholder={replyTo ? `Reply to ${replyTo.author}…` : "Add a comment…"}
+            rows={1}
+            style={{
+              flex: 1, resize: "none", border: "1.5px solid #e2e8f0", borderRadius: 10,
+              padding: "7px 11px", fontSize: 12, fontFamily: "inherit",
+              color: "#1e293b", outline: "none", lineHeight: 1.5, minHeight: 34, maxHeight: 90,
+              transition: "border-color 0.15s", background: "#fff",
+            }}
+            onFocus={e => e.target.style.borderColor = "#818cf8"}
+            onBlur={e  => e.target.style.borderColor = "#e2e8f0"}
+          />
+          <button
+            onClick={post}
+            disabled={!input.trim() || posting}
+            style={{
+              width: 34, height: 34, borderRadius: 9, border: "none",
+              background: !input.trim() || posting ? "#c7d2fe" : "#4f46e5",
+              color: "#fff", cursor: !input.trim() || posting ? "not-allowed" : "pointer",
+              display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+            }}
+          >
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <path d="M13 7L1 1l2 6-2 6 12-6z" fill="white"/>
+            </svg>
+          </button>
+        </div>
+        <div style={{ fontSize: 9, color: C.textMuted, marginTop: 4, paddingLeft: 2 }}>
+          Enter to send · Shift+Enter for new line
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ChatBubble({ msg, isMine, onReply, small }) {
+  const [hovered, setHovered] = useState(false);
+  const name  = msg.user_name || msg.author_name || "User";
+  const color = avatarColor(msg.user_id || msg.author_id || name);
+  const ts    = msg.created_at ? timeAgo(msg.created_at) : "";
+  const av    = small ? 22 : 26;
+
+  return (
+    <div
+      style={{ display: "flex", gap: 6, alignItems: "flex-start", flexDirection: isMine ? "row-reverse" : "row" }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      {/* Avatar */}
+      <div style={{
+        width: av, height: av, borderRadius: "50%", flexShrink: 0,
+        background: color, color: "#fff",
+        fontSize: small ? 8 : 9, fontWeight: 700,
+        display: "flex", alignItems: "center", justifyContent: "center",
+      }}>
+        {initials(name)}
+      </div>
+
+      {/* Bubble + meta */}
+      <div style={{
+        maxWidth: 185, display: "flex", flexDirection: "column",
+        alignItems: isMine ? "flex-end" : "flex-start",
+      }}>
+        {/* name + time */}
+        <div style={{
+          display: "flex", alignItems: "center", gap: 5, marginBottom: 3,
+          flexDirection: isMine ? "row-reverse" : "row",
+        }}>
+          <span style={{ fontSize: small ? 9 : 10, fontWeight: 700, color: "#475569" }}>{name}</span>
+          <span style={{ fontSize: 9, color: "#94a3b8" }}>{ts}</span>
+        </div>
+
+        {/* bubble */}
+        <div style={{
+          padding: small ? "5px 10px" : "7px 11px",
+          borderRadius: 12,
+          borderBottomLeftRadius:  isMine ? 12 : 3,
+          borderBottomRightRadius: isMine ? 3  : 12,
+          background: isMine ? "#eef2ff" : "#f1f5f9",
+          color: isMine ? "#312e81" : "#1e293b",
+          fontSize: small ? 11 : 11.5,
+          lineHeight: 1.5,
+          wordBreak: "break-word",
+        }}>
+          {msg.content}
+        </div>
+
+        {/* actions on hover */}
+        {onReply && hovered && (
+          <button
+            onClick={onReply}
+            style={{
+              marginTop: 3, background: "none", border: "none", cursor: "pointer",
+              fontSize: 10, color: "#94a3b8", padding: 0, fontFamily: "inherit",
+            }}
+          >
+            ↩ Reply
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /* ── status config ────────────────────────────────────────────────────────── */
 const STATUS_STYLE = {
   NOT_STARTED:  { bg: "#f1f5f9", color: "#64748b",  label: "Not Started" },
@@ -541,6 +867,7 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack }) {
   const [reportSections,   setReportSections]   = useState([]);
   const [reviewerComments, setReviewerComments] = useState([]); // sent-back comments from reviewers
   const [commentsOpen,     setCommentsOpen]     = useState(true);
+  const [chatOpen,         setChatOpen]         = useState(false);
 
   const saveTimer        = useRef(null);
   const editorScrollRef  = useRef(null);
@@ -743,35 +1070,49 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack }) {
   return (
     <div style={{
       display: "flex", flexDirection: "column", height: "100%",
-      fontFamily: "'Plus Jakarta Sans', sans-serif", background: "#f8fafc",
+      fontFamily: "'Plus Jakarta Sans', sans-serif", background: "#f1f5f9",
+      minHeight: 0,
     }}>
 
       {/* ── top bar ── */}
       <div style={{
-        background: "#fff", borderBottom: "1px solid rgba(0,0,0,0.07)",
-        padding: "12px 20px", display: "flex", alignItems: "center", gap: 12, flexShrink: 0,
+        background: "linear-gradient(135deg, #ffffff 0%, #f8faff 100%)",
+        borderBottom: "1px solid #e2e8f0",
+        padding: "0 20px", display: "flex", alignItems: "center", gap: 10,
+        flexShrink: 0, height: 56,
+        boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
       }}>
+        {/* Back button */}
         <button onClick={onBack} style={{
-          display: "flex", alignItems: "center", gap: 5, padding: "5px 11px",
-          border: "1px solid #e2e8f0", borderRadius: 7, background: "#fff",
-          fontSize: 12, color: "#64748b", cursor: "pointer", flexShrink: 0,
-        }}>
-          ← My Sections
+          display: "flex", alignItems: "center", gap: 5, padding: "5px 12px",
+          border: "1.5px solid #e2e8f0", borderRadius: 8,
+          background: "#fff", fontSize: 12, fontWeight: 600,
+          color: "#475569", cursor: "pointer", flexShrink: 0,
+          transition: "all 0.15s",
+        }}
+          onMouseEnter={e => { e.currentTarget.style.borderColor = "#94a3b8"; e.currentTarget.style.color = "#1e293b"; }}
+          onMouseLeave={e => { e.currentTarget.style.borderColor = "#e2e8f0"; e.currentTarget.style.color = "#475569"; }}
+        >
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M7.5 2L3.5 6l4 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          My Sections
         </button>
 
-        <div style={{ width: 1, height: 20, background: "#e2e8f0", flexShrink: 0 }} />
+        <div style={{ width: 1, height: 22, background: "#e2e8f0", flexShrink: 0 }} />
 
+        {/* Breadcrumb + title */}
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 10, color: "#94a3b8", marginBottom: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+          <div style={{ fontSize: 10, color: "#94a3b8", marginBottom: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", letterSpacing: 0.2 }}>
             {reportTitle}
           </div>
-          <div style={{ fontSize: 15, fontWeight: 700, color: "#1e293b", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-            {section?.title}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "nowrap", overflow: "hidden" }}>
+            <span style={{ fontSize: 14, fontWeight: 800, color: "#0f172a", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 260 }}>
+              {section?.title}
+            </span>
             <StatusBadge status={section?.status} />
             {myRole && (
               <span style={{
                 padding: "2px 9px", borderRadius: 20, fontSize: 10, fontWeight: 700,
-                textTransform: "uppercase",
+                textTransform: "uppercase", flexShrink: 0,
                 background: (ROLE_BADGE[myRole] || ROLE_BADGE.CONTRIBUTOR).bg,
                 color:      (ROLE_BADGE[myRole] || ROLE_BADGE.CONTRIBUTOR).color,
               }}>
@@ -781,61 +1122,107 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack }) {
           </div>
         </div>
 
+        {/* Save indicator */}
         {saveLabel && (
-          <span style={{
-            fontSize: 11, flexShrink: 0,
-            color: saveLabel.startsWith("✓") ? "#15803d" : saveLabel.startsWith("⚠") ? "#b91c1c" : "#94a3b8",
+          <div style={{
+            display: "flex", alignItems: "center", gap: 5, flexShrink: 0,
+            fontSize: 11, fontWeight: 500,
+            color: saveLabel.startsWith("✓") ? "#15803d" : saveLabel.startsWith("⚠") ? "#b91c1c" : "#64748b",
+            background: saveLabel.startsWith("✓") ? "#f0fdf4" : saveLabel.startsWith("⚠") ? "#fef2f2" : "#f8fafc",
+            padding: "4px 10px", borderRadius: 20,
+            border: `1px solid ${saveLabel.startsWith("✓") ? "#bbf7d0" : saveLabel.startsWith("⚠") ? "#fecaca" : "#e2e8f0"}`,
           }}>
             {saveLabel}
-          </span>
+          </div>
         )}
+
+        {/* Comments toggle */}
+        <button
+          onClick={() => setChatOpen(o => !o)}
+          title={chatOpen ? "Hide comments" : "Show comments"}
+          style={{
+            display: "flex", alignItems: "center", gap: 6, padding: "6px 14px",
+            border: `1.5px solid ${chatOpen ? "#818cf8" : "#e2e8f0"}`,
+            borderRadius: 20, flexShrink: 0,
+            background: chatOpen ? "linear-gradient(135deg,#eef2ff,#ede9fe)" : "#fff",
+            fontSize: 12, fontWeight: 700,
+            color: chatOpen ? "#4338ca" : "#64748b",
+            cursor: "pointer",
+            transition: "all 0.18s",
+            boxShadow: chatOpen ? "0 2px 8px rgba(79,70,229,0.15)" : "none",
+          }}
+          onMouseEnter={e => { if (!chatOpen) { e.currentTarget.style.borderColor = "#c7d2fe"; e.currentTarget.style.color = "#4f46e5"; }}}
+          onMouseLeave={e => { if (!chatOpen) { e.currentTarget.style.borderColor = "#e2e8f0"; e.currentTarget.style.color = "#64748b"; }}}
+        >
+          <svg width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M2 5a2 2 0 012-2h12a2 2 0 012 2v7a2 2 0 01-2 2H7l-4 3v-3H4a2 2 0 01-2-2V5z"/>
+          </svg>
+          {chatOpen ? "Hide Comments" : "Comments"}
+        </button>
 
         {canSubmit && (
           <button onClick={handleSubmit} disabled={submitting} style={{
-            padding: "7px 16px", background: submitting ? "#93c5fd" : "#2563eb",
-            color: "#fff", border: "none", borderRadius: 8, fontSize: 12,
-            fontWeight: 600, cursor: submitting ? "not-allowed" : "pointer", flexShrink: 0,
+            display: "flex", alignItems: "center", gap: 6,
+            padding: "7px 18px",
+            background: submitting
+              ? "#93c5fd"
+              : "linear-gradient(135deg, #2563eb, #4f46e5)",
+            color: "#fff", border: "none", borderRadius: 20, fontSize: 12,
+            fontWeight: 700, cursor: submitting ? "not-allowed" : "pointer",
+            flexShrink: 0, boxShadow: submitting ? "none" : "0 2px 8px rgba(37,99,235,0.3)",
+            transition: "all 0.15s",
           }}>
-            {submitting ? "Submitting…" : "Submit for Review"}
+            {submitting ? "Submitting…" : "Submit for Review →"}
           </button>
         )}
 
         {section?.status === "SUBMITTED" && (
-          <span style={{ fontSize: 12, color: "#1d4ed8", fontWeight: 600, flexShrink: 0 }}>⏳ Awaiting review</span>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0, padding: "5px 12px", background: "#eff6ff", borderRadius: 20, border: "1px solid #bfdbfe" }}>
+            <span style={{ fontSize: 12 }}>⏳</span>
+            <span style={{ fontSize: 11, fontWeight: 600, color: "#1d4ed8" }}>Awaiting review</span>
+          </div>
         )}
         {section?.status === "APPROVED" && (
-          <span style={{ fontSize: 12, color: "#15803d", fontWeight: 600, flexShrink: 0 }}>✓ Approved</span>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0, padding: "5px 12px", background: "#f0fdf4", borderRadius: 20, border: "1px solid #bbf7d0" }}>
+            <span style={{ fontSize: 12 }}>✓</span>
+            <span style={{ fontSize: 11, fontWeight: 600, color: "#15803d" }}>Approved</span>
+          </div>
         )}
       </div>
 
       {/* submit message */}
       {submitMsg && (
         <div style={{
-          padding: "10px 20px", flexShrink: 0,
-          background: submitMsg.startsWith("✓") ? "#dcfce7" : "#fee2e2",
-          color:      submitMsg.startsWith("✓") ? "#15803d" : "#b91c1c",
-          fontSize: 13,
+          padding: "9px 20px", flexShrink: 0, display: "flex", alignItems: "center", gap: 8,
+          background: submitMsg.startsWith("✓") ? "#f0fdf4" : "#fef2f2",
+          borderBottom: `1px solid ${submitMsg.startsWith("✓") ? "#bbf7d0" : "#fecaca"}`,
+          color: submitMsg.startsWith("✓") ? "#15803d" : "#b91c1c",
+          fontSize: 12, fontWeight: 500,
         }}>
           {submitMsg}
         </div>
       )}
 
       {/* ── two-panel body ── */}
-      <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+      <div style={{ flex: 1, display: "flex", overflow: "hidden", minHeight: 0 }}>
 
-        {/* LEFT: editor (full width when preview is hidden) */}
+        {/* LEFT: editor */}
         <div style={{
-          flex: hidePreview ? "1" : "0 0 58%",
+          flex: (hidePreview && !chatOpen) ? "1 1 100%" : "0 0 58%",
           display: "flex", flexDirection: "column",
-          borderRight: hidePreview ? "none" : "1px solid rgba(0,0,0,0.07)",
+          borderRight: (hidePreview && !chatOpen) ? "none" : "1px solid #e2e8f0",
           overflow: "hidden", background: "#f8fafc",
-          transition: "flex 0.2s",
+          transition: "flex-basis 0.25s ease",
+          minWidth: 0,
         }}>
           {/* section description */}
           {section?.description && (
             <div style={{
-              background: "#fff", borderBottom: "1px solid rgba(0,0,0,0.05)",
-              padding: "8px 20px", fontSize: 13, color: "#64748b", flexShrink: 0,
+              background: "linear-gradient(135deg, #f8faff, #fff)",
+              borderBottom: "1px solid #e8edf3",
+              padding: "9px 24px", fontSize: 12.5, color: "#475569",
+              flexShrink: 0, lineHeight: 1.6,
+              borderLeft: "3px solid #818cf8",
             }}>
               {section.description}
             </div>
@@ -845,23 +1232,25 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack }) {
           {(statusLock || (!canEdit && !statusLock)) && (
             <div style={{
               display: "flex", alignItems: "center", gap: 10,
-              padding: "9px 20px", flexShrink: 0,
-              background: statusLock ? "#fef3c7" : "#f8fafc",
-              borderBottom: "1px solid rgba(0,0,0,0.05)",
-              fontSize: 12, color: statusLock ? "#92400e" : "#64748b",
+              padding: "8px 24px", flexShrink: 0,
+              background: statusLock ? "#fffbeb" : "#f8fafc",
+              borderBottom: `1px solid ${statusLock ? "#fde68a" : "#e8edf3"}`,
+              fontSize: 12,
             }}>
-              <span>{statusLock ? "🔒" : "👁"}</span>
+              <span style={{ fontSize: 14 }}>{statusLock ? "🔒" : "👁"}</span>
               {statusLock && (
                 <>
-                  <strong>{section?.status?.replace(/_/g, " ")}</strong>
-                  {section?.status === "APPROVED"     && " — this section has been approved."}
-                  {section?.status === "SUBMITTED"    && " — awaiting review. Editing paused."}
-                  {section?.status === "UNDER_REVIEW" && " — currently under review."}
-                  {section?.status === "SENT_BACK"    && " — sent back for revisions."}
-                  {section?.status === "LOCKED"       && " — locked. No further changes allowed."}
+                  <span style={{ fontWeight: 700, color: "#92400e" }}>{section?.status?.replace(/_/g, " ")}</span>
+                  <span style={{ color: "#b45309" }}>
+                    {section?.status === "APPROVED"     && "— this section has been approved."}
+                    {section?.status === "SUBMITTED"    && "— awaiting review. Editing is paused."}
+                    {section?.status === "UNDER_REVIEW" && "— currently under review."}
+                    {section?.status === "SENT_BACK"    && "— sent back for revisions."}
+                    {section?.status === "LOCKED"       && "— locked. No further changes allowed."}
+                  </span>
                 </>
               )}
-              {!canEdit && !statusLock && "Viewing in read-only mode. Only assigned contributors can edit."}
+              {!canEdit && !statusLock && <span style={{ color: "#64748b" }}>Viewing in read-only mode. Only assigned contributors can edit.</span>}
             </div>
           )}
 
@@ -930,27 +1319,28 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack }) {
           )}
 
           {/* blocks scroll area */}
-          <div ref={editorScrollRef} onScroll={syncScroll} style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "20px" }}>
+          <div ref={editorScrollRef} onScroll={syncScroll} style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "20px 24px" }}>
             <div style={{ maxWidth: 720, margin: "0 auto" }}>
 
               {/* Empty — read only */}
               {blocks.length === 0 && readOnly && (
-                <div style={{ textAlign: "center", padding: "60px 0", color: "#94a3b8", fontSize: 14 }}>
-                  This section has no content yet.
+                <div style={{ textAlign: "center", padding: "80px 0" }}>
+                  <div style={{ fontSize: 36, marginBottom: 12, opacity: 0.4 }}>📄</div>
+                  <div style={{ fontSize: 14, color: "#94a3b8", fontWeight: 500 }}>This section has no content yet.</div>
                 </div>
               )}
 
-              {/* Empty — editable: big centered add button */}
+              {/* Empty — editable: centered prompt */}
               {blocks.length === 0 && !readOnly && (
-                <div style={{ padding: "40px 0", textAlign: "center" }}>
+                <div style={{ padding: "60px 0", textAlign: "center" }}>
+                  <div style={{ fontSize: 40, marginBottom: 14, opacity: 0.35 }}>✏️</div>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: "#475569", marginBottom: 6 }}>Start writing your section</div>
+                  <div style={{ fontSize: 12, color: "#94a3b8", marginBottom: 24 }}>Add a paragraph, heading, table, image and more</div>
                   <InlineAdder
                     isOpen={activeInserter === -1}
                     onToggle={(open) => setActiveInserter(open ? -1 : null)}
                     onAdd={(type) => addBlock(type, -1)}
                   />
-                  <div style={{ marginTop: 20, fontSize: 13, color: "#94a3b8" }}>
-                    Click <strong style={{ color: "#7c3aed" }}>+</strong> to add your first block
-                  </div>
                 </div>
               )}
 
@@ -966,23 +1356,34 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack }) {
               {blocks.map((block, idx) => (
                 <React.Fragment key={block.id}>
                   <div style={{
-                    background: "#fff", border: "1px solid rgba(0,0,0,0.07)",
-                    borderRadius: 10, padding: "14px 16px",
-                    boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
-                  }}>
+                    background: "#fff",
+                    border: "1px solid #e8edf3",
+                    borderRadius: 12, padding: "14px 18px",
+                    boxShadow: "0 1px 4px rgba(15,23,42,0.05), 0 0 0 0 transparent",
+                    transition: "box-shadow 0.15s, border-color 0.15s",
+                  }}
+                    onMouseEnter={e => { e.currentTarget.style.borderColor = "#c7d2fe"; e.currentTarget.style.boxShadow = "0 2px 8px rgba(79,70,229,0.08)"; }}
+                    onMouseLeave={e => { e.currentTarget.style.borderColor = "#e8edf3"; e.currentTarget.style.boxShadow = "0 1px 4px rgba(15,23,42,0.05)"; }}
+                  >
                     {/* Block header */}
                     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-                      <span style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.8 }}>
-                        {BLOCK_ICONS[block.block_type]} {block.block_type}
-                      </span>
+                      <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                        <span style={{
+                          fontSize: 9, fontWeight: 800, color: "#818cf8",
+                          background: "#eef2ff", padding: "2px 7px",
+                          borderRadius: 4, textTransform: "uppercase", letterSpacing: 0.7,
+                        }}>
+                          {BLOCK_ICONS[block.block_type]} {block.block_type}
+                        </span>
+                      </div>
                       {!readOnly && (
-                        <div style={{ marginLeft: "auto", display: "flex", gap: 2 }}>
+                        <div style={{ marginLeft: "auto", display: "flex", gap: 1 }}>
                           <button onClick={() => moveBlock(idx, -1)} disabled={idx === 0}
-                            style={{ ...arrowBtn, opacity: idx === 0 ? 0.3 : 1 }}>↑</button>
+                            style={{ ...arrowBtn, opacity: idx === 0 ? 0.25 : 0.6, fontSize: 11 }}>↑</button>
                           <button onClick={() => moveBlock(idx, 1)} disabled={idx === blocks.length - 1}
-                            style={{ ...arrowBtn, opacity: idx === blocks.length - 1 ? 0.3 : 1 }}>↓</button>
+                            style={{ ...arrowBtn, opacity: idx === blocks.length - 1 ? 0.25 : 0.6, fontSize: 11 }}>↓</button>
                           <button onClick={() => deleteBlock(block.id)}
-                            style={{ ...arrowBtn, color: "#ef4444" }}>✕</button>
+                            style={{ ...arrowBtn, color: "#f87171", opacity: 0.7, fontSize: 11 }}>✕</button>
                         </div>
                       )}
                     </div>
@@ -1007,17 +1408,57 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack }) {
           </div>
         </div>
 
-        {/* RIGHT: Word document preview — hidden when in review */}
-        {!hidePreview && (
-          <div style={{ flex: "0 0 42%", overflow: "hidden", background: "#808080", display: "flex", flexDirection: "column" }}>
-            <WordDocumentPreview
-              reportMeta={reportMeta}
-              section={section}
-              blocks={blocks}
-              reportSections={reportSections}
-              currentSectionId={sectionId}
-              canvasRef={previewCanvasRef}
-            />
+        {/* RIGHT PANEL: shared container, cross-fades between Word preview and Comments */}
+        {(!hidePreview || chatOpen) && (
+          <div style={{
+            flex: "0 0 42%",
+            position: "relative",
+            overflow: "hidden",
+            display: "flex",
+            flexDirection: "column",
+            minWidth: 0,
+          }}>
+
+            {/* Word preview layer — fades out when comments open */}
+            {!hidePreview && (
+              <div style={{
+                position: "absolute", inset: 0,
+                background: "#808080",
+                display: "flex", flexDirection: "column",
+                opacity: chatOpen ? 0 : 1,
+                transform: chatOpen ? "translateX(-10px)" : "translateX(0)",
+                transition: "opacity 0.22s ease, transform 0.22s ease",
+                pointerEvents: chatOpen ? "none" : "auto",
+              }}>
+                <WordDocumentPreview
+                  reportMeta={reportMeta}
+                  section={section}
+                  blocks={blocks}
+                  reportSections={reportSections}
+                  currentSectionId={sectionId}
+                  canvasRef={previewCanvasRef}
+                />
+              </div>
+            )}
+
+            {/* Comments layer — fades in when chatOpen */}
+            <div style={{
+              position: "absolute", inset: 0,
+              display: "flex", flexDirection: "column",
+              opacity: chatOpen ? 1 : 0,
+              transform: chatOpen ? "translateX(0)" : "translateX(10px)",
+              transition: "opacity 0.22s ease, transform 0.22s ease",
+              pointerEvents: chatOpen ? "auto" : "none",
+            }}>
+              <SectionCommentsPanel
+                sectionId={sectionId}
+                currentUserId={user?.id}
+                apiFetch={apiFetch}
+                onClose={() => setChatOpen(false)}
+                showBackToPreview={!hidePreview}
+              />
+            </div>
+
           </div>
         )}
       </div>

@@ -186,7 +186,6 @@ router.post("/import/validate", async (req, res) => {
 
       const rawInstitutionName = String(row[mapping.institution_name] ?? "").trim();
       const rawName            = String(row[mapping.name]             ?? "").trim();
-      const rawNameHi          = mapping.name_hi ? String(row[mapping.name_hi] ?? "").trim() : "";
       const rawCode            = String(row[mapping.code]             ?? "").trim().toUpperCase();
       const rawStatus          =
         (String(row[mapping.status] ?? "").trim().toUpperCase()) || "ACTIVE";
@@ -235,7 +234,6 @@ router.post("/import/validate", async (req, res) => {
           rowIndex:         i,
           institution_name: rawInstitutionName || "(default)",
           name:             rawName,
-          name_hi:          rawNameHi || null,
           code:             rawCode,
           status:           rawStatus,
           existsInDB,
@@ -324,7 +322,6 @@ router.post("/import/execute", async (req, res) => {
 
       const rawInstitutionName = String(row[mapping.institution_name] ?? "").trim();
       const rawName            = String(row[mapping.name]             ?? "").trim();
-      const rawNameHi          = mapping.name_hi ? String(row[mapping.name_hi] ?? "").trim() : "";
       const rawCode            = String(row[mapping.code]             ?? "").trim().toUpperCase();
       const rawStatus          =
         (String(row[mapping.status] ?? "").trim().toUpperCase()) || "ACTIVE";
@@ -362,7 +359,6 @@ router.post("/import/execute", async (req, res) => {
           toUpdate.push({
             department_id: existingId,
             name:          rawName,
-            name_hi:       rawNameHi || null,
             code:          rawCode,
             institution_id,
             status,
@@ -379,7 +375,7 @@ router.post("/import/execute", async (req, res) => {
           });
           continue;
         }
-        toInsert.push({ name: rawName, name_hi: rawNameHi || null, code: rawCode, institution_id, status });
+        toInsert.push({ name: rawName, code: rawCode, institution_id, status });
         /* Register in maps to catch intra-file duplicates */
         existingByName.set(nameKey, "__pending__");
         existingByCode.set(codeKey, "__pending__");
@@ -398,13 +394,13 @@ router.post("/import/execute", async (req, res) => {
       const chunk = toInsert.slice(i, i + CHUNK);
       const vals  = [];
       const tuples = chunk.map((d, idx) => {
-        const b = idx * 6;
-        vals.push(d.name, d.name_hi, d.code, d.institution_id, d.status, createdBy);
-        return `($${b+1},$${b+2},$${b+3},$${b+4}::uuid,$${b+5},$${b+6}::uuid,$${b+6}::uuid)`;
+        const b = idx * 5;
+        vals.push(d.name, d.code, d.institution_id, d.status, createdBy);
+        return `($${b+1},$${b+2},$${b+3}::uuid,$${b+4},$${b+5}::uuid,$${b+5}::uuid)`;
       });
       await pool.query(
         `INSERT INTO departments
-           (name, name_hi, code, institution_id, status, created_by, updated_by)
+           (name, code, institution_id, status, created_by, updated_by)
          VALUES ${tuples.join(",")}`,
         vals
       );
@@ -423,19 +419,17 @@ router.post("/import/execute", async (req, res) => {
       await pool.query(
         `UPDATE departments
          SET    name           = v.name,
-                name_hi        = v.name_hi,
                 code           = v.code,
                 institution_id = v.institution_id::uuid,
                 status         = v.status,
                 updated_at     = now(),
-                updated_by     = $7::uuid
-         FROM   unnest($1::uuid[],$2::text[],$3::text[],$4::text[],$5::uuid[],$6::text[])
-                  AS v(department_id, name, name_hi, code, institution_id, status)
+                updated_by     = $6::uuid
+         FROM   unnest($1::uuid[],$2::text[],$3::text[],$4::uuid[],$5::text[])
+                  AS v(department_id, name, code, institution_id, status)
          WHERE  departments.department_id = v.department_id`,
         [
           chunk.map((d) => d.department_id),
           chunk.map((d) => d.name),
-          chunk.map((d) => d.name_hi),
           chunk.map((d) => d.code),
           chunk.map((d) => d.institution_id),
           chunk.map((d) => d.status),
@@ -699,7 +693,6 @@ router.get(
       `SELECT
          d.department_id,
          d.name,
-         d.name_hi,
          d.code,
          d.status,
          d.created_at,
@@ -709,7 +702,7 @@ router.get(
               ON  u.department_id  = d.department_id
               AND u.institution_id = $1
        WHERE  d.institution_id = $1
-       GROUP  BY d.department_id, d.name, d.name_hi, d.code, d.status, d.created_at
+       GROUP  BY d.department_id, d.name, d.code, d.status, d.created_at
        ORDER  BY d.name ASC`,
       [institution_id]
     );
@@ -734,7 +727,6 @@ router.post(
     const createdBy = req.user?.userId;
 
   const rawName   = typeof req.body.name    === "string" ? req.body.name.trim()               : "";
-  const rawNameHi = typeof req.body.name_hi === "string" ? req.body.name_hi.trim()            : "";
   const rawCode   = typeof req.body.code    === "string" ? req.body.code.trim().toUpperCase() : "";
 
   // Inst. admin: ignore client-supplied institution_id, use their own
@@ -798,10 +790,10 @@ router.post(
       }
 
     const { rows: [newDept] } = await pool.query(
-      `INSERT INTO departments (institution_id, name, name_hi, code, created_by, updated_by)
-       VALUES ($1, $2, $3, $4, $5, $5)
-       RETURNING department_id, name, name_hi, code, status, created_at`,
-      [institution_id, rawName, rawNameHi || null, rawCode, createdBy]
+      `INSERT INTO departments (institution_id, name, code, created_by, updated_by)
+       VALUES ($1, $2, $3, $4, $4)
+       RETURNING department_id, name, code, status, created_at`,
+      [institution_id, rawName, rawCode, createdBy]
     );
 
       await writeAuditLog(req, {
@@ -845,7 +837,6 @@ router.put(
     }
 
   const rawName   = typeof req.body.name    === "string" ? req.body.name.trim()                    : "";
-  const rawNameHi = typeof req.body.name_hi === "string" ? req.body.name_hi.trim()                 : null;
   const rawCode   = typeof req.body.code    === "string" ? req.body.code.trim().toUpperCase()      : "";
   const rawStatus = typeof req.body.status  === "string" ? req.body.status.trim().toUpperCase()    : "";
 
@@ -929,17 +920,16 @@ router.put(
     const { rows: [updated] } = await pool.query(
       `UPDATE departments
        SET    name       = $2,
-              name_hi    = $3,
-              code       = $4,
-              status     = $5,
+              code       = $3,
+              status     = $4,
               updated_at = now(),
-              updated_by = $6
+              updated_by = $5
        WHERE  department_id = $1
-       RETURNING department_id, name, name_hi, code, status, created_at, updated_at`,
-      [departmentId, rawName, rawNameHi || null, rawCode, rawStatus, updatedBy]
+       RETURNING department_id, name, code, status, created_at, updated_at`,
+      [departmentId, rawName, rawCode, rawStatus, updatedBy]
     );
 
-      const changedFields = ["name", "name_hi", "code", "status"].filter(
+      const changedFields = ["name", "code", "status"].filter(
         (f) => existing[f] !== updated[f]
       );
 
@@ -947,8 +937,8 @@ router.put(
         actionType:    "DEPT_UPDATED",
         entityType:    "DEPARTMENT",
         entityId:      updated.department_id,
-        oldValue:      { name: existing.name, name_hi: existing.name_hi, code: existing.code, status: existing.status },
-        newValue:      { name: updated.name,  name_hi: updated.name_hi,  code: updated.code,  status: updated.status  },
+        oldValue:      { name: existing.name, code: existing.code, status: existing.status },
+        newValue:      { name: updated.name,  code: updated.code,  status: updated.status  },
         changedFields,
         status:        "SUCCESS",
         message:       `Department "${updated.name}" updated`,
