@@ -33,6 +33,20 @@ const notificationTemplatesRouter = require("./routes/notificationTemplates");
 const radiologyRoutes             = require("./routes/radiology");   // ← radiology
 const nodalOfficerAssignmentsRouter = require("./routes/nodalOfficerAssignments");
 
+// Collaborative Report Builder
+const builderReportsRoutes       = require("./routes/builder/reports");
+const builderSectionsRoutes      = require("./routes/builder/sections");
+const builderBlocksRoutes        = require("./routes/builder/blocks");
+const builderAssignmentsRoutes   = require("./routes/builder/assignments");
+const builderApprovalsRoutes     = require("./routes/builder/approvals");
+const builderVersionsRoutes      = require("./routes/builder/versions");
+const builderCyclesRoutes        = require("./routes/builder/cycles");
+const builderWorkflowsRoutes     = require("./routes/builder/workflows");
+const builderTemplatesRoutes     = require("./routes/builder/templates");
+const builderCommentsRoutes      = require("./routes/builder/comments");
+const builderCompileRoutes       = require("./routes/builder/compile");
+const builderNotificationsRoutes = require("./routes/builder/notifications");
+
 const app  = express();
 const PORT = process.env.PORT || 3000;
 
@@ -206,6 +220,21 @@ app.use("/api/academic-years",         require("./routes/academicYear"));
 app.use("/api/form-data",              require("./routes/formData"));
 app.use("/api/form-data",              require("./routes/formimportexport"));
 app.use("/api/nodal-officer-assignments", nodalOfficerAssignmentsRouter);
+
+// Collaborative Report Builder — /api/builder/*
+app.use("/api/builder/reports",       builderReportsRoutes);
+app.use("/api/builder/sections",      builderSectionsRoutes);
+app.use("/api/builder/blocks",        builderBlocksRoutes);
+app.use("/api/builder/assignments",   builderAssignmentsRoutes);
+app.use("/api/builder/approvals",     builderApprovalsRoutes);
+app.use("/api/builder/versions",      builderVersionsRoutes);
+app.use("/api/builder/cycles",        builderCyclesRoutes);
+app.use("/api/builder/workflows",     builderWorkflowsRoutes);
+app.use("/api/builder/templates",     builderTemplatesRoutes);
+app.use("/api/builder/comments",      builderCommentsRoutes);
+app.use("/api/builder/compile",       builderCompileRoutes);
+app.use("/api/builder/notifications", builderNotificationsRoutes);
+
 /* ─── Global error handler (must be last) ───────────────────── */
 app.use(errorHandler);
 

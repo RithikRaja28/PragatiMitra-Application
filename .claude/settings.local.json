@@ -39,7 +39,8 @@
       "Bash(node -e \"const fs=require\\('fs'\\);const f='components/shared/FormScreen.jsx';if\\(fs.existsSync\\(f\\)\\){const s=fs.readFileSync\\(f,'utf8'\\);const i=s.indexOf\\('icon'\\);console.log\\('FormScreen lines:',s.split\\('\\\\n'\\).length\\)}else console.log\\('no FormScreen'\\)\")",
       "Bash(node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\);process.stdin.on\\('end',\\(\\)=>{const lines=d.split\\('\\\\n'\\);const out=lines.filter\\(l=>/error|Error|✓ built|transforming|fail/i.test\\(l\\)\\);console.log\\(out.slice\\(-15\\).join\\('\\\\n'\\)\\)}\\)\")",
       "Bash(node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\);process.stdin.on\\('end',\\(\\)=>{const lines=d.split\\('\\\\n'\\);const out=lines.filter\\(l=>/error|Error|✓ built|fail/i.test\\(l\\)\\);console.log\\(out.slice\\(-15\\).join\\('\\\\n'\\)\\)}\\)\")",
-      "Bash(Get-Content \"c:\\\\Users\\\\kanag\\\\Desktop\\\\PragatiMitra-Application\\\\backend\\\\logs\\\\app-2026-06-05.log\" -Tail 60)"
+      "Bash(Get-Content \"c:\\\\Users\\\\kanag\\\\Desktop\\\\PragatiMitra-Application\\\\backend\\\\logs\\\\app-2026-06-05.log\" -Tail 60)",
+      "PowerShell(cd \"d:\\\\PragatiMitra-Application\"; git status; $content = Get-Content \"frontend\\\\pragatimitra\\\\src\\\\pages\\\\Roles\\\\shared\\\\builder\\\\ReportBuilderListPage.jsx\" -Raw; $content.Substring\\(0, [Math]::Min\\(500, $content.Length\\)\\))"
     ]
   }
 }
