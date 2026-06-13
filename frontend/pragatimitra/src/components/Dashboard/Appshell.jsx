@@ -528,17 +528,38 @@ function injectCSS(id, css) {
 /* ─── Academic Year Picker ───────────────────────────────────────
    Institution-scoped "current academic year" selector. Reads/writes the
    global AcademicYearContext (dynamic options from academic_year_master,
-   session-persisted). Selecting a year drives form creation + visibility. */
+   session-persisted). Selecting a year drives form creation + visibility.
+   When the user is in NOA mode and picks an unassigned year, a contextual
+   warning callout appears directly below the picker button. */
 function AcademicYearPicker() {
-  const [open, setOpen] = useState(false);
-  const wrapRef = useRef(null);
+  const [open,        setOpen]        = useState(false);
+  const [showWarning, setShowWarning] = useState(false);
+  const wrapRef        = useRef(null);
+  const warningTimerRef = useRef(null);
 
-  const ay = useAcademicYear();
+  const ay  = useAcademicYear();
+  const { user, noaSelectedRole } = useAuth();
+
   const options  = ay?.options || [];
   const selected = ay?.selectedYear ?? null;
   const currentLabel =
     options.find((o) => o.value === selected)?.label ??
-    (selected != null ? `${selected}–${selected + 1}` : "—");
+    (selected != null ? `${selected}-${selected + 1}` : "—");
+
+  // Show a contextual warning when the user (in NOA mode) picks an unassigned year.
+  // RootLayout will revert the year automatically; the warning stays for 4 s.
+  useEffect(() => {
+    if (!noaSelectedRole || selected == null) return;
+    const ry       = `${selected}-${selected + 1}`; // canonical YYYY-YYYY — must match toReportingYear
+    const assigned = noaSelectedRole === "institute_admin"
+      ? (user?.noaInstituteActiveYears || [])
+      : (user?.noaActiveYears          || []);
+    if (!assigned.length || assigned.includes(ry)) return;
+
+    if (warningTimerRef.current) clearTimeout(warningTimerRef.current);
+    setShowWarning(true);
+    warningTimerRef.current = setTimeout(() => setShowWarning(false), 4000);
+  }, [selected]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!open) return;
@@ -558,7 +579,10 @@ function AcademicYearPicker() {
         aria-expanded={open}
         aria-haspopup="listbox"
       >
-        <Icons.GraduationCap size={13} style={{ opacity: 0.75, flexShrink: 0 }} />
+        {showWarning
+          ? <Icons.AlertTriangle size={13} style={{ flexShrink: 0, color: "#f59e0b" }} />
+          : <Icons.GraduationCap  size={13} style={{ opacity: 0.75, flexShrink: 0 }} />
+        }
         <span className="sh-ay-tag">AY</span>
         <span className="sh-ay-val">{currentLabel}</span>
         <Icons.ChevronDown size={12} className="sh-ay-chevron" />
@@ -589,6 +613,33 @@ function AcademicYearPicker() {
               {o.value === selected && <Icons.Check size={13} className="sh-ay-check" />}
             </button>
           ))}
+        </div>
+      )}
+
+      {/* Contextual restriction warning — appears below the picker, right-aligned */}
+      {showWarning && !open && (
+        <div role="alert" style={{
+          position: "absolute", top: "calc(100% + 8px)", right: 0,
+          zIndex: 1001,
+          background: "#fffbeb",
+          border: "1.5px solid #fcd34d",
+          borderRadius: 8,
+          padding: "8px 13px",
+          display: "flex", alignItems: "center", gap: 8,
+          boxShadow: "0 4px 16px rgba(0,0,0,0.10)",
+          whiteSpace: "nowrap",
+          fontFamily: "var(--shell-font, 'Plus Jakarta Sans', sans-serif)",
+          fontSize: 12.5, fontWeight: 500, color: "#92400e",
+          animation: "sh-ay-warn-in 0.2s ease",
+        }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#d97706"
+            strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+            <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+            <line x1="12" y1="9" x2="12" y2="13"/>
+            <line x1="12" y1="17" x2="12.01" y2="17"/>
+          </svg>
+          Not assigned as Nodal Officer for this Academic Year
+          <style>{`@keyframes sh-ay-warn-in { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:translateY(0); } }`}</style>
         </div>
       )}
     </div>

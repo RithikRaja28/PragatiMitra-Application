@@ -30,7 +30,6 @@ const userRoutes                  = require("./routes/users");
 const lookupRoutes                = require("./routes/lookup");
 const auditLogRoutes              = require("./routes/auditLogs");
 const notificationTemplatesRouter = require("./routes/notificationTemplates");
-const radiologyRoutes             = require("./routes/radiology");   // ← radiology
 const nodalOfficerAssignmentsRouter = require("./routes/nodalOfficerAssignments");
 
 const app  = express();
@@ -56,14 +55,7 @@ app.use(rateLimit({
   message:  "Too many requests, try again later.",
 }));
 
-// SVG payloads can be large — 10 MB for radiology, 10 KB for everything else
-app.use((req, res, next) => {
-  if (req.path.startsWith("/api/radiology")) {
-    express.json({ limit: "10mb" })(req, res, next);
-  } else {
-    express.json({ limit: "50mb" })(req, res, next);
-  }
-});
+app.use(express.json({ limit: "50mb" }));
 
 app.use(cookies());
 
@@ -131,6 +123,11 @@ pool.query(`
 pool.query(`DROP INDEX IF EXISTS idx_noa_unique_active`)
   .catch(e => logger.error("Failed to drop idx_noa_unique_active", { stack: e.stack }));
 
+// One-time/idempotent: rewrite any legacy "YYYY-YY" reporting_year values
+// (e.g. "2026-27") to the standard "YYYY-YYYY" form (e.g. "2026-2027").
+nodalOfficerAssignmentsRouter.normalizeReportingYears(pool)
+  .catch(e => logger.error("Failed to normalize reporting_year format", { stack: e.stack }));
+
 /* ── Form-level Hindi translation toggle: ensure the metadata column exists.
    NOT NULL DEFAULT TRUE backfills every existing form to TRUE, so current
    auto-translate behavior is preserved (backward compatible). ── */
@@ -148,6 +145,36 @@ ensureDeadlineColumns(pool)
 const { ensureAcademicYearTables } = require("./services/academicYearService");
 ensureAcademicYearTables(pool)
   .catch((e) => logger.error("Failed to ensure academic year tables", { stack: e.stack }));
+
+/* ── Shared-form access sync (idempotent) ─────────────────────────────
+   Shared forms must be immediately visible to all institutions with no
+   adoption step. These two queries fix any gaps on every boot.
+
+   1. institute_access — any institution not yet in a shared form's array
+      is added. The WHERE EXISTS guard makes this a no-op when already complete.
+
+   2. form_lock_config — ensures every (shared form × institution) pair has
+      a lock-config row so deadline management works from day one.
+      ON CONFLICT DO NOTHING makes it safe to run on every boot.
+── */
+pool.query(`
+  UPDATE table_list
+  SET institute_access = (SELECT COALESCE(array_agg(institution_id), '{}'::uuid[]) FROM institutions),
+      updated_at = now()
+  WHERE share_table = true
+    AND EXISTS (
+      SELECT 1 FROM institutions i
+      WHERE NOT (i.institution_id = ANY(COALESCE(institute_access, '{}'::uuid[])))
+    )
+`).catch((e) => logger.error("Failed to sync shared-form institute_access", { stack: e.stack }));
+
+pool.query(`
+  INSERT INTO form_lock_config (form_name, institution_id, is_locked, deadline_at, auto_locked)
+  SELECT tl.form_name, i.institution_id, false, NULL, false
+  FROM table_list tl CROSS JOIN institutions i
+  WHERE tl.share_table = true
+  ON CONFLICT (form_name, institution_id) DO NOTHING
+`).catch((e) => logger.error("Failed to sync shared-form form_lock_config", { stack: e.stack }));
 
 /* ── Import session cache: rows stored server-side after parse ───── */
 app.locals.importSessions = new Map();
@@ -178,7 +205,6 @@ app.use("/api/committees",   require("./routes/committees"));
 app.use("/api/audit-logs",   auditLogRoutes);
 app.use("/api/upload",       uploadRoutes);
 app.use("/api/notification-templates", notificationTemplatesRouter);
-app.use("/api/radiology",              radiologyRoutes);   // ← radiology mounted
 app.use("/api/kpi",                    require("./routes/kpi"));
 app.use("/api/forms",                  require("./routes/forms"));
 app.use("/api/academic-years",         require("./routes/academicYear"));

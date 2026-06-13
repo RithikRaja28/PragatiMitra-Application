@@ -131,6 +131,15 @@ function deadlineInfo(form) {
   return { dateText, status: { label, color: "#16a34a" } };
 }
 
+/* India Standard Time is a fixed UTC+5:30 offset (no DST). Anchoring the
+   deadline date picker to IST keeps "today" and the saved/displayed date
+   consistent regardless of the admin's browser timezone. */
+const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+
+function toISTDateString(date) {
+  return new Date(date.getTime() + IST_OFFSET_MS).toISOString().slice(0, 10);
+}
+
 function titleOf(form_name) {
   return form_name.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
@@ -320,7 +329,7 @@ function DeadlineModal({ form, onClose, onSaved, showToast }) {
         const data = await res.json();
         if (alive && data.success) {
           setCurrent(data);
-          setDateVal(data.deadline_at ? new Date(data.deadline_at).toISOString().slice(0, 10) : "");
+          setDateVal(data.deadline_at ? toISTDateString(new Date(data.deadline_at)) : "");
         }
       } catch {
         /* ignore — modal shows "no deadline" */
@@ -336,7 +345,7 @@ function DeadlineModal({ form, onClose, onSaved, showToast }) {
     try {
       const deadlineIso = remove
         ? null
-        : (dateVal ? new Date(dateVal + "T23:59:59").toISOString() : null);
+        : (dateVal ? new Date(dateVal + "T23:59:59+05:30").toISOString() : null);
       const res  = await apiFetch(`/api/forms/${form.form_name}/deadline`, {
         method: "PUT",
         body: JSON.stringify({ deadline_at: deadlineIso }),
@@ -357,7 +366,7 @@ function DeadlineModal({ form, onClose, onSaved, showToast }) {
   }
 
   const formTitle = titleOf(form.form_name);
-  const todayStr  = new Date().toISOString().slice(0, 10);
+  const todayStr  = toISTDateString(new Date());
   const hasDeadline = !!current.deadline_at;
   const expired   = hasDeadline && new Date(current.deadline_at).getTime() <= Date.now();
 

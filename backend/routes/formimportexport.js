@@ -179,15 +179,29 @@ async function resolveUserContext(pool, req) {
 
 /* ── fetch active schema fields ── */
 async function getSchemaFields(pool, formName, institutionId, year) {
+  // Primary: institution-specific row.
   const params = [formName, institutionId];
   let q = `SELECT * FROM custom_field_schemas
            WHERE form_name = $1 AND institution_id = $2 AND is_active = true`;
   if (year) { q += ` AND year = $3`; params.push(year); }
   q += ` ORDER BY year DESC LIMIT 1`;
   const { rows } = await pool.query(q, params);
-  if (!rows[0]) return null;
 
-  const schema   = rows[0];
+  let schemaRow = rows[0];
+  if (!schemaRow) {
+    // Fallback: shared forms use the creator's canonical schema row.
+    const fbParams = [formName];
+    let fq = `SELECT cfs.* FROM custom_field_schemas cfs
+              JOIN table_list tl ON tl.form_name = cfs.form_name
+              WHERE cfs.form_name = $1 AND tl.share_table = true AND cfs.is_active = true`;
+    if (year) { fq += ` AND cfs.year = $2`; fbParams.push(year); }
+    fq += ` ORDER BY cfs.year DESC LIMIT 1`;
+    const { rows: fb } = await pool.query(fq, fbParams);
+    schemaRow = fb[0] || null;
+  }
+  if (!schemaRow) return null;
+
+  const schema   = schemaRow;
   const excluded = new Set(schema.schema?.excluded_fixed_columns || []);
   const seen     = new Set();
   const fields   = (schema.schema?.fields || []).filter((f) => {
@@ -380,6 +394,7 @@ router.post("/:formName/import/execute-chunk", async (req, res) => {
     mapping,
     chunk,
     chunkIndex = 0,
+    chunkStartIndex = 0,
     duplicateHandling = "skip",
     year,
     language = "en",
@@ -429,7 +444,7 @@ router.post("/:formName/import/execute-chunk", async (req, res) => {
     const prepared = [];
 
     for (let i = 0; i < chunk.length; i++) {
-      const globalRowNum = chunkIndex * chunk.length + i + 1;
+      const globalRowNum = chunkStartIndex + i + 1;
       const { rowData, error } = processRow(chunk[i], fields, fieldToCol, globalRowNum);
       if (error) errors.push(error);
       else prepared.push(rowData);
@@ -522,14 +537,23 @@ router.post("/:formName/import/execute-chunk", async (req, res) => {
 
         setImmediate(async () => {
           for (const { id: srcId, rowData } of insertedRows) {
-            try {
-              const hiData  = await translateRow(rowData, fieldModes);
-              const hiCols  = ["form_name", "institution_id", "department_id", "year", "schema_id", "language", "source_row_id", ...fieldCols];
-              const hiVals  = [formName, ctx.institutionId, resolvedDeptId, formYear, schemaRow.id, "hi", srcId, ...fieldCols.map(c => hiData[c] ?? null)];
-              const hiPh    = hiVals.map((_, i) => `$${i + 1}`).join(", ");
-              await pool.query(`INSERT INTO ${recordsTable} (${hiCols.join(", ")}) VALUES (${hiPh})`, hiVals);
-            } catch (e) {
-              logger.error(`Hindi import mirror failed ${formName}/${srcId}`, { message: e.message });
+            let lastErr;
+            for (let attempt = 1; attempt <= 3; attempt++) {
+              try {
+                const hiData  = await translateRow(rowData, fieldModes);
+                const hiCols  = ["form_name", "institution_id", "department_id", "year", "schema_id", "language", "source_row_id", ...fieldCols];
+                const hiVals  = [formName, ctx.institutionId, resolvedDeptId, formYear, schemaRow.id, "hi", srcId, ...fieldCols.map(c => hiData[c] ?? null)];
+                const hiPh    = hiVals.map((_, i) => `$${i + 1}`).join(", ");
+                await pool.query(`INSERT INTO ${recordsTable} (${hiCols.join(", ")}) VALUES (${hiPh})`, hiVals);
+                lastErr = null;
+                break;
+              } catch (e) {
+                lastErr = e;
+                if (attempt < 3) await new Promise(r => setTimeout(r, 200 * attempt));
+              }
+            }
+            if (lastErr) {
+              logger.error(`Hindi import mirror exhausted (3 attempts) for ${formName}/${srcId}`, { message: lastErr.message });
             }
           }
         });

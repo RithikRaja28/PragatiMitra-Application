@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { useApi }      from "../../../hooks/useApi";
 import { useAuth }     from "../../../store/AuthContext";
@@ -6,7 +6,7 @@ import { useLanguage } from "../../../i18n/LanguageContext";
 import { t }           from "../../../i18n/translations";
 import { S, Toast }    from "../../shared/formUtils";
 
-const ACCENT = "#059669";
+const ACCENT = "#0891b2";
 
 /* Canonical "YYYY-YYYY" format — must match RootLayout's toReportingYear and
    the backend's reporting_year validator (nodalOfficerAssignments.js). */
@@ -16,8 +16,8 @@ const toReportingYear = (startYear) =>
 function Spinner() {
   return (
     <div style={{ display: "flex", justifyContent: "center", padding: 48 }}>
-      <div style={{ width: 28, height: 28, border: "3px solid #e2e8f0", borderTopColor: ACCENT, borderRadius: "50%", animation: "noa-spin 0.7s linear infinite" }} />
-      <style>{`@keyframes noa-spin { to { transform: rotate(360deg); } }`}</style>
+      <div style={{ width: 28, height: 28, border: "3px solid #e2e8f0", borderTopColor: ACCENT, borderRadius: "50%", animation: "ino-spin 0.7s linear infinite" }} />
+      <style>{`@keyframes ino-spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   );
 }
@@ -29,8 +29,10 @@ function avatarInitials(name = "") {
 /* ══════════════════════════════════════════════
    ASSIGNMENT TABLE
 ══════════════════════════════════════════════ */
-function AssignmentList({ assignments, onEdit, onToggle, onDelete, toggling, deleting }) {
+function AssignmentList({ assignments, onEdit, onToggle, onDelete, toggling, deleting, loading }) {
   const { lang } = useLanguage();
+
+  if (loading) return <Spinner />;
 
   if (assignments.length === 0) {
     return (
@@ -45,12 +47,7 @@ function AssignmentList({ assignments, onEdit, onToggle, onDelete, toggling, del
       <table style={{ width: "100%", borderCollapse: "collapse" }}>
         <thead>
           <tr style={{ background: "#f8fafc", borderBottom: "1px solid rgba(0,0,0,0.06)" }}>
-            {[
-              t("Reporting Year", lang),
-              t("Nodal Officer", lang),
-              t("Status", lang),
-              t("Actions", lang),
-            ].map(h => (
+            {[t("Reporting Year", lang), t("Nodal Officer", lang), t("Status", lang), t("Actions", lang)].map(h => (
               <th key={h} style={{ padding: "12px 16px", textAlign: "left", fontSize: 11, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.8 }}>
                 {h}
               </th>
@@ -64,7 +61,7 @@ function AssignmentList({ assignments, onEdit, onToggle, onDelete, toggling, del
             return (
               <tr key={a.id} style={{ borderBottom: i < assignments.length - 1 ? "1px solid rgba(0,0,0,0.04)" : "none" }}>
                 <td style={{ padding: "14px 16px" }}>
-                  <span style={{ padding: "3px 10px", borderRadius: 20, fontSize: 12, fontWeight: 600, background: "#d1fae5", color: "#065f46" }}>
+                  <span style={{ padding: "3px 10px", borderRadius: 20, fontSize: 12, fontWeight: 600, background: "#e0f2fe", color: "#0369a1" }}>
                     {a.reporting_year}
                   </span>
                 </td>
@@ -110,11 +107,11 @@ function AssignmentList({ assignments, onEdit, onToggle, onDelete, toggling, del
 }
 
 /* ══════════════════════════════════════════════
-   ASSIGNMENT MODAL
+   ADD / EDIT MODAL
 ══════════════════════════════════════════════ */
-function AssignmentModal({ mode, assignment, onDone, onClose, apiFetch, institutionId, departmentId }) {
-  const isEdit       = mode === "edit";
-  const { lang }     = useLanguage();
+function AssignmentModal({ mode, assignment, onDone, onClose, apiFetch, institutionId, institutionName }) {
+  const isEdit   = mode === "edit";
+  const { lang } = useLanguage();
 
   const [form, setForm] = useState({
     reporting_year: isEdit ? assignment.reporting_year : "",
@@ -129,6 +126,7 @@ function AssignmentModal({ mode, assignment, onDone, onClose, apiFetch, institut
   const [serverError,   setServerError]   = useState("");
   const [fieldErrs,     setFieldErrs]     = useState({});
 
+  /* Academic years from Academic Year Management */
   useEffect(() => {
     if (isEdit) return;
     setLoadingYears(true);
@@ -139,22 +137,18 @@ function AssignmentModal({ mode, assignment, onDone, onClose, apiFetch, institut
       .finally(() => setLoadingYears(false));
   }, [apiFetch, isEdit]);
 
-  /* Load users for the selected year's department.
-     For edit mode the year is pre-set so this fires immediately. */
+  /* Load all institution users once a reporting year is selected.
+     In edit mode the year is pre-set, so this fires immediately. */
   useEffect(() => {
     if (!form.reporting_year) { setUsers([]); return; }
-    const params = new URLSearchParams({
-      institution_id: institutionId,
-      exclude_roles:  "super_admin,department_admin",
-    });
-    if (departmentId) params.set("department_id", departmentId);
+    const params = new URLSearchParams({ institution_id: institutionId, exclude_roles: "super_admin" });
     setLoadingUsers(true);
     apiFetch(`/api/lookup/users?${params}`)
       .then(r => r.json())
       .then(d => { if (d.success) setUsers(d.users); })
       .catch(() => {})
       .finally(() => setLoadingUsers(false));
-  }, [form.reporting_year, apiFetch, institutionId, departmentId]);
+  }, [form.reporting_year, apiFetch, institutionId]);
 
   const set = (key, value) => {
     setForm(f => ({ ...f, [key]: value }));
@@ -165,18 +159,28 @@ function AssignmentModal({ mode, assignment, onDone, onClose, apiFetch, institut
   const handleSubmit = async (e) => {
     e.preventDefault();
     const errs = {};
-    if (!isEdit && !form.reporting_year) errs.reporting_year = t("Reporting Year *", lang);
-    if (!form.user_id)                   errs.user_id        = t("Assign To *", lang);
+    if (!isEdit && !form.reporting_year) errs.reporting_year = t("Please select a reporting year.", lang);
+    if (!form.user_id)                   errs.user_id        = t("Please select a user.", lang);
     if (Object.keys(errs).length) { setFieldErrs(errs); return; }
 
     setSaving(true);
     try {
       const res = isEdit
-        ? await apiFetch(`/api/nodal-officer-assignments/${assignment.id}`, { method: "PUT", body: JSON.stringify({ user_id: form.user_id }) })
-        : await apiFetch("/api/nodal-officer-assignments", { method: "POST", body: JSON.stringify({ user_id: form.user_id, reporting_year: form.reporting_year }) });
+        ? await apiFetch(`/api/nodal-officer-assignments/${assignment.id}`, {
+            method: "PUT",
+            body: JSON.stringify({ user_id: form.user_id }),
+          })
+        : await apiFetch("/api/nodal-officer-assignments", {
+            method: "POST",
+            body: JSON.stringify({ user_id: form.user_id, reporting_year: form.reporting_year }),
+          });
       const data = await res.json();
-      if (!res.ok) { setServerError(data.message || (isEdit ? t("Save Changes", lang) : t("Assign", lang))); setSaving(false); return; }
-      onDone(isEdit ? t("Assignment updated.", lang) : t("Nodal Officer assigned successfully.", lang));
+      if (data.success) {
+        onDone(isEdit ? t("Assignment updated.", lang) : t("Nodal Officer assigned successfully.", lang));
+      } else {
+        setServerError(data.message || "An error occurred.");
+        setSaving(false);
+      }
     } catch {
       setServerError("Network error. Please try again.");
       setSaving(false);
@@ -189,10 +193,15 @@ function AssignmentModal({ mode, assignment, onDone, onClose, apiFetch, institut
       onClick={(e) => { if (e.target === e.currentTarget && !saving) onClose(); }}
     >
       <div style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 520, maxHeight: "90vh", overflow: "auto", boxShadow: "0 24px 64px rgba(0,0,0,0.22)", display: "flex", flexDirection: "column" }}>
+
+        {/* Header */}
         <div style={{ padding: "20px 24px 16px", borderBottom: "1px solid #f1f5f9", display: "flex", alignItems: "center", justifyContent: "space-between", background: "#fafafa", flexShrink: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <div style={{ width: 40, height: 40, borderRadius: 10, background: "#d1fae5", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>
-              {isEdit ? "✏️" : "🔗"}
+            <div style={{ width: 40, height: 40, borderRadius: 10, background: "#e0f2fe", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={ACCENT} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+                <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+              </svg>
             </div>
             <div>
               <div style={{ fontSize: 15, fontWeight: 800, color: "#1e293b" }}>
@@ -201,14 +210,17 @@ function AssignmentModal({ mode, assignment, onDone, onClose, apiFetch, institut
               <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 2 }}>
                 {isEdit
                   ? `${t("Reporting Year", lang)} ${assignment.reporting_year} — ${t("Reporting Year — change the assigned user", lang)}`
-                  : t("Multiple Nodal Officers can be active per year", lang)}
+                  : `${t("Institution-wide assignment for", lang)} ${institutionName || "—"}`}
               </div>
             </div>
           </div>
           <button onClick={onClose} disabled={saving} style={{ background: "none", border: "none", fontSize: 20, color: "#94a3b8", cursor: saving ? "not-allowed" : "pointer", lineHeight: 1, padding: 4 }}>✕</button>
         </div>
 
+        {/* Body */}
         <form onSubmit={handleSubmit} noValidate style={{ padding: "24px", display: "flex", flexDirection: "column", gap: 18, flex: 1 }}>
+
+          {/* Reporting Year */}
           <div>
             <label style={S.label}>{t("Reporting Year *", lang)}</label>
             {isEdit ? (
@@ -219,10 +231,17 @@ function AssignmentModal({ mode, assignment, onDone, onClose, apiFetch, institut
               </div>
             ) : (
               <>
-                <select style={S.select(!!fieldErrs.reporting_year)} value={form.reporting_year} onChange={e => set("reporting_year", e.target.value)} disabled={loadingYears}>
+                <select
+                  style={S.select(!!fieldErrs.reporting_year)}
+                  value={form.reporting_year}
+                  onChange={e => set("reporting_year", e.target.value)}
+                  disabled={loadingYears}
+                >
                   <option value="">{loadingYears ? t("Loading years…", lang) : t("— Select Academic Year —", lang)}</option>
                   {academicYears.map(y => (
-                    <option key={y.id ?? y.start_year} value={toReportingYear(y.start_year)}>{y.academic_year}</option>
+                    <option key={y.id ?? y.start_year} value={toReportingYear(y.start_year)}>
+                      {y.academic_year}
+                    </option>
                   ))}
                 </select>
                 {!loadingYears && academicYears.length === 0 && (
@@ -235,6 +254,7 @@ function AssignmentModal({ mode, assignment, onDone, onClose, apiFetch, institut
             )}
           </div>
 
+          {/* User — loaded only after year is selected */}
           <div>
             <label style={S.label}>{t("Assign To *", lang)}</label>
             <select
@@ -261,7 +281,7 @@ function AssignmentModal({ mode, assignment, onDone, onClose, apiFetch, institut
             {fieldErrs.user_id && <span style={S.errorText}>{fieldErrs.user_id}</span>}
             {form.reporting_year && !loadingUsers && users.length === 0 && (
               <span style={{ fontSize: 11, color: "#94a3b8", marginTop: 4, display: "block" }}>
-                {t("No users found in this department.", lang)}
+                {t("No users found in this institution.", lang)}
               </span>
             )}
           </div>
@@ -272,9 +292,12 @@ function AssignmentModal({ mode, assignment, onDone, onClose, apiFetch, institut
             </div>
           )}
 
+          {/* Footer */}
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, paddingTop: 8, borderTop: "1px solid #f1f5f9", marginTop: 4 }}>
-            <button type="button" onClick={onClose} disabled={saving} style={S.btnGhost}>{t("Cancel", lang)}</button>
-            <button type="submit" disabled={saving || loadingUsers} style={{ ...S.btnPrimary(saving), background: saving ? "#6ee7b7" : ACCENT }}>
+            <button type="button" onClick={onClose} disabled={saving} style={S.btnGhost}>
+              {t("Cancel", lang)}
+            </button>
+            <button type="submit" disabled={saving || (!form.reporting_year) || loadingUsers} style={{ ...S.btnPrimary(saving), background: saving ? "#67e8f9" : ACCENT }}>
               {saving
                 ? (isEdit ? t("Saving…", lang) : t("Assigning…", lang))
                 : (isEdit ? t("Save Changes", lang) : t("Assign", lang))}
@@ -291,26 +314,24 @@ function AssignmentModal({ mode, assignment, onDone, onClose, apiFetch, institut
 /* ══════════════════════════════════════════════
    MAIN PAGE
 ══════════════════════════════════════════════ */
-export default function NodalOfficerPage() {
-  const { apiFetch } = useApi();
-  const { user }     = useAuth();
-  const { lang }     = useLanguage();
+export default function InstituteNodalOfficerPage() {
+  const { apiFetch }    = useApi();
+  const { user }        = useAuth();
+  const { lang }        = useLanguage();
+  const institutionId   = user?.institutionId   ?? "";
+  const institutionName = user?.institutionName ?? "";
 
-  const institutionId  = user?.institutionId  ?? "";
-  const departmentId   = user?.departmentId   ?? "";
-  const departmentName = user?.departmentName ?? "";
-
-  const [formView,    setFormView]    = useState(null);
   const [assignments, setAssignments] = useState([]);
   const [loading,     setLoading]     = useState(true);
   const [error,       setError]       = useState("");
   const [toggling,    setToggling]    = useState(null);
   const [deleting,    setDeleting]    = useState(null);
+  const [formView,    setFormView]    = useState(null);
   const [toast,       setToast]       = useState(null);
   const [refreshKey,  setRefreshKey]  = useState(0);
 
-  const showToast = (message, type = "success") => {
-    setToast({ message, type });
+  const showToast = (msg, type = "success") => {
+    setToast({ message: msg, type });
     setTimeout(() => setToast(null), 3500);
   };
 
@@ -333,7 +354,10 @@ export default function NodalOfficerPage() {
   const handleToggle = async (id, nextActive) => {
     setToggling(id);
     try {
-      const res  = await apiFetch(`/api/nodal-officer-assignments/${id}`, { method: "PUT", body: JSON.stringify({ is_active: nextActive }) });
+      const res  = await apiFetch(`/api/nodal-officer-assignments/${id}`, {
+        method: "PUT",
+        body: JSON.stringify({ is_active: nextActive }),
+      });
       const data = await res.json();
       if (data.success) {
         setRefreshKey(k => k + 1);
@@ -348,8 +372,10 @@ export default function NodalOfficerPage() {
     try {
       const res  = await apiFetch(`/api/nodal-officer-assignments/${id}`, { method: "DELETE" });
       const data = await res.json();
-      if (data.success) { setAssignments(prev => prev.filter(a => a.id !== id)); showToast(t("Assignment deleted.", lang)); }
-      else showToast(data.message || "Failed to delete.", "error");
+      if (data.success) {
+        setAssignments(prev => prev.filter(a => a.id !== id));
+        showToast(t("Assignment deleted.", lang));
+      } else showToast(data.message || "Failed to delete.", "error");
     } catch { showToast("Network error.", "error"); }
     setDeleting(null);
   };
@@ -358,6 +384,7 @@ export default function NodalOfficerPage() {
     <>
       {toast && <Toast message={toast.message} type={toast.type} />}
 
+      {/* Page header */}
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 28, fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
         <div>
           <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: `${ACCENT}14`, borderRadius: 8, padding: "4px 12px", marginBottom: 12 }}>
@@ -370,11 +397,12 @@ export default function NodalOfficerPage() {
             {t("Nodal Officer Delegation", lang)}
           </h1>
           <p style={{ color: "#94a3b8", fontSize: 14 }}>
-            {t("Delegate Nodal Officer responsibility within", lang)}{" "}
-            <span style={{ color: ACCENT, fontWeight: 600 }}>{departmentName || "—"}</span>
+            {t("Delegate Nodal Officer responsibility across", lang)}{" "}
+            <span style={{ color: ACCENT, fontWeight: 600 }}>{institutionName || "—"}</span>
             {" "}{t("per reporting year.", lang)}
           </p>
         </div>
+
         <button
           onClick={() => setFormView("add")}
           style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "10px 20px", borderRadius: 10, border: "none", background: ACCENT, fontSize: 13, fontWeight: 700, color: "#fff", cursor: "pointer", flexShrink: 0, marginTop: 4 }}
@@ -383,11 +411,13 @@ export default function NodalOfficerPage() {
         </button>
       </div>
 
-      {loading ? <Spinner /> : error ? (
+      {/* List */}
+      {error ? (
         <div style={{ padding: 24, background: "#fef2f2", borderRadius: 10, color: "#dc2626", fontSize: 13 }}>{error}</div>
       ) : (
         <AssignmentList
           assignments={assignments}
+          loading={loading}
           onEdit={a => setFormView({ mode: "edit", assignment: a })}
           onToggle={handleToggle}
           onDelete={handleDelete}
@@ -396,13 +426,14 @@ export default function NodalOfficerPage() {
         />
       )}
 
+      {/* Modal */}
       {formView && (
         <AssignmentModal
           mode={formView === "add" ? "add" : "edit"}
           assignment={formView === "add" ? null : formView.assignment}
           apiFetch={apiFetch}
           institutionId={institutionId}
-          departmentId={departmentId}
+          institutionName={institutionName}
           onDone={(msg) => { setFormView(null); showToast(msg); setRefreshKey(k => k + 1); }}
           onClose={() => setFormView(null)}
         />

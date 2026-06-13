@@ -39,8 +39,20 @@ export function AuthProvider({ children }) {
   const idleTimer    = useRef(null);
   const refreshTimer = useRef(null);
 
+  // ── NOA role selection (in-memory + sessionStorage for page-refresh survival) ─
+  const [noaSelectedRole, _setNoaSelectedRole] = useState(
+    () => sessionStorage.getItem("pm_noa_role") || null
+  );
+  const setNoaSelectedRole = useCallback((role) => {
+    if (role) sessionStorage.setItem("pm_noa_role", role);
+    else sessionStorage.removeItem("pm_noa_role");
+    _setNoaSelectedRole(role);
+  }, []);
+
   const logout = useCallback((message = "") => {
     localStorage.removeItem("pm_user");
+    sessionStorage.removeItem("pm_noa_role");
+    _setNoaSelectedRole(null);
     setUser(null);
     setAccess(null);
     clearTimeout(idleTimer.current);
@@ -77,6 +89,13 @@ export function AuthProvider({ children }) {
         return;
       }
       setAccess(data.accessToken);
+      // Refresh also returns the user object so noaActiveYears (and dept context)
+      // stay current without a page reload — reflects enable/disable changes within
+      // the 14-minute refresh window.
+      if (data.user) {
+        localStorage.setItem("pm_user", JSON.stringify(data.user));
+        setUser(data.user);
+      }
     } catch {}
   }, [logout]);
 
@@ -138,6 +157,7 @@ export function AuthProvider({ children }) {
     <AuthContext.Provider value={{
       user, accessToken, loading, sessionMsg,
       login, logout, setMsg, updateUser,
+      noaSelectedRole, setNoaSelectedRole,
     }}>
       {children}
     </AuthContext.Provider>

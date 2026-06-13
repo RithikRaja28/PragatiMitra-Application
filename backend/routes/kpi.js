@@ -15,6 +15,9 @@ const express         = require("express");
 const router          = express.Router();
 const { verifyToken } = require("../middleware/auth");
 
+const logger            = require("../utils/logger");
+const { getLogContext } = logger;
+
 router.use((req, _res, next) => { req.pool = req.app.locals.pool; next(); });
 router.use(verifyToken);
 
@@ -76,17 +79,16 @@ function getRoleContext(req) {
   return {
     isInstAdmin:  roles.has("institute_admin"),
     isDeptAdmin:  roles.has("department_admin"),
-    isSuperAdmin: roles.has("super_admin"),
     institute_id:  String(req.user?.institutionId ?? ""),
     department_id: String(req.user?.departmentId  ?? ""),
     user_id:       String(req.user?.userId        ?? ""),
   };
 }
 
-// Returns { clause, params } — clause may be empty string (super admin = no filter)
+// Returns { clause, params } — KPIs are Institute Admin / Department Admin only,
+// so any other role (including super admin) gets the always-false clause below.
 function buildScopeWhere(ctx, alias = "c") {
   const a = alias ? `${alias}.` : "";
-  if (ctx.isSuperAdmin) return { clause: "", params: [] };
   if (ctx.isInstAdmin && ctx.institute_id)
     return { clause: `WHERE ${a}scope = 'institute' AND ${a}institute_id = $1`, params: [ctx.institute_id] };
   if (ctx.isDeptAdmin && ctx.department_id)
@@ -109,13 +111,23 @@ function appendAnd(scope, condition, ...newParams) {
 }
 
 async function checkOwnership(pool, configId, ctx) {
-  if (ctx.isSuperAdmin) return true;
+  // Mirror buildScopeWhere's role priority — match ONLY the caller's own scope.
+  // (An OR across both scopes would let a department admin "own" institute-scoped
+  // configs from their own institution, and vice versa.)
+  let condition, param;
+  if (ctx.isInstAdmin && ctx.institute_id) {
+    condition = "scope = 'institute' AND institute_id = $2";
+    param = ctx.institute_id;
+  } else if (ctx.isDeptAdmin && ctx.department_id) {
+    condition = "scope = 'department' AND department_id = $2";
+    param = ctx.department_id;
+  } else {
+    return false;
+  }
+
   const { rows } = await pool.query(
-    `SELECT id FROM kpi_config WHERE id = $1 AND (
-      (scope = 'institute'  AND institute_id  = $2) OR
-      (scope = 'department' AND department_id = $3)
-    )`,
-    [configId, ctx.institute_id, ctx.department_id]
+    `SELECT id FROM kpi_config WHERE id = $1 AND ${condition}`,
+    [configId, param]
   );
   return rows.length > 0;
 }
@@ -289,7 +301,7 @@ router.get("/tables", async (req, res) => {
     );
     res.json({ ok: true, data: rows });
   } catch (err) {
-    console.error("[GET /tables]", err.message);
+    logger.error("GET /api/kpi/tables", { ...getLogContext(req), stack: err.stack });
     res.status(500).json({ ok: false, error: err.message });
   }
 });
@@ -308,7 +320,7 @@ router.get("/tables/:tableName/columns", async (req, res) => {
     if (!rows.length) return res.status(404).json({ ok: false, error: `Table "${tableName}" not found` });
     res.json({ ok: true, data: rows.map(r => ({ ...r, is_numeric: isNumericType(r.data_type) })) });
   } catch (err) {
-    console.error("[GET /columns]", err.message);
+    logger.error("GET /api/kpi/tables/:tableName/columns", { ...getLogContext(req), stack: err.stack });
     res.status(500).json({ ok: false, error: err.message });
   }
 });
@@ -320,7 +332,7 @@ router.get("/tables/:tableName/columns", async (req, res) => {
 
 router.post("/configs", async (req, res) => {
   const ctx = getRoleContext(req);
-  if (!ctx.isInstAdmin && !ctx.isDeptAdmin && !ctx.isSuperAdmin)
+  if (!ctx.isInstAdmin && !ctx.isDeptAdmin)
     return res.status(403).json({ ok: false, error: "Only Institute Admin or Department Admin can create KPIs." });
 
   const {
@@ -339,11 +351,14 @@ router.post("/configs", async (req, res) => {
   if (!x_col)         return res.status(400).json({ ok: false, error: "x_col is required" });
   if (!y_cols.length) return res.status(400).json({ ok: false, error: "y_cols must not be empty" });
 
+  // Priority must match buildScopeWhere/checkOwnership (institute admin first) so a
+  // dual-role user (e.g. holding both via Nodal Officer Assignments) creates a config
+  // under the exact scope they'll later see and manage it in.
   let scope, institute_id, department_id;
-  if (ctx.isDeptAdmin) {
-    scope = "department"; institute_id = null; department_id = ctx.department_id;
-  } else {
+  if (ctx.isInstAdmin) {
     scope = "institute"; institute_id = ctx.institute_id; department_id = null;
+  } else {
+    scope = "department"; institute_id = null; department_id = ctx.department_id;
   }
 
   try {
@@ -371,7 +386,7 @@ router.post("/configs", async (req, res) => {
     res.status(201).json({ ok: true, data: savedRow, query_result: queryResult, updated: false });
 
   } catch (err) {
-    console.error("[POST /configs]", err.message);
+    logger.error("POST /api/kpi/configs", { ...getLogContext(req), stack: err.stack });
     res.status(500).json({ ok: false, error: err.message });
   }
 });
@@ -498,7 +513,7 @@ router.post("/configs/:id/regenerate", async (req, res) => {
               row_count: result.row_count, sql: result.sql, fetched_at: result.fetched_at },
     });
   } catch (err) {
-    console.error("[POST /regenerate]", err.message);
+    logger.error("POST /api/kpi/configs/:id/regenerate", { ...getLogContext(req), stack: err.stack });
     res.status(500).json({ ok: false, error: err.message });
   }
 });
@@ -528,7 +543,7 @@ router.post("/configs/:id/export-svg", async (req, res) => {
     );
     res.status(201).json({ ok: true, data: rows[0] });
   } catch (err) {
-    console.error("[POST /export-svg]", err.message);
+    logger.error("POST /api/kpi/configs/:id/export-svg", { ...getLogContext(req), stack: err.stack });
     res.status(500).json({ ok: false, error: err.message });
   }
 });
@@ -600,7 +615,7 @@ router.get("/dashboard-charts", async (req, res) => {
 
     res.json({ ok: true, singles, groups });
   } catch (err) {
-    console.error("[GET /dashboard-charts]", err.message);
+    logger.error("GET /api/kpi/dashboard-charts", { ...getLogContext(req), stack: err.stack });
     res.status(500).json({ ok: false, error: err.message });
   }
 });

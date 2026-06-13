@@ -1,7 +1,8 @@
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
-import { useAuth, redirectByRole } from "../../store/AuthContext";
-import { Mail, Lock, Eye, EyeOff, AlertCircle, Info, Loader2 } from "lucide-react";
+import { useAuth, redirectByRole, ROLE_ROUTES } from "../../store/AuthContext";
+import { Mail, Lock, Eye, EyeOff, AlertCircle, Info, Loader2, User, Building2, Landmark } from "lucide-react";
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
@@ -196,20 +197,85 @@ const CSS = `
     .login-card { padding: 24px 22px; }
     .login-brand-name { font-size: 27px; }
   }
+
+  /* ── NOA role selection dialog ── */
+  .noa-overlay {
+    position: fixed; inset: 0;
+    background: rgba(15,23,42,0.55);
+    z-index: 9999;
+    display: flex; align-items: center; justify-content: center;
+    padding: 16px;
+    backdrop-filter: blur(3px);
+    animation: noaFadeIn 0.2s ease both;
+  }
+  @keyframes noaFadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+  .noa-dialog {
+    background: #fff;
+    border-radius: 20px;
+    box-shadow: 0 24px 64px rgba(15,23,42,0.22);
+    padding: 32px 30px;
+    width: 430px;
+    max-width: 100%;
+    animation: noaSlideUp 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  @keyframes noaSlideUp {
+    from { opacity: 0; transform: translateY(14px) scale(0.97); }
+    to   { opacity: 1; transform: translateY(0)   scale(1); }
+  }
+
+  .noa-dialog-title {
+    font-size: 18px; font-weight: 700; color: #0f172a;
+    margin: 0 0 6px; letter-spacing: -0.3px;
+  }
+  .noa-dialog-sub {
+    font-size: 13.5px; color: #64748b; margin: 0 0 22px; line-height: 1.55;
+  }
+  .noa-dialog-options { display: flex; flex-direction: column; gap: 11px; }
+
+  .noa-opt {
+    display: flex; align-items: center; gap: 14px;
+    padding: 15px 16px;
+    border-radius: 13px;
+    border: 1.5px solid #e2e8f0;
+    background: #fff;
+    cursor: pointer;
+    text-align: left;
+    font-family: var(--shell-font, 'Plus Jakarta Sans', sans-serif);
+    width: 100%;
+    transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+  }
+  .noa-opt:hover {
+    border-color: #2563eb;
+    background: #f0f6ff;
+    box-shadow: 0 0 0 4px rgba(37,99,235,0.08);
+  }
+  .noa-opt-icon {
+    width: 40px; height: 40px; border-radius: 10px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .noa-opt-label {
+    display: block; font-size: 14px; font-weight: 600; color: #1e293b;
+  }
+  .noa-opt-desc {
+    display: block; font-size: 12px; color: #94a3b8; margin-top: 2px;
+  }
 `;
 
 export default function Login() {
   injectCSS("login-styles", CSS);
 
   const navigate = useNavigate();
-  const { login, sessionMsg, setMsg } = useAuth();
+  const { login, sessionMsg, setMsg, setNoaSelectedRole } = useAuth();
 
-  const [email, setEmail]       = useState("");
-  const [password, setPassword] = useState("");
-  const [showPwd, setShowPwd]   = useState(false);
-  const [loading, setLoading]   = useState(false);
-  const [error, setError]       = useState("");
-  const [touched, setTouched]   = useState({ email: false, password: false });
+  const [email, setEmail]             = useState("");
+  const [password, setPassword]       = useState("");
+  const [showPwd, setShowPwd]         = useState(false);
+  const [loading, setLoading]         = useState(false);
+  const [error, setError]             = useState("");
+  const [touched, setTouched]         = useState({ email: false, password: false });
+  const [showRoleDialog, setShowRoleDialog] = useState(false);
+  const [pendingLogin, setPendingLogin]     = useState(null); // { user, accessToken }
 
   const emailErr    = touched.email    && !email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/);
   const passwordErr = touched.password && password.length < 6;
@@ -238,8 +304,16 @@ export default function Login() {
         return;
       }
 
-      login(data.user, data.accessToken);
-      redirectByRole(data.user, navigate);
+      // If user has an active Nodal Officer assignment, let them choose which
+      // dashboard to enter. Otherwise proceed with normal role-based routing.
+      if (data.user?.noaActiveYears?.length > 0 || data.user?.noaInstituteActiveYears?.length > 0) {
+        setLoading(false);
+        setPendingLogin({ user: data.user, accessToken: data.accessToken });
+        setShowRoleDialog(true);
+      } else {
+        login(data.user, data.accessToken);
+        redirectByRole(data.user, navigate);
+      }
 
     } catch {
       setError("Unable to connect to the server. Please check your connection.");
@@ -247,7 +321,95 @@ export default function Login() {
     }
   };
 
+  // Called when user picks a role in the NOA selection dialog.
+  // role = null → original role; "department_admin" / "institute_admin" → NOA interface.
+  const handleRoleChoice = (role) => {
+    if (!pendingLogin) return;
+    setShowRoleDialog(false);
+
+    if (role) {
+      setNoaSelectedRole(role);
+
+      // Pre-seed AcademicYearContext's sessionStorage key with the user's first
+      // assigned year so the header year selector opens on the correct year
+      // instead of defaulting to the institution's current year.
+      const assignedYears = role === "institute_admin"
+        ? (pendingLogin.user?.noaInstituteActiveYears || [])
+        : (pendingLogin.user?.noaActiveYears          || []);
+      if (assignedYears.length > 0) {
+        const firstStart = parseInt(assignedYears[0].split("-")[0], 10);
+        const instId = pendingLogin.user?.institutionId;
+        if (instId && !isNaN(firstStart)) {
+          sessionStorage.setItem(`pm_academic_year_${instId}`, String(firstStart));
+        }
+      }
+    }
+
+    login(pendingLogin.user, pendingLogin.accessToken);
+    if (role) {
+      navigate(ROLE_ROUTES[role] || "/dashboard", { replace: true });
+    } else {
+      redirectByRole(pendingLogin.user, navigate);
+    }
+    setPendingLogin(null);
+  };
+
+  // Helper: human-readable label for the user's original role
+  const originalRoleLabel = (() => {
+    const r = pendingLogin?.user?.roles?.[0];
+    if (!r) return "Original Role";
+    if (r.display_name) return r.display_name;
+    return r.name.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  })();
+
   return (
+    <>
+    {/* NOA role selection dialog — rendered outside login-wrap to avoid CSS transform containing block */}
+    {showRoleDialog && pendingLogin && createPortal(
+      <div className="noa-overlay">
+        <div className="noa-dialog">
+          <h2 className="noa-dialog-title">Choose your dashboard</h2>
+          <p className="noa-dialog-sub">
+            You have an active Nodal Officer assignment. Select how you'd like to enter PragatiMitra.
+          </p>
+          <div className="noa-dialog-options">
+            <button className="noa-opt" onClick={() => handleRoleChoice(null)}>
+              <div className="noa-opt-icon" style={{ background: "#f1f5f9", color: "#475569" }}>
+                <User size={20} />
+              </div>
+              <div>
+                <span className="noa-opt-label">Continue as {originalRoleLabel}</span>
+                <span className="noa-opt-desc">Open your regular dashboard</span>
+              </div>
+            </button>
+            {pendingLogin.user?.noaActiveYears?.length > 0 && (
+              <button className="noa-opt" onClick={() => handleRoleChoice("department_admin")}>
+                <div className="noa-opt-icon" style={{ background: "#eff6ff", color: "#2563eb" }}>
+                  <Building2 size={20} />
+                </div>
+                <div>
+                  <span className="noa-opt-label">Continue as Department Nodal Officer</span>
+                  <span className="noa-opt-desc">Open the Department Admin interface</span>
+                </div>
+              </button>
+            )}
+            {pendingLogin.user?.noaInstituteActiveYears?.length > 0 && (
+              <button className="noa-opt" onClick={() => handleRoleChoice("institute_admin")}>
+                <div className="noa-opt-icon" style={{ background: "#f0fdf4", color: "#15803d" }}>
+                  <Landmark size={20} />
+                </div>
+                <div>
+                  <span className="noa-opt-label">Continue as Institute Nodal Officer</span>
+                  <span className="noa-opt-desc">Open the Institute Admin interface</span>
+                </div>
+              </button>
+            )}
+          </div>
+        </div>
+      </div>,
+      document.body
+    )}
+
     <div className="login-wrap">
 
       {/* Logo anchor */}
@@ -333,5 +495,6 @@ export default function Login() {
         </form>
       </div>
     </div>
+    </>
   );
 }

@@ -179,11 +179,13 @@ router.get("/templates", async (req, res) => {
     const institutionId = await resolveInstitutionId(pool, req);
     if (!institutionId) return res.json({ success: true, templates: [] });
 
+    // institute_access contains only institutions that have completed adoption.
+    // A form is available to adopt when the institution is NOT yet in institute_access.
     const { rows } = await pool.query(
       `SELECT id, form_name, institute_access, share_table, created_at
        FROM table_list
        WHERE share_table = true
-         AND (institute_access IS NULL OR NOT ($1::text = ANY(COALESCE(institute_access, '{}'::text[]))))
+         AND NOT ($1::uuid = ANY(COALESCE(institute_access, '{}'::uuid[])))
        ORDER BY form_name`,
       [institutionId]
     );
@@ -403,14 +405,26 @@ router.post(
       try {
         await client.query("BEGIN");
 
-        // 1. Register in table_list (no deadline here — deadlines are per-institution)
+        // 1. Register in table_list.
+        //    Shared forms: institute_access = ALL institutions so the form is
+        //    immediately visible everywhere. COALESCE guards empty-institutions edge case.
+        //    Private forms: only the creator institution.
         await client.query(
           `INSERT INTO table_list (form_name, share_table, institute_access, created_by, translate_to_hindi)
-           VALUES ($1, $2, ARRAY[$3::uuid], $4, $5)
+           VALUES (
+             $1, $2,
+             CASE WHEN $2
+               THEN COALESCE((SELECT array_agg(institution_id) FROM institutions), ARRAY[$3::uuid])
+               ELSE ARRAY[$3::uuid]
+             END,
+             $4, $5
+           )
            ON CONFLICT (form_name) DO NOTHING`,
           [normalizedName, share_table, institutionId, req.user.userId, translateToHindi]
         );
 
+        // For the ON CONFLICT path (form already exists), ensure the creator is in
+        // institute_access and, for shared forms, also apply the share_table flag.
         const isSuperAdmin = (req.user.roles || []).includes("super_admin");
         await client.query(
           `UPDATE table_list
@@ -559,10 +573,10 @@ router.post(
         // Add institution to institute_access if not present
         await client.query(
           `UPDATE table_list
-           SET institute_access = array_append(COALESCE(institute_access,'{}'), $1::text),
+           SET institute_access = array_append(COALESCE(institute_access,'{}'), $1::uuid),
                updated_by = $2, updated_at = now()
            WHERE form_name = $3
-             AND NOT ($1::text = ANY(COALESCE(institute_access, '{}'::text[])))`,
+             AND NOT ($1::uuid = ANY(COALESCE(institute_access, '{}'::uuid[])))`,
           [institutionId, req.user.userId, form_name]
         );
 
@@ -763,13 +777,23 @@ router.get("/:formName/institution-records", async (req, res) => {
     const schemaParams = [formName, institutionId];
     let schemaYearClause = "";
     if (year) { schemaYearClause = " AND year = $3"; schemaParams.push(year); }
-    const { rows: schemaRows } = await pool.query(
+    let { rows: schemaRows } = await pool.query(
       `SELECT * FROM custom_field_schemas
        WHERE form_name = $1 AND institution_id = $2 AND is_active = true
        ${schemaYearClause}
        ORDER BY year DESC LIMIT 1`,
       schemaParams
     );
+    if (!schemaRows.length) {
+      // Shared-form fallback: use the creator's canonical schema row.
+      const fbParams = [formName];
+      let fq = `SELECT cfs.* FROM custom_field_schemas cfs
+                JOIN table_list tl ON tl.form_name = cfs.form_name
+                WHERE cfs.form_name = $1 AND tl.share_table = true AND cfs.is_active = true`;
+      if (year) { fq += ` AND cfs.year = $2`; fbParams.push(year); }
+      fq += ` ORDER BY cfs.year DESC LIMIT 1`;
+      ({ rows: schemaRows } = await pool.query(fq, fbParams));
+    }
     if (!schemaRows.length) {
       return res.status(404).json({ success: false, message: "No active schema found for this form." });
     }

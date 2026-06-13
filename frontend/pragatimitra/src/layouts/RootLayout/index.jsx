@@ -1,20 +1,38 @@
 /**
  * RootLayout.jsx
  *
- * Settings mode works by swapping AppShell's navItems + pages + defaultPage.
- * The header, sidebar container, collapse state, and theme are all unchanged.
- * A "← Back" nav item at the top of the settings nav exits settings mode.
+ * Settings mode: swaps AppShell's navItems + pages (no CSS injection, no
+ * separate layout). A "← Back" nav item at the top exits settings mode.
+ *
+ * Nodal Officer role selection:
+ *   - user.noaActiveYears comes from the login response (years for which the
+ *     user has an active NOA assignment, e.g. ["2026-2027"]).
+ *   - At login, if noaActiveYears is non-empty, Login.jsx shows a dialog.
+ *   - The user's choice (original role or NOA role) is stored in AuthContext as
+ *     noaSelectedRole, backed by sessionStorage for page-refresh survival.
+ *   - Year restriction: when in NOA mode the selected academic year is locked
+ *     to the user's assigned years. Switching the header year selector to an
+ *     unassigned year shows a toast and reverts the selector back automatically.
+ *   - AppShell is keyed on effectiveRole so it remounts cleanly on role change.
  */
 
-import { Suspense, useState } from "react";
+import { Suspense, useState, useEffect, useRef } from "react";
 import AppShell from "../../components/Dashboard/Appshell";
 import { flatSettingsItems, buildSettingsNav } from "../../components/Dashboard/SettingsSidebar";
 import "./RootLayout.css";
 import { useAuth } from "../../store/AuthContext";
+import { useAcademicYear } from "../../store/AcademicYearContext";
 import { getRoleConfig } from "../../components/Dashboard/roleConfig";
 
-// Special id used for the "back to dashboard" item in settings nav
 const SETTINGS_BACK_ID = "__settings_back__";
+
+/* Integer start year → nodal_officer_assignments reporting_year text.
+   Canonical "YYYY-YYYY" format — e.g. 2026 → "2026-2027". Must match the
+   backend's reporting_year validator (nodalOfficerAssignments.js) and
+   formatAcademicYear (academicYearService.js): all "year range" strings in
+   the app now share one shape. */
+const toReportingYear = (y) =>
+  y != null ? `${y}-${Number(y) + 1}` : null;
 
 function ShellSkeleton() {
   return (
@@ -38,6 +56,7 @@ function ShellSkeleton() {
   );
 }
 
+
 function PageLoader() {
   return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "#94a3b8", fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 14, gap: 10 }}>
@@ -49,19 +68,40 @@ function PageLoader() {
 }
 
 export default function RootLayout() {
-  const { user, loading } = useAuth();
+  const { user, loading, noaSelectedRole } = useAuth();
+  const ay = useAcademicYear();
 
   const [showSettings,      setShowSettings]      = useState(false);
-  const [lastDashboardPage, setLastDashboardPage] = useState(null); // restored on exit
-  const [isCollapsed,       setIsCollapsed]       = useState(false); // survives mode switch
+  const [lastDashboardPage, setLastDashboardPage] = useState(null);
+  const [isCollapsed,       setIsCollapsed]       = useState(false);
 
-  const role   = user?.roles?.[0]?.name;
-  const config = getRoleConfig(role);
+  // ── Effective role ────────────────────────────────────────────────────────
+  const baseRole      = user?.roles?.[0]?.name;
+  // noaSelectedRole is chosen at login and never auto-reverted by year changes.
+  const effectiveRole = noaSelectedRole || baseRole;
+
+  // ── Year restriction ──────────────────────────────────────────────────────
+  // When the user is in NOA mode and switches to a year they are not assigned
+  // to, keep the NOA dashboard but show a restriction message instead of data.
+  const selectedYear  = ay?.selectedYear ?? null;
+  const reportingYear = toReportingYear(selectedYear);
+
+  const noaAssignedYears = noaSelectedRole === "institute_admin"
+    ? (user?.noaInstituteActiveYears || [])
+    : (user?.noaActiveYears          || []);
+
+  const isYearRestricted = !!(
+    noaSelectedRole &&
+    reportingYear != null &&
+    !noaAssignedYears.includes(reportingYear)
+  );
+
+  const config = getRoleConfig(effectiveRole);
 
   const permissions = user?.roles?.[0]?.permissions ?? {};
   const hasAll      = permissions["all"] === true;
 
-  // ── Role-based nav/pages (dashboard mode) ────────────────────────────────
+  // ── Role-based nav/pages ──────────────────────────────────────────────────
   const filteredNavItems = config.navItems
     .map((group) => ({
       ...group,
@@ -81,74 +121,73 @@ export default function RootLayout() {
     : filteredNavItems[0]?.items[0]?.id ?? "home";
 
   // ── Settings nav/pages ────────────────────────────────────────────────────
-  // Settings nav items are converted to AppShell's navItems format so they
-  // render inside the same dark sidebar container unchanged.
-  const settingsGroups = buildSettingsNav(role);
+  const settingsGroups = buildSettingsNav(effectiveRole);
 
   const settingsNavItems = [
-    // "Back" as a regular nav item at the very top
-    {
-      group: "",
-      items: [{ id: SETTINGS_BACK_ID, label: "← Back to Dashboard", icon: "ArrowLeft" }],
-    },
-    // All settings groups (Communication, Security, Preferences, Administration…)
+    { group: "", items: [{ id: SETTINGS_BACK_ID, label: "← Back to Dashboard", icon: "ArrowLeft" }] },
     ...settingsGroups,
   ];
 
   const settingsPages = Object.fromEntries(
-    flatSettingsItems(role).map((item) => [
+    flatSettingsItems(effectiveRole).map((item) => [
       item.id,
-      // Wrap in a padded div that matches the regular content area padding
-      <div key={item.id} style={{ padding: "32px 36px" }}>
-        {item.renderPage()}
-      </div>,
+      <div key={item.id} style={{ padding: "32px 36px" }}>{item.renderPage()}</div>,
     ])
   );
 
-  // ── Decide what to pass to AppShell ──────────────────────────────────────
-  const activeNavItems  = showSettings ? settingsNavItems  : filteredNavItems;
-  const activePages     = showSettings ? settingsPages     : filteredPages;
-  const activeDefault   = showSettings
+  // ── Year restriction: revert to assigned year ────────────────────────────
+  // The visual warning is shown by AcademicYearPicker in Appshell (contextual,
+  // near the dropdown). This effect only handles the structural revert.
+  const noaAssignedYearsRef = useRef(noaAssignedYears);
+  noaAssignedYearsRef.current = noaAssignedYears;
+  const setYearRef = useRef(ay?.setYear);
+  setYearRef.current = ay?.setYear;
+
+  useEffect(() => {
+    if (!isYearRestricted) return;
+    const assigned = noaAssignedYearsRef.current;
+    const setYear  = setYearRef.current;
+    if (assigned.length > 0 && setYear) {
+      const firstStart = parseInt(assigned[0].split("-")[0], 10);
+      if (!isNaN(firstStart)) setYear(firstStart);
+    }
+  }, [isYearRestricted]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── What AppShell receives ────────────────────────────────────────────────
+  const activeNavItems = showSettings ? settingsNavItems : filteredNavItems;
+  const activePages = showSettings ? settingsPages : filteredPages;
+  // Use lastDashboardPage only when it exists in the current role's page map,
+  // so stale ids from a previous session don't cause "No page registered".
+  const activeDefault = showSettings
     ? (settingsGroups[0]?.items[0]?.id ?? "notifications")
-    : (lastDashboardPage ?? roleDefaultPage);
+    : ((lastDashboardPage && visibleIds.has(lastDashboardPage))
+        ? lastDashboardPage
+        : roleDefaultPage);
 
   // ── Navigation handler ────────────────────────────────────────────────────
   const handleNavigate = (id) => {
     if (id === SETTINGS_BACK_ID) {
-      // Exit settings — restore the page the user was on before
       setShowSettings(false);
-      return false; // tell AppShell to cancel this navigation
+      return false;
     }
-    if (!showSettings) {
-      // Track where the user was in the dashboard
-      setLastDashboardPage(id);
-    }
+    if (!showSettings) setLastDashboardPage(id);
   };
 
   const shellUser = {
-    name: user?.fullName,
-    org:  user?.institutionName,
+    name:     user?.fullName,
+    org:      user?.institutionName,
     initials: user?.fullName
-      ?.split(" ")
-      .map((w) => w[0])
-      .join("")
-      .slice(0, 2)
-      .toUpperCase(),
+      ?.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase(),
   };
 
   if (loading) return <ShellSkeleton />;
 
   return (
     <Suspense fallback={<PageLoader />}>
-      {/*
-        key changes between "dashboard" and "settings" so AppShell remounts
-        with a fresh activeId = defaultPage.  This prevents the "No page
-        registered for __settings_back__" flash that occurs when activeId and
-        pages are momentarily out of sync.  Collapse state is lifted to
-        RootLayout so it survives the remount.
-      */}
+      {/* Key includes effectiveRole so AppShell remounts cleanly on role change.
+          Collapse state is lifted so it survives the remount. */}
       <AppShell
-        key={showSettings ? "settings" : "dashboard"}
+        key={showSettings ? `settings-${effectiveRole}` : `dashboard-${effectiveRole}`}
         appName="PragatiMitra"
         navItems={activeNavItems}
         pages={activePages}

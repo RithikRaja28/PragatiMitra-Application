@@ -6,7 +6,8 @@
  *
  *   selectedYear  → integer START year (e.g. 2025) — this is the value stored on
  *                   custom_field_schemas.year / *_records.year.
- *   academicYear  → display string "2025–2026".
+ *   academicYear  → display string "2025-2026" (canonical YYYY-YYYY format,
+ *                   shared with reporting_year — see RootLayout's toReportingYear).
  *   options       → dynamic list from academic_year_master (falls back to a
  *                   generated range when the institution has no years yet).
  *
@@ -22,8 +23,9 @@ import { useApi } from "../hooks/useApi";
 const AcademicYearContext = createContext(null);
 export const useAcademicYear = () => useContext(AcademicYearContext);
 
-const EN_DASH = "–";
-const fmt = (y) => `${y}${EN_DASH}${y + 1}`;
+/* Canonical "YYYY-YYYY" format (plain hyphen, 4-digit end year) — must match
+   backend's formatAcademicYear in academicYearService.js exactly. */
+const fmt = (y) => `${y}-${y + 1}`;
 const sessionKey = (inst) => `pm_academic_year_${inst || "none"}`;
 
 export function AcademicYearProvider({ children }) {

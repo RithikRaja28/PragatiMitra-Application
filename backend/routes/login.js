@@ -61,79 +61,71 @@ function cookieOptions() {
 }
 
 /**
- * currentReportingYear
- * Indian academic calendar: year starts in July.
- *   Month >= 7  →  "YYYY-(YY+1)"   e.g. July 2026 → "2026-27"
- *   Month < 7   →  "(YYYY-1)-YY"   e.g. June 2026 → "2025-26"
- */
-function currentReportingYear() {
-  const now   = new Date();
-  const month = now.getMonth() + 1;   // 1-12
-  const year  = now.getFullYear();
-  if (month >= 7) {
-    return `${year}-${String(year + 1).slice(2)}`;
-  }
-  return `${year - 1}-${String(year).slice(2)}`;
-}
-
-/**
  * enrichWithNodalOfficerRole
  *
- * After the regular user/roles query, checks nodal_officer_assignments for an
- * ACTIVE Department Nodal Officer record for the CURRENT academic year.
- * If found, prepends 'department_admin' to the user's roles array so that:
- *   - requireRole / isOnlyInstAdmin / isDeptAdmin checks pass automatically
- *   - Frontend roleConfig routes to the Department Admin dashboard
- *   - departmentId in the JWT reflects the delegated department
+ * Reads the nodal_officer_assignments table and attaches NOA metadata to the
+ * in-memory user object.  The user's original role in user_roles is NEVER
+ * modified — neither in the database nor in user.roles.
  *
- * Only Department Nodal Officer is supported; Institution Nodal Officer is
- * a future feature.  Fails silently — must never block authentication.
+ * Side-effects on the in-memory user object only (discarded after response):
+ *   noa_active_years    — all reporting_year strings with is_active=TRUE
+ *   noa_institution_id  — institution of the most recent active assignment
+ *   noa_department_id   — department of the most recent active assignment
+ *   noa_department_name — name of that department
+ *
+ * buildAccessPayload uses noa_active_years to add "department_admin" to the
+ * JWT roles claim (a computed permission, not a DB role) so existing
+ * requireRole / isDeptAdmin checks work for NOA users without any route changes.
+ *
+ * buildUserObject does NOT expose noa_* fields in the roles array; it only
+ * adds noaActiveYears so the frontend can switch dashboards on year change.
+ *
+ * Fails silently — must never block authentication.
  */
 async function enrichWithNodalOfficerRole(pool, user) {
   if (!user) return;
   try {
-    const reportingYear = currentReportingYear();
+    const [deptResult, instResult] = await Promise.all([
+      // Department-level NOA assignments
+      pool.query(
+        `SELECT
+           noa.institution_id,
+           noa.department_id,
+           noa.reporting_year,
+           d.name AS department_name
+         FROM nodal_officer_assignments noa
+         JOIN departments d ON d.department_id = noa.department_id
+         WHERE noa.user_id       = $1
+           AND noa.is_active     = TRUE
+           AND noa.department_id IS NOT NULL
+         ORDER BY noa.reporting_year DESC`,
+        [user.id]
+      ),
+      // Institute-level NOA assignments (department_id = NULL)
+      pool.query(
+        `SELECT institution_id, reporting_year
+         FROM nodal_officer_assignments
+         WHERE user_id       = $1
+           AND is_active     = TRUE
+           AND department_id IS NULL
+         ORDER BY reporting_year DESC`,
+        [user.id]
+      ),
+    ]);
 
-    const { rows } = await pool.query(
-      `SELECT
-         noa.institution_id,
-         noa.department_id,
-         r.id           AS role_id,
-         r.name         AS role_name,
-         r.display_name AS role_display_name,
-         r.permissions  AS role_permissions
-       FROM nodal_officer_assignments noa
-       JOIN roles r ON r.name = 'department_admin'
-       WHERE noa.user_id       = $1
-         AND noa.is_active     = TRUE
-         AND noa.department_id IS NOT NULL
-         AND noa.reporting_year = $2
-       LIMIT 1`,
-      [user.id, reportingYear]
-    );
-
-    if (!rows.length) return;
-
-    const noa = rows[0];
-
-    // Only prepend if user doesn't already hold department_admin via user_roles
-    if (!(user.roles || []).some((r) => r.name === "department_admin")) {
-      user.roles = [
-        {
-          id:           noa.role_id,
-          name:         "department_admin",
-          display_name: noa.role_display_name,
-          permissions:  noa.role_permissions,
-        },
-        ...(user.roles || []),
-      ];
+    if (deptResult.rows.length) {
+      user.noa_active_years    = deptResult.rows.map((r) => r.reporting_year);
+      user.noa_institution_id  = deptResult.rows[0].institution_id;
+      user.noa_department_id   = deptResult.rows[0].department_id;
+      user.noa_department_name = deptResult.rows[0].department_name;
     }
 
-    // Override department context with the assigned department
-    user.institution_id = noa.institution_id;
-    user.department_id  = noa.department_id;
+    if (instResult.rows.length) {
+      user.noa_institute_active_years   = instResult.rows.map((r) => r.reporting_year);
+      user.noa_institute_institution_id = instResult.rows[0].institution_id;
+    }
   } catch (_) {
-    // Silently swallow — nodal officer lookup must never block login
+    // Silently swallow — must never block login
   }
 }
 
@@ -169,29 +161,49 @@ async function fetchUser(pool, whereClause, params) {
 }
 
 function buildAccessPayload(user, sessionId) {
+  const isDeptNOA     = !!(user.noa_active_years?.length);
+  const isInstNOA     = !!(user.noa_institute_active_years?.length);
+  const originalRoles = (user.roles || []).map((r) => r.name);
+
+  // Inject NOA-derived roles into the JWT without touching user_roles in DB.
+  const roles = [...originalRoles];
+  if (isDeptNOA && !originalRoles.includes("department_admin"))
+    roles.unshift("department_admin");
+  if (isInstNOA && !originalRoles.includes("institute_admin"))
+    roles.unshift("institute_admin");
+
   return {
-    userId:        user.id,
-    email:         user.email,
-    institutionId: user.institution_id,
-    departmentId:  user.department_id,
-    roles:         (user.roles || []).map((r) => r.name),
+    userId:                  user.id,
+    email:                   user.email,
+    // Use dept-NOA context for departmentId; inst-level NOA keeps original institution_id.
+    institutionId:           isDeptNOA ? user.noa_institution_id : user.institution_id,
+    departmentId:            isDeptNOA ? user.noa_department_id  : user.department_id,
+    roles,
+    noaActiveYears:          user.noa_active_years         || [],
+    noaInstituteActiveYears: user.noa_institute_active_years || [],
     sessionId,
   };
 }
 
 function buildUserObject(user) {
+  const isDeptNOA = !!(user.noa_active_years?.length);
   return {
-    id:                   user.id,
-    fullName:             user.full_name,
-    email:                user.email,
-    institutionId:        user.institution_id,
-    institutionName:      user.institution_name,
-    departmentId:         user.department_id,
-    departmentName:       user.department_name,
-    profileImageUrl:      user.profile_image_url,
-    mustChangePassword:   user.must_change_password,
-    isTemporaryPassword:  user.is_temporary_password,
-    roles:                user.roles || [],
+    id:                      user.id,
+    fullName:                user.full_name,
+    email:                   user.email,
+    institutionId:           isDeptNOA ? user.noa_institution_id  : user.institution_id,
+    institutionName:         user.institution_name,
+    departmentId:            isDeptNOA ? user.noa_department_id   : user.department_id,
+    departmentName:          isDeptNOA ? user.noa_department_name : user.department_name,
+    profileImageUrl:         user.profile_image_url,
+    mustChangePassword:      user.must_change_password,
+    isTemporaryPassword:     user.is_temporary_password,
+    // Original roles from user_roles — NEVER includes NOA-derived roles.
+    roles:                   user.roles || [],
+    // Years for which user has an active dept-level NOA assignment.
+    noaActiveYears:          user.noa_active_years         || [],
+    // Years for which user has an active institute-level NOA assignment.
+    noaInstituteActiveYears: user.noa_institute_active_years || [],
   };
 }
 
@@ -383,9 +395,12 @@ router.post("/refresh", refreshLimiter, async (req, res) => {
 
     res.cookie("pm_refresh", newRawToken, cookieOptions());
 
+    // Return user alongside the new token so AuthContext can update noaActiveYears
+    // immediately (e.g. when an admin enables/disables a NOA assignment).
     return res.status(200).json({
       success:     true,
       accessToken: signAccessToken(buildAccessPayload(user, session.id)),
+      user:        buildUserObject(user),
     });
 
   } catch (err) {

@@ -673,7 +673,9 @@ router.post("/", async (req, res) => {
        rawCity, rawState, rawCountry, rawPincode, createdBy]
     );
 
-    // Auto-sync: add this institution to all globally shared forms and pre-create lock configs
+    // Shared forms are immediately visible to all institutions.
+    // Add the new institution to every shared form's institute_access and
+    // ensure a lock-config row exists so deadline management works from day one.
     await pool.query(
       `UPDATE table_list
        SET institute_access = array_append(COALESCE(institute_access,'{}'), $1::uuid),

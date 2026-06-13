@@ -75,13 +75,27 @@ async function resolveUserContext(pool, req) {
 }
 
 async function getActiveSchema(pool, formName, institutionId, year) {
+  // Primary: institution-specific row (private forms always resolve here;
+  // shared-form creator resolves here too).
   const params = [formName, institutionId];
   let q = `SELECT * FROM custom_field_schemas
            WHERE form_name = $1 AND institution_id = $2 AND is_active = true`;
   if (year) { q += ` AND year = $3`; params.push(year); }
   q += ` ORDER BY year DESC LIMIT 1`;
   const { rows } = await pool.query(q, params);
-  return rows[0] || null;
+  if (rows[0]) return rows[0];
+
+  // Fallback: shared forms have one canonical schema row (the creator's).
+  // Non-creator institutions use it directly — no per-institution copy needed.
+  // The share_table guard ensures private forms are never affected.
+  const fbParams = [formName];
+  let fq = `SELECT cfs.* FROM custom_field_schemas cfs
+            JOIN table_list tl ON tl.form_name = cfs.form_name
+            WHERE cfs.form_name = $1 AND tl.share_table = true AND cfs.is_active = true`;
+  if (year) { fq += ` AND cfs.year = $2`; fbParams.push(year); }
+  fq += ` ORDER BY cfs.year DESC LIMIT 1`;
+  const { rows: fb } = await pool.query(fq, fbParams);
+  return fb[0] || null;
 }
 
 function activeFields(schemaRow) {
@@ -277,7 +291,9 @@ router.get("/:formName/records/:id/counterpart", async (req, res) => {
 
 /* ─────────────────────────────────────────────────────────────────────
    POST /api/form-data/:formName/records
-   Lock-checked. Inserts English row then async Hindi mirror (via translateRow).
+   Lock-checked. Inserts English row then synchronously awaits the Hindi
+   mirror before responding, so the Hindi row is always present when the
+   client re-fetches records immediately after save.
    Tags department_id from user context.
 ─────────────────────────────────────────────────────────────────────── */
 router.post("/:formName/records", async (req, res) => {
@@ -324,30 +340,29 @@ router.post("/:formName/records", async (req, res) => {
     );
     const enRow = rows[0];
 
-    // Only auto-generate a Hindi row for English submissions AND when this
-    // form has the Hindi translation toggle enabled. When disabled we store
-    // only the English row — no translation/transliteration API call is made.
+    // Synchronously generate the Hindi mirror row before responding so the
+    // client re-fetching records immediately after save always sees it.
+    // Translation failure is logged but does not fail the response — the
+    // English row is already committed.
     if (language === "en" && await isHindiTranslationEnabled(pool, formName)) {
       const tableName = `${formName}_records`;
-      setImmediate(async () => {
-        try {
-          await ensureSourceRowIdColumn(pool, tableName);
+      try {
+        await ensureSourceRowIdColumn(pool, tableName);
 
-          const hiData = await translateRow(data, fieldModes);
-          const hiStdVals = [formName, ctx.institutionId, ctx.departmentId, formYear, schema.id, "hi", createdBy];
-          const hiFieldVals = fieldCols.map((col) => hiData[col] ?? null);
-          const hiAllCols = [...stdCols, ...fieldCols, "source_row_id"];
-          const hiAllVals = [...hiStdVals, ...hiFieldVals, enRow.id];
-          const hiPlaceholders = hiAllVals.map((_, i) => `$${i + 1}`).join(", ");
+        const hiData = await translateRow(data, fieldModes);
+        const hiStdVals = [formName, ctx.institutionId, ctx.departmentId, formYear, schema.id, "hi", createdBy];
+        const hiFieldVals = fieldCols.map((col) => hiData[col] ?? null);
+        const hiAllCols = [...stdCols, ...fieldCols, "source_row_id"];
+        const hiAllVals = [...hiStdVals, ...hiFieldVals, enRow.id];
+        const hiPlaceholders = hiAllVals.map((_, i) => `$${i + 1}`).join(", ");
 
-          await pool.query(
-            `INSERT INTO ${tableName} (${hiAllCols.join(", ")}) VALUES (${hiPlaceholders})`,
-            hiAllVals
-          );
-        } catch (err) {
-          logger.error(`Hindi row insert failed for ${formName}`, { stack: err.stack });
-        }
-      });
+        await pool.query(
+          `INSERT INTO ${tableName} (${hiAllCols.join(", ")}) VALUES (${hiPlaceholders})`,
+          hiAllVals
+        );
+      } catch (err) {
+        logger.error(`Hindi row insert failed for ${formName}`, { stack: err.stack });
+      }
     }
 
     return res.json({ success: true, record: enRow, message: "Record created successfully." });
@@ -359,7 +374,8 @@ router.post("/:formName/records", async (req, res) => {
 
 /* ─────────────────────────────────────────────────────────────────────
    PUT /api/form-data/:formName/records/:id
-   Lock-checked. Updates English row and async updates linked Hindi row.
+   Lock-checked. Updates English row then synchronously awaits the Hindi
+   mirror update before responding.
    Dept admin can only update records in their own department.
 ─────────────────────────────────────────────────────────────────────── */
 router.put("/:formName/records/:id", async (req, res) => {
@@ -423,32 +439,30 @@ router.put("/:formName/records/:id", async (req, res) => {
     if (!rows.length)
       return res.status(404).json({ success: false, message: "Record not found." });
 
-    // Asynchronously update the linked Hindi row — ONLY when an English row was
-    // edited AND this form has Hindi translation enabled. When a Hindi row is
-    // edited directly (editedLanguage === "hi") the UPDATE above already saved
-    // it; we do NOT run the translation pipeline (no reverse translation) and we
-    // leave the English row untouched.
+    // Synchronously update the linked Hindi row before responding. Same
+    // contract as POST: failure is logged but does not surface to the client.
+    // When editedLanguage === "hi", the UPDATE above already saved the Hindi
+    // row directly; no translation pipeline runs and the English row is left
+    // untouched.
     if (editedLanguage === "en" && await isHindiTranslationEnabled(pool, formName)) {
       const tableName = `${formName}_records`;
-      setImmediate(async () => {
-        try {
-          await ensureSourceRowIdColumn(pool, tableName);
+      try {
+        await ensureSourceRowIdColumn(pool, tableName);
 
-          const hiData = await translateRow(data, fieldModes);
-          let hidx = 1;
-          const hiSetClauses = fieldCols.map((col) => `${col} = $${hidx++}`);
-          hiSetClauses.push(`updated_at = now()`);
-          const hiVals = [...fieldCols.map((col) => hiData[col] ?? null), id];
+        const hiData = await translateRow(data, fieldModes);
+        let hidx = 1;
+        const hiSetClauses = fieldCols.map((col) => `${col} = $${hidx++}`);
+        hiSetClauses.push(`updated_at = now()`);
+        const hiVals = [...fieldCols.map((col) => hiData[col] ?? null), id];
 
-          await pool.query(
-            `UPDATE ${tableName} SET ${hiSetClauses.join(", ")}
-             WHERE source_row_id = $${hidx}`,
-            hiVals
-          );
-        } catch (err) {
-          logger.error(`Hindi row update failed for ${formName}/${id}`, { stack: err.stack });
-        }
-      });
+        await pool.query(
+          `UPDATE ${tableName} SET ${hiSetClauses.join(", ")}
+           WHERE source_row_id = $${hidx}`,
+          hiVals
+        );
+      } catch (err) {
+        logger.error(`Hindi row update failed for ${formName}/${id}`, { stack: err.stack });
+      }
     }
 
     return res.json({ success: true, record: rows[0], message: "Record updated successfully." });
@@ -497,6 +511,8 @@ router.delete("/:formName/records/bulk-delete", async (req, res) => {
     if (lockBlock.locked)
       return res.status(403).json({ success: false, message: lockBlock.message });
 
+    await ensureSourceRowIdColumn(pool, `${formName}_records`);
+
     let whereClause   = "id = ANY($1::uuid[]) AND institution_id = $2";
     const queryParams = [ids, ctx.institutionId];
 
@@ -505,10 +521,18 @@ router.delete("/:formName/records/bulk-delete", async (req, res) => {
       queryParams.push(ctx.departmentId);
     }
 
-    const { rowCount } = await pool.query(
-      `DELETE FROM ${formName}_records WHERE ${whereClause}`,
+    const { rows: deletedRows, rowCount } = await pool.query(
+      `DELETE FROM ${formName}_records WHERE ${whereClause} RETURNING id`,
       queryParams
     );
+
+    if (deletedRows.length > 0) {
+      await pool.query(
+        `DELETE FROM ${formName}_records
+         WHERE source_row_id = ANY($1::uuid[]) AND institution_id = $2`,
+        [deletedRows.map((r) => r.id), ctx.institutionId]
+      );
+    }
 
     const deleted = rowCount ?? 0;
     const failed  = ids.length - deleted;

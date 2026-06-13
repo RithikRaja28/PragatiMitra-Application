@@ -15,13 +15,31 @@
  *
  * MAPPING RULE (locked decision): the academic-year string keys off its START
  * YEAR integer, which is exactly the integer `year` already stored on
- * custom_field_schemas / *_records. So "2025–2026" ⇄ start_year 2025.
+ * custom_field_schemas / *_records. So "2025-2026" ⇄ start_year 2025.
  *
  * Form references are stored as table_list.id (uuid) strings inside the JSON
  * arrays — forms are never duplicated, only referenced.
+ *
+ * STANDARD FORMAT (locked): "YYYY-YYYY" — plain hyphen, 4-digit end year,
+ * e.g. "2025-2026". This is the single canonical format shared with
+ * nodal_officer_assignments.reporting_year (see normalizeReportingYears in
+ * nodalOfficerAssignments.js) and management_committees.finance_year.
+ * Older rows may still hold the legacy en-dash form ("2025–2026"); see
+ * normalizeAcademicYears below for the one-time/idempotent rewrite.
  */
 
-const EN_DASH = "–";
+/* One-time, idempotent rewrite of any non-canonical academic_year strings
+   (e.g. legacy en-dash "2025–2026") to the canonical "YYYY-YYYY" form. The
+   authoritative `start_year` integer column is the source of truth, so the
+   rebuilt string is always correct regardless of what separator/format the
+   row previously held. Rows already canonical are left untouched (no-op). */
+async function normalizeAcademicYears(pool) {
+  await pool.query(`
+    UPDATE academic_year_master
+    SET academic_year = start_year || '-' || (start_year + 1)
+    WHERE academic_year <> (start_year || '-' || (start_year + 1))
+  `);
+}
 
 /* Ensure the two tables exist. Idempotent — safe to run on every boot, mirrors
    the ensureDeadlineColumns / translate_to_hindi pattern in server.js. */
@@ -61,15 +79,17 @@ async function ensureAcademicYearTables(pool) {
   await pool.query(
     `CREATE INDEX IF NOT EXISTS idx_ayfc_inst_year ON academic_year_form_config (institution_id, academic_year)`
   );
+
+  await normalizeAcademicYears(pool);
 }
 
-/* 2025 → "2025–2026"  (en-dash, matches the spec's display format) */
+/* 2025 → "2025-2026"  (canonical YYYY-YYYY format, plain hyphen) */
 function formatAcademicYear(startYear) {
   const s = Number(startYear);
-  return `${s}${EN_DASH}${s + 1}`;
+  return `${s}-${s + 1}`;
 }
 
-/* "2025–2026" / "2025-2026" / "2025" → 2025 (start year integer), else null */
+/* "2025-2026" / "2025–2026" / "2025" → 2025 (start year integer), else null */
 function parseStartYear(academicYear) {
   const m = String(academicYear).match(/(\d{4})/);
   return m ? Number(m[1]) : null;

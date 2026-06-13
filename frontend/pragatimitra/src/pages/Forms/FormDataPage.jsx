@@ -573,7 +573,7 @@ function FormImportWizard({ formName, onClose, onDone, apiFetch, getToken }) {
       for (let ci = 0; ci < chunks.length; ci++) {
         const res = await apiFetch(`/api/form-data/${formName}/import/execute-chunk`, {
           method: "POST",
-          body: JSON.stringify({ mapping, chunk: chunks[ci], chunkIndex: ci, totalChunks: chunks.length, duplicateHandling, departmentId: selectedDepartmentId || null, year: null }),
+          body: JSON.stringify({ mapping, chunk: chunks[ci], chunkIndex: ci, chunkStartIndex: ci * CHUNK_SIZE, totalChunks: chunks.length, duplicateHandling, departmentId: selectedDepartmentId || null, year: null }),
         });
         const data = await res.json();
         if (!data.success) { setExecError(data.message || `Batch ${ci + 1} failed.`); setExecuting(false); return; }

@@ -50,10 +50,12 @@ import NodalDashboardPage    from "../../pages/Roles/departmentnodalofficer/Noda
 import AssignedSectionsPage  from "../../pages/Roles/departmentnodalofficer/AssignedSectionsPage";
 import SubmissionsPage       from "../../pages/Roles/departmentnodalofficer/SubmissionsPage";
 
+/* ── Contributor page imports ────────────────────────────────── */
+import ContributorDashboardPage from "../../pages/Roles/contributor/ContributorDashboardPage";
+
 /* ── Finance Officer page imports ───────────────────────────── */
 import FinanceOverviewPage from "../../pages/Roles/financeofficer/FinanceOverviewPage";
 import EstimatesPage       from "../../pages/Roles/financeofficer/EstimatesPage";
-import AuditsPage          from "../../pages/Roles/financeofficer/AuditsPage";
 import BalanceSheetPage    from "../../pages/Roles/financeofficer/BalanceSheetPage";
 
 /* ── Re-export so existing imports of PlaceholderPage from this file still work ── */
@@ -313,12 +315,6 @@ export const ROLE_CONFIG = {
             permission: null,
           },
           {
-            id: "fo-audits",
-            label: "Audits",
-            icon: "ClipboardCheck",
-            permission: null,
-          },
-          {
             id: "fo-balance-sheet",
             label: "Balance Sheet",
             icon: "Scale",
@@ -330,7 +326,6 @@ export const ROLE_CONFIG = {
     pages: {
       "fo-overview": <FinanceOverviewPage />,
       "fo-estimates": <EstimatesPage />,
-      "fo-audits": <AuditsPage />,
       "fo-balance-sheet": <BalanceSheetPage />,
     },
     defaultPage: "fo-overview",
@@ -496,6 +491,21 @@ export const ROLE_CONFIG = {
     },
     defaultPage: "dno-dashboard",
     user: { name: "Nodal Officer", initials: "NO", org: "Samhita Siddhanta" },
+  },
+
+  /* ── CONTRIBUTOR ─────────────────────────────────────────────── */
+  contributor: {
+    navItems: [
+      {
+        group: "",
+        items: [{ id: "contributor-home", label: "Dashboard", icon: "LayoutDashboard" }],
+      },
+    ],
+    pages: {
+      "contributor-home": <ContributorDashboardPage />,
+    },
+    defaultPage: "contributor-home",
+    user: { name: "Contributor", initials: "C", org: "PragatiMitra" },
   },
 
   /* ── FALLBACK ───────────────────────────────────────────────── */

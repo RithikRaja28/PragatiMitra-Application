@@ -14,10 +14,11 @@
 
 import { useState } from "react";
 import * as Icons from "lucide-react";
-import NotificationsPage from "./settings/NotificationsPage";
-import AcademicYearPage  from "./settings/AcademicYearPage";
-import NodalOfficerPage  from "./settings/NodalOfficerPage";
-import { useAuth }       from "../../store/AuthContext";
+import NotificationsPage          from "./settings/NotificationsPage";
+import AcademicYearPage           from "./settings/AcademicYearPage";
+import NodalOfficerPage           from "./settings/NodalOfficerPage";
+import InstituteNodalOfficerPage  from "./settings/InstituteNodalOfficerPage";
+import { useAuth }                from "../../store/AuthContext";
 
 /* ── Icon resolver — same as AppShell ── */
 function DynIcon({ name, size = 17 }) {
@@ -26,65 +27,43 @@ function DynIcon({ name, size = 17 }) {
   return <Comp size={size} />;
 }
 
-/* ── Coming soon placeholder ── */
-function ComingSoon({ title }) {
-  return (
-    <div style={{
-      display: "flex", flexDirection: "column", alignItems: "center",
-      justifyContent: "center", height: "60%", gap: 14,
-      padding: 60, textAlign: "center", fontFamily: "var(--sh-font)",
-    }}>
-      <div style={{
-        width: 52, height: 52, borderRadius: 14, background: "var(--sh-bg)",
-        display: "flex", alignItems: "center", justifyContent: "center",
-      }}>
-        <Icons.Settings2 size={22} color="var(--sh-muted)" />
-      </div>
-      <h3 style={{ fontSize: 14, fontWeight: 700, color: "var(--sh-text)", marginBottom: 6 }}>{title}</h3>
-      <p style={{ fontSize: 13, color: "var(--sh-muted)", lineHeight: 1.6 }}>This section is coming soon.</p>
-    </div>
-  );
-}
-
 /* ══════════════════════════════════════════════════════════════
    SETTINGS NAV — flat, one click per page, no sub-items
 ══════════════════════════════════════════════════════════════ */
-const BASE_SETTINGS_NAV = [
-  {
-    group: "Institution",
-    items: [
-      { id: "academic-year", label: "Academic Year Management", icon: "CalendarRange", renderPage: () => <AcademicYearPage /> },
-    ],
-  },
-  {
-    group: "Communication",
-    items: [
-      { id: "notifications", label: "Notifications", icon: "Bell",             renderPage: () => <NotificationsPage /> },
-    ],
-  },
-  {
-    group: "Security",
-    items: [
-      { id: "security",      label: "Security",      icon: "ShieldCheck",      renderPage: () => <ComingSoon title="Security" /> },
-    ],
-  },
-  {
-    group: "Preferences",
-    items: [
-      { id: "general",    label: "General",    icon: "SlidersHorizontal", renderPage: () => <ComingSoon title="General" /> },
-      { id: "appearance", label: "Appearance", icon: "Palette",           renderPage: () => <ComingSoon title="Appearance" /> },
-      { id: "locale",     label: "Locale",     icon: "Globe",             renderPage: () => <ComingSoon title="Locale" /> },
-    ],
-  },
-];
-
-// Nodal Officer delegation is currently implemented for Department Admin only.
-// Institute Nodal Officer is a future feature.
-const NODAL_OFFICER_ROLES = ["department_admin"];
-
 export function buildSettingsNav(role) {
-  const nav = [...BASE_SETTINGS_NAV];
-  if (role && NODAL_OFFICER_ROLES.includes(role)) {
+  const nav = [];
+
+  // ── Institution group (institute_admin only) ──────────────────────────────
+  if (role === "institute_admin") {
+    nav.push({
+      group: "Institution",
+      items: [
+        { id: "academic-year", label: "Academic Year Management", icon: "CalendarRange", renderPage: () => <AcademicYearPage /> },
+      ],
+    });
+  }
+
+  // ── Communication: Notification Templates (super_admin only) ─────────────
+  // Other roles see no useful data there and currently get a restricted message.
+  if (role === "super_admin") {
+    nav.push({
+      group: "Communication",
+      items: [
+        { id: "notifications", label: "Notification Templates", icon: "Bell", renderPage: () => <NotificationsPage /> },
+      ],
+    });
+  }
+
+  // ── Administration: Nodal Officer ─────────────────────────────────────────
+  if (role === "institute_admin") {
+    nav.push({
+      group: "Administration",
+      items: [
+        { id: "nodal-officer", label: "Nodal Officer", icon: "UserCheck", renderPage: () => <InstituteNodalOfficerPage /> },
+      ],
+    });
+  }
+  if (role === "department_admin") {
     nav.push({
       group: "Administration",
       items: [
@@ -92,6 +71,7 @@ export function buildSettingsNav(role) {
       ],
     });
   }
+
   return nav;
 }
 

@@ -939,7 +939,7 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
           <div style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: 14 }}>
             <ReviewSection title="Form Metadata Review">
               <ReviewRow label="Form Name"       value={basics.form_name || initialData?.form_name} />
-              <ReviewRow label="Academic Year"   value={`${basics.year}–${basics.year + 1}`} />
+              <ReviewRow label="Academic Year"   value={`${basics.year}-${basics.year + 1}`} />
               {basics.description && <ReviewRow label="Description" value={basics.description} />}
               {isSuperAdmin && isCreate && (
                 <ReviewRow label="Shared Template" value={basics.share_table ? "Yes — available to all institutions" : "No — private to this institution"} />

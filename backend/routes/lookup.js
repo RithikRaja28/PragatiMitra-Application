@@ -57,50 +57,57 @@ router.get("/roles", verifyToken, async (req, res) => {
   }
 });
 
-/* ── GET /api/lookup/users?institution_id=xxx&department_id=xxx&eligible_only=true ──
-   eligible_only=true  → exclude users who hold any admin/management role, so only
-   faculty/contributors/reviewers appear in Nodal Officer dropdowns.
+/* ── GET /api/lookup/users?institution_id=xxx&department_id=xxx&exclude_roles=super_admin ──
+   Returns all active users matching the given scope, with their primary role
+   display name and department name included.
+   exclude_roles: comma-separated role names to exclude (e.g. "super_admin").
 ── */
 router.get("/users", verifyToken, async (req, res) => {
   const pool = req.app.locals.pool;
-  const { institution_id, department_id, eligible_only } = req.query;
-
-  const EXCLUDED_ROLES = [
-    "super_admin", "institute_admin", "department_admin",
-    "head_of_department", "finance_officer", "directors_office", "publication_cell",
-  ];
+  const { institution_id, department_id, exclude_roles } = req.query;
+  const excludeList = exclude_roles
+    ? exclude_roles.split(",").map((r) => r.trim()).filter(Boolean)
+    : [];
 
   try {
-    const rows_query = eligible_only === "true"
-      ? await pool.query(
-          `SELECT u.id, u.full_name, u.email
-           FROM users u
-           WHERE u.account_status = 'ACTIVE'
-             AND ($1::uuid IS NULL OR u.institution_id = $1)
-             AND ($2::uuid IS NULL OR u.department_id  = $2)
-             AND NOT EXISTS (
-               SELECT 1
-               FROM user_roles ur
-               JOIN roles r ON r.id = ur.role_id
-               WHERE ur.user_id    = u.id
-                 AND ur.revoked_at IS NULL
-                 AND (ur.expires_at IS NULL OR ur.expires_at > now())
-                 AND r.name = ANY($3::text[])
-             )
-           ORDER BY u.full_name`,
-          [institution_id || null, department_id || null, EXCLUDED_ROLES]
-        )
-      : await pool.query(
-          `SELECT u.id, u.full_name, u.email
-           FROM users u
-           WHERE u.account_status = 'ACTIVE'
-             AND ($1::uuid IS NULL OR u.institution_id = $1)
-             AND ($2::uuid IS NULL OR u.department_id  = $2)
-           ORDER BY u.full_name`,
-          [institution_id || null, department_id || null]
-        );
+    const { rows } = await pool.query(
+      `SELECT
+         u.id,
+         u.full_name,
+         u.email,
+         d.name AS department_name,
+         COALESCE(
+           (SELECT r.display_name
+            FROM user_roles ur
+            JOIN roles r ON r.id = ur.role_id
+            WHERE ur.user_id    = u.id
+              AND ur.revoked_at IS NULL
+              AND (ur.expires_at IS NULL OR ur.expires_at > now())
+            ORDER BY r.display_name
+            LIMIT 1),
+           'No Role'
+         ) AS role_display_name
+       FROM users u
+       LEFT JOIN departments d ON d.department_id = u.department_id
+       WHERE u.account_status = 'ACTIVE'
+         AND ($1::uuid IS NULL OR u.institution_id = $1)
+         AND ($2::uuid IS NULL OR u.department_id  = $2)
+         AND (
+           array_length($3::text[], 1) IS NULL
+           OR NOT EXISTS (
+             SELECT 1 FROM user_roles ur
+             JOIN roles r ON r.id = ur.role_id
+             WHERE ur.user_id    = u.id
+               AND ur.revoked_at IS NULL
+               AND (ur.expires_at IS NULL OR ur.expires_at > now())
+               AND r.name = ANY($3::text[])
+           )
+         )
+       ORDER BY u.full_name`,
+      [institution_id || null, department_id || null, excludeList]
+    );
 
-    return res.json({ success: true, users: rows_query.rows });
+    return res.json({ success: true, users: rows });
   } catch (err) {
     logger.error("GET /api/lookup/users failed", { ...getLogContext(req), stack: err.stack });
     return res.status(500).json({ success: false, message: "Internal server error." });

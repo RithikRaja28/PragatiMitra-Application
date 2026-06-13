@@ -123,7 +123,7 @@ router.get("/current", async (req, res) => {
 
 /* ─────────────────────────────────────────────────────────────────────
    GET /api/academic-years/preview?startYear=2025
-   Create-new-year review screen. Computes the label ("2025–2026") and loads
+   Create-new-year review screen. Computes the label ("2025-2026") and loads
    the PREVIOUS year's form classification so the admin can confirm/adjust:
      previouslyActive   → checked by default  → active in the new year
      previouslyArchived → unchecked           → archived in the new year

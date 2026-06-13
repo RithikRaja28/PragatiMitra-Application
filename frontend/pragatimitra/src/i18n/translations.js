@@ -481,6 +481,86 @@ export const translations = {
     "+ Add Subsection":        "+ उप-अनुभाग जोड़ें",
     "+ Add Section":           "+ अनुभाग जोड़ें",
     "Unassigned":              "असाइन नहीं",
+
+    /* ════════════════════════════════════════════════════════════
+       SETTINGS — NAVIGATION
+    ════════════════════════════════════════════════════════════ */
+    "Settings":                          "सेटिंग्स",
+    "← Back to Dashboard":              "← डैशबोर्ड पर वापस",
+    "Communication":                     "संचार",
+    "Notification Templates":            "अधिसूचना टेम्पलेट",
+    "Academic Year Management":          "शैक्षणिक वर्ष प्रबंधन",
+
+    /* ════════════════════════════════════════════════════════════
+       SETTINGS — NODAL OFFICER PAGE (Dept & Institute)
+    ════════════════════════════════════════════════════════════ */
+    "Settings · Nodal Officer":          "सेटिंग्स · नोडल अधिकारी",
+    "Nodal Officer Delegation":          "नोडल अधिकारी प्रत्यायोजन",
+    "+ Add":                             "+ जोड़ें",
+    "Reporting Year":                    "रिपोर्टिंग वर्ष",
+    "No Nodal Officer assignments yet. Click + Add to create one.":
+                                         "अभी कोई नोडल अधिकारी नियुक्ति नहीं। एक बनाने के लिए + जोड़ें पर क्लिक करें।",
+    "Assign Nodal Officer":              "नोडल अधिकारी नियुक्त करें",
+    "Edit Assignment":                   "नियुक्ति संपादित करें",
+    "Institution-wide assignment for":   "के लिए संस्था-व्यापी नियुक्ति",
+    "Reporting Year *":                  "रिपोर्टिंग वर्ष *",
+    "— Select Academic Year —":         "— शैक्षणिक वर्ष चुनें —",
+    "Loading years…":                    "वर्ष लोड हो रहे हैं…",
+    "Assign To *":                       "को नियुक्त करें *",
+    "— Select User —":                   "— उपयोगकर्ता चुनें —",
+    "No eligible users found in this department.":
+                                         "इस विभाग में कोई पात्र उपयोगकर्ता नहीं मिला।",
+    "No eligible users found in this institution.":
+                                         "इस संस्था में कोई पात्र उपयोगकर्ता नहीं मिला।",
+    "Locked":                            "लॉक",
+    "Assign":                            "नियुक्त करें",
+    "Assigning…":                        "नियुक्त कर रहे हैं…",
+    "Disable":                           "अक्षम करें",
+    "Enable":                            "सक्षम करें",
+    "Assignment updated.":               "नियुक्ति अपडेट की गई।",
+    "Nodal Officer assigned successfully.":
+                                         "नोडल अधिकारी सफलतापूर्वक नियुक्त किया गया।",
+    "Assignment disabled.":              "नियुक्ति अक्षम की गई।",
+    "Assignment enabled.":               "नियुक्ति सक्षम की गई।",
+    "Assignment deleted.":               "नियुक्ति हटाई गई।",
+    "Reporting Year — change the assigned user":
+                                         "रिपोर्टिंग वर्ष — नियुक्त उपयोगकर्ता बदलें",
+
+    /* ════════════════════════════════════════════════════════════
+       SETTINGS — ACADEMIC YEAR MANAGEMENT PAGE
+    ════════════════════════════════════════════════════════════ */
+    "Create New Academic Year":          "नया शैक्षणिक वर्ष बनाएं",
+    "Current Academic Year":             "वर्तमान शैक्षणिक वर्ष",
+    "Not set":                           "सेट नहीं",
+    "Create your first academic year to begin.":
+                                         "शुरू करने के लिए अपना पहला शैक्षणिक वर्ष बनाएं।",
+    "Academic History":                  "शैक्षणिक इतिहास",
+    "No academic years yet.":           "अभी कोई शैक्षणिक वर्ष नहीं।",
+    "Set current":                       "वर्तमान सेट करें",
+    "Current":                           "वर्तमान",
+    "Archived":                          "संग्रहीत",
+    "Disabled":                          "अक्षम",
+    "Open":                              "खुला",
+    "Closed":                            "बंद",
+    "Loading forms…":                    "फ़ॉर्म लोड हो रहे हैं…",
+    "Loading…":                          "लोड हो रहा है…",
+    "No forms in this view.":           "इस दृश्य में कोई फ़ॉर्म नहीं।",
+    "Archive":                           "संग्रहीत करें",
+    "Open submissions":                  "प्रस्तुतियां खोलें",
+    "Close submissions":                 "प्रस्तुतियां बंद करें",
+    "View history (coming soon)":        "इतिहास देखें (जल्द आएगा)",
+    "Form":                              "फ़ॉर्म",
+    "shared":                            "साझा",
+    /* Wizard */
+    "Start Year":                        "प्रारंभ वर्ष",
+    "Next →":                            "आगे →",
+    "Creating…":                         "बना रहे हैं…",
+    "← Back":                            "← वापस",
+    "Previously Active":                 "पहले सक्रिय",
+    "Checked → active in new year":     "चेक किया → नए वर्ष में सक्रिय",
+    "Previously Archived":               "पहले संग्रहीत",
+    "Check to activate in new year":    "नए वर्ष में सक्रिय करने के लिए चेक करें",
+    "None":                              "कोई नहीं",
   },
 };
 

@@ -1,10 +1,13 @@
 import { useState, useEffect, useCallback } from "react";
+import { createPortal } from "react-dom";
 import {
   CalendarRange, Plus, Check, Archive, ArchiveRestore, Ban,
   Lock, Unlock, History, X, ChevronRight, Loader2, CheckCircle2,
 } from "lucide-react";
-import { useApi } from "../../../hooks/useApi";
+import { useApi }          from "../../../hooks/useApi";
 import { useAcademicYear } from "../../../store/AcademicYearContext";
+import { useLanguage }     from "../../../i18n/LanguageContext";
+import { t }               from "../../../i18n/translations";
 import { Toast, isAuthError } from "../../shared/formUtils";
 
 /* SaaS theme tokens (spec): page #F4F6F8, cards #FFFFFF, icons only. */
@@ -25,11 +28,12 @@ const card = { background: CARD, border: "1px solid rgba(0,0,0,0.07)", borderRad
 const iconBtn = { display: "inline-flex", alignItems: "center", justifyContent: "center", width: 32, height: 32, borderRadius: 8, border: "1px solid #e2e8f0", background: "#fff", cursor: "pointer", color: "#475569" };
 
 function Badge({ kind }) {
+  const { lang } = useLanguage();
   if (!kind) return null;
   return (
     <span style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "2px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700, background: kind.bg, color: kind.color, letterSpacing: 0.2, whiteSpace: "nowrap" }}>
       <span style={{ width: 6, height: 6, borderRadius: "50%", background: kind.color }} />
-      {kind.label}
+      {t(kind.label, lang)}
     </span>
   );
 }
@@ -51,6 +55,7 @@ function IconAction({ title, onClick, children, danger }) {
 
 export default function AcademicYearPage() {
   const { apiFetch } = useApi();
+  const { lang }     = useLanguage();
   // Top-bar context — reloaded after create/activate so new years and the
   // current-year change appear in the top bar instantly (no page refresh).
   const academicCtx = useAcademicYear();
@@ -154,23 +159,23 @@ export default function AcademicYearPage() {
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, marginBottom: 20 }}>
         <div>
           <h2 style={{ fontSize: 20, fontWeight: 800, letterSpacing: -0.3, display: "flex", alignItems: "center", gap: 10 }}>
-            <CalendarRange size={22} color={ACCENT} /> Academic Year Management
+            <CalendarRange size={22} color={ACCENT} /> {t("Academic Year Management", lang)}
           </h2>
           <p style={{ fontSize: 13, color: "#64748b", marginTop: 4 }}>
-            Create academic years and control which forms are active or archived per year. Same form, different status across years.
+            {t("Create academic years and control which forms are active or archived per year. Same form, different status across years.", lang)}
           </p>
         </div>
         <button
           onClick={() => setWizardOpen(true)}
           style={{ display: "inline-flex", alignItems: "center", gap: 7, background: ACCENT, color: "#fff", border: "none", borderRadius: 10, padding: "10px 16px", fontSize: 13, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap", boxShadow: `0 2px 8px ${ACCENT}40` }}
         >
-          <Plus size={16} /> Create New Academic Year
+          <Plus size={16} /> {t("Create New Academic Year", lang)}
         </button>
       </div>
 
       {loading ? (
         <div style={{ ...card, padding: 40, textAlign: "center", color: "#94a3b8", fontSize: 13 }}>
-          <Loader2 size={18} className="ay-spin" style={{ animation: "ay-spin 0.8s linear infinite" }} /> Loading…
+          <Loader2 size={18} className="ay-spin" style={{ animation: "ay-spin 0.8s linear infinite" }} /> {t("Loading…", lang)}
           <style>{`@keyframes ay-spin { to { transform: rotate(360deg) } }`}</style>
         </div>
       ) : (
@@ -178,19 +183,19 @@ export default function AcademicYearPage() {
           {/* Current year + history */}
           <div style={{ display: "grid", gridTemplateColumns: "minmax(260px, 320px) 1fr", gap: 16, marginBottom: 18 }}>
             <div style={{ ...card, padding: 18 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.6 }}>Current Academic Year</div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.6 }}>{t("Current Academic Year", lang)}</div>
               <div style={{ fontSize: 26, fontWeight: 800, marginTop: 8, color: current ? "#1e293b" : "#94a3b8" }}>
-                {current?.academic_year || "Not set"}
+                {current?.academic_year || t("Not set", lang)}
               </div>
               {!current && (
-                <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 6 }}>Create your first academic year to begin.</div>
+                <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 6 }}>{t("Create your first academic year to begin.", lang)}</div>
               )}
             </div>
 
             <div style={{ ...card, padding: 18 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 10 }}>Academic History</div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 10 }}>{t("Academic History", lang)}</div>
               {years.length === 0 ? (
-                <div style={{ fontSize: 13, color: "#94a3b8" }}>No academic years yet.</div>
+                <div style={{ fontSize: 13, color: "#94a3b8" }}>{t("No academic years yet.", lang)}</div>
               ) : (
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                   {years.map((y) => {
@@ -202,11 +207,11 @@ export default function AcademicYearPage() {
                         </button>
                         {y.active ? (
                           <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10.5, fontWeight: 700, color: "#16a34a" }}>
-                            <CheckCircle2 size={12} /> Current
+                            <CheckCircle2 size={12} /> {t("Current", lang)}
                           </span>
                         ) : (
-                          <button title="Set as current year" onClick={() => setCurrentYear(y.academic_year)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 10.5, fontWeight: 700, color: "#94a3b8" }}>
-                            Set current
+                          <button title={t("Set current", lang)} onClick={() => setCurrentYear(y.academic_year)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 10.5, fontWeight: 700, color: "#94a3b8" }}>
+                            {t("Set current", lang)}
                           </button>
                         )}
                       </div>
@@ -221,13 +226,13 @@ export default function AcademicYearPage() {
           <div style={card}>
             <div style={{ padding: "14px 18px", borderBottom: "1px solid #eef2f6", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
               <div style={{ fontSize: 14, fontWeight: 700 }}>
-                Forms {viewYear && <span style={{ color: "#94a3b8", fontWeight: 600 }}>· {viewYear}</span>}
+                {t("Form", lang)} {viewYear && <span style={{ color: "#94a3b8", fontWeight: 600 }}>· {viewYear}</span>}
               </div>
               <div style={{ display: "inline-flex", borderRadius: 9, border: "1px solid #e2e8f0", overflow: "hidden" }}>
                 {[
-                  { id: "all", label: "All" },
-                  { id: "active", label: "Active" },
-                  { id: "archived", label: "Archived" },
+                  { id: "all",      label: t("All", lang) },
+                  { id: "active",   label: t("Active", lang) },
+                  { id: "archived", label: t("Archived", lang) },
                 ].map((f) => (
                   <button key={f.id} onClick={() => setFilter(f.id)}
                     style={{ padding: "7px 14px", fontSize: 12, fontWeight: 700, border: "none", cursor: "pointer", background: filter === f.id ? ACCENT : "#fff", color: filter === f.id ? "#fff" : "#64748b" }}>
@@ -238,18 +243,18 @@ export default function AcademicYearPage() {
             </div>
 
             {formsLoading ? (
-              <div style={{ padding: 40, textAlign: "center", color: "#94a3b8", fontSize: 13 }}>Loading forms…</div>
+              <div style={{ padding: 40, textAlign: "center", color: "#94a3b8", fontSize: 13 }}>{t("Loading forms…", lang)}</div>
             ) : !viewYear ? (
-              <div style={{ padding: 40, textAlign: "center", color: "#94a3b8", fontSize: 13 }}>Select or create an academic year.</div>
+              <div style={{ padding: 40, textAlign: "center", color: "#94a3b8", fontSize: 13 }}>{t("Select or create an academic year.", lang)}</div>
             ) : visibleForms.length === 0 ? (
-              <div style={{ padding: 40, textAlign: "center", color: "#94a3b8", fontSize: 13 }}>No forms in this view.</div>
+              <div style={{ padding: 40, textAlign: "center", color: "#94a3b8", fontSize: 13 }}>{t("No forms in this view.", lang)}</div>
             ) : (
               <div style={{ overflowX: "auto" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 640 }}>
                   <thead>
                     <tr style={{ background: "#f8fafc" }}>
-                      {["Form", "Status", "Submissions", "Actions"].map((h) => (
-                        <th key={h} style={{ padding: "9px 16px", textAlign: h === "Actions" ? "right" : "left", fontSize: 10.5, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.5, borderBottom: "1px solid #eef2f6", whiteSpace: "nowrap" }}>{h}</th>
+                      {[t("Form", lang), t("Status", lang), t("Submissions", lang), t("Actions", lang)].map((h, hi) => (
+                        <th key={h} style={{ padding: "9px 16px", textAlign: hi === 3 ? "right" : "left", fontSize: 10.5, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.5, borderBottom: "1px solid #eef2f6", whiteSpace: "nowrap" }}>{h}</th>
                       ))}
                     </tr>
                   </thead>
@@ -263,7 +268,7 @@ export default function AcademicYearPage() {
                               {f.form_name.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
                             </div>
                             <div style={{ fontSize: 11, color: "#94a3b8", fontFamily: "monospace", marginTop: 1 }}>
-                              {f.form_name}{f.share_table ? " · shared" : ""}
+                              {f.form_name}{f.share_table ? ` · ${t("shared", lang)}` : ""}
                             </div>
                           </td>
                           <td style={{ padding: "11px 16px" }}><Badge kind={STATUS_BADGE[f.status]} /></td>
@@ -271,18 +276,18 @@ export default function AcademicYearPage() {
                           <td style={{ padding: "9px 16px", textAlign: "right" }}>
                             <div style={{ display: "inline-flex", gap: 6 }}>
                               {f.status !== "active" && (
-                                <IconAction title="Activate" onClick={() => setStatus(f, "active")}><ArchiveRestore size={15} /></IconAction>
+                                <IconAction title={t("Activate", lang)} onClick={() => setStatus(f, "active")}><ArchiveRestore size={15} /></IconAction>
                               )}
                               {f.status === "active" && (
-                                <IconAction title="Archive" onClick={() => setStatus(f, "archived")}><Archive size={15} /></IconAction>
+                                <IconAction title={t("Archive", lang)} onClick={() => setStatus(f, "archived")}><Archive size={15} /></IconAction>
                               )}
                               {closed
-                                ? <IconAction title="Open submissions" onClick={() => setSubmission(f, false)}><Unlock size={15} /></IconAction>
-                                : <IconAction title="Close submissions" onClick={() => setSubmission(f, true)}><Lock size={15} /></IconAction>}
+                                ? <IconAction title={t("Open submissions", lang)} onClick={() => setSubmission(f, false)}><Unlock size={15} /></IconAction>
+                                : <IconAction title={t("Close submissions", lang)} onClick={() => setSubmission(f, true)}><Lock size={15} /></IconAction>}
                               {f.status !== "disabled"
-                                ? <IconAction title="Disable" danger onClick={() => setStatus(f, "disabled")}><Ban size={15} /></IconAction>
-                                : <IconAction title="Activate" onClick={() => setStatus(f, "active")}><Check size={15} /></IconAction>}
-                              <IconAction title="View history (coming soon)" onClick={() => showToast("Form history view is coming soon.")}><History size={15} /></IconAction>
+                                ? <IconAction title={t("Disable", lang)} danger onClick={() => setStatus(f, "disabled")}><Ban size={15} /></IconAction>
+                                : <IconAction title={t("Activate", lang)} onClick={() => setStatus(f, "active")}><Check size={15} /></IconAction>}
+                              <IconAction title={t("View history (coming soon)", lang)} onClick={() => showToast(t("View history (coming soon)", lang))}><History size={15} /></IconAction>
                             </div>
                           </td>
                         </tr>
@@ -312,13 +317,14 @@ export default function AcademicYearPage() {
    CreateYearWizard — Step 1: pick start year · Step 2: review prev-year forms
 ════════════════════════════════════════════════════════════════════ */
 function CreateYearWizard({ apiFetch, onClose, onCreated, onError }) {
-  const thisYear = new Date().getFullYear();
+  const { lang }     = useLanguage();
+  const thisYear     = new Date().getFullYear();
   const YEAR_OPTIONS = Array.from({ length: 7 }, (_, i) => thisYear - 3 + i);
 
   const [step, setStep]           = useState(1);
   const [startYear, setStartYear] = useState(thisYear);
   const [preview, setPreview]     = useState(null);
-  const [checked, setChecked]     = useState(() => new Set());   // form ids → active in new year
+  const [checked, setChecked]     = useState(() => new Set());
   const [loading, setLoading]     = useState(false);
   const [saving, setSaving]       = useState(false);
 
@@ -365,14 +371,20 @@ function CreateYearWizard({ apiFetch, onClose, onCreated, onError }) {
 
   const allForms = preview ? [...preview.previouslyActive, ...preview.previouslyArchived] : [];
 
-  return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 10000, background: "rgba(15,23,42,0.55)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }} onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+  // createPortal renders into document.body, escaping the .sh-page-enter
+  // ancestor which has a CSS transform (animation). A transform creates a new
+  // containing block for position:fixed, breaking the full-viewport overlay.
+  // Portaling to document.body restores correct fixed positioning.
+  return createPortal(
+    <div style={{ position: "fixed", inset: 0, zIndex: 10000, background: "rgba(15,23,42,0.55)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }} onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 620, maxHeight: "90vh", display: "flex", flexDirection: "column", boxShadow: "0 24px 64px rgba(0,0,0,0.22)", overflow: "hidden" }} onClick={(e) => e.stopPropagation()}>
         <div style={{ padding: "18px 22px", borderBottom: "1px solid #f1f5f9", display: "flex", alignItems: "center", justifyContent: "space-between", background: "#fafafa" }}>
           <div>
-            <div style={{ fontSize: 15, fontWeight: 800 }}>Create New Academic Year</div>
+            <div style={{ fontSize: 15, fontWeight: 800 }}>{t("Create New Academic Year", lang)}</div>
             <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 2 }}>
-              {step === 1 ? "Select the start year — the label is generated automatically." : `Review forms carried over into ${preview?.academicYear}`}
+              {step === 1
+                ? t("Select the start year — the label is generated automatically.", lang)
+                : `${t("Review forms carried over into", lang)} ${preview?.academicYear}`}
             </div>
           </div>
           <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 20, color: "#94a3b8", cursor: "pointer", lineHeight: 1 }}><X size={20} /></button>
@@ -381,36 +393,41 @@ function CreateYearWizard({ apiFetch, onClose, onCreated, onError }) {
         <div style={{ padding: "20px 22px", overflowY: "auto", flex: 1 }}>
           {step === 1 ? (
             <div>
-              <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#475569", marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.4 }}>Start Year</label>
+              <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#475569", marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.4 }}>{t("Start Year", lang)}</label>
               <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
                 <select value={startYear} onChange={(e) => setStartYear(Number(e.target.value))}
                   style={{ height: 44, padding: "0 16px", fontSize: 15, fontWeight: 700, border: "1.5px solid #cbd5e1", borderRadius: 10, color: "#1e293b", background: "#fff", cursor: "pointer", minWidth: 120 }}>
                   {YEAR_OPTIONS.map((y) => <option key={y} value={y}>{y}</option>)}
                 </select>
                 <ChevronRight size={18} color="#94a3b8" />
-                <div style={{ fontSize: 22, fontWeight: 800, color: ACCENT }}>{startYear}–{startYear + 1}</div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: ACCENT }}>{startYear}-{startYear + 1}</div>
               </div>
               <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 14, lineHeight: 1.6 }}>
-                The previous year’s forms will be loaded for review. Forms you keep checked become <strong style={{ color: "#16a34a" }}>Active</strong>; unchecked forms become <strong style={{ color: "#64748b" }}>Archived</strong>.
+                {t("The previous year’s forms will be loaded for review. Forms you keep checked become", lang)}{" "}
+                <strong style={{ color: "#16a34a" }}>{t("Active", lang)}</strong>;{" "}
+                {t("unchecked forms become", lang)}{" "}
+                <strong style={{ color: "#64748b" }}>{t("Archived", lang)}</strong>.
               </div>
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
               {preview.previousYear && (
-                <div style={{ fontSize: 12, color: "#64748b" }}>Carried over from <strong>{preview.previousYear}</strong>.</div>
+                <div style={{ fontSize: 12, color: "#64748b" }}>
+                  {t("Carried over from", lang)} <strong>{preview.previousYear}</strong>.
+                </div>
               )}
               {preview.alreadyExists && (
                 <div style={{ background: "#fffbeb", border: "1px solid #fcd34d", borderRadius: 8, padding: "9px 13px", fontSize: 12.5, color: "#92400e" }}>
-                  {preview.academicYear} already exists — saving will update its form classification.
+                  {preview.academicYear} {t("already exists — saving will update its form classification.", lang)}
                 </div>
               )}
 
-              <FormChecklist title="Previously Active" subtitle="Checked → active in new year" forms={preview.previouslyActive} checked={checked} toggle={toggle} />
-              <FormChecklist title="Previously Archived" subtitle="Check to activate in new year" forms={preview.previouslyArchived} checked={checked} toggle={toggle} />
+              <FormChecklist title={t("Previously Active", lang)} subtitle={t("Checked → active in new year", lang)} forms={preview.previouslyActive} checked={checked} toggle={toggle} />
+              <FormChecklist title={t("Previously Archived", lang)} subtitle={t("Check to activate in new year", lang)} forms={preview.previouslyArchived} checked={checked} toggle={toggle} />
 
               {allForms.length === 0 && (
                 <div style={{ fontSize: 13, color: "#94a3b8", textAlign: "center", padding: "12px 0" }}>
-                  No accessible forms found for your institution.
+                  {t("No accessible forms found for your institution.", lang)}
                 </div>
               )}
             </div>
@@ -418,20 +435,23 @@ function CreateYearWizard({ apiFetch, onClose, onCreated, onError }) {
         </div>
 
         <div style={{ padding: "14px 22px", borderTop: "1px solid #f1f5f9", display: "flex", justifyContent: "space-between", alignItems: "center", background: "#fafafa" }}>
-          <div>{step === 2 && <button onClick={() => setStep(1)} style={ghostBtn}>← Back</button>}</div>
+          <div>{step === 2 && <button onClick={() => setStep(1)} style={ghostBtn}>{t("← Back", lang)}</button>}</div>
           <div style={{ display: "flex", gap: 10 }}>
-            <button onClick={onClose} style={ghostBtn}>Cancel</button>
+            <button onClick={onClose} style={ghostBtn}>{t("Cancel", lang)}</button>
             {step === 1 ? (
-              <button onClick={goReview} disabled={loading} style={primaryBtn(loading)}>{loading ? "Loading…" : "Next →"}</button>
+              <button onClick={goReview} disabled={loading} style={primaryBtn(loading)}>
+                {loading ? t("Loading…", lang) : t("Next →", lang)}
+              </button>
             ) : (
               <button onClick={save} disabled={saving} style={primaryBtn(saving)}>
-                {saving ? "Creating…" : `Create ${preview?.academicYear}`}
+                {saving ? t("Creating…", lang) : `${t("Create New Academic Year", lang).split(" ").slice(0, 1).join("")} ${preview?.academicYear}`}
               </button>
             )}
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
