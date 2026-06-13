@@ -30,7 +30,37 @@ async function ensureDeadlineColumns(pool) {
       ADD COLUMN IF NOT EXISTS deadline_at TIMESTAMPTZ,
       ADD COLUMN IF NOT EXISTS auto_locked BOOLEAN DEFAULT FALSE
   `);
+  await ensureYearDeadlineTable(pool);
   columnsEnsured = true;
+}
+
+/* Year-scoped deadlines (Issue 5). A deadline set for an academic year locks ONLY
+   that year — switching the top-bar year switches the deadline. This is additive:
+   `form_lock_config` (form-wide manual lock + the legacy form-wide deadline) is
+   untouched, so a form that has never had a per-year deadline behaves exactly as
+   before. Once a per-year deadline is set, the per-year row governs that year and
+   the legacy form-wide deadline is cleared (virtual migration — see PUT /deadline). */
+async function ensureYearDeadlineTable(pool) {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS form_year_deadlines (
+      id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      form_name      text NOT NULL,
+      institution_id uuid NOT NULL,
+      academic_year  integer NOT NULL,
+      deadline_at    timestamptz,
+      is_locked      boolean NOT NULL DEFAULT false,
+      auto_locked    boolean NOT NULL DEFAULT false,
+      locked_at      timestamptz,
+      locked_by      uuid,
+      created_at     timestamptz NOT NULL DEFAULT now(),
+      updated_at     timestamptz NOT NULL DEFAULT now(),
+      UNIQUE (form_name, institution_id, academic_year)
+    )
+  `);
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS idx_fyd_form_inst_year
+       ON form_year_deadlines (form_name, institution_id, academic_year)`
+  );
 }
 
 /* Core checker: lock any form_lock_config row whose deadline has passed and
@@ -58,7 +88,25 @@ async function runDeadlineCheck(pool) {
     logger.info(`Auto-locked ${locked.length} form_lock_config row(s) past deadline: ${forms.join(", ")}`);
   }
 
-  return locked.length;
+  // Year-scoped pass (Issue 5): auto-lock per-year deadline rows whose deadline
+  // has passed — locks ONLY that (form, institution, year), never other years.
+  const { rows: yearLocked } = await pool.query(
+    `UPDATE form_year_deadlines
+     SET is_locked = true,
+         auto_locked = true,
+         locked_at = now(),
+         updated_at = now()
+     WHERE deadline_at IS NOT NULL
+       AND deadline_at <= NOW()
+       AND COALESCE(auto_locked, false) = false
+     RETURNING form_name, institution_id, academic_year`
+  );
+  if (yearLocked.length) {
+    const forms = [...new Set(yearLocked.map((r) => `${r.form_name}@${r.academic_year}`))];
+    logger.info(`Auto-locked ${yearLocked.length} year-scoped deadline row(s): ${forms.join(", ")}`);
+  }
+
+  return locked.length + yearLocked.length;
 }
 
 /* Periodic checker — mirrors the existing setInterval cleanup pattern in
@@ -83,4 +131,4 @@ function startDeadlineScheduler(pool, intervalMs = 60 * 1000) {
   return timer;
 }
 
-module.exports = { ensureDeadlineColumns, runDeadlineCheck, startDeadlineScheduler };
+module.exports = { ensureDeadlineColumns, ensureYearDeadlineTable, runDeadlineCheck, startDeadlineScheduler };

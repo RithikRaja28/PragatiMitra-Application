@@ -454,6 +454,26 @@ router.post("/:formName/import/execute-chunk", async (req, res) => {
       const ayLock = await getAcademicYearLockBlockForReq(pool, req, ctx.institutionId, formYear);
       if (ayLock.locked)
         return res.status(403).json({ success: false, message: ayLock.message });
+
+      /* Issue 5 — per-year deadline lock: if the SELECTED year's deadline has
+         passed (or its row is locked), import into that year is disabled. Forms
+         without a per-year deadline row are unaffected. */
+      const headerYear = Number(req.headers["x-academic-year"]);
+      const dlYear = Number.isInteger(headerYear) ? headerYear : formYear;
+      if (dlYear != null) {
+        const { rows: yd } = await pool.query(
+          `SELECT is_locked, auto_locked, deadline_at FROM form_year_deadlines
+           WHERE form_name = $1 AND institution_id = $2 AND academic_year = $3`,
+          [formName, ctx.institutionId, Number(dlYear)]
+        );
+        if (yd.length) {
+          const r = yd[0];
+          const blocked = r.is_locked || r.auto_locked ||
+            (r.deadline_at && new Date(r.deadline_at).getTime() <= Date.now());
+          if (blocked)
+            return res.status(403).json({ success: false, message: "This form deadline has expired for your institution. Import is disabled." });
+        }
+      }
     }
 
     /* Build fileCol → schemaCol lookup */
@@ -682,13 +702,19 @@ router.get("/:formName/export", async (req, res) => {
       queryParams.push(language);
     }
 
-    const { rows: records } = await pool.query(
-      `SELECT ${fieldCols.join(", ")}, department_id, created_at
-       FROM ${recordsTable}
-       ${whereClause}
-       ORDER BY department_id NULLS LAST, created_at DESC`,
+    /* Issue 7 — STREAMING export. Records are read in fixed-size batches and
+       written straight to the response (CSV via res.write; XLSX via the ExcelJS
+       streaming WorkbookWriter) so peak memory stays bounded regardless of row
+       count (100k+ no longer materialises the whole result set + a full workbook /
+       CSV string in memory). Output columns/labels/formatting are unchanged. */
+    const EXPORT_BATCH = 2000;
+
+    // Total count (for the audit log) — does not load any row data.
+    const { rows: cntRows } = await pool.query(
+      `SELECT COUNT(*)::int AS n FROM ${recordsTable} ${whereClause}`,
       queryParams
     );
+    const recordCount = cntRows[0]?.n ?? 0;
 
     await writeAuditLog(req, {
       actionType: "FORM_DATA_EXPORTED",
@@ -699,22 +725,21 @@ router.get("/:formName/export", async (req, res) => {
         institution_id: ctx.institutionId,
         department_id: ctx.departmentId,
         format,
-        record_count: records.length,
+        record_count: recordCount,
       },
-      message: `Form Data Exported - "${formName}" (${records.length} record${records.length !== 1 ? "s" : ""})`,
+      message: `Form Data Exported - "${formName}" (${recordCount} record${recordCount !== 1 ? "s" : ""})`,
     });
 
-    /* Fetch dept names (both EN and HI) for institute admin export */
+    /* Dept names (EN + HI) for the institute-admin export — fetched once for the
+       whole institution (bounded, small) so each batch can resolve names without
+       re-querying. */
     let deptMap = {};
-    if (!ctx.departmentId && records.some(r => r.department_id)) {
-      const deptIds = [...new Set(records.map(r => r.department_id).filter(Boolean))];
-      if (deptIds.length > 0) {
-        const { rows: depts } = await pool.query(
-          `SELECT department_id, name, name_hi FROM departments WHERE department_id = ANY($1::uuid[])`,
-          [deptIds]
-        );
-        depts.forEach(d => { deptMap[d.department_id] = { name: d.name, name_hi: d.name_hi }; });
-      }
+    if (!ctx.departmentId) {
+      const { rows: depts } = await pool.query(
+        `SELECT department_id, name, name_hi FROM departments WHERE institution_id = $1`,
+        [ctx.institutionId]
+      );
+      depts.forEach(d => { deptMap[d.department_id] = { name: d.name, name_hi: d.name_hi }; });
     }
 
     /* "Department" column header and fallback in the export language */
@@ -755,47 +780,31 @@ router.get("/:formName/export", async (req, res) => {
       });
     }
 
-    /* ── Pre-generate presigned URLs for document fields ─────────────────
-       getSignedUrl is local HMAC — no S3 network call. Fast even for
-       thousands of rows. Deduplicates keys so each unique file is signed
-       only once. Legacy local URLs (http://…) are passed through as-is. */
+    /* Document fields → presigned URLs. getReadUrl is local HMAC (no S3 network
+       call); resolved lazily per key with a cache so each unique file is signed
+       once across all batches. Legacy local URLs (http://…) pass through as-is. */
     const docCols = new Set(
       fields.filter((f) => f.type === "document").map((f) => dbCol(f.column_name))
     );
-
     const keyToUrl = {};
-    if (docCols.size > 0) {
-      const uniqueKeys = [
-        ...new Set(
-          records.flatMap((rec) =>
-            [...docCols].map((col) => rec[col]).filter(
-              (v) => v && !v.startsWith("http://") && !v.startsWith("https://")
-            )
-          )
-        ),
-      ];
-      await Promise.all(
-        uniqueKeys.map(async (key) => {
-          try { keyToUrl[key] = await getReadUrl(key, DOC_URL_TTL); }
-          catch { keyToUrl[key] = key; } // fallback: keep raw key on error
-        })
-      );
-    }
-
-    function resolveDocValue(val) {
+    async function signDoc(val) {
       if (!val) return "";
       if (val.startsWith("http://") || val.startsWith("https://")) return val;
-      return keyToUrl[val] ?? val;
+      if (keyToUrl[val] === undefined) {
+        try { keyToUrl[val] = await getReadUrl(val, DOC_URL_TTL); }
+        catch { keyToUrl[val] = val; } // fallback: keep raw key on error
+      }
+      return keyToUrl[val];
     }
 
-    /* ── Build ordered header list + data rows ────────────────────────── */
+    /* ── Ordered header list ──────────────────────────────────────────── */
     const headers = [];
     if (!ctx.departmentId) headers.push(deptColHeader);
     fields.forEach((f) => headers.push(fieldLabelMap[dbCol(f.column_name)]));
     headers.push(createdAtLabel);
 
     /* Track which column indices (0-based) hold document URLs for XLSX hyperlinks */
-    const hasDeptCol   = !ctx.departmentId;
+    const hasDeptCol    = !ctx.departmentId;
     const docColIndices = new Set(
       fields.reduce((acc, f, i) => {
         if (f.type === "document") acc.push((hasDeptCol ? 1 : 0) + i);
@@ -803,7 +812,8 @@ router.get("/:formName/export", async (req, res) => {
       }, [])
     );
 
-    const dataRows = records.map((rec) => {
+    /* Build one export row array from a DB record (signs document URLs). */
+    async function buildRow(rec) {
       const row = [];
       if (!ctx.departmentId) {
         const deptInfo = rec.department_id ? deptMap[rec.department_id] : null;
@@ -811,24 +821,43 @@ router.get("/:formName/export", async (req, res) => {
           ? (language === "hi" ? (deptInfo.name_hi || deptInfo.name) : deptInfo.name)
           : institutionWide);
       }
-      fields.forEach((f) => {
+      for (const f of fields) {
         const val = rec[dbCol(f.column_name)] ?? "";
-        if (f.type === "date")     row.push(formatExportDate(val));
-        else if (f.type === "document") row.push(resolveDocValue(val));
-        else                       row.push(val);
-      });
+        if (f.type === "date")          row.push(formatExportDate(val));
+        else if (f.type === "document") row.push(await signDoc(val));
+        else                            row.push(val);
+      }
       row.push(rec.created_at ? formatExportDate(new Date(rec.created_at)) : "");
       return row;
-    });
+    }
+
+    /* Read the next batch. A stable `id` tiebreaker is appended to the original
+       ordering so OFFSET paging can't skip/duplicate rows sharing a
+       (department_id, created_at). */
+    function fetchBatch(offset) {
+      return pool.query(
+        `SELECT ${fieldCols.join(", ")}, department_id, created_at, id
+         FROM ${recordsTable}
+         ${whereClause}
+         ORDER BY department_id NULLS LAST, created_at DESC, id DESC
+         LIMIT ${EXPORT_BATCH} OFFSET ${offset}`,
+        queryParams
+      ).then((r) => r.rows);
+    }
 
     const ts       = new Date().toISOString().slice(0, 10);
     const langTag  = language !== "en" ? `_${language}` : "";
     const baseName = `${formName}${langTag}_${ts}`;
 
-    /* ── XLSX export via ExcelJS (supports cell styling) ─────────────── */
+    /* ── XLSX export — ExcelJS streaming WorkbookWriter ───────────────── */
     if (format === "xlsx") {
-      const workbook  = new ExcelJS.Workbook();
+      res.setHeader("Content-Disposition", `attachment; filename="${baseName}.xlsx"`);
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+
+      const workbook  = new ExcelJS.stream.xlsx.WorkbookWriter({ stream: res, useStyles: true, useSharedStrings: true });
       const worksheet = workbook.addWorksheet(formName);
+      worksheet.views   = [{ state: "frozen", ySplit: 1 }]; // freeze header row
+      worksheet.columns = headers.map((h) => ({ width: Math.max(String(h).length + 4, 12) }));
 
       /* Header row — bold white text on blue background */
       const headerRow = worksheet.addRow(headers);
@@ -836,62 +865,65 @@ router.get("/:formName/export", async (req, res) => {
         cell.font      = { bold: true, color: { argb: "FFFFFFFF" }, size: 11 };
         cell.fill      = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1D4ED8" } };
         cell.alignment = { vertical: "middle", horizontal: "center", wrapText: false };
-        cell.border    = {
-          bottom: { style: "thin", color: { argb: "FF1E40AF" } },
-        };
+        cell.border    = { bottom: { style: "thin", color: { argb: "FF1E40AF" } } };
       });
       headerRow.height = 20;
+      headerRow.commit();
 
-      /* Auto-width: seed each column with its header length */
-      worksheet.columns = headers.map((h) => ({ width: Math.max(String(h).length + 4, 12) }));
-
-      /* Data rows — normal format, zebra shading + hyperlinks for document cols */
-      dataRows.forEach((row, idx) => {
-        const dataRow = worksheet.addRow(row);
-        if (idx % 2 === 1) {
-          dataRow.eachCell({ includeEmpty: true }, (cell) => {
-            cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF1F5F9" } };
-          });
-        }
-        /* Convert document URL strings to clickable hyperlinks */
-        docColIndices.forEach((colIdx) => {
-          const cell = dataRow.getCell(colIdx + 1); // ExcelJS is 1-based
-          const url  = cell.value;
-          if (url && typeof url === "string" && url.startsWith("https://")) {
-            cell.value     = { text: "View Document ↗", hyperlink: url, tooltip: url };
-            cell.font      = { color: { argb: "FF2563EB" }, underline: true, size: 10 };
+      let rowIdx = 0;
+      for (let offset = 0; ; offset += EXPORT_BATCH) {
+        const batch = await fetchBatch(offset);
+        if (!batch.length) break;
+        for (const rec of batch) {
+          const dataRow = worksheet.addRow(await buildRow(rec));
+          if (rowIdx % 2 === 1) {
+            dataRow.eachCell({ includeEmpty: true }, (cell) => {
+              cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF1F5F9" } };
+            });
           }
-        });
-        dataRow.eachCell({ includeEmpty: true }, (cell) => {
-          cell.alignment = { vertical: "middle" };
-        });
-      });
+          docColIndices.forEach((colIdx) => {
+            const cell = dataRow.getCell(colIdx + 1); // ExcelJS is 1-based
+            const url  = cell.value;
+            if (url && typeof url === "string" && url.startsWith("https://")) {
+              cell.value = { text: "View Document ↗", hyperlink: url, tooltip: url };
+              cell.font  = { color: { argb: "FF2563EB" }, underline: true, size: 10 };
+            }
+          });
+          dataRow.eachCell({ includeEmpty: true }, (cell) => { cell.alignment = { vertical: "middle" }; });
+          dataRow.commit();
+          rowIdx++;
+        }
+        if (batch.length < EXPORT_BATCH) break;
+      }
 
-      worksheet.views = [{ state: "frozen", ySplit: 1 }]; // freeze header row
-
-      res.setHeader("Content-Disposition", `attachment; filename="${baseName}.xlsx"`);
-      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-      await workbook.xlsx.write(res);
-      return res.end();
+      await worksheet.commit();
+      await workbook.commit(); // finalises + ends the response stream
+      return;
     }
 
-    /* ── CSV export — plain text, no styling needed ───────────────────── */
+    /* ── CSV export — streamed line-by-line ───────────────────────────── */
     const escape = (v) => {
       const s = String(v ?? "");
       return s.includes(",") || s.includes('"') || s.includes("\n")
         ? `"${s.replace(/"/g, '""')}"` : s;
     };
-    const csvLines = [
-      headers.map(escape).join(","),
-      ...dataRows.map((r) => r.map(escape).join(",")),
-    ];
-    const csv = "﻿" + csvLines.join("\r\n"); // BOM for Excel UTF-8 detection
     res.setHeader("Content-Disposition", `attachment; filename="${baseName}.csv"`);
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
-    return res.send(csv);
+    res.write("﻿" + headers.map(escape).join(",") + "\r\n"); // BOM for Excel UTF-8 detection
+    for (let offset = 0; ; offset += EXPORT_BATCH) {
+      const batch = await fetchBatch(offset);
+      if (!batch.length) break;
+      let chunk = "";
+      for (const rec of batch) chunk += (await buildRow(rec)).map(escape).join(",") + "\r\n";
+      res.write(chunk);
+      if (batch.length < EXPORT_BATCH) break;
+    }
+    return res.end();
   } catch (err) {
     logger.error(`GET /api/form-data/${formName}/export`, { ...getLogContext(req), stack: err.stack });
-    return res.status(500).json({ success: false, message: "Export failed." });
+    // If we've already started streaming, headers are sent — just end the stream.
+    if (!res.headersSent) return res.status(500).json({ success: false, message: "Export failed." });
+    try { res.end(); } catch (_) { /* already closed */ }
   }
 });
 

@@ -6,7 +6,7 @@ const { writeAuditLog } = require("../utils/audit");
 const logger = require("../utils/logger");
 const { translateSentence, enrichSchemaLabels } = require("../services/translationService");
 const { formatAcademicYear, ensureYearRows, setFormStatusForYear, ensureFormArchivedIfUnclassified, getInstitutionStartYears, getAcademicYearLockBlockForReq } = require("../services/academicYearService");
-const { ensureSchemaExists } = require("../services/schemaPropagationService");
+const { ensureSchemaExists, publishSchemaSnapshot } = require("../services/schemaPropagationService");
 const { resolveUserDomain, resolveListFilterDomain, assertFormDomainAccess, normalizeDomain } = require("../services/domainService");
 
 /* Academic-year lock guard for form-management writes. Checks the SELECTED year
@@ -166,6 +166,16 @@ router.get("/institution-forms", async (req, res) => {
       );
       const schemaYearForms = new Set(schemaRows.map((r) => r.form_name));
 
+      // Issue 5 — per-year deadlines for this (institution, year). When present they
+      // override the legacy form-wide deadline/auto-lock in the list display.
+      const { rows: ydRows } = await pool.query(
+        `SELECT form_name, deadline_at, COALESCE(auto_locked, false) AS auto_locked,
+                COALESCE(is_locked, false) AS is_locked
+         FROM form_year_deadlines WHERE institution_id = $1 AND academic_year = $2`,
+        [institutionId, yearParam]
+      );
+      const ydByName = new Map(ydRows.map((r) => [r.form_name, r]));
+
       rows = rows.map((f) => {
         const id = String(f.id);
         let lifecycle_status;
@@ -177,6 +187,16 @@ router.get("/institution-forms", async (req, res) => {
         } else {
           // No config for this year yet → derive from the schema year.
           lifecycle_status = schemaYearForms.has(f.form_name) ? "active" : "archived";
+        }
+        const yd = ydByName.get(f.form_name);
+        if (yd) {
+          const manualLocked = f.is_locked && !f.auto_locked;
+          return {
+            ...f, lifecycle_status,
+            deadline_at: yd.deadline_at,
+            auto_locked: yd.auto_locked,
+            is_locked: manualLocked ? true : yd.is_locked,
+          };
         }
         return { ...f, lifecycle_status };
       });
@@ -453,6 +473,29 @@ router.post(
       const creatorDomain = await resolveUserDomain(pool, req);
       const effectiveFormDomain = creatorDomain == null ? formDomain : creatorDomain;
 
+      // Collision guard: table_list.form_name is GLOBALLY unique. Without this,
+      // a second institution creating a PRIVATE form of the same name silently
+      // merges into the first institution's table_list row + physical records
+      // table (ON CONFLICT (form_name) DO NOTHING, then the creator is appended
+      // to institute_access). Reject the cross-institution private-name reuse.
+      // Shared templates are intentionally multi-institution and are exempt
+      // (they are adopted, not re-created).
+      const { rows: existingForm } = await pool.query(
+        `SELECT share_table, COALESCE(institute_access, '{}'::uuid[]) AS institute_access
+         FROM table_list WHERE form_name = $1`,
+        [normalizedName]
+      );
+      if (existingForm.length) {
+        const ef = existingForm[0];
+        const alreadyMine = (ef.institute_access || []).map(String).includes(String(institutionId));
+        if (!ef.share_table && !alreadyMine) {
+          return res.status(409).json({
+            success: false,
+            message: `A form named "${normalizedName}" already exists. Please choose a different name.`,
+          });
+        }
+      }
+
       // Academic-year lock — block form creation when the selected year is locked.
       const ayLock = await ayLockGuard(pool, req, institutionId);
       if (ayLock.locked)
@@ -574,6 +617,17 @@ router.post(
           await setFormStatusForYear(client, { institutionId, academicYear, formId, status: "active" });
 
           if (share_table) {
+            // Freeze the published schema as the immutable original snapshot (v1).
+            // Later creator edits (PUT /schema) only touch the creator's own
+            // custom_field_schemas row and NEVER this snapshot, so every consumer —
+            // including institutions created long after publish — clones THIS
+            // structure (see schemaPropagationService.ensureSchemaExists), not the
+            // creator's drifted-live schema.
+            await publishSchemaSnapshot(client, {
+              sourceFormId: formId, formName: normalizedName, schema,
+              usedColumnNames: usedColNames, createdBy: req.user.userId,
+            });
+
             const consumers = (tlRows[0].institute_access || [])
               .map(String)
               .filter((id) => id && id !== String(institutionId));
@@ -1019,6 +1073,20 @@ router.get("/:formName/deadline", async (req, res) => {
       return res.status(400).json({ success: false, message: "Institution ID required." });
     }
 
+    // Issue 5 — return the SELECTED year's deadline when one has been set for it;
+    // otherwise fall back to the legacy form-wide row (backward compatible).
+    const headerYear = Number(req.headers["x-academic-year"]);
+    if (Number.isInteger(headerYear)) {
+      const { rows: yr } = await pool.query(
+        `SELECT deadline_at, COALESCE(auto_locked, false) AS auto_locked,
+                COALESCE(is_locked, false) AS is_locked, locked_at
+         FROM form_year_deadlines
+         WHERE form_name = $1 AND institution_id = $2 AND academic_year = $3`,
+        [formName, institutionId, headerYear]
+      );
+      if (yr.length) return res.json({ success: true, ...yr[0], academic_year: headerYear });
+    }
+
     const { rows } = await pool.query(
       `SELECT deadline_at, COALESCE(auto_locked, false) AS auto_locked,
               COALESCE(is_locked, false) AS is_locked, locked_at
@@ -1068,37 +1136,84 @@ router.put(
         return res.status(400).json({ success: false, message: "Institution ID required." });
       }
 
-      // Read the current deadline so we can log SET vs UPDATE correctly.
-      const { rows: existingDeadlineRows } = await pool.query(
-        `SELECT deadline_at FROM form_lock_config WHERE form_name = $1 AND institution_id = $2`,
-        [formName, institutionId]
-      );
-      const previousDeadline = existingDeadlineRows[0]?.deadline_at ?? null;
-
-         const ayLock = await ayLockGuard(pool, req, institutionId);
+      const ayLock = await ayLockGuard(pool, req, institutionId);
       if (ayLock.locked)
         return res.status(403).json({ success: false, message: ayLock.message });
 
-      const { rows } = await pool.query(
-        `INSERT INTO form_lock_config (form_name, institution_id, is_locked, deadline_at, auto_locked)
-         VALUES ($1, $2, false, $3, false)
-         ON CONFLICT (form_name, institution_id) DO UPDATE SET
-           deadline_at = $3,
-           is_locked   = CASE
-                            WHEN form_lock_config.auto_locked
-                             AND ($3 IS NULL OR $3 > NOW())
-                            THEN false ELSE form_lock_config.is_locked END,
-           locked_at   = CASE
-                            WHEN form_lock_config.auto_locked
-                             AND ($3 IS NULL OR $3 > NOW())
-                            THEN NULL ELSE form_lock_config.locked_at END,
-           auto_locked = CASE
-                            WHEN $3 IS NULL OR $3 > NOW()
-                            THEN false ELSE form_lock_config.auto_locked END,
-           updated_at  = now()
-         RETURNING deadline_at, is_locked, auto_locked, locked_at`,
-        [formName, institutionId, newDeadline]
-      );
+      // Issue 5 — deadlines are scoped to the SELECTED academic year (X-Academic-
+      // Year header). When a year is in context we write the per-year row and clear
+      // the legacy form-wide deadline (virtual migration) so it no longer leaks into
+      // other years. With NO year context (e.g. a non-adopter institution) we keep
+      // the original form-wide behavior — fully backward compatible.
+      const headerYear = Number(req.headers["x-academic-year"]);
+      const yearScoped = Number.isInteger(headerYear);
+
+      let previousDeadline, rows;
+      if (yearScoped) {
+        const { rows: prevRows } = await pool.query(
+          `SELECT deadline_at FROM form_year_deadlines
+           WHERE form_name = $1 AND institution_id = $2 AND academic_year = $3`,
+          [formName, institutionId, headerYear]
+        );
+        previousDeadline = prevRows[0]?.deadline_at ?? null;
+
+        ({ rows } = await pool.query(
+          `INSERT INTO form_year_deadlines (form_name, institution_id, academic_year, is_locked, deadline_at, auto_locked)
+           VALUES ($1, $2, $3, false, $4, false)
+           ON CONFLICT (form_name, institution_id, academic_year) DO UPDATE SET
+             deadline_at = $4,
+             is_locked   = CASE WHEN form_year_deadlines.auto_locked AND ($4 IS NULL OR $4 > NOW())
+                                THEN false ELSE form_year_deadlines.is_locked END,
+             locked_at   = CASE WHEN form_year_deadlines.auto_locked AND ($4 IS NULL OR $4 > NOW())
+                                THEN NULL ELSE form_year_deadlines.locked_at END,
+             auto_locked = CASE WHEN $4 IS NULL OR $4 > NOW()
+                                THEN false ELSE form_year_deadlines.auto_locked END,
+             updated_at  = now()
+           RETURNING deadline_at, is_locked, auto_locked, locked_at`,
+          [formName, institutionId, headerYear, newDeadline]
+        ));
+
+        // Virtual migration: drop the legacy form-wide deadline + its auto-lock so
+        // it stops blocking other years. A MANUAL admin lock (auto_locked=false) is
+        // preserved.
+        await pool.query(
+          `UPDATE form_lock_config
+           SET deadline_at = NULL,
+               auto_locked = false,
+               is_locked   = CASE WHEN auto_locked THEN false ELSE is_locked END,
+               locked_at   = CASE WHEN auto_locked THEN NULL  ELSE locked_at END,
+               updated_at  = now()
+           WHERE form_name = $1 AND institution_id = $2`,
+          [formName, institutionId]
+        );
+      } else {
+        const { rows: existingDeadlineRows } = await pool.query(
+          `SELECT deadline_at FROM form_lock_config WHERE form_name = $1 AND institution_id = $2`,
+          [formName, institutionId]
+        );
+        previousDeadline = existingDeadlineRows[0]?.deadline_at ?? null;
+
+        ({ rows } = await pool.query(
+          `INSERT INTO form_lock_config (form_name, institution_id, is_locked, deadline_at, auto_locked)
+           VALUES ($1, $2, false, $3, false)
+           ON CONFLICT (form_name, institution_id) DO UPDATE SET
+             deadline_at = $3,
+             is_locked   = CASE
+                              WHEN form_lock_config.auto_locked
+                               AND ($3 IS NULL OR $3 > NOW())
+                              THEN false ELSE form_lock_config.is_locked END,
+             locked_at   = CASE
+                              WHEN form_lock_config.auto_locked
+                               AND ($3 IS NULL OR $3 > NOW())
+                              THEN NULL ELSE form_lock_config.locked_at END,
+             auto_locked = CASE
+                              WHEN $3 IS NULL OR $3 > NOW()
+                              THEN false ELSE form_lock_config.auto_locked END,
+             updated_at  = now()
+           RETURNING deadline_at, is_locked, auto_locked, locked_at`,
+          [formName, institutionId, newDeadline]
+        ));
+      }
 
       const deadlineActionType = !newDeadline
         ? "REMOVE_FORM_DEADLINE"

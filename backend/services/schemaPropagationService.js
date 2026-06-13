@@ -29,6 +29,64 @@ async function ensureSchemaProvenanceColumns(pool) {
   await pool.query(`ALTER TABLE custom_field_schemas ADD COLUMN IF NOT EXISTS source_form_id        uuid`);
   await pool.query(`ALTER TABLE custom_field_schemas ADD COLUMN IF NOT EXISTS source_institution_id uuid`);
   await pool.query(`ALTER TABLE custom_field_schemas ADD COLUMN IF NOT EXISTS published_at          timestamptz`);
+  // Which immutable snapshot version a consumer clone was minted from (NULL =
+  // legacy clone, predates snapshot mode). Reference only; never used to sync.
+  await pool.query(`ALTER TABLE custom_field_schemas ADD COLUMN IF NOT EXISTS schema_snapshot_version int`);
+}
+
+/* Immutable publish-snapshot store for shared forms. A shared form's schema is
+   frozen here AT PUBLISH TIME (version 1). Later creator edits (PUT /schema) only
+   touch the creator's own custom_field_schemas row — they NEVER write here — so a
+   consumer (including an institution created long after) always clones the ORIGINAL
+   published structure, not the creator's drifted-live schema. Append-only; rows
+   are never updated or deleted. */
+async function ensureSharedFormSnapshotTable(pool) {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS shared_form_snapshots (
+      id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      source_form_id     UUID NOT NULL,
+      version            INT  NOT NULL DEFAULT 1,
+      form_name          TEXT NOT NULL,
+      schema             JSONB NOT NULL,
+      used_column_names  TEXT[],
+      created_by         UUID,
+      published_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+      UNIQUE (source_form_id, version)
+    )
+  `);
+}
+
+/* Freeze the published schema for a shared form as version 1, ONCE. Idempotent:
+   re-publishing the same form (or editing it later) never adds a version, so the
+   original snapshot is permanent. Accepts a pool or a transaction client. */
+async function publishSchemaSnapshot(db, { sourceFormId, formName, schema, usedColumnNames = null, createdBy = null }) {
+  if (!sourceFormId || !formName || !schema) return;
+  await db.query(
+    `INSERT INTO shared_form_snapshots (source_form_id, version, form_name, schema, used_column_names, created_by)
+     SELECT $1, 1, $2, $3::jsonb, $4, $5
+     WHERE NOT EXISTS (SELECT 1 FROM shared_form_snapshots WHERE source_form_id = $1)`,
+    [sourceFormId, formName, JSON.stringify(schema), usedColumnNames, createdBy]
+  );
+}
+
+/* The ORIGINAL (lowest-version) published snapshot for a form, or null when the
+   form has none (legacy form created before snapshot mode → caller falls back to
+   the canonical row, preserving existing behavior). */
+async function getOriginalSnapshot(db, sourceFormId) {
+  if (!sourceFormId) return null;
+  try {
+    const { rows } = await db.query(
+      `SELECT version, schema, used_column_names
+       FROM shared_form_snapshots
+       WHERE source_form_id = $1
+       ORDER BY version ASC
+       LIMIT 1`,
+      [sourceFormId]
+    );
+    return rows[0] || null;
+  } catch {
+    return null;
+  }
 }
 
 /* Audit log of inserted schema rows (created only; never modified). */
@@ -83,6 +141,15 @@ async function ensureSchemaExists(pool, formName) {
   );
   if (!t) return { created: 0 }; // nothing to clone from — leave untouched
 
+  // 2b. Snapshot mode: if this form has a frozen publish snapshot, clone consumers
+  //     from the ORIGINAL snapshot (immune to later creator edits) instead of the
+  //     live canonical row. Legacy forms (no snapshot) keep cloning from canonical,
+  //     so existing behavior is byte-identical for them.
+  const snapshot      = await getOriginalSnapshot(pool, sourceFormId);
+  const cloneSchema   = snapshot ? snapshot.schema            : t.schema;
+  const cloneUsedCols = snapshot ? snapshot.used_column_names : t.used_column_names;
+  const cloneVersion  = snapshot ? snapshot.version           : null;
+
   // 3. Institutions that ALREADY have any active schema for this form.
   const { rows: have } = await pool.query(
     `SELECT DISTINCT institution_id FROM custom_field_schemas
@@ -114,10 +181,10 @@ async function ensureSchemaExists(pool, formName) {
       await client.query(
         `INSERT INTO custom_field_schemas
            (form_name, institution_id, year, schema, is_active, created_by, used_column_names,
-            source_form_id, source_institution_id, published_at)
-         VALUES ($1, $2, $3, $4::jsonb, true, $5, $6, $7, $8, now())`,
-        [formName, inst, t.year, JSON.stringify(t.schema), t.created_by ?? null, t.used_column_names ?? null,
-         sourceFormId ?? null, t.institution_id ?? null]
+            source_form_id, source_institution_id, published_at, schema_snapshot_version)
+         VALUES ($1, $2, $3, $4::jsonb, true, $5, $6, $7, $8, now(), $9)`,
+        [formName, inst, t.year, JSON.stringify(cloneSchema), t.created_by ?? null, cloneUsedCols ?? null,
+         sourceFormId ?? null, t.institution_id ?? null, cloneVersion]
       );
       await client.query(
         `INSERT INTO schema_propagation_log (form_name, institution_id, academic_year, action)
@@ -144,6 +211,7 @@ async function propagateAllSharedSchemas(pool) {
   try {
     await ensureSchemaPropagationLog(pool);
     await ensureSchemaProvenanceColumns(pool); // clones below write provenance
+    await ensureSharedFormSnapshotTable(pool); // immutable publish snapshots
     const { rows } = await pool.query(
       `SELECT form_name FROM table_list
         WHERE COALESCE(array_length(institute_access, 1), 0) > 1
@@ -166,4 +234,12 @@ async function propagateAllSharedSchemas(pool) {
   }
 }
 
-module.exports = { ensureSchemaPropagationLog, ensureSchemaProvenanceColumns, ensureSchemaExists, propagateAllSharedSchemas };
+module.exports = {
+  ensureSchemaPropagationLog,
+  ensureSchemaProvenanceColumns,
+  ensureSharedFormSnapshotTable,
+  publishSchemaSnapshot,
+  getOriginalSnapshot,
+  ensureSchemaExists,
+  propagateAllSharedSchemas,
+};

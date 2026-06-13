@@ -147,7 +147,26 @@ function activeFields(schemaRow) {
    Output-equivalence harness (Phase 1): the original inline logic is authoritative
    (`legacy`); the stateResolver version runs as a shadow `candidate`. They are
    compared and any divergence is logged — legacy output always wins. */
-async function getLockBlock(pool, formName, institutionId) {
+const LOCK_MSG_MANUAL  = "This form is currently locked by the institution admin. You can only view the records.";
+const LOCK_MSG_EXPIRED = "This form deadline has expired for your institution. The form is automatically locked.";
+
+/* The original (form-wide) lock decision for a single {is_locked,auto_locked,
+   deadline_at} row — extracted verbatim so both the legacy form_lock_config row
+   and a year-scoped row reuse the exact same semantics. */
+function lockDecisionFor(row) {
+  if (!row?.is_locked) return { locked: false, message: null };
+  const expired =
+    row.auto_locked ||
+    (row.deadline_at && new Date(row.deadline_at).getTime() <= Date.now());
+  return { locked: true, message: expired ? LOCK_MSG_EXPIRED : LOCK_MSG_MANUAL };
+}
+
+/* Returns { locked, message }. When `year` is supplied AND this (form,
+   institution, year) has its own per-year deadline row, the DEADLINE dimension is
+   governed per-year (Issue 5) — a form-wide MANUAL admin lock still applies across
+   all years. A form with no per-year row keeps the exact legacy form-wide result,
+   so untouched forms behave byte-identically (validated by the shadow guard). */
+async function getLockBlock(pool, formName, institutionId, year = null) {
   const { rows } = await pool.query(
     `SELECT flc.is_locked, flc.auto_locked, flc.deadline_at
      FROM form_lock_config flc
@@ -156,21 +175,8 @@ async function getLockBlock(pool, formName, institutionId) {
   );
   const row = rows[0];
 
-  // LEGACY (authoritative).
-  let legacy;
-  if (!row?.is_locked) {
-    legacy = { locked: false, message: null };
-  } else {
-    const expired =
-      row.auto_locked ||
-      (row.deadline_at && new Date(row.deadline_at).getTime() <= Date.now());
-    legacy = {
-      locked: true,
-      message: expired
-        ? "This form deadline has expired for your institution. The form is automatically locked."
-        : "This form is currently locked by the institution admin. You can only view the records.",
-    };
-  }
+  // LEGACY (authoritative form-wide decision — unchanged).
+  const legacy = lockDecisionFor(row);
 
   // CANDIDATE (shadow — stateResolver precedence). Archive isn't a concept here.
   const state = getEffectiveState({
@@ -183,7 +189,31 @@ async function getLockBlock(pool, formName, institutionId) {
     ? { locked: false, message: null }
     : { locked: true, message: messageFor(state) };
 
-  return assertEquivalent("formData.getLockBlock", legacy, candidate);
+  let result = assertEquivalent("formData.getLockBlock", legacy, candidate);
+
+  // Issue 5 — per-year deadline override. Only when a per-year row exists for this
+  // year; otherwise the legacy form-wide result above stands (backward compatible).
+  if (year != null) {
+    const { rows: yr } = await pool.query(
+      `SELECT is_locked, auto_locked, deadline_at FROM form_year_deadlines
+       WHERE form_name = $1 AND institution_id = $2 AND academic_year = $3`,
+      [formName, institutionId, Number(year)]
+    );
+    if (yr.length) {
+      const manualLocked = !!row?.is_locked && !row?.auto_locked; // form-wide admin lock
+      result = manualLocked
+        ? { locked: true, message: LOCK_MSG_MANUAL }
+        : lockDecisionFor(yr[0]);
+    }
+  }
+  return result;
+}
+
+/* Resolve the academic year a write targets for the deadline check: the top-bar
+   selection (X-Academic-Year header) wins, else the supplied fallback. */
+function lockYearForReq(req, fallbackYear = null) {
+  const h = Number(req?.headers?.["x-academic-year"]);
+  return Number.isInteger(h) ? h : (fallbackYear ?? null);
 }
 
 /* Map each field's DB column → its resolved translation mode
@@ -225,18 +255,50 @@ router.get("/:formName/records", async (req, res) => {
       ? (() => { queryParams.push(ctx.departmentId); return `AND (department_id = $${queryParams.length} OR department_id IS NULL)`; })()
       : "";
 
+    /* Issue 7 — opt-in server pagination + search + sort. All three are OFF unless
+       their query params are present, so existing callers get the byte-identical
+       full, created_at-DESC result set as before. */
+    const limitNum  = Number(req.query.limit);
+    const offsetNum = Number(req.query.offset) || 0;
+    const paginate  = Number.isInteger(limitNum) && limitNum > 0;
+
+    // Searchable / sortable columns = active schema fields (validated identifiers).
+    const searchCols = activeFields(schema)
+      .map((f) => dbCol(f.column_name))
+      .filter((c) => /^[a-z][a-z0-9_]*$/.test(c));
+    const searchTerm = (req.query.search ?? "").toString().trim();
+
+    // Validated ORDER BY — only created_at or a real active column; never raw input.
+    const sortReq = (req.query.sort ?? "").toString().trim().toLowerCase();
+    const sortCol = (sortReq === "created_at" || searchCols.includes(sortReq)) ? sortReq : "created_at";
+    const sortDir = (req.query.dir ?? "").toString().toLowerCase() === "asc" ? "ASC" : "DESC";
+    // Stable tiebreaker only when paging/sorting is in play (keeps the default
+    // response ordering byte-identical to before).
+    const orderBy = `ORDER BY ${sortCol} ${sortDir}${(paginate || sortReq) ? ", id DESC" : ""}`;
+
+    /* Appends a case-insensitive OR-search across all active columns. Pushes the
+       %term% param at the CURRENT position so the $n index is correct per branch. */
+    function searchClause() {
+      if (!searchTerm || searchCols.length === 0) return "";
+      queryParams.push(`%${searchTerm}%`);
+      const p = `$${queryParams.length}`;
+      return `AND (${searchCols.map((c) => `${c}::text ILIKE ${p}`).join(" OR ")})`;
+    }
+
     let recordsQuery;
     if (language === "en") {
+      const sc = searchClause();
       recordsQuery = `SELECT * FROM ${formName}_records
                       WHERE institution_id = $1 AND (language = 'en' OR language IS NULL)
-                      ${deptClause}
-                      ORDER BY created_at DESC`;
+                      ${deptClause} ${sc}
+                      ${orderBy}`;
     } else {
       /* For non-English: return translated rows where they exist, PLUS English
          rows that have no translated mirror (imported records, translation-disabled
          forms). This prevents the blank-screen when Hindi rows are absent. */
       queryParams.push(language);
       const langParam = `$${queryParams.length}`;
+      const sc = searchClause(); // pushed AFTER language → correct $n
       recordsQuery = `
         WITH has_translation AS (
           SELECT source_row_id
@@ -255,7 +317,18 @@ router.get("/:formName/records", async (req, res) => {
               AND id NOT IN (SELECT source_row_id FROM has_translation)
             )
           )
-        ORDER BY created_at DESC`;
+          ${sc}
+        ${orderBy}`;
+    }
+
+    let total = null;
+    if (paginate) {
+      const { rows: cnt } = await pool.query(
+        `SELECT COUNT(*)::int AS n FROM (${recordsQuery}) AS sub`,
+        queryParams
+      );
+      total = cnt[0]?.n ?? 0;
+      recordsQuery += ` LIMIT ${limitNum} OFFSET ${Math.max(0, offsetNum)}`;
     }
 
     const { rows: records } = await pool.query(recordsQuery, queryParams);
@@ -268,13 +341,36 @@ router.get("/:formName/records", async (req, res) => {
     );
     const lock = lockRows[0] || { is_locked: false, locked_by: null, locked_at: null, deadline_at: null, auto_locked: false };
 
+    /* Issue 5 — when a per-year deadline governs the selected academic year, show
+       THAT year's deadline/lock in the banner (a form-wide manual lock still wins).
+       Forms without a per-year row keep the legacy form-wide lock object above. */
+    const lockYear = lockYearForReq(req, year != null ? Number(year) : null);
+    if (lockYear != null) {
+      const { rows: yr } = await pool.query(
+        `SELECT is_locked, auto_locked, deadline_at, locked_at, locked_by
+         FROM form_year_deadlines
+         WHERE form_name = $1 AND institution_id = $2 AND academic_year = $3`,
+        [formName, ctx.institutionId, lockYear]
+      );
+      if (yr.length) {
+        const manualLocked = !!lock.is_locked && !lock.auto_locked;
+        lock.deadline_at = yr[0].deadline_at;
+        lock.auto_locked = !!yr[0].auto_locked;
+        lock.is_locked   = manualLocked || !!yr[0].is_locked;
+        lock.locked_at   = yr[0].locked_at ?? lock.locked_at;
+        lock.locked_by   = yr[0].locked_by ?? lock.locked_by;
+      }
+    }
+
     /* Enrich schema labels for non-English responses so the frontend can show
        translated headers without a separate translation request. */
     const displaySchema = language !== "en"
       ? await enrichSchemaLabels(schema, language)
       : schema;
 
-    return res.json({ success: true, records, schema: displaySchema, lock });
+    const payload = { success: true, records, schema: displaySchema, lock };
+    if (paginate) { payload.total = total; payload.limit = limitNum; payload.offset = Math.max(0, offsetNum); }
+    return res.json(payload);
   } catch (err) {
     logger.error(`GET /api/form-data/${formName}/records`, { stack: err.stack });
     return res.status(500).json({ success: false, message: "Failed to fetch records." });
@@ -370,7 +466,7 @@ router.post("/:formName/records", async (req, res) => {
     if (!ctx.institutionId)
       return res.status(400).json({ success: false, message: "Institution ID required." });
 
-    const lockBlock = await getLockBlock(pool, formName, ctx.institutionId);
+    const lockBlock = await getLockBlock(pool, formName, ctx.institutionId, lockYearForReq(req, Number(year) || null));
     if (lockBlock.locked) {
       return res.status(403).json({ success: false, message: lockBlock.message });
     }
@@ -469,7 +565,7 @@ router.put("/:formName/records/:id", async (req, res) => {
     if (!ctx.institutionId)
       return res.status(400).json({ success: false, message: "Institution ID required." });
 
-    const lockBlock = await getLockBlock(pool, formName, ctx.institutionId);
+    const lockBlock = await getLockBlock(pool, formName, ctx.institutionId, lockYearForReq(req));
     if (lockBlock.locked) {
       return res.status(403).json({ success: false, message: lockBlock.message });
     }
@@ -598,7 +694,7 @@ router.delete("/:formName/records/bulk-delete", async (req, res) => {
     if (!ctx.institutionId)
       return res.status(400).json({ success: false, message: "Institution ID required." });
 
-    const lockBlock = await getLockBlock(pool, formName, ctx.institutionId);
+    const lockBlock = await getLockBlock(pool, formName, ctx.institutionId, lockYearForReq(req));
     if (lockBlock.locked)
       return res.status(403).json({ success: false, message: lockBlock.message });
 
@@ -679,7 +775,7 @@ router.delete("/:formName/records/:id", async (req, res) => {
     if (!ctx.institutionId)
       return res.status(400).json({ success: false, message: "Institution ID required." });
 
-    const lockBlock = await getLockBlock(pool, formName, ctx.institutionId);
+    const lockBlock = await getLockBlock(pool, formName, ctx.institutionId, lockYearForReq(req));
     if (lockBlock.locked) {
       return res.status(403).json({ success: false, message: lockBlock.message });
     }

@@ -538,7 +538,12 @@ router.patch("/:academicYear/forms/:formId/status", requireRole(MANAGE_ROLES), a
 
     await applyStatus(client, institutionId, academicYear, String(formId), status);
 
-    // Shared propagation: mirror the status to linked institutions.
+    // Shared distribution (Snapshot ownership model): the publisher controls ONLY
+    // its own classification. A consumer's active/archived/disabled choice for this
+    // year is NEVER overwritten by the publisher — doing so was a cross-institution
+    // leak (publisher archive flipped an active consumer to archived). We only SEED
+    // the form as archived for a consumer that has never classified it (so a brand-
+    // new linked institution still sees the form, view-only, and opts in itself).
     if (form.share_table) {
       const targets = (form.institute_access || [])
         .map(String)
@@ -550,7 +555,9 @@ router.patch("/:academicYear/forms/:formId/status", requireRole(MANAGE_ROLES), a
            ON CONFLICT (institution_id, academic_year) DO NOTHING`,
           [inst, academicYear, req.user.userId || null]
         );
-        await applyStatus(client, inst, academicYear, String(formId), status);
+        await ensureFormArchivedIfUnclassified(client, {
+          institutionId: inst, academicYear, formId: String(formId),
+        });
       }
     }
 

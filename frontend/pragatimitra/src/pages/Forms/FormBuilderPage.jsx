@@ -133,10 +133,17 @@ function StepBar({ step }) {
 }
 
 /* ── Field row — uses stable _key so expanded state survives typing ── */
-function FieldRow({ field, index, total, isFixed, onChange, onRemove, onMoveUp, onMoveDown, languages, usedColumnNames, currentColumnNames }) {
+function FieldRow({ field, index, total, isFixed, isEdit, onChange, onRemove, onMoveUp, onMoveDown, languages, usedColumnNames, currentColumnNames }) {
   const [expanded, setExpanded] = useState(false);
 
   const typeLabel = FIELD_TYPES.find((t) => t.value === field.type)?.label || field.type;
+
+  // The DB column key is IMMUTABLE once a field has been saved. A "rename" must
+  // change only the human label — never the column_name — otherwise the old
+  // column is orphaned and its data appears lost (PUT /schema only ADDs columns,
+  // it never renames). Fixed columns and already-saved fields (edit mode, not
+  // newly added) are therefore locked; brand-new fields can still set a name.
+  const lockColumnName = isFixed || (isEdit && !field.isNew);
 
   return (
     <div style={{
@@ -207,7 +214,7 @@ function FieldRow({ field, index, total, isFixed, onChange, onRemove, onMoveUp, 
             <label style={S.label}>Column Name *</label>
             {(() => {
               const normalized = field.column_name.trim().toLowerCase().replace(/\s+/g, "_");
-              const isReused = !isFixed && normalized &&
+              const isReused = !lockColumnName && normalized &&
                 usedColumnNames?.has(normalized) &&
                 !currentColumnNames?.has(normalized);
               return (
@@ -215,7 +222,7 @@ function FieldRow({ field, index, total, isFixed, onChange, onRemove, onMoveUp, 
                   <input
                     style={S.input(isReused)}
                     value={field.column_name}
-                    readOnly={isFixed}
+                    readOnly={lockColumnName}
                     onChange={(e) => {
                       const raw = e.target.value.replace(/[^a-zA-Z0-9\s_]/g, "");
                       onChange(index, "column_name", raw);
@@ -225,6 +232,11 @@ function FieldRow({ field, index, total, isFixed, onChange, onRemove, onMoveUp, 
                   {isReused && (
                     <div style={S.errorText}>
                       "{normalized}" was previously used and cannot be reused — choose a different name.
+                    </div>
+                  )}
+                  {lockColumnName && !isFixed && (
+                    <div style={hintStyle}>
+                      The column name is locked after creation to preserve existing data. Edit the label below to rename this field.
                     </div>
                   )}
                 </>
@@ -852,6 +864,7 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
                           index={i}
                           total={activeFields.length}
                           isFixed={field.is_fixed}
+                          isEdit={isEdit}
                           languages={languages}
                           usedColumnNames={usedColumnNames}
                           currentColumnNames={currentColumnNames}

@@ -120,20 +120,36 @@ async function getAcademicYearLockBlock(pool, institutionId, year) {
   if (!institutionId || year == null) return { locked: false, message: null };
   try {
     const { rows } = await pool.query(
-      `SELECT is_locked FROM academic_year_master
+      `SELECT COALESCE(is_locked, false)   AS is_locked,
+              COALESCE(is_archived, false) AS is_archived
+       FROM academic_year_master
        WHERE institution_id = $1 AND start_year = $2`,
       [institutionId, Number(year)]
     );
-    const isLocked = !!rows[0]?.is_locked;
-    // LEGACY (authoritative): locked when is_locked is set.
-    const legacy = isLocked
-      ? { locked: true, message: "This academic year is locked. Records are available in view-only mode." }
+    const isLocked   = !!rows[0]?.is_locked;
+    const isArchived = !!rows[0]?.is_archived;
+
+    const LOCK_MSG    = "This academic year is locked. Records are available in view-only mode.";
+    const ARCHIVE_MSG = "This academic year is archived and is available in view-only mode.";
+
+    // An ARCHIVED year is view-only too (records preserved, no writes). Previously
+    // archive only hid the year from the UI while the write APIs still accepted
+    // POST/PUT/DELETE/import via the X-Academic-Year header — this closes that gap.
+    // Precedence ARCHIVED > LOCKED mirrors the shared stateResolver.
+    const legacy = isArchived
+      ? { locked: true, message: ARCHIVE_MSG }
+      : isLocked
+        ? { locked: true, message: LOCK_MSG }
+        : { locked: false, message: null };
+
+    // CANDIDATE (shared resolver) — kept in lock-step with legacy so the
+    // equivalence guard stays silent (this is an intentional, aligned change).
+    const state = getEffectiveState({ archived: isArchived, locked: isLocked });
+    const candidate =
+      state === STATE.ARCHIVED ? { locked: true, message: ARCHIVE_MSG }
+      : state === STATE.LOCKED ? { locked: true, message: LOCK_MSG }
       : { locked: false, message: null };
-    // CANDIDATE (shadow — shared resolver). Manual lock only → LOCKED when set.
-    const state = getEffectiveState({ locked: isLocked });
-    const candidate = state === STATE.LOCKED
-      ? { locked: true, message: "This academic year is locked. Records are available in view-only mode." }
-      : { locked: false, message: null };
+
     return assertEquivalent("academicYearService.getAcademicYearLockBlock", legacy, candidate);
   } catch {
     // Never block a write because the lock lookup failed.

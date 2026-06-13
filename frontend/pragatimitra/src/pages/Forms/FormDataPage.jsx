@@ -1030,6 +1030,7 @@ export default function FormDataPage() {
   const [formsError, setFormsError]     = useState("");
 
   const [records, setRecords]         = useState([]);
+  const [total, setTotal]             = useState(0);   // server-reported total (Issue 7)
   const [schema, setSchema]           = useState(null);
   const [recsLoading, setRecsLoading] = useState(false);
   const [recsError, setRecsError]     = useState("");
@@ -1041,7 +1042,9 @@ export default function FormDataPage() {
   const [searchInput, setSearchInput] = useState("");
   const [searchTerm, setSearchTerm]   = useState("");
   useEffect(() => {
-    const t = setTimeout(() => setSearchTerm(searchInput), 250);
+    // Debounced search → also reset to page 1 so the server returns matches from
+    // the start (Issue 7: search is now server-side).
+    const t = setTimeout(() => { setSearchTerm(searchInput); setCurrentPage(1); }, 250);
     return () => clearTimeout(t);
   }, [searchInput]);
 
@@ -1100,10 +1103,21 @@ export default function FormDataPage() {
     setRecsLoading(true); setRecsError("");
     setSelectedIds(new Set());
     try {
-      const res  = await apiFetch(`/api/form-data/${form.form_name}/records?language=${lang}`);
+      // Issue 7 — fetch only the current page; the server applies search + sort +
+      // pagination so large forms stay fast.
+      const params = new URLSearchParams({
+        language: lang,
+        limit:    String(pageSize),
+        offset:   String((currentPage - 1) * pageSize),
+        sort:     sortField,
+        dir:      sortDir,
+      });
+      if (searchTerm.trim()) params.set("search", searchTerm.trim());
+      const res  = await apiFetch(`/api/form-data/${form.form_name}/records?${params.toString()}`);
       const data = await res.json();
       if (data.success) {
         setRecords(data.records || []);
+        setTotal(typeof data.total === "number" ? data.total : (data.records || []).length);
         setSchema(data.schema);
         setLockInfo(data.lock || { is_locked: false, locked_by: null, locked_at: null });
       } else {
@@ -1111,7 +1125,7 @@ export default function FormDataPage() {
       }
     } catch (err) { if (!isAuthError(err)) setRecsError("Failed to load records."); }
     finally { setRecsLoading(false); }
-  }, [apiFetch, lang]);
+  }, [apiFetch, lang, currentPage, pageSize, searchTerm, sortField, sortDir]);
 
   /* Re-fetch when form opens or language changes while viewing records */
   useEffect(() => {
@@ -1126,7 +1140,9 @@ export default function FormDataPage() {
     setSortDir("desc");
     setSearchInput("");
     setSearchTerm("");
-    loadRecords(form);
+    // The records effect (keyed on selectedForm + the paging/search/sort state)
+    // performs the fetch, so we don't call loadRecords here — that would fire with
+    // a stale closure before the resets above have applied.
   }
 
   function backToForms() {
@@ -1201,17 +1217,8 @@ export default function FormDataPage() {
     f => !excludedCols.has(dbCol(f.column_name)) && !excludedCols.has(f.column_name)
   );
 
-  /* ── Derived: search-filtered records ── */
-  const filteredRecords = useMemo(() => {
-    const needle = searchTerm.trim().toLowerCase();
-    if (!needle) return records;
-    return records.filter((rec) =>
-      schemaFields.some((f) => {
-        const v = rec[dbCol(f.column_name)];
-        return v != null && String(v).toLowerCase().includes(needle);
-      })
-    );
-  }, [records, searchTerm, schemaFields]);
+  /* ── Derived: the server already returns the search-filtered current page ── */
+  const filteredRecords = records;
 
   /* ── Read-only flags ──
      readOnly → gates record *authoring* that only makes sense in English:
@@ -1225,25 +1232,12 @@ export default function FormDataPage() {
   const readOnly = lockInfo.is_locked || viewingTranslated || ayLocked;
   const canEdit  = !lockInfo.is_locked && !ayLocked;
 
-  /* ── Derived: sorted records (applied after search filter) ── */
-  const sortedRecords = [...filteredRecords].sort((a, b) => {
-    let aVal = a[sortField], bVal = b[sortField];
-    if (sortField === "created_at") {
-      aVal = aVal ? new Date(aVal).getTime() : 0;
-      bVal = bVal ? new Date(bVal).getTime() : 0;
-    } else {
-      aVal = String(aVal ?? "").toLowerCase();
-      bVal = String(bVal ?? "").toLowerCase();
-    }
-    if (aVal < bVal) return sortDir === "asc" ? -1 : 1;
-    if (aVal > bVal) return sortDir === "asc" ? 1 : -1;
-    return 0;
-  });
-
-  /* ── Derived: pagination ── */
-  const totalPages   = Math.max(1, Math.ceil(sortedRecords.length / pageSize));
-  const pagedRecords = sortedRecords.slice((currentPage - 1) * pageSize, currentPage * pageSize);
-  const pagedIds     = pagedRecords.map(r => r.id);
+  /* ── Derived: the server already sorts + pages, so these are pass-throughs ── */
+  const sortedRecords = records;
+  const totalCount    = total;                                   // total matching rows
+  const totalPages    = Math.max(1, Math.ceil(totalCount / pageSize));
+  const pagedRecords  = records;                                 // exactly the current page
+  const pagedIds      = pagedRecords.map(r => r.id);
 
   /* Virtualize the table only when a page is large; small pages render fully. */
   const virtualize = viewMode === "table" && pagedRecords.length > VIRTUAL_THRESHOLD;
@@ -1546,8 +1540,8 @@ export default function FormDataPage() {
             {recsLoading
               ? "Loading…"
               : searchTerm
-                ? `${sortedRecords.length} of ${records.length} record${records.length !== 1 ? "s" : ""}`
-                : `${records.length} record${records.length !== 1 ? "s" : ""}`}
+                ? `${totalCount} matching record${totalCount !== 1 ? "s" : ""}`
+                : `${totalCount} record${totalCount !== 1 ? "s" : ""}`}
             {schema && <span style={{ marginLeft: 8, fontFamily: "monospace", fontSize: 11 }}>· {schema.year}</span>}
           </>
         }
@@ -1599,13 +1593,13 @@ export default function FormDataPage() {
       {/* ── Records card ── */}
       <div style={tableCardStyle}>
         {/* Toolbar: search + record count */}
-        {!recsLoading && records.length > 0 && (
+        {!recsLoading && (records.length > 0 || searchTerm) && (
           <div style={{ padding: "12px 20px", borderBottom: "1px solid #f1f5f9", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: "#1e293b" }}>
               Records
               {searchTerm && (
                 <span style={{ marginLeft: 8, fontSize: 12, fontWeight: 500, color: "#94a3b8" }}>
-                  · {sortedRecords.length} matching
+                  · {totalCount} matching
                 </span>
               )}
             </div>
@@ -1651,7 +1645,7 @@ export default function FormDataPage() {
 
         {recsLoading ? (
           <div style={{ padding: "60px 24px", textAlign: "center", color: "#94a3b8", fontSize: 13 }}>Loading records…</div>
-        ) : records.length === 0 ? (
+        ) : (records.length === 0 && !searchTerm) ? (
           <div style={{ textAlign: "center", padding: "56px 24px", color: "#94a3b8" }}>
             <div style={{ width: 56, height: 56, borderRadius: 8, margin: "0 auto 16px", background: "#f1f5f9", border: "1px solid #e2e8f0", display: "flex", alignItems: "center", justifyContent: "center" }}>
               <FilePlus size={26} strokeWidth={1.6} color="#94a3b8" />
@@ -1659,7 +1653,7 @@ export default function FormDataPage() {
             <div style={{ fontSize: 14, fontWeight: 600, color: "#64748b", marginBottom: 6 }}>No records yet</div>
             <div style={{ fontSize: 13 }}>Click "Add Record" to create the first entry, or Import from a file.</div>
           </div>
-        ) : sortedRecords.length === 0 ? (
+        ) : records.length === 0 ? (
           <div style={{ textAlign: "center", padding: "56px 24px", color: "#94a3b8" }}>
             <div style={{ width: 56, height: 56, borderRadius: 8, margin: "0 auto 16px", background: "#f1f5f9", border: "1px solid #e2e8f0", display: "flex", alignItems: "center", justifyContent: "center" }}>
               <SearchX size={26} strokeWidth={1.6} color="#94a3b8" />
@@ -1807,26 +1801,26 @@ export default function FormDataPage() {
       </div>
 
       {/* ── Pagination ── */}
-      {!recsLoading && records.length > 0 && (
+      {!recsLoading && totalCount > 0 && (
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 16, padding: "10px 4px", flexWrap: "wrap", gap: 10 }}>
           {/* Left: rows-per-page + record range */}
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <RowsPerPageDropdown pageSize={pageSize} onPageSizeChange={handlePageSizeChange} />
             <div style={{ fontSize: 13, color: "#64748b" }}>
-              {sortedRecords.length <= pageSize ? (
+              {totalCount <= pageSize ? (
                 <>
-                  <strong style={{ color: "#1e293b" }}>{sortedRecords.length.toLocaleString()}</strong> record{sortedRecords.length !== 1 ? "s" : ""}
-                  {searchTerm && records.length !== sortedRecords.length && <span style={{ color: "#94a3b8", marginLeft: 4 }}>(filtered from {records.length})</span>}
+                  <strong style={{ color: "#1e293b" }}>{totalCount.toLocaleString()}</strong> record{totalCount !== 1 ? "s" : ""}
+                  {searchTerm && <span style={{ color: "#94a3b8", marginLeft: 4 }}>(matching)</span>}
                 </>
               ) : (
                 <>
                   Showing{" "}
                   <strong style={{ color: "#1e293b" }}>
-                    {(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, sortedRecords.length)}
+                    {(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, totalCount)}
                   </strong>{" "}
                   of{" "}
-                  <strong style={{ color: "#1e293b" }}>{sortedRecords.length.toLocaleString()}</strong>
-                  {searchTerm && records.length !== sortedRecords.length && <span style={{ color: "#94a3b8", marginLeft: 4 }}>(filtered)</span>}
+                  <strong style={{ color: "#1e293b" }}>{totalCount.toLocaleString()}</strong>
+                  {searchTerm && <span style={{ color: "#94a3b8", marginLeft: 4 }}>(matching)</span>}
                 </>
               )}
               {selectedIds.size > 0 && (
