@@ -64,7 +64,7 @@ router.get("/summary", async (req, res) => {
 ───────────────────────────────────────────────────────────── */
 router.get("/", async (req, res) => {
   const pool = req.app.locals.pool;
-  const { entity_type, search, page = 1, limit = 20 } = req.query;
+  const { entity_type, entity_types, search, page = 1, limit = 20 } = req.query;
 
   const pageNum  = Math.max(1, parseInt(page,  10) || 1);
   const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
@@ -77,6 +77,16 @@ router.get("/", async (req, res) => {
   if (entity_type && entity_type !== "all") {
     conditions.push(`al.entity_type = $${idx++}`);
     values.push(entity_type.toUpperCase());
+  } else if (entity_types && entity_types !== "all") {
+    const types = entity_types.split(",").map((t) => t.trim().toUpperCase()).filter(Boolean);
+    if (types.length === 1) {
+      conditions.push(`al.entity_type = $${idx++}`);
+      values.push(types[0]);
+    } else if (types.length > 1) {
+      const placeholders = types.map(() => `$${idx++}`).join(", ");
+      conditions.push(`al.entity_type IN (${placeholders})`);
+      values.push(...types);
+    }
   }
 
   if (search && search.trim()) {

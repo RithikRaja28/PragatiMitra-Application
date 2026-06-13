@@ -3,7 +3,24 @@
 const express = require("express");
 const { verifyToken } = require("../middleware/auth");
 const logger = require("../utils/logger");
+const { writeAuditLog } = require("../utils/audit");
 const { translateRow, resolveTranslationMode, enrichSchemaLabels } = require("../services/translationService");
+const { getAcademicYearLockBlockForReq } = require("../services/academicYearService");
+const { getEffectiveState, messageFor, canWrite } = require("../services/stateResolver");
+const { SOURCE_LANGUAGE, isDerivedRow } = require("../services/translationOwnership");
+const { assertEquivalent } = require("../services/equivalenceGuard");
+
+/* Latest active schema year for a form+institution — used to resolve which
+   academic year a record operation belongs to (for academic-year lock checks). */
+async function getFormActiveYear(pool, formName, institutionId) {
+  const { rows } = await pool.query(
+    `SELECT year FROM custom_field_schemas
+     WHERE form_name = $1 AND institution_id = $2 AND is_active = true
+     ORDER BY year DESC LIMIT 1`,
+    [formName, institutionId]
+  );
+  return rows[0]?.year ?? null;
+}
 
 const router = express.Router();
 router.use(verifyToken);
@@ -111,7 +128,11 @@ function activeFields(schemaRow) {
 }
 
 /* Returns { locked, message } — chooses the deadline-expired message when the
-   lock is the result of an expired deadline, otherwise the manual-lock message. */
+   lock is the result of an expired deadline, otherwise the manual-lock message.
+
+   Output-equivalence harness (Phase 1): the original inline logic is authoritative
+   (`legacy`); the stateResolver version runs as a shadow `candidate`. They are
+   compared and any divergence is logged — legacy output always wins. */
 async function getLockBlock(pool, formName, institutionId) {
   const { rows } = await pool.query(
     `SELECT flc.is_locked, flc.auto_locked, flc.deadline_at
@@ -120,17 +141,35 @@ async function getLockBlock(pool, formName, institutionId) {
     [formName, institutionId]
   );
   const row = rows[0];
-  if (!row?.is_locked) return { locked: false, message: null };
 
-  const expired =
-    row.auto_locked ||
-    (row.deadline_at && new Date(row.deadline_at).getTime() <= Date.now());
+  // LEGACY (authoritative).
+  let legacy;
+  if (!row?.is_locked) {
+    legacy = { locked: false, message: null };
+  } else {
+    const expired =
+      row.auto_locked ||
+      (row.deadline_at && new Date(row.deadline_at).getTime() <= Date.now());
+    legacy = {
+      locked: true,
+      message: expired
+        ? "This form deadline has expired for your institution. The form is automatically locked."
+        : "This form is currently locked by the institution admin. You can only view the records.",
+    };
+  }
 
-  const message = expired
-    ? "This form deadline has expired for your institution. The form is automatically locked."
-    : "This form is currently locked by the institution admin. You can only view the records.";
+  // CANDIDATE (shadow — stateResolver precedence). Archive isn't a concept here.
+  const state = getEffectiveState({
+    archived: false,
+    locked: !!row?.is_locked,
+    autoLocked: !!row?.auto_locked,
+    deadlineAt: row?.deadline_at ?? null,
+  });
+  const candidate = canWrite(state)
+    ? { locked: false, message: null }
+    : { locked: true, message: messageFor(state) };
 
-  return { locked: true, message };
+  return assertEquivalent("formData.getLockBlock", legacy, candidate);
 }
 
 /* Map each field's DB column → its resolved translation mode
@@ -153,7 +192,7 @@ function buildFieldModes(fields) {
 router.get("/:formName/records", async (req, res) => {
   const pool = req.app.locals.pool;
   const { formName } = req.params;
-  const { year, language = "en" } = req.query;
+  const { year, language = SOURCE_LANGUAGE } = req.query;
 
   if (!validateFormName(formName))
     return res.status(400).json({ success: false, message: "Invalid form name." });
@@ -268,7 +307,13 @@ router.get("/:formName/records/:id/counterpart", async (req, res) => {
     const self = selfRows[0];
     let counterpart = null;
 
-    if (self.language === "hi" && self.source_row_id) {
+    // Shadow-equivalence: legacy boolean is authoritative; isDerivedRow is the candidate.
+    const selfIsDerivedLegacy = self.language === "hi" && !!self.source_row_id;
+    const selfIsDerived = assertEquivalent(
+      "formData.isDerivedRow", selfIsDerivedLegacy, isDerivedRow(self)
+    );
+    if (selfIsDerived) {
+      // Derived (Hindi) row → its counterpart is the English source it points to.
       const { rows } = await pool.query(
         `SELECT * FROM ${formName}_records WHERE id = $1 AND institution_id = $2`,
         [self.source_row_id, ctx.institutionId]
@@ -299,7 +344,7 @@ router.get("/:formName/records/:id/counterpart", async (req, res) => {
 router.post("/:formName/records", async (req, res) => {
   const pool = req.app.locals.pool;
   const { formName } = req.params;
-  const { data, year, language = "en" } = req.body;
+  const { data, year, language = SOURCE_LANGUAGE } = req.body;
 
   if (!validateFormName(formName))
     return res.status(400).json({ success: false, message: "Invalid form name." });
@@ -326,6 +371,12 @@ router.post("/:formName/records", async (req, res) => {
     const formYear  = Number(year) || schema.year;
     const createdBy = req.user.userId || null;
 
+    // Academic-year lock — checks the SELECTED year (X-Academic-Year header),
+    // falling back to the schema year. View-only when locked.
+    const ayLock = await getAcademicYearLockBlockForReq(pool, req, ctx.institutionId, formYear);
+    if (ayLock.locked)
+      return res.status(403).json({ success: false, message: ayLock.message });
+
     const stdCols = ["form_name", "institution_id", "department_id", "year", "schema_id", "language", "created_by"];
     const stdVals = [formName, ctx.institutionId, ctx.departmentId, formYear, schema.id, language, createdBy];
     const fieldVals = fieldCols.map((col) => data[col] ?? null);
@@ -340,10 +391,21 @@ router.post("/:formName/records", async (req, res) => {
     );
     const enRow = rows[0];
 
+    await writeAuditLog(req, {
+      actionType: "FORM_DATA_CREATED",
+      entityType: "form_data",
+      entityId: enRow.id,
+      newValue: { form_name: formName, institution_id: ctx.institutionId, department_id: ctx.departmentId },
+      message: `Form Data Added - "${formName}"`,
+    });
+
     // Synchronously generate the Hindi mirror row before responding so the
     // client re-fetching records immediately after save always sees it.
-    // Translation failure is logged but does not fail the response — the
-    // English row is already committed.
+    // Only generated for English submissions when this form has the Hindi
+    // translation toggle enabled — when disabled we store only the English
+    // row (no translation/transliteration API call). Translation failure is
+    // logged but does not fail the response — the English row is already
+    // committed.
     if (language === "en" && await isHindiTranslationEnabled(pool, formName)) {
       const tableName = `${formName}_records`;
       try {
@@ -402,6 +464,12 @@ router.put("/:formName/records/:id", async (req, res) => {
     if (!schema)
       return res.status(404).json({ success: false, message: "No active schema found." });
 
+    // Academic-year lock — checks the SELECTED year (header), falling back to
+    // the schema year. View-only when locked.
+    const ayLock = await getAcademicYearLockBlockForReq(pool, req, ctx.institutionId, schema.year);
+    if (ayLock.locked)
+      return res.status(403).json({ success: false, message: ayLock.message });
+
     const fields    = activeFields(schema);
     const fieldCols = fields.map((f) => dbCol(f.column_name));
     const fieldModes = buildFieldModes(fields);
@@ -439,11 +507,20 @@ router.put("/:formName/records/:id", async (req, res) => {
     if (!rows.length)
       return res.status(404).json({ success: false, message: "Record not found." });
 
+    await writeAuditLog(req, {
+      actionType: "FORM_DATA_UPDATED",
+      entityType: "form_data",
+      entityId: id,
+      newValue: { form_name: formName, institution_id: ctx.institutionId },
+      message: `Form Data Updated - "${formName}"`,
+    });
+
     // Synchronously update the linked Hindi row before responding. Same
     // contract as POST: failure is logged but does not surface to the client.
-    // When editedLanguage === "hi", the UPDATE above already saved the Hindi
-    // row directly; no translation pipeline runs and the English row is left
-    // untouched.
+    // Only runs when an English row was edited AND this form has Hindi
+    // translation enabled. When editedLanguage === "hi", the UPDATE above
+    // already saved the Hindi row directly; no translation pipeline runs
+    // and the English row is left untouched.
     if (editedLanguage === "en" && await isHindiTranslationEnabled(pool, formName)) {
       const tableName = `${formName}_records`;
       try {
@@ -511,6 +588,10 @@ router.delete("/:formName/records/bulk-delete", async (req, res) => {
     if (lockBlock.locked)
       return res.status(403).json({ success: false, message: lockBlock.message });
 
+    const ayLock = await getAcademicYearLockBlockForReq(pool, req, ctx.institutionId, await getFormActiveYear(pool, formName, ctx.institutionId));
+    if (ayLock.locked)
+      return res.status(403).json({ success: false, message: ayLock.message });
+
     await ensureSourceRowIdColumn(pool, `${formName}_records`);
 
     let whereClause   = "id = ANY($1::uuid[]) AND institution_id = $2";
@@ -536,6 +617,16 @@ router.delete("/:formName/records/bulk-delete", async (req, res) => {
 
     const deleted = rowCount ?? 0;
     const failed  = ids.length - deleted;
+
+    if (deleted > 0) {
+      await writeAuditLog(req, {
+        actionType: "FORM_DATA_BULK_DELETED",
+        entityType: "form_data",
+        entityId: null,
+        newValue: { form_name: formName, institution_id: ctx.institutionId, deleted_count: deleted, requested_count: ids.length },
+        message: `Form Data Deleted - "${formName}" (${deleted} record${deleted !== 1 ? "s" : ""})`,
+      });
+    }
 
     logger.info(`Bulk delete ${formName}: ${deleted} deleted, ${failed} not matched`, {
       institutionId: ctx.institutionId,
@@ -579,6 +670,10 @@ router.delete("/:formName/records/:id", async (req, res) => {
       return res.status(403).json({ success: false, message: lockBlock.message });
     }
 
+    const ayLock = await getAcademicYearLockBlockForReq(pool, req, ctx.institutionId, await getFormActiveYear(pool, formName, ctx.institutionId));
+    if (ayLock.locked)
+      return res.status(403).json({ success: false, message: ayLock.message });
+
     await ensureSourceRowIdColumn(pool, `${formName}_records`);
 
     let whereClause = "(id = $1 OR source_row_id = $1) AND institution_id = $2";
@@ -596,6 +691,14 @@ router.delete("/:formName/records/:id", async (req, res) => {
 
     if (!rowCount)
       return res.status(404).json({ success: false, message: "Record not found." });
+
+    await writeAuditLog(req, {
+      actionType: "FORM_DATA_DELETED",
+      entityType: "form_data",
+      entityId: id,
+      newValue: { form_name: formName, institution_id: ctx.institutionId },
+      message: `Form Data Deleted - "${formName}"`,
+    });
 
     return res.json({ success: true, message: "Record deleted successfully." });
   } catch (err) {

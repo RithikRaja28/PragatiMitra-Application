@@ -28,6 +28,9 @@
  * normalizeAcademicYears below for the one-time/idempotent rewrite.
  */
 
+const { getEffectiveState, STATE } = require("./stateResolver");
+const { assertEquivalent } = require("./equivalenceGuard");
+
 /* One-time, idempotent rewrite of any non-canonical academic_year strings
    (e.g. legacy en-dash "2025–2026") to the canonical "YYYY-YYYY" form. The
    authoritative `start_year` integer column is the source of truth, so the
@@ -73,14 +76,101 @@ async function ensureAcademicYearTables(pool) {
     )
   `);
 
+  // Lock + Archive lifecycle columns (additive — never drop/redefine).
+  // is_locked  → institution+year is view-only (write APIs return 403).
+  // is_archived→ year hidden from top bar / create / reports (records preserved).
+  await pool.query(`ALTER TABLE academic_year_master ADD COLUMN IF NOT EXISTS is_locked   boolean NOT NULL DEFAULT false`);
+  await pool.query(`ALTER TABLE academic_year_master ADD COLUMN IF NOT EXISTS is_archived boolean NOT NULL DEFAULT false`);
+  await pool.query(`ALTER TABLE academic_year_master ADD COLUMN IF NOT EXISTS locked_at   timestamptz`);
+  await pool.query(`ALTER TABLE academic_year_master ADD COLUMN IF NOT EXISTS locked_by   uuid`);
+  await pool.query(`ALTER TABLE academic_year_master ADD COLUMN IF NOT EXISTS archived_at timestamptz`);
+  await pool.query(`ALTER TABLE academic_year_master ADD COLUMN IF NOT EXISTS archived_by uuid`);
+
+  // Per-recipient audit of academic-year activation emails.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS academic_year_notification_logs (
+      id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      institution_id uuid NOT NULL,
+      academic_year  text NOT NULL,
+      recipient      text NOT NULL,
+      status         text NOT NULL,
+      sent_at        timestamptz,
+      error          text,
+      created_at     timestamptz NOT NULL DEFAULT now()
+    )
+  `);
+
   await pool.query(
     `CREATE INDEX IF NOT EXISTS idx_aym_inst_active ON academic_year_master (institution_id, active)`
   );
   await pool.query(
     `CREATE INDEX IF NOT EXISTS idx_ayfc_inst_year ON academic_year_form_config (institution_id, academic_year)`
   );
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS idx_aynl_inst_year ON academic_year_notification_logs (institution_id, academic_year)`
+  );
 
   await normalizeAcademicYears(pool);
+}
+
+/* Returns { locked, message } for a (institution, start-year) academic year.
+   Used by every record write path to enforce institution-scoped view-only mode.
+   A missing year row is NOT locked (backward compatible). */
+async function getAcademicYearLockBlock(pool, institutionId, year) {
+  if (!institutionId || year == null) return { locked: false, message: null };
+  try {
+    const { rows } = await pool.query(
+      `SELECT is_locked FROM academic_year_master
+       WHERE institution_id = $1 AND start_year = $2`,
+      [institutionId, Number(year)]
+    );
+    const isLocked = !!rows[0]?.is_locked;
+    // LEGACY (authoritative): locked when is_locked is set.
+    const legacy = isLocked
+      ? { locked: true, message: "This academic year is locked. Records are available in view-only mode." }
+      : { locked: false, message: null };
+    // CANDIDATE (shadow — shared resolver). Manual lock only → LOCKED when set.
+    const state = getEffectiveState({ locked: isLocked });
+    const candidate = state === STATE.LOCKED
+      ? { locked: true, message: "This academic year is locked. Records are available in view-only mode." }
+      : { locked: false, message: null };
+    return assertEquivalent("academicYearService.getAcademicYearLockBlock", legacy, candidate);
+  } catch {
+    // Never block a write because the lock lookup failed.
+  }
+  return { locked: false, message: null };
+}
+
+/* Resolve the year the user is operating in from the X-Academic-Year request
+   header (the top-bar selection), falling back to the record/schema year, then
+   check the lock. This is what makes "lock the SELECTED year" actually block
+   writes even when the form's stored schema year differs from the selected
+   academic year. */
+async function getAcademicYearLockBlockForReq(pool, req, institutionId, fallbackYear) {
+  const headerYear = Number(req?.headers?.["x-academic-year"]);
+  const year = Number.isInteger(headerYear) ? headerYear : fallbackYear;
+  return getAcademicYearLockBlock(pool, institutionId, year);
+}
+
+/* The institution's CURRENTLY ACTIVE academic year (start-year int), or null if
+   the institution hasn't created any years yet. The institution OWNS the
+   academic year; departments INHERIT it. This is the value a department request
+   should fall back to (instead of guessing the calendar year) when no explicit
+   year is supplied. Read-only; never blocks on error. */
+async function resolveActiveAcademicYear(pool, institutionId) {
+  if (!institutionId) return null;
+  try {
+    const { rows } = await pool.query(
+      `SELECT start_year FROM academic_year_master
+        WHERE institution_id = $1 AND active = true
+        ORDER BY start_year DESC
+        LIMIT 1`,
+      [institutionId]
+    );
+    return rows[0]?.start_year ?? null;
+  } catch {
+    return null;
+  }
 }
 
 /* 2025 → "2025-2026"  (canonical YYYY-YYYY format, plain hyphen) */
@@ -142,10 +232,48 @@ async function setFormStatusForYear(client, { institutionId, academicYear, formI
   );
 }
 
+/* NON-DESTRUCTIVE archive: place a form into archived_forms_json for one
+   (institution, year) ONLY IF it is not already classified (absent from active,
+   archived AND disabled). Used for shared-form distribution so a consumer that
+   has already made a choice is never demoted. The config row must already exist
+   (call ensureYearRows first). */
+async function ensureFormArchivedIfUnclassified(client, { institutionId, academicYear, formId }) {
+  await client.query(
+    `UPDATE academic_year_form_config
+     SET archived_forms_json = (
+           SELECT COALESCE(jsonb_agg(DISTINCT e), '[]'::jsonb)
+           FROM jsonb_array_elements_text(archived_forms_json || to_jsonb($3::text)) AS e
+         ),
+         updated_at = now()
+     WHERE institution_id = $1 AND academic_year = $2
+       AND NOT (active_forms_json   @> to_jsonb($3::text))
+       AND NOT (archived_forms_json @> to_jsonb($3::text))
+       AND NOT (disabled            @> to_jsonb($3::text))`,
+    [institutionId, academicYear, String(formId)]
+  );
+}
+
+/* The academic-year start years an institution has created (ascending).
+   Accepts a pool or a transaction client. Empty array when it has none. */
+async function getInstitutionStartYears(db, institutionId) {
+  if (!institutionId) return [];
+  const { rows } = await db.query(
+    `SELECT start_year FROM academic_year_master
+      WHERE institution_id = $1 ORDER BY start_year`,
+    [institutionId]
+  );
+  return rows.map((r) => Number(r.start_year));
+}
+
 module.exports = {
   ensureAcademicYearTables,
   formatAcademicYear,
   parseStartYear,
   ensureYearRows,
   setFormStatusForYear,
+  ensureFormArchivedIfUnclassified,
+  getInstitutionStartYears,
+  getAcademicYearLockBlock,
+  getAcademicYearLockBlockForReq,
+  resolveActiveAcademicYear,
 };

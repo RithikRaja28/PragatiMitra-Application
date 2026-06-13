@@ -52,9 +52,15 @@ export function AcademicYearProvider({ children }) {
 
       const saved   = Number(sessionStorage.getItem(sessionKey(institutionId)));
       const current = cRes?.success ? cRes.current : null;
-      const fallback = current?.start_year ?? list[0]?.start_year ?? new Date().getFullYear();
-      const savedValid = list.some((y) => y.start_year === saved);
-      setSelected(savedValid ? saved : fallback);
+      // Archived years are never selectable in the top bar.
+      const visible  = list.filter((y) => !y.is_archived);
+      const fallback = current?.start_year ?? visible[0]?.start_year ?? new Date().getFullYear();
+      const savedValid = visible.some((y) => y.start_year === saved);
+      const resolved = savedValid ? saved : fallback;
+      setSelected(resolved);
+      // Always persist the resolved year so every API request can carry it
+      // (the backend reads it to enforce academic-year locks).
+      if (resolved != null) sessionStorage.setItem(sessionKey(institutionId), String(resolved));
     } finally {
       setLoading(false);
     }
@@ -72,25 +78,29 @@ export function AcademicYearProvider({ children }) {
   /* Dropdown options — dynamic from the institution's created years; when none
      exist yet, offer a sensible range so the selector is still usable. */
   const options = useMemo(() => {
-    if (years.length) {
-      return years.map((y) => ({ value: y.start_year, label: y.academic_year, active: !!y.active }));
+    const visible = years.filter((y) => !y.is_archived);
+    if (visible.length) {
+      return visible.map((y) => ({ value: y.start_year, label: y.academic_year, active: !!y.active, locked: !!y.is_locked }));
     }
     const now = new Date().getFullYear();
-    return Array.from({ length: 5 }, (_, i) => now - 2 + i).map((y) => ({ value: y, label: fmt(y), active: false }));
+    return Array.from({ length: 5 }, (_, i) => now - 2 + i).map((y) => ({ value: y, label: fmt(y), active: false, locked: false }));
   }, [years]);
 
   const academicYear = selectedYear != null ? fmt(selectedYear) : null;
+  // Is the currently-selected year locked? Drives the top-bar LOCKED badge.
+  const selectedYearLocked = years.some((y) => y.start_year === selectedYear && y.is_locked);
 
   const value = useMemo(() => ({
     institutionId,
     selectedYear,
     academicYear,
+    selectedYearLocked,
     options,
     years,
     loading,
     setYear,
     reload: load,
-  }), [institutionId, selectedYear, academicYear, options, years, loading, setYear, load]);
+  }), [institutionId, selectedYear, academicYear, selectedYearLocked, options, years, loading, setYear, load]);
 
   return (
     <AcademicYearContext.Provider value={value}>

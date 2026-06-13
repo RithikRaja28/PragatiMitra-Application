@@ -5,7 +5,15 @@ const { verifyToken, requireRole } = require("../middleware/auth");
 const { writeAuditLog } = require("../utils/audit");
 const logger = require("../utils/logger");
 const { translateSentence, enrichSchemaLabels } = require("../services/translationService");
-const { formatAcademicYear, ensureYearRows, setFormStatusForYear } = require("../services/academicYearService");
+const { formatAcademicYear, ensureYearRows, setFormStatusForYear, ensureFormArchivedIfUnclassified, getInstitutionStartYears, getAcademicYearLockBlockForReq } = require("../services/academicYearService");
+const { ensureSchemaExists } = require("../services/schemaPropagationService");
+
+/* Academic-year lock guard for form-management writes. Checks the SELECTED year
+   (X-Academic-Year header), falling back to the request's year / current year. */
+async function ayLockGuard(pool, req, institutionId) {
+  const fallback = Number(req.body?.year) || new Date().getFullYear();
+  return getAcademicYearLockBlockForReq(pool, req, institutionId, fallback);
+}
 
 /* Auto-fill label.hi for any field missing it, using Google Translate.
    Only runs when translate_to_hindi is true. Mutates schema.fields in-place. */
@@ -398,6 +406,11 @@ router.post(
         return res.status(400).json({ success: false, message: "Institution ID is required." });
       }
 
+      // Academic-year lock — block form creation when the selected year is locked.
+      const ayLock = await ayLockGuard(pool, req, institutionId);
+      if (ayLock.locked)
+        return res.status(403).json({ success: false, message: ayLock.message });
+
       // Auto-fill missing Hindi labels before persisting
       if (translateToHindi) await autoFillHindiLabels(schema);
 
@@ -435,6 +448,20 @@ router.post(
              AND NOT ($1::uuid = ANY(COALESCE(institute_access, '{}'::uuid[])))`,
           [institutionId, isSuperAdmin && share_table, req.user.userId, normalizedName]
         );
+
+        // Shared forms are DISTRIBUTED to every institution: add all of them to
+        // institute_access so consumers actually receive the form (it lands
+        // ARCHIVED for them — see the lifecycle step below). Previously only the
+        // creator was in institute_access, so other institutions never saw it.
+        if (share_table) {
+          await client.query(
+            `UPDATE table_list
+               SET institute_access = ARRAY(SELECT institution_id FROM institutions),
+                   updated_by = $2, updated_at = now()
+             WHERE form_name = $1`,
+            [normalizedName, req.user.userId]
+          );
+        }
 
         // 2. Insert custom_field_schemas (one per form/institution/year)
         const usedColNames = collectColumnNames(schema.fields);
@@ -482,10 +509,11 @@ router.post(
           }
         }
 
-        // 5. Academic-year lifecycle: a newly created form is ACTIVE for its
-        //    creation year only (all other years default to archived). Status is
-        //    tracked in academic_year_form_config. For shared forms we mirror the
-        //    "active" classification to every linked institution for that year.
+        // 5. Academic-year lifecycle (Snapshot ownership model):
+        //    • CREATOR  → ACTIVE for the creation year (its own choice).
+        //    • CONSUMERS (shared forms) → ARCHIVED for every academic year they
+        //      have (non-destructive — never demote a consumer's existing choice).
+        //      They activate per-year themselves later. No auto-activation.
         const { rows: tlRows } = await client.query(
           `SELECT id, COALESCE(institute_access, '{}'::uuid[]) AS institute_access
            FROM table_list WHERE form_name = $1`,
@@ -494,22 +522,40 @@ router.post(
         const formId = tlRows[0]?.id;
         if (formId) {
           const academicYear = formatAcademicYear(formYear);
-          const targets = share_table
-            ? [...new Set([String(institutionId), ...(tlRows[0].institute_access || []).map(String)])]
-            : [String(institutionId)];
-          for (const inst of targets) {
-            await ensureYearRows(client, { institutionId: inst, academicYear, startYear: formYear, createdBy: req.user.userId });
-            await setFormStatusForYear(client, { institutionId: inst, academicYear, formId, status: "active" });
+          // Creator: ACTIVE for the creation year.
+          await ensureYearRows(client, { institutionId, academicYear, startYear: formYear, createdBy: req.user.userId });
+          await setFormStatusForYear(client, { institutionId, academicYear, formId, status: "active" });
+
+          if (share_table) {
+            const consumers = (tlRows[0].institute_access || [])
+              .map(String)
+              .filter((id) => id && id !== String(institutionId));
+            for (const inst of consumers) {
+              // Archive across the consumer's EXISTING academic years (avoids
+              // creating phantom years they never set up). Years they don't have
+              // fall to the listing default; the create-year wizard then defaults
+              // this foreign shared form to archived.
+              const years = await getInstitutionStartYears(client, inst);
+              for (const sy of years) {
+                const ay = formatAcademicYear(sy);
+                await ensureYearRows(client, { institutionId: inst, academicYear: ay, startYear: sy, createdBy: req.user.userId });
+                await ensureFormArchivedIfUnclassified(client, { institutionId: inst, academicYear: ay, formId });
+              }
+            }
           }
         }
 
         await client.query("COMMIT");
+
+        // Future auto-fix: backfill schemas for any institution sharing this form (insert-only, non-blocking).
+        if (share_table) ensureSchemaExists(pool, normalizedName).catch(() => {});
 
         await writeAuditLog(req, {
           actionType: "CREATE_FORM",
           entityType: "form",
           entityId: schemaId,
           newValue: { form_name: normalizedName, records_table: recordsTable, share_table, institution_id: institutionId },
+          message: `Form Created - "${normalizedName}"`,
         });
 
         return res.json({
@@ -556,6 +602,11 @@ router.post(
         return res.status(400).json({ success: false, message: "Institution ID required." });
       }
 
+      // Academic-year lock — block adopting templates when the year is locked.
+      const ayLock = await ayLockGuard(pool, req, institutionId);
+      if (ayLock.locked)
+        return res.status(403).json({ success: false, message: ayLock.message });
+
       const client = await pool.connect();
       try {
         await client.query("BEGIN");
@@ -600,6 +651,9 @@ router.post(
         );
 
         await client.query("COMMIT");
+
+        // Future auto-fix: ensure all institutions sharing this form have a schema (insert-only, non-blocking).
+        ensureSchemaExists(pool, form_name).catch(() => {});
 
         return res.json({
           success: true,
@@ -651,6 +705,11 @@ router.put(
       if (!institutionId) {
         return res.status(400).json({ success: false, message: "Institution ID required." });
       }
+
+      // Academic-year lock — block schema edits when the selected year is locked.
+      const ayLock = await ayLockGuard(pool, req, institutionId);
+      if (ayLock.locked)
+        return res.status(403).json({ success: false, message: ayLock.message });
 
       // Auto-fill missing Hindi labels before persisting.
       // translate_to_hindi may be toggled in this same request; default to true if not specified.
@@ -734,6 +793,14 @@ router.put(
         }
 
         await client.query("COMMIT");
+
+        await writeAuditLog(req, {
+          actionType: "UPDATE_FORM",
+          entityType: "form",
+          entityId: sRows[0].id,
+          newValue: { form_name: formName, year: formYear, institution_id: institutionId },
+          message: `Form Updated - "${formName}"`,
+        });
 
         return res.json({
           success: true,
@@ -952,6 +1019,17 @@ router.put(
         return res.status(400).json({ success: false, message: "Institution ID required." });
       }
 
+      // Read the current deadline so we can log SET vs UPDATE correctly.
+      const { rows: existingDeadlineRows } = await pool.query(
+        `SELECT deadline_at FROM form_lock_config WHERE form_name = $1 AND institution_id = $2`,
+        [formName, institutionId]
+      );
+      const previousDeadline = existingDeadlineRows[0]?.deadline_at ?? null;
+
+         const ayLock = await ayLockGuard(pool, req, institutionId);
+      if (ayLock.locked)
+        return res.status(403).json({ success: false, message: ayLock.message });
+
       const { rows } = await pool.query(
         `INSERT INTO form_lock_config (form_name, institution_id, is_locked, deadline_at, auto_locked)
          VALUES ($1, $2, false, $3, false)
@@ -973,11 +1051,23 @@ router.put(
         [formName, institutionId, newDeadline]
       );
 
+      const deadlineActionType = !newDeadline
+        ? "REMOVE_FORM_DEADLINE"
+        : !previousDeadline
+          ? "SET_FORM_DEADLINE"
+          : "FORM_DEADLINE_UPDATED";
+
       await writeAuditLog(req, {
-        actionType: newDeadline ? "SET_FORM_DEADLINE" : "REMOVE_FORM_DEADLINE",
+        actionType: deadlineActionType,
         entityType: "form_lock",
         entityId: null,
+        oldValue: { form_name: formName, institution_id: institutionId, deadline_at: previousDeadline },
         newValue: { form_name: formName, institution_id: institutionId, deadline_at: newDeadline },
+        message: !newDeadline
+          ? `Form Deadline Removed - "${formName}"`
+          : !previousDeadline
+            ? `Form Deadline Set - "${formName}" | Deadline: ${new Date(newDeadline).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}`
+            : `Form Deadline Updated - "${formName}" | New Deadline: ${new Date(newDeadline).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}`,
       });
 
       return res.json({
@@ -1026,6 +1116,7 @@ router.post(
         entityType: "form_lock",
         entityId: rows[0].id,
         newValue: { form_name: formName, institution_id: institutionId, is_locked: true },
+        message: `Form Locked - "${formName}"`,
       });
 
       return res.json({ success: true, message: `Form "${formName}" locked.`, lock: rows[0] });
@@ -1070,6 +1161,7 @@ router.post(
         entityType: "form_lock",
         entityId: rows[0].id,
         newValue: { form_name: formName, institution_id: institutionId, is_locked: false },
+        message: `Form Unlocked - "${formName}"`,
       });
 
       return res.json({ success: true, message: `Form "${formName}" unlocked.`, lock: rows[0] });

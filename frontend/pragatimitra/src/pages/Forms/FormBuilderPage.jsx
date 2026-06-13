@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { FileText, Wrench, CheckCircle2, CalendarRange } from "lucide-react";
+import { FileText, Wrench, CheckCircle2, CalendarRange, Check } from "lucide-react";
 import { useApi } from "../../hooks/useApi";
 import { useAcademicYear } from "../../store/AcademicYearContext";
 import { S, isAuthError } from "../../components/shared/formUtils";
@@ -84,43 +84,49 @@ function IcoPlus() {
   );
 }
 
-/* ── Step indicator ── */
+/* ── Step indicator — horizontal progress rail (enterprise SaaS style) ── */
 function StepBar({ step }) {
-  const steps = ["Form Basics", "Schema Builder", "Review & Save"];
+  const steps = ["Form Details", "Schema Builder", "Review & Publish"];
+  const pct = ((Math.min(step, steps.length) - 1) / (steps.length - 1)) * 100;
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 0, marginBottom: 22 }}>
-      {steps.map((label, i) => {
-        const idx    = i + 1;
-        const done   = idx < step;
-        const active = idx === step;
-        return (
-          <React.Fragment key={idx}>
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5 }}>
-              <div style={{
-                width: 26, height: 26, borderRadius: "50%", display: "flex",
-                alignItems: "center", justifyContent: "center",
-                background: done ? "#10b981" : active ? ACCENT : "#e2e8f0",
-                color: done || active ? "#fff" : "#94a3b8",
-                fontSize: 12, fontWeight: 700, transition: "all .2s",
+    <div style={{ marginBottom: 30 }}>
+      {/* track + nodes */}
+      <div style={{ position: "relative", height: 24, display: "flex", alignItems: "center" }}>
+        <div style={{ position: "absolute", left: 11, right: 11, height: 3, background: "#e5e7eb", borderRadius: 2 }} />
+        <div style={{ position: "absolute", left: 11, height: 3, background: ACCENT, borderRadius: 2, width: `calc((100% - 22px) * ${pct / 100})`, transition: "width .35s cubic-bezier(.4,0,.2,1)" }} />
+        <div style={{ position: "relative", display: "flex", justifyContent: "space-between", width: "100%" }}>
+          {steps.map((_, i) => {
+            const idx = i + 1, done = idx < step, active = idx === step;
+            return (
+              <div key={i} style={{
+                width: 22, height: 22, borderRadius: "50%", boxSizing: "border-box",
+                background: done ? ACCENT : "#fff",
+                border: `2px solid ${done || active ? ACCENT : "#cbd5e1"}`,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                boxShadow: active ? `0 0 0 4px ${ACCENT}22` : "none", transition: "all .2s",
               }}>
-                {done ? "✓" : idx}
+                {done && <Check size={12} color="#fff" strokeWidth={3.2} />}
+                {active && <div style={{ width: 8, height: 8, borderRadius: "50%", background: ACCENT }} />}
               </div>
-              <span style={{
-                fontSize: 10.5, fontWeight: 600, whiteSpace: "nowrap",
-                color: active ? ACCENT : done ? "#10b981" : "#94a3b8",
-              }}>
-                {label}
-              </span>
+            );
+          })}
+        </div>
+      </div>
+      {/* labels */}
+      <div style={{ display: "flex", justifyContent: "space-between", marginTop: 11 }}>
+        {steps.map((label, i) => {
+          const idx = i + 1, done = idx < step, active = idx === step;
+          return (
+            <div key={i} style={{
+              flex: 1, fontSize: 12.5, fontWeight: active ? 700 : 600,
+              color: active ? ACCENT : done ? "#334155" : "#94a3b8",
+              textAlign: i === 0 ? "left" : i === steps.length - 1 ? "right" : "center",
+            }}>
+              {label}
             </div>
-            {i < steps.length - 1 && (
-              <div style={{
-                flex: 1, height: 2, margin: "0 8px", marginBottom: 18,
-                background: done ? "#10b981" : "#e2e8f0", transition: "background .2s",
-              }} />
-            )}
-          </React.Fragment>
-        );
-      })}
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -134,7 +140,7 @@ function FieldRow({ field, index, total, isFixed, onChange, onRemove, onMoveUp, 
   return (
     <div style={{
       border: `1.5px solid ${isFixed ? "#e0f2fe" : "#e2e8f0"}`,
-      borderRadius: 12, overflow: "hidden", marginBottom: 10,
+      borderRadius: 8, overflow: "hidden", marginBottom: 10,
       background: isFixed ? "#f0f9ff" : "#fff",
     }}>
       {/* header row — clicking toggles expansion */}
@@ -614,12 +620,27 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
 
   /* ══════════════ RENDER ══════════════ */
   return (
-    <div style={{ background: "#f8f9fb", minHeight: "100%", padding: "20px 0", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+    <div className="fb-scope" style={{ background: "#f8f9fb", minHeight: "100%", padding: "20px 0", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
       <style>{`
-        .fb-input:focus, .fb-input:focus-visible {
+        /* Enterprise input scaling — taller fields, softer radii, blue focus ring.
+           Scoped to .fb-scope so no other screen is affected. */
+        .fb-scope input:not([type=checkbox]):not([type=radio]),
+        .fb-scope select,
+        .fb-scope textarea {
+          height: 46px !important;
+          border-radius: 10px !important;
+          font-size: 14.5px !important;
+        }
+        .fb-scope textarea { height: auto !important; min-height: 96px !important; padding: 13px 15px !important; line-height: 1.55; }
+        /* Uniform, taller footer action buttons */
+        .fb-scope .fb-footer button { height: 46px !important; border-radius: 10px !important; font-size: 13.5px !important; padding: 0 22px !important; }
+        .fb-scope input:not([type=checkbox]):not([type=radio]):focus,
+        .fb-scope select:focus,
+        .fb-scope textarea:focus,
+        .fb-scope .fb-input:focus-visible {
           border-color: #2563eb !important;
-          box-shadow: 0 0 0 3px rgba(8, 145, 178, 0.14);
-          outline: none;
+          box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14) !important;
+          outline: none !important;
         }
       `}</style>
       {/* page header — full-width, top-left after the navbar; "Forms" crumb cancels back to the forms list */}
@@ -720,7 +741,7 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
             </div>
           </div>
 
-          <div style={stepBar}>
+          <div className="fb-footer" style={stepBar}>
             <button type="button" disabled style={{
               display: "inline-flex", alignItems: "center", gap: 5,
               background: "#e2e8f0", color: "#94a3b8", border: "none",
@@ -792,7 +813,7 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
               {activeFields.length === 0 && !isAdapt && (
                 <div style={{
                   textAlign: "center", padding: "32px 16px", color: "#94a3b8", fontSize: 13,
-                  border: "1.5px dashed #e2e8f0", borderRadius: 12, marginBottom: 16,
+                  border: "1.5px dashed #e2e8f0", borderRadius: 8, marginBottom: 16,
                 }}>
                   No fields yet — click "Add Field" to start building your schema.
                 </div>
@@ -916,7 +937,7 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
 
         </div>
 
-        <div style={stepBar}>
+        <div className="fb-footer" style={stepBar}>
           <button type="button" onClick={() => setStep(1)} style={S.btnGhost}>← Previous Step</button>
           <button type="button" onClick={() => { if (validateFields()) setStep(3); }} style={S.btnPrimary(false)}>
             Next: Review & Save →
@@ -1014,7 +1035,7 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
 
         </div>
 
-        <div style={stepBar}>
+        <div className="fb-footer" style={stepBar}>
           <button type="button" onClick={() => setStep(2)} style={S.btnGhost} disabled={submitting}>← Back to Schema</button>
           <button
             type="button"
@@ -1048,7 +1069,7 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
 /* ── shared layout sub-components ── */
 
 const card = {
-  background: "#fff", borderRadius: 14, border: "1px solid rgba(15,23,42,0.06)",
+  background: "#fff", borderRadius: 8, border: "1px solid rgba(15,23,42,0.06)",
   boxShadow: "0 8px 28px rgba(15,23,42,0.07), 0 2px 6px rgba(15,23,42,0.04)",
   overflow: "hidden",
 };

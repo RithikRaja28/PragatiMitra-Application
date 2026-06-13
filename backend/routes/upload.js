@@ -57,25 +57,28 @@ router.post("/presign", verifyToken, async (req, res) => {
 
   const uploadUrl = await getUploadUrl(fileKey, fileType);
 
-  res.json({ uploadUrl, fileKey });
+  // Permanent public URL — works when the S3 bucket has public-read ACL on the prefix
+  const publicUrl = `https://${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${fileKey}`;
+
+  res.json({ uploadUrl, fileKey, publicUrl });
 });
 
 /**
  * POST /api/upload/read-url
- * Body: { fileKey }
+ * Body: { fileKey, expiresIn? }
  * Returns: { readUrl }
  *
- * Call this when you need to display/download a private file.
- * The URL expires in 15 minutes.
+ * expiresIn defaults to 604800 (7 days) for document images.
+ * Use for private-bucket fallback when public URLs are not configured.
  */
 router.post("/read-url", verifyToken, async (req, res) => {
-  const { fileKey } = req.body;
+  const { fileKey, expiresIn = 604800 } = req.body;
 
   if (!fileKey) {
     return res.status(400).json({ error: "fileKey is required." });
   }
 
-  const readUrl = await getReadUrl(fileKey);
+  const readUrl = await getReadUrl(fileKey, Number(expiresIn));
   res.json({ readUrl });
 });
 

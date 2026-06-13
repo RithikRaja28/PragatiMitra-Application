@@ -124,7 +124,12 @@ export default function RootLayout() {
   const settingsGroups = buildSettingsNav(effectiveRole);
 
   const settingsNavItems = [
-    { group: "", items: [{ id: SETTINGS_BACK_ID, label: "← Back to Dashboard", icon: "ArrowLeft" }] },
+    // "Back" as a regular nav item at the very top
+    {
+      group: "",
+      items: [{ id: SETTINGS_BACK_ID, label: "Back to Dashboard", icon: "ArrowLeft" }],
+    },
+    // All settings groups (Communication, Security, Preferences, Administration…)
     ...settingsGroups,
   ];
 

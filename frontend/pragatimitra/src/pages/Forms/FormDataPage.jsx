@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useRef, useMemo, useLayoutEffect } from "react";
 import ReactDOM from "react-dom";
 import { createPortal } from "react-dom";
-import { Trash2, FileText, FilePlus, Lock, Clock, Globe, SearchX } from "lucide-react";
+import { Trash2, FileText, FilePlus, Lock, Clock, Globe, SearchX, Table2, LayoutGrid } from "lucide-react";
 import { useApi } from "../../hooks/useApi";
 import { useAuth } from "../../store/AuthContext";
 import { useAcademicYear } from "../../store/AcademicYearContext";
@@ -9,6 +9,7 @@ import { useLanguage } from "../../i18n/LanguageContext";
 import { S, Toast, isAuthError, formatDate } from "../../components/shared/formUtils";
 import PageHeader from "../../components/shared/PageHeader";
 import { tableCardStyle } from "../../components/shared/ui";
+import { Button, Input, Textarea, FieldLabel, Badge } from "../../ui";
 
 const ACCENT = "#2563eb";
 const CHUNK_SIZE = 500;
@@ -151,10 +152,9 @@ function FieldInput({ field, value, onChange, getToken, lang = "en" }) {
   const col = dbCol(field.column_name);
   const label = field.label?.[lang] || field.label?.en || displayCol(field.column_name);
   const type = field.type;
-  const commonStyle = S.input(false);
   if (type === "boolean") return (
-    <div><label style={S.label}>{label}{field.required && " *"}</label>
-      <div style={{ display: "flex", gap: 16, marginTop: 4 }}>
+    <div><FieldLabel required={field.required}>{label}</FieldLabel>
+      <div style={{ display: "flex", gap: 16, marginTop: 2 }}>
         {[{val:"true",text:"Yes"},{val:"false",text:"No"}].map(({val,text}) => (
           <label key={val} style={{ display: "flex", alignItems: "center", gap: 7, cursor: "pointer", fontSize: 13 }}>
             <input type="radio" name={col} value={val} checked={String(value)===val} onChange={() => onChange(col, val==="true")} style={{ accentColor: ACCENT, width: 15, height: 15 }} /> {text}
@@ -163,10 +163,10 @@ function FieldInput({ field, value, onChange, getToken, lang = "en" }) {
       </div>
     </div>
   );
-  if (type === "textarea" || type === "description") return <div><label style={S.label}>{label}{field.required && " *"}</label><textarea style={{ ...commonStyle, resize: "vertical", minHeight: 80 }} value={value||""} onChange={e => onChange(col, e.target.value)} required={field.required} /></div>;
+  if (type === "textarea" || type === "description") return <div><FieldLabel required={field.required}>{label}</FieldLabel><Textarea value={value||""} onChange={e => onChange(col, e.target.value)} required={field.required} /></div>;
   if (type === "document") return <DocumentUploadField label={label} required={field.required} value={value} onChange={url => onChange(col, url)} getToken={getToken} />;
   const inputType = type==="number"?"number":type==="date"?"date":type==="email"?"email":type==="phone"?"tel":"text";
-  return <div><label style={S.label}>{label}{field.required && " *"}</label><input style={commonStyle} type={inputType} value={value||""} onChange={e => onChange(col, e.target.value)} required={field.required} /></div>;
+  return <div><FieldLabel required={field.required}>{label}</FieldLabel><Input type={inputType} value={value||""} onChange={e => onChange(col, e.target.value)} required={field.required} /></div>;
 }
 
 /* ── Read-only field renderer (reference pane of the edit dialog) ──────── */
@@ -185,11 +185,11 @@ function ReadOnlyField({ field, value, lang = "en" }) {
 
   return (
     <div>
-      <label style={S.label}>{label}</label>
+      <FieldLabel>{label}</FieldLabel>
       <div
         style={{
           width: "100%",
-          minHeight: isArea ? 80 : 40,
+          minHeight: isArea ? 80 : 44,
           padding: isArea ? "10px 14px" : "0 14px",
           display: "flex",
           alignItems: isArea ? "flex-start" : "center",
@@ -233,7 +233,7 @@ function ModalPane({ title, reference, helper, loading, children }) {
       <div
         style={
           reference
-            ? { display: "flex", flexDirection: "column", gap: 16, background: "#F8FAFC", opacity: 0.95, pointerEvents: "none", borderRadius: 12, padding: 16, border: "1px dashed #e2e8f0" }
+            ? { display: "flex", flexDirection: "column", gap: 16, background: "#F8FAFC", opacity: 0.95, pointerEvents: "none", borderRadius: 8, padding: 16, border: "1px dashed #e2e8f0" }
             : { display: "flex", flexDirection: "column", gap: 16 }
         }
       >
@@ -244,21 +244,17 @@ function ModalPane({ title, reference, helper, loading, children }) {
 }
 
 /* ════════════════════════════════════════════════════════════════════
-   RecordModal — dual-pane editor rendered via ModalPortal.
-   One side is editable (driven by the row's language), the other is a
-   read-only reference of the linked translation:
-     • Editing English → LEFT editable EN · RIGHT LIVE Hindi preview
-     • Editing Hindi    → LEFT English reference · RIGHT editable HI
-   Translation-disabled forms collapse to a single editable pane.
+   RecordEditPage — DEDICATED in-shell edit page (replaces the large overlay
+   dialog). Navbar + sidebar stay visible; no overlay. English editable on the
+   left, current Hindi shown read-only on the right (60/40). NO live translation
+   — the read-only preview is the saved DB values and refreshes only AFTER save.
+   onSave(formData) → Promise<{ success, message }> (parent performs the API
+   call; the page stays open and refreshes the preview on success).
 ════════════════════════════════════════════════════════════════════ */
-function RecordModal({ fields, record, onSave, onClose, saving, error, getToken, formName, apiFetch, translationEnabled = true }) {
+function RecordEditPage({ fields, record, onSave, onBack, getToken, formName, formTitle, apiFetch, translationEnabled = true, viewOnly = false }) {
   const isEdit = !!record;
-  // The editable language follows the ROW (a Hindi mirror has language === "hi").
-  // New records are always authored in English.
   const editLang = record?.language === "hi" ? "hi" : "en";
   const refLang  = editLang === "hi" ? "en" : "hi";
-  // Reference pane shows the CURRENT linked translation — only meaningful when
-  // editing an existing record (a brand-new record has no translation yet).
   const showReference = translationEnabled !== false && !!record?.id;
 
   const [formData, setFormData] = useState(() => {
@@ -268,139 +264,120 @@ function RecordModal({ fields, record, onSave, onClose, saving, error, getToken,
   });
   const [refData, setRefData]       = useState({});
   const [refLoading, setRefLoading] = useState(false);
+  const [saving, setSaving]         = useState(false);
+  const [error, setError]           = useState("");
 
   function handleChange(col, val) { setFormData(prev => ({ ...prev, [col]: val })); }
-  function handleSubmit(e) { e.preventDefault(); onSave(formData); }
 
-  /* Inject responsive grid CSS once (desktop side-by-side → tablet stacked). */
+  /* Inject scoped CSS once: 60/40 split layout (stacks on tablet). Field styling
+     now comes from the standard ui Input/Textarea (src/ui/Field). */
   useEffect(() => {
-    const id = "pm-rec-modal-css";
+    const id = "pm-rec-edit-css";
     if (document.getElementById(id)) return;
     const el = document.createElement("style");
     el.id = id;
     el.textContent = `
-      .pm-rec-grid { display:grid; grid-template-columns:1fr 1fr; gap:24px; }
-      @media (max-width: 860px){ .pm-rec-grid { grid-template-columns:1fr; } }
+      .pm-rec-grid { display:grid; grid-template-columns:1.5fr 1fr; gap:32px; }
+      @media (max-width: 1000px){ .pm-rec-grid { grid-template-columns:1fr; gap:24px; } }
     `;
     document.head.appendChild(el);
   }, []);
 
-  /* Reference pane is a ONE-TIME, read-only snapshot of the linked translated
-     row — fetched once when the dialog opens and never again. NO live preview,
-     NO translation API calls while typing. The fresh translation runs only on
-     Update (server-side, inside the PUT handler), after which the table reloads.
-       • Editing English → shows the current Hindi mirror row
-       • Editing Hindi   → shows the English source row                         */
-  useEffect(() => {
+  /* One-time read-only fetch of the linked translated row. NO live preview, NO
+     translation API call while typing — refreshed only after a successful save. */
+  const refetchCounterpart = useCallback(() => {
     if (!showReference || !record?.id) return;
-    let cancelled = false;
     setRefLoading(true);
     apiFetch(`/api/form-data/${formName}/records/${record.id}/counterpart`)
       .then(r => r.json())
       .then(d => {
-        if (cancelled) return;
         const ref = d?.record || {};
         const next = {};
         fields.forEach(f => { const col = dbCol(f.column_name); next[col] = ref[col] ?? ""; });
         setRefData(next);
       })
       .catch(() => {})
-      .finally(() => { if (!cancelled) setRefLoading(false); });
-    return () => { cancelled = true; };
+      .finally(() => setRefLoading(false));
   }, [showReference, record?.id, formName, apiFetch, fields]);
 
-  const noFields = (
-    <div style={{ textAlign: "center", color: "#94a3b8", fontSize: 13, padding: "24px 0" }}>
-      No schema fields configured for this form.
-    </div>
-  );
+  useEffect(() => { refetchCounterpart(); }, [refetchCounterpart]);
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (viewOnly) return;
+    setSaving(true); setError("");
+    const res = await onSave(formData);
+    setSaving(false);
+    if (res?.success) {
+      // Stay on the page; refresh the Hindi preview once the server-side
+      // translation has had a moment to run (it's async on the backend).
+      if (showReference) setTimeout(refetchCounterpart, 1200);
+    } else {
+      setError(res?.message || "Failed to save record.");
+    }
+  }
+
+  const noFields = <div style={{ textAlign: "center", color: "#94a3b8", fontSize: 13, padding: "24px 0" }}>No schema fields configured for this form.</div>;
 
   const editablePane = (
-    <ModalPane
-      title={editLang === "hi" ? "Hindi (Editable)" : "English (Editable)"}
-    >
+    <ModalPane title={viewOnly ? (editLang === "hi" ? "Hindi" : "English") : (editLang === "hi" ? "Hindi (Editable)" : "English (Editable)")}>
       {fields.length === 0 ? noFields : fields.map(field => (
-        <FieldInput
-          key={dbCol(field.column_name)}
-          field={field}
-          value={formData[dbCol(field.column_name)]}
-          onChange={handleChange}
-          getToken={getToken}
-          lang={editLang}
-        />
+        viewOnly
+          ? <ReadOnlyField key={dbCol(field.column_name)} field={field} value={formData[dbCol(field.column_name)]} lang={editLang} />
+          : <FieldInput key={dbCol(field.column_name)} field={field} value={formData[dbCol(field.column_name)]} onChange={handleChange} getToken={getToken} lang={editLang} />
       ))}
     </ModalPane>
   );
 
   const referencePane = (
-    <ModalPane
-      title={editLang === "hi" ? "English Reference (Current)" : "Hindi Reference (Current)"}
-      reference
-      loading={refLoading}
-      helper="Reference values update after saving."
-    >
+    <ModalPane title={editLang === "hi" ? "English Reference (Current)" : "Hindi Reference (Current)"} reference loading={refLoading} helper="Translation updates after save.">
       {fields.length === 0 ? noFields : fields.map(field => (
-        <ReadOnlyField
-          key={dbCol(field.column_name)}
-          field={field}
-          value={refData[dbCol(field.column_name)]}
-          lang={refLang}
-        />
+        <ReadOnlyField key={dbCol(field.column_name)} field={field} value={refData[dbCol(field.column_name)]} lang={refLang} />
       ))}
     </ModalPane>
   );
 
-  // Order swaps so English is always on the left, Hindi always on the right.
   const leftPane  = editLang === "hi" ? referencePane : editablePane;
   const rightPane = editLang === "hi" ? editablePane  : referencePane;
 
   return (
-    <ModalPortal>
-      <div
-        style={{ position: "fixed", inset: 0, zIndex: 10000, background: "rgba(15,23,42,0.55)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}
-        onClick={e => { if (e.target === e.currentTarget) onClose(); }}
-      >
-        <div
-          style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: showReference ? 1100 : 560, boxShadow: "0 24px 64px rgba(0,0,0,0.22)", overflow: "hidden", maxHeight: "90vh", display: "flex", flexDirection: "column" }}
-          onClick={e => e.stopPropagation()}
-        >
-          <div style={{ padding: "20px 24px", borderBottom: "1px solid #f1f5f9", display: "flex", alignItems: "center", justifyContent: "space-between", background: "#fafafa" }}>
-            <div>
-              <div style={{ fontSize: 15, fontWeight: 700, color: "#1e293b" }}>{isEdit ? "Edit Record" : "Add New Record"}</div>
-              <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 2 }}>
-                {showReference
-                  ? (editLang === "hi" ? "Edit the Hindi values — English shown for reference" : "Edit the English values — Hindi updates after you save")
-                  : (isEdit ? "Update the fields below" : "Fill in the details below")}
-              </div>
-            </div>
-            <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 20, color: "#94a3b8", cursor: "pointer", lineHeight: 1, padding: "4px 8px", borderRadius: 6 }}>×</button>
-          </div>
-          <form onSubmit={handleSubmit} style={{ overflowY: "auto", flex: 1 }}>
-            <div style={{ padding: "20px 24px" }}>
-              {showReference ? (
-                <div className="pm-rec-grid">
-                  {leftPane}
-                  {rightPane}
-                </div>
-              ) : (
-                editablePane
-              )}
-              {error && (
-                <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, padding: "10px 14px", fontSize: 13, color: "#b91c1c", marginTop: 16 }}>
-                  {error}
-                </div>
-              )}
-            </div>
-            <div style={{ padding: "16px 24px", borderTop: "1px solid #f1f5f9", display: "flex", justifyContent: "flex-end", gap: 10, background: "#fafafa" }}>
-              <button type="button" onClick={onClose} style={S.btnGhost} disabled={saving}>Cancel</button>
-              <button type="submit" style={S.btnPrimary(saving)} disabled={saving}>
-                {saving ? "Saving…" : isEdit ? "Update Record" : "Add Record"}
-              </button>
-            </div>
-          </form>
+    <div className="pm-rec-edit" style={{ padding: "20px 28px 96px", fontFamily: "'Plus Jakarta Sans', sans-serif", minHeight: "100%", maxWidth: 1440 }}>
+      <PageHeader
+        breadcrumb={["Home", { label: "Forms & Data Entry", onClick: onBack }, formTitle, isEdit ? "Edit Record" : "Add Record"]}
+        title={isEdit ? "Edit Record" : "Add Record"}
+        description={isEdit ? "Update data and review translated values." : "Fill in the details below."}
+        actions={
+          <Button variant="ghost" onClick={onBack} icon={<span style={{ fontSize: 15, lineHeight: 1 }}>←</span>}>Back</Button>
+        }
+      />
+
+      {viewOnly && (
+        <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#fef2f2", border: "1px solid #fecaca", color: "#b91c1c", borderRadius: 8, padding: "6px 12px", fontSize: 12, fontWeight: 700, marginBottom: 16 }}>
+          <Lock size={13} strokeWidth={2.2} /> VIEW ONLY
         </div>
-      </div>
-    </ModalPortal>
+      )}
+
+      <form onSubmit={handleSubmit}>
+        <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 8, padding: 32, boxShadow: "0 1px 3px rgba(16,24,40,0.04)" }}>
+          {showReference ? <div className="pm-rec-grid">{leftPane}{rightPane}</div> : editablePane}
+        </div>
+        {error && (
+          <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, padding: "10px 14px", fontSize: 13, color: "#b91c1c", marginTop: 16 }}>{error}</div>
+        )}
+
+        {/* Sticky action footer (72px) — stays visible, never overlaps the shell. */}
+        <div style={{ position: "sticky", bottom: 0, marginTop: 24 }}>
+          <div style={{ height: 72, margin: "0 -28px", padding: "0 28px", background: "#fff", borderTop: "1px solid #e5e7eb", boxShadow: "0 -4px 16px rgba(16,24,40,0.06)", display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 12 }}>
+            <Button type="button" variant="secondary" onClick={onBack} disabled={saving}>Cancel</Button>
+            {!viewOnly && (
+              <Button type="submit" variant="primary" loading={saving} disabled={saving}>
+                {saving ? "Saving…" : isEdit ? "Update Record" : "Add Record"}
+              </Button>
+            )}
+          </div>
+        </div>
+      </form>
+    </div>
   );
 }
 
@@ -416,7 +393,7 @@ function DeleteModal({ count = 1, onConfirm, onClose, deleting }) {
         onClick={e => { if (e.target === e.currentTarget) onClose(); }}
       >
         <div
-          style={{ background: "#fff", borderRadius: 16, width: 400, padding: "32px 28px", boxShadow: "0 24px 64px rgba(0,0,0,0.22)", textAlign: "center" }}
+          style={{ background: "#fff", borderRadius: 8, width: 400, padding: "32px 28px", boxShadow: "0 24px 64px rgba(0,0,0,0.22)", textAlign: "center" }}
           onClick={e => e.stopPropagation()}
         >
           <div style={{ width: 56, height: 56, borderRadius: "50%", background: "#fef2f2", border: "2px solid #fecaca", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px", fontSize: 24 }}>🗑️</div>
@@ -434,14 +411,10 @@ function DeleteModal({ count = 1, onConfirm, onClose, deleting }) {
             </div>
           )}
           <div style={{ display: "flex", gap: 10, justifyContent: "center", marginTop: isBulk ? 0 : 20 }}>
-            <button onClick={onClose} style={S.btnGhost} disabled={deleting}>Cancel</button>
-            <button
-              onClick={onConfirm}
-              disabled={deleting}
-              style={{ ...S.btnPrimary(deleting), background: deleting ? "#fca5a5" : "#dc2626", borderColor: "#dc2626" }}
-            >
+            <Button variant="secondary" onClick={onClose} disabled={deleting}>Cancel</Button>
+            <Button variant="danger" onClick={onConfirm} loading={deleting} disabled={deleting}>
               {deleting ? "Deleting…" : isBulk ? `Delete ${count} Records` : "Delete Record"}
-            </button>
+            </Button>
           </div>
         </div>
       </div>
@@ -460,7 +433,7 @@ function ProgressBar({ percent, color = ACCENT, height = 8 }) {
 
 function ImportProgressPanel({ total, processed, remaining, percent, chunksDone, chunksTotal }) {
   return (
-    <div style={{ background: "#f8fafc", border: `1.5px solid ${ACCENT}30`, borderRadius: 12, padding: "16px 18px", marginTop: 16 }}>
+    <div style={{ background: "#f8fafc", border: `1.5px solid ${ACCENT}30`, borderRadius: 8, padding: "16px 18px", marginTop: 16 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <div style={{ width: 16, height: 16, borderRadius: "50%", border: `2.5px solid ${ACCENT}30`, borderTopColor: ACCENT, animation: "spin 0.8s linear infinite" }} />
@@ -614,7 +587,7 @@ function FormImportWizard({ formName, onClose, onDone, apiFetch, getToken }) {
         style={{ position: "fixed", inset: 0, zIndex: 10000, background: "rgba(15,23,42,0.5)", overflowY: "auto", padding: "20px", display: "flex", alignItems: "flex-start", justifyContent: "center" }}
         onClick={e => { if (e.target === e.currentTarget && !executing) onClose(); }}
       >
-        <div style={{ background: "#fff", borderRadius: 18, width: "100%", maxWidth: 640, boxShadow: "0 28px 72px rgba(0,0,0,0.2)", overflow: "hidden", margin: "20px auto" }} onClick={e => e.stopPropagation()}>
+        <div style={{ background: "#fff", borderRadius: 8, width: "100%", maxWidth: 640, boxShadow: "0 28px 72px rgba(0,0,0,0.2)", overflow: "hidden", margin: "20px auto" }} onClick={e => e.stopPropagation()}>
           {/* Header + step indicator */}
           <div style={{ padding: "14px 24px", borderBottom: "1px solid #f1f5f9" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
@@ -797,6 +770,22 @@ function FormImportWizard({ formName, onClose, onDone, apiFetch, getToken }) {
   );
 }
 
+/* Viewport-aware dropdown direction: when there isn't room below the trigger,
+   the menu opens upward instead of being clipped at the bottom of the screen.
+   Returns [wrapperRef, openUp] — attach the ref to the position:relative wrapper
+   and place the menu with top OR bottom: "calc(100% + 6px)" accordingly. */
+function useDropDirection(open, estimatedHeight = 240) {
+  const ref = useRef(null);
+  const [openUp, setOpenUp] = useState(false);
+  useLayoutEffect(() => {
+    if (!open || !ref.current) return;
+    const r = ref.current.getBoundingClientRect();
+    const below = window.innerHeight - r.bottom;
+    setOpenUp(below < estimatedHeight && r.top > below);
+  }, [open, estimatedHeight]);
+  return [ref, openUp];
+}
+
 /* ── Export dropdown with progress bar ── */
 function ExportDropdown({ formName, accessToken, language = "en" }) {
   const [open, setOpen]                   = useState(false);
@@ -827,8 +816,10 @@ function ExportDropdown({ formName, accessToken, language = "en" }) {
     { key: "xlsx", label: "Export as Excel", action: () => download(`/api/form-data/${formName}/export?format=xlsx&language=${language}`, `${formName}${langTag}_export.xlsx`, "xlsx") },
   ];
 
+  const [wrapRef, openUp] = useDropDirection(open && !exporting, 130);
+
   return (
-    <div style={{ position: "relative" }}>
+    <div ref={wrapRef} style={{ position: "relative" }}>
       <button onClick={() => setOpen(v => !v)} disabled={!!exporting}
         style={{ display: "inline-flex", alignItems: "center", gap: 7, background: "#fff", color: "#475569", border: "1.5px solid #e2e8f0", borderRadius: 10, padding: "9px 14px", fontSize: 13, fontWeight: 600, cursor: exporting ? "not-allowed" : "pointer", boxShadow: "0 1px 3px rgba(0,0,0,0.06)", opacity: exporting ? 0.85 : 1 }}>
         <IcoDownload />
@@ -848,7 +839,7 @@ function ExportDropdown({ formName, accessToken, language = "en" }) {
       {open && !exporting && (
         <>
           <div style={{ position: "fixed", inset: 0, zIndex: 99 }} onClick={() => setOpen(false)} />
-          <div style={{ position: "absolute", top: "calc(100% + 6px)", right: 0, zIndex: 100, background: "#fff", borderRadius: 10, border: "1.5px solid #e2e8f0", boxShadow: "0 8px 24px rgba(0,0,0,0.12)", minWidth: 200, overflow: "hidden" }}>
+          <div style={{ position: "absolute", ...(openUp ? { bottom: "calc(100% + 6px)" } : { top: "calc(100% + 6px)" }), right: 0, zIndex: 100, background: "#fff", borderRadius: 10, border: "1.5px solid #e2e8f0", boxShadow: "0 8px 24px rgba(0,0,0,0.12)", minWidth: 200, overflow: "hidden" }}>
             {options.map(({ key, label, action }) => (
               <button key={key} onClick={action}
                 style={{ display: "block", width: "100%", padding: "10px 16px", background: "none", border: "none", textAlign: "left", fontSize: 13, color: "#1e293b", cursor: "pointer", fontWeight: 500 }}
@@ -879,8 +870,10 @@ function SortDropdown({ sortDir, onSort }) {
 
   function pick(key) { setOpen(false); onSort(key); }
 
+  const [wrapRef, openUp] = useDropDirection(open, 140);
+
   return (
-    <div style={{ position: "relative" }}>
+    <div ref={wrapRef} style={{ position: "relative" }}>
       {/* Trigger — identical styling to ExportDropdown */}
       <button
         onClick={() => setOpen(v => !v)}
@@ -904,8 +897,8 @@ function SortDropdown({ sortDir, onSort }) {
 
           {/* Panel */}
           <div style={{
-            position: "absolute", top: "calc(100% + 6px)", right: 0, zIndex: 100,
-            background: "#fff", borderRadius: 12, border: "1.5px solid #e2e8f0",
+            position: "absolute", ...(openUp ? { bottom: "calc(100% + 6px)" } : { top: "calc(100% + 6px)" }), right: 0, zIndex: 100,
+            background: "#fff", borderRadius: 8, border: "1.5px solid #e2e8f0",
             boxShadow: "0 8px 24px rgba(0,0,0,0.12)", minWidth: 200,
             padding: 6,
           }}>
@@ -1021,10 +1014,11 @@ export default function FormDataPage() {
   const { apiFetch }    = useApi();
   const { accessToken } = useAuth();
   const { lang }        = useLanguage();
-  const { selectedYear, years } = useAcademicYear() || {};
+  const { selectedYear, years, selectedYearLocked } = useAcademicYear() || {};
   // Year-aware filtering only kicks in once the institution has created academic
   // years (opted into the lifecycle). Otherwise behave exactly as before.
   const yearAware       = (years?.length || 0) > 0;
+  const ayLocked        = !!selectedYearLocked; // academic year locked → view-only
   const getToken        = useCallback(() => accessToken, [accessToken]);
 
   const [view, setView]                 = useState("forms");
@@ -1054,6 +1048,8 @@ export default function FormDataPage() {
   /* ── Modal state ── */
   const [modalOpen, setModalOpen]       = useState(false);
   const [editRecord, setEditRecord]     = useState(null);
+  /* Dedicated edit page target: null = list · "new" = add · record = edit. */
+  const [editTarget, setEditTarget]     = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const [saving, setSaving]             = useState(false);
@@ -1070,6 +1066,9 @@ export default function FormDataPage() {
   /* ── Pagination ── */
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize]       = useState(100);
+
+  /* Records view: dense table (default) or browseable cards. */
+  const [viewMode, setViewMode] = useState("table");
 
   const [toast, setToast] = useState(null);
 
@@ -1137,19 +1136,26 @@ export default function FormDataPage() {
     setLockInfo({ is_locked: false, locked_by: null, locked_at: null });
   }
 
-  async function handleSave(formData) {
-    setSaving(true); setModalError("");
+  /* Save from the dedicated edit page. Returns { success, message } and does NOT
+     navigate — the page stays open and refreshes its read-only preview. The
+     records list is refreshed in the background so it's current on Back. */
+  async function saveRecord(formData) {
+    const editing = editTarget && editTarget !== "new" ? editTarget : null;
     try {
-      const res = editRecord
-        ? await apiFetch(`/api/form-data/${selectedForm.form_name}/records/${editRecord.id}`, { method: "PUT",  body: JSON.stringify({ data: formData }) })
-        : await apiFetch(`/api/form-data/${selectedForm.form_name}/records`,                  { method: "POST", body: JSON.stringify({ data: formData }) });
+      const res = editing
+        ? await apiFetch(`/api/form-data/${selectedForm.form_name}/records/${editing.id}`, { method: "PUT",  body: JSON.stringify({ data: formData }) })
+        : await apiFetch(`/api/form-data/${selectedForm.form_name}/records`,                { method: "POST", body: JSON.stringify({ data: formData }) });
       const data = await res.json();
       if (data.success) {
-        setModalOpen(false); setEditRecord(null);
-        showToast(data.message); loadRecords(selectedForm);
-      } else setModalError(data.message || "Failed to save record.");
-    } catch (err) { if (!isAuthError(err)) setModalError("Network error. Please try again."); }
-    finally { setSaving(false); }
+        showToast(data.message);
+        loadRecords(selectedForm);
+        return { success: true, message: data.message };
+      }
+      return { success: false, message: data.message || "Failed to save record." };
+    } catch (err) {
+      if (!isAuthError(err)) return { success: false, message: "Network error. Please try again." };
+      return { success: false };
+    }
   }
 
   async function handleDelete() {
@@ -1216,8 +1222,8 @@ export default function FormDataPage() {
                 blocks it. Editing a Hindi row updates that row only; editing an
                 English row regenerates its Hindi mirror (handled by the backend). */
   const viewingTranslated = lang === "hi";
-  const readOnly = lockInfo.is_locked || viewingTranslated;
-  const canEdit  = !lockInfo.is_locked;
+  const readOnly = lockInfo.is_locked || viewingTranslated || ayLocked;
+  const canEdit  = !lockInfo.is_locked && !ayLocked;
 
   /* ── Derived: sorted records (applied after search filter) ── */
   const sortedRecords = [...filteredRecords].sort((a, b) => {
@@ -1238,6 +1244,10 @@ export default function FormDataPage() {
   const totalPages   = Math.max(1, Math.ceil(sortedRecords.length / pageSize));
   const pagedRecords = sortedRecords.slice((currentPage - 1) * pageSize, currentPage * pageSize);
   const pagedIds     = pagedRecords.map(r => r.id);
+
+  /* Virtualize the table only when a page is large; small pages render fully. */
+  const virtualize = viewMode === "table" && pagedRecords.length > VIRTUAL_THRESHOLD;
+  const vTable = useWindowVirtual(pagedRecords.length, { enabled: virtualize });
   const allPageSelected = pagedIds.length > 0 && pagedIds.every(id => selectedIds.has(id));
   const somePageSelected = pagedIds.some(id => selectedIds.has(id));
 
@@ -1297,7 +1307,7 @@ export default function FormDataPage() {
         {/* Summary stats cards */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12, marginBottom: 18 }}>
           {summary.map((s) => (
-            <div key={s.label} style={{ background: "#fff", border: "1px solid rgba(0,0,0,0.07)", borderRadius: 12, padding: "12px 14px", boxShadow: "0 1px 4px rgba(0,0,0,0.04)", display: "flex", alignItems: "center", gap: 12 }}>
+            <div key={s.label} style={{ background: "#fff", border: "1px solid rgba(0,0,0,0.07)", borderRadius: 8, padding: "12px 14px", boxShadow: "0 1px 4px rgba(0,0,0,0.04)", display: "flex", alignItems: "center", gap: 12 }}>
               <div style={{ width: 40, height: 40, borderRadius: 10, background: s.bg, color: s.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17, fontWeight: 800, flexShrink: 0, letterSpacing: -0.3 }}>
                 {s.value}
               </div>
@@ -1324,7 +1334,7 @@ export default function FormDataPage() {
             <div style={{ padding: "48px 24px", textAlign: "center", color: "#94a3b8", fontSize: 13 }}>Loading forms…</div>
           ) : forms.length === 0 ? (
             <div style={{ textAlign: "center", padding: "48px 24px", color: "#94a3b8" }}>
-              <div style={{ width: 56, height: 56, borderRadius: 14, margin: "0 auto 16px", background: "#f1f5f9", border: "1px solid #e2e8f0", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <div style={{ width: 56, height: 56, borderRadius: 8, margin: "0 auto 16px", background: "#f1f5f9", border: "1px solid #e2e8f0", display: "flex", alignItems: "center", justifyContent: "center" }}>
                 <FileText size={26} strokeWidth={1.6} color="#94a3b8" />
               </div>
               <div style={{ fontSize: 13.5, fontWeight: 600, color: "#64748b", marginBottom: 4 }}>No forms available</div>
@@ -1418,6 +1428,29 @@ export default function FormDataPage() {
   }
 
   /* ══════════════════════════════════════════════════════
+     VIEW 2b — Dedicated record edit/add page (in-shell, no overlay)
+  ══════════════════════════════════════════════════════ */
+  if (editTarget && selectedForm) {
+    return (
+      <>
+        {toast && <Toast message={toast.message} type={toast.type} />}
+        <RecordEditPage
+          fields={schemaFields}
+          record={editTarget === "new" ? null : editTarget}
+          formName={selectedForm.form_name}
+          formTitle={selectedForm.form_name.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
+          apiFetch={apiFetch}
+          getToken={getToken}
+          translationEnabled={selectedForm.translate_to_hindi !== false}
+          viewOnly={readOnly && editTarget !== "new"}
+          onSave={saveRecord}
+          onBack={() => { setEditTarget(null); loadRecords(selectedForm); }}
+        />
+      </>
+    );
+  }
+
+  /* ══════════════════════════════════════════════════════
      VIEW 2 — Records table for selected form
   ══════════════════════════════════════════════════════ */
   return (
@@ -1425,20 +1458,6 @@ export default function FormDataPage() {
       {toast && <Toast message={toast.message} type={toast.type} />}
 
       {/* ── Modals ── */}
-      {modalOpen && (
-        <RecordModal
-          fields={schemaFields}
-          record={editRecord}
-          onSave={handleSave}
-          onClose={() => { setModalOpen(false); setEditRecord(null); setModalError(""); }}
-          saving={saving}
-          error={modalError}
-          getToken={getToken}
-          formName={selectedForm?.form_name}
-          apiFetch={apiFetch}
-          translationEnabled={selectedForm?.translate_to_hindi !== false}
-        />
-      )}
       {deleteTarget !== null && (
         <DeleteModal
           count={1}
@@ -1463,6 +1482,21 @@ export default function FormDataPage() {
           onClose={() => setImportOpen(false)}
           onDone={() => { setImportOpen(false); showToast("Import complete!"); loadRecords(selectedForm); }}
         />
+      )}
+
+      {/* ── Academic-year locked banner (view-only) ── */}
+      {ayLocked && (
+        <div style={{ display: "flex", alignItems: "center", gap: 12, background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 10, padding: "12px 18px", marginBottom: 20 }}>
+          <Lock size={18} color="#b91c1c" strokeWidth={2} style={{ flexShrink: 0 }} />
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#b91c1c" }}>
+              This academic year is locked — view-only mode.
+            </div>
+            <div style={{ fontSize: 12, color: "#dc2626", marginTop: 2 }}>
+              Adding, editing, deleting and importing are disabled. You can still view, search and export.
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ── Locked banner ── */}
@@ -1533,7 +1567,7 @@ export default function FormDataPage() {
               <IcoUpload /> Import
             </button>
             <button
-              onClick={() => { if (!readOnly) { setEditRecord(null); setModalError(""); setModalOpen(true); } }}
+              onClick={() => { if (!readOnly) setEditTarget("new"); }}
               disabled={readOnly}
               title={lockInfo.is_locked ? "Form is locked — contact your institution admin" : viewingTranslated ? "Switch to English (EN) to add records" : ""}
               style={{ display: "inline-flex", alignItems: "center", gap: 7, background: readOnly ? "#94a3b8" : ACCENT, color: "#fff", border: "none", borderRadius: 10, padding: "9px 18px", fontSize: 13, fontWeight: 700, cursor: readOnly ? "not-allowed" : "pointer", boxShadow: readOnly ? "none" : `0 2px 8px ${ACCENT}40` }}
@@ -1575,25 +1609,42 @@ export default function FormDataPage() {
                 </span>
               )}
             </div>
-            <div style={{ position: "relative", width: 260 }}>
-              <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "#94a3b8", display: "flex" }}>
-                <IcoSearch />
-              </span>
-              <input
-                value={searchInput}
-                onChange={(e) => setSearchInput(e.target.value)}
-                placeholder="Search records..."
-                style={{ width: "100%", padding: "7px 30px 7px 32px", fontSize: 13, color: "#1e293b", border: "1px solid #e2e8f0", borderRadius: 8, outline: "none", background: "#fff" }}
-              />
-              {searchInput && (
-                <button
-                  onClick={() => setSearchInput("")}
-                  title="Clear"
-                  style={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", color: "#94a3b8", fontSize: 16, lineHeight: 1, cursor: "pointer", padding: "2px 6px" }}
-                >
-                  ×
-                </button>
-              )}
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              {/* Table / Cards view toggle — both reuse the same handlers */}
+              <div style={{ display: "inline-flex", border: "1px solid #e2e8f0", borderRadius: 9, overflow: "hidden", background: "#fff" }}>
+                {[
+                  { id: "table", Icon: Table2, title: "Table view" },
+                  { id: "cards", Icon: LayoutGrid, title: "Card view" },
+                ].map(({ id, Icon, title }) => {
+                  const on = viewMode === id;
+                  return (
+                    <button key={id} onClick={() => setViewMode(id)} title={title} aria-label={title} aria-pressed={on}
+                      style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 34, height: 32, border: "none", cursor: "pointer", background: on ? ACCENT : "#fff", color: on ? "#fff" : "#94a3b8" }}>
+                      <Icon size={16} strokeWidth={1.9} />
+                    </button>
+                  );
+                })}
+              </div>
+              <div style={{ position: "relative", width: 260 }}>
+                <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "#94a3b8", display: "flex" }}>
+                  <IcoSearch />
+                </span>
+                <input
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
+                  placeholder="Search records..."
+                  style={{ width: "100%", padding: "7px 30px 7px 32px", fontSize: 13, color: "#1e293b", border: "1px solid #e2e8f0", borderRadius: 8, outline: "none", background: "#fff" }}
+                />
+                {searchInput && (
+                  <button
+                    onClick={() => setSearchInput("")}
+                    title="Clear"
+                    style={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", color: "#94a3b8", fontSize: 16, lineHeight: 1, cursor: "pointer", padding: "2px 6px" }}
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         )}
@@ -1602,7 +1653,7 @@ export default function FormDataPage() {
           <div style={{ padding: "60px 24px", textAlign: "center", color: "#94a3b8", fontSize: 13 }}>Loading records…</div>
         ) : records.length === 0 ? (
           <div style={{ textAlign: "center", padding: "56px 24px", color: "#94a3b8" }}>
-            <div style={{ width: 56, height: 56, borderRadius: 14, margin: "0 auto 16px", background: "#f1f5f9", border: "1px solid #e2e8f0", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <div style={{ width: 56, height: 56, borderRadius: 8, margin: "0 auto 16px", background: "#f1f5f9", border: "1px solid #e2e8f0", display: "flex", alignItems: "center", justifyContent: "center" }}>
               <FilePlus size={26} strokeWidth={1.6} color="#94a3b8" />
             </div>
             <div style={{ fontSize: 14, fontWeight: 600, color: "#64748b", marginBottom: 6 }}>No records yet</div>
@@ -1610,14 +1661,35 @@ export default function FormDataPage() {
           </div>
         ) : sortedRecords.length === 0 ? (
           <div style={{ textAlign: "center", padding: "56px 24px", color: "#94a3b8" }}>
-            <div style={{ width: 56, height: 56, borderRadius: 14, margin: "0 auto 16px", background: "#f1f5f9", border: "1px solid #e2e8f0", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <div style={{ width: 56, height: 56, borderRadius: 8, margin: "0 auto 16px", background: "#f1f5f9", border: "1px solid #e2e8f0", display: "flex", alignItems: "center", justifyContent: "center" }}>
               <SearchX size={26} strokeWidth={1.6} color="#94a3b8" />
             </div>
             <div style={{ fontSize: 14, fontWeight: 600, color: "#64748b", marginBottom: 6 }}>No matching records</div>
             <div style={{ fontSize: 13 }}>Try a different search term or clear the search to see all records.</div>
           </div>
+        ) : viewMode === "cards" ? (
+          /* ── Cards view — reuses the exact same edit/delete/select handlers ── */
+          <div style={{ padding: 16, display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 12 }}>
+            {pagedRecords.map((rec, i) => (
+              <RecordCard
+                key={rec.id}
+                rec={rec}
+                serial={(currentPage - 1) * pageSize + i + 1}
+                fields={schemaFields}
+                lang={lang}
+                getToken={getToken}
+                selected={selectedIds.has(rec.id)}
+                onSelect={() => toggleSelectOne(rec.id)}
+                onEdit={(e) => { e.stopPropagation(); setEditTarget(rec); }}
+                onDelete={(e) => { e.stopPropagation(); setDeleteTarget(rec.id); }}
+                canEdit={canEdit}
+                readOnly={readOnly}
+                viewingTranslated={viewingTranslated}
+              />
+            ))}
+          </div>
         ) : (
-          <div style={{ overflowX: "auto" }}>
+          <div ref={vTable.containerRef} style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 600 }}>
               <thead>
                 <tr style={{ background: "#f8fafc" }}>
@@ -1645,7 +1717,14 @@ export default function FormDataPage() {
                 </tr>
               </thead>
               <tbody>
-                {pagedRecords.map((rec, i) => {
+                {/* Top spacer for virtualized rows above the viewport */}
+                {vTable.padTop > 0 && (
+                  <tr style={{ height: vTable.padTop }}>
+                    <td colSpan={(!readOnly ? 1 : 0) + 1 + schemaFields.length + 1 + (canEdit ? 1 : 0)} style={{ padding: 0, border: "none" }} />
+                  </tr>
+                )}
+                {pagedRecords.slice(vTable.start, vTable.end).map((rec, localIdx) => {
+                  const i = vTable.start + localIdx;
                   const isSelected = selectedIds.has(rec.id);
                   return (
                     <tr
@@ -1654,6 +1733,7 @@ export default function FormDataPage() {
                         borderBottom: i < pagedRecords.length - 1 ? "1px solid #f8fafc" : "none",
                         transition: "background .1s",
                         background: isSelected ? `${ACCENT}08` : undefined,
+                        ...(virtualize ? { height: ROW_HEIGHT } : {}),
                       }}
                       onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = "#f8fafc"; }}
                       onMouseLeave={e => { e.currentTarget.style.background = isSelected ? `${ACCENT}08` : ""; }}
@@ -1677,14 +1757,14 @@ export default function FormDataPage() {
                       </td>
                       {schemaFields.map(f => {
                         const col = dbCol(f.column_name); const raw = rec[col];
-                        let cell;
-                        if (f.type === "boolean") cell = raw===true||raw==="true" ? "Yes" : raw===false||raw==="false" ? "No" : "—";
-                        else if (f.type === "document") cell = <DocumentCell fileKey={raw} getToken={getToken} lang={lang} />;
-                        else cell = raw ?? <span style={{ color: "#cbd5e1" }}>—</span>;
-                        return <td key={col} style={tdStyle}><span style={{ fontSize: 13, color: "#1e293b" }}>{cell}</span></td>;
+                        let cell, titleText;
+                        if (f.type === "boolean") { cell = raw===true||raw==="true" ? "Yes" : raw===false||raw==="false" ? "No" : "—"; titleText = String(cell); }
+                        else if (f.type === "document") { cell = <DocumentCell fileKey={raw} getToken={getToken} lang={lang} />; titleText = undefined; }
+                        else { cell = raw ?? <span style={{ color: "#cbd5e1" }}>—</span>; titleText = raw != null ? String(raw) : undefined; }
+                        return <td key={col} style={tdStyle}><span style={cellEllipsis} title={titleText}>{cell}</span></td>;
                       })}
                       <td style={tdStyle}>
-                        <span style={{ fontSize: 12, color: sortField === "created_at" ? "#475569" : "#64748b", fontWeight: sortField === "created_at" ? 600 : 400 }}>
+                        <span style={{ fontSize: 12, color: sortField === "created_at" ? "#475569" : "#64748b", fontWeight: sortField === "created_at" ? 600 : 400, whiteSpace: "nowrap" }}>
                           {formatDate(rec.created_at)}
                         </span>
                       </td>
@@ -1692,7 +1772,7 @@ export default function FormDataPage() {
                         <td style={{ ...tdStyle, textAlign: "right" }}>
                           <div style={{ display: "inline-flex", gap: 6 }}>
                             <button
-                              onClick={(e) => { e.stopPropagation(); setEditRecord(rec); setModalError(""); setModalOpen(true); }}
+                              onClick={(e) => { e.stopPropagation(); setEditTarget(rec); }}
                               style={actionBtn}
                               title={viewingTranslated ? "Edit Hindi record" : "Edit record"}
                             >
@@ -1714,6 +1794,12 @@ export default function FormDataPage() {
                     </tr>
                   );
                 })}
+                {/* Bottom spacer for virtualized rows below the viewport */}
+                {vTable.padBottom > 0 && (
+                  <tr style={{ height: vTable.padBottom }}>
+                    <td colSpan={(!readOnly ? 1 : 0) + 1 + schemaFields.length + 1 + (canEdit ? 1 : 0)} style={{ padding: 0, border: "none" }} />
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -1779,6 +1865,89 @@ export default function FormDataPage() {
     </div>
   );
 }
+
+/* ── Window-scroll virtualization ────────────────────────────────────────
+   Renders only the rows near the viewport for large pages, using the page's
+   own scroll (no inner scroll container → UX unchanged). Rows are kept a
+   fixed height via ellipsis cells, so the row-height estimate stays accurate.
+   Disabled (renders everything) when the row count is small.                 */
+const VIRTUAL_THRESHOLD = 60;
+const ROW_HEIGHT = 47;       // fixed row height (ellipsis cells, 13px font)
+const HEADER_HEIGHT = 41;
+
+function useWindowVirtual(count, { rowHeight = ROW_HEIGHT, headerHeight = HEADER_HEIGHT, overscan = 8, enabled = true } = {}) {
+  const containerRef = useRef(null);
+  const [range, setRange] = useState({ start: 0, end: count });
+
+  useEffect(() => {
+    if (!enabled) { setRange({ start: 0, end: count }); return; }
+    const compute = () => {
+      const el = containerRef.current;
+      if (!el) return;
+      const top = el.getBoundingClientRect().top + window.scrollY; // table top in document
+      const viewTop = window.scrollY - top - headerHeight;
+      const start = Math.max(0, Math.floor(viewTop / rowHeight) - overscan);
+      const visible = Math.ceil(window.innerHeight / rowHeight) + overscan * 2;
+      const end = Math.min(count, start + visible);
+      setRange((prev) => (prev.start === start && prev.end === end ? prev : { start, end }));
+    };
+    compute();
+    window.addEventListener("scroll", compute, { passive: true });
+    window.addEventListener("resize", compute);
+    return () => {
+      window.removeEventListener("scroll", compute);
+      window.removeEventListener("resize", compute);
+    };
+  }, [count, rowHeight, headerHeight, overscan, enabled]);
+
+  const padTop    = enabled ? range.start * rowHeight : 0;
+  const padBottom = enabled ? Math.max(0, (count - range.end) * rowHeight) : 0;
+  return { containerRef, start: enabled ? range.start : 0, end: enabled ? range.end : count, padTop, padBottom };
+}
+
+/* ── Record card (Cards view) — reuses the same edit/delete/select handlers ── */
+function RecordCard({ rec, serial, fields, lang, getToken, selected, onSelect, onEdit, onDelete, canEdit, readOnly, viewingTranslated }) {
+  return (
+    <div style={{
+      background: "#fff", border: `1px solid ${selected ? ACCENT : "#e5e7eb"}`, borderRadius: 8,
+      padding: "14px 16px", display: "flex", flexDirection: "column", gap: 10,
+      boxShadow: selected ? `0 0 0 3px ${ACCENT}1f` : "0 1px 2px rgba(16,24,40,0.04)", transition: "border-color .12s, box-shadow .12s",
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        {!readOnly && (
+          <input type="checkbox" checked={selected} onChange={onSelect} style={{ width: 15, height: 15, accentColor: ACCENT, cursor: "pointer", flexShrink: 0 }} />
+        )}
+        <span style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", flexShrink: 0 }}>#{serial}</span>
+        <span style={{ marginLeft: "auto", fontSize: 11.5, color: "#94a3b8", whiteSpace: "nowrap" }}>{formatDate(rec.created_at)}</span>
+        {canEdit && (
+          <div style={{ display: "inline-flex", gap: 6, flexShrink: 0 }}>
+            <button onClick={onEdit} style={actionBtn} title={viewingTranslated ? "Edit Hindi record" : "Edit record"}><IcoEdit /></button>
+            {!readOnly && <button onClick={onDelete} style={{ ...actionBtn, color: "#dc2626", borderColor: "#fecaca" }} title="Delete record"><IcoTrash /></button>}
+          </div>
+        )}
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "10px 18px" }}>
+        {fields.map((f) => {
+          const col = dbCol(f.column_name); const raw = rec[col];
+          let val;
+          if (f.type === "boolean") val = raw === true || raw === "true" ? "Yes" : raw === false || raw === "false" ? "No" : "—";
+          else if (f.type === "document") val = <DocumentCell fileKey={raw} getToken={getToken} lang={lang} />;
+          else val = raw ?? "—";
+          return (
+            <div key={col} style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 10.5, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 2 }}>
+                {f.label?.[lang] || f.label?.en || displayCol(f.column_name)}
+              </div>
+              <div style={{ fontSize: 13, color: "#1e293b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{val}</div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+const cellEllipsis = { display: "block", maxWidth: 280, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 13, color: "#1e293b" };
 
 const thStyle   = { padding: "10px 16px", textAlign: "left", fontSize: 11, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.6, borderBottom: "1px solid #f1f5f9", whiteSpace: "nowrap" };
 const tdStyle   = { padding: "13px 16px", verticalAlign: "middle" };

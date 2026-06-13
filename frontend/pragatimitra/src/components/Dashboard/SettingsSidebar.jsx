@@ -103,36 +103,36 @@ export default function SettingsSidebar({ activeId, onSelect, onBack }) {
         gap: 9,
         padding: "0 12px",
         height: 48,
-        borderBottom: "1px solid var(--sh-border)",
+        borderBottom: "1px solid var(--sh-side-border)",
         flexShrink: 0,
         overflow: "hidden",
       }}>
-        {/* Back button */}
+        {/* Back button — dark-theme tokens so it matches the dashboard sidebar */}
         <button
           onClick={onBack}
           title="Back to dashboard"
           style={{
             display: "flex", alignItems: "center", justifyContent: "center",
-            width: 26, height: 26, borderRadius: 7,
-            border: "1px solid var(--sh-border)",
+            width: 26, height: 26, borderRadius: 6,
+            border: "1px solid var(--sh-side-border)",
             background: "transparent", cursor: "pointer",
-            color: "var(--sh-muted)", flexShrink: 0,
+            color: "var(--sh-side-text)", flexShrink: 0,
             transition: "background var(--sh-ease), color var(--sh-ease)",
           }}
-          onMouseEnter={e => { e.currentTarget.style.background = "var(--sh-hover)"; e.currentTarget.style.color = "var(--sh-text)"; }}
-          onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "var(--sh-muted)"; }}
+          onMouseEnter={e => { e.currentTarget.style.background = "var(--sh-side-hover)"; e.currentTarget.style.color = "var(--sh-side-text-hi)"; }}
+          onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "var(--sh-side-text)"; }}
         >
           <Icons.ArrowLeft size={13} />
         </button>
 
         {/* Settings icon */}
-        <Icons.Settings size={14} color="var(--sh-muted)" style={{ flexShrink: 0 }} />
+        <Icons.Settings size={14} color="var(--sh-side-text)" style={{ flexShrink: 0 }} />
 
         {/* Title — hidden when collapsed, same as .sh-nav-label */}
         <span className="sh-nav-label" style={{
           fontSize: "13.5px",
           fontWeight: 700,
-          color: "var(--sh-text)",
+          color: "var(--sh-side-text-hi)",
           whiteSpace: "nowrap",
           letterSpacing: "-0.2px",
         }}>

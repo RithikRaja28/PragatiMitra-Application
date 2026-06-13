@@ -19,7 +19,7 @@ router.get("/inbox", verifyToken, async (req, res) => {
   const userId = req.user.userId;
   try {
     const { rows } = await pool.query(
-      `SELECT id, event_id, title, message, is_read, created_at
+      `SELECT id, title, body AS message, (read_at IS NOT NULL) AS is_read, created_at
        FROM notifications
        WHERE user_id = $1
        ORDER BY created_at DESC
@@ -40,7 +40,7 @@ router.get("/inbox/unread", verifyToken, async (req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT COUNT(*) AS cnt FROM notifications
-       WHERE user_id = $1 AND is_read = FALSE`,
+       WHERE user_id = $1 AND read_at IS NULL`,
       [userId]
     );
     return res.json({ success: true, count: parseInt(rows[0].cnt, 10) });
@@ -56,7 +56,7 @@ router.put("/inbox/read-all", verifyToken, async (req, res) => {
   const userId = req.user.userId;
   try {
     await pool.query(
-      `UPDATE notifications SET is_read = TRUE WHERE user_id = $1`,
+      `UPDATE notifications SET read_at = now() WHERE user_id = $1 AND read_at IS NULL`,
       [userId]
     );
     return res.json({ success: true });
@@ -78,7 +78,7 @@ router.put("/inbox/:id/read", verifyToken, async (req, res) => {
 
   try {
     await pool.query(
-      `UPDATE notifications SET is_read = TRUE WHERE id = $1 AND user_id = $2`,
+      `UPDATE notifications SET read_at = now() WHERE id = $1 AND user_id = $2 AND read_at IS NULL`,
       [id, userId]
     );
     return res.json({ success: true });

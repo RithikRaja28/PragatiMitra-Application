@@ -10,7 +10,7 @@ const router = express.Router();
 const SUPER_ADMIN = ["super_admin"];
 
 /* ── GET /api/roles ── list all roles ── */
-router.get("/", verifyToken, requireRole(SUPER_ADMIN), async (req, res) => {
+router.get("/", verifyToken, requireRole(["super_admin", "institute_admin"]), async (req, res) => {
   const pool = req.app.locals.pool;
   try {
     const { rows } = await pool.query(`

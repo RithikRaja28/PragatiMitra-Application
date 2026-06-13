@@ -7,8 +7,10 @@ const ExcelJS  = require("exceljs"); // used for styled Excel export
 const { verifyToken } = require("../middleware/auth");
 const logger  = require("../utils/logger");
 const { getLogContext } = logger;
+const { writeAuditLog } = require("../utils/audit");
 const { translateSentence, transliteratePhrase, lookupLabel, translateRow, resolveTranslationMode } = require("../services/translationService");
 const { getReadUrl } = require("../utils/s3");
+const { getAcademicYearLockBlockForReq } = require("../services/academicYearService");
 
 /* 7 days — maximum presigned URL lifetime for long-term IAM credentials */
 const DOC_URL_TTL = 7 * 24 * 3600;
@@ -395,6 +397,7 @@ router.post("/:formName/import/execute-chunk", async (req, res) => {
     chunk,
     chunkIndex = 0,
     chunkStartIndex = 0,
+    totalChunks = null,
     duplicateHandling = "skip",
     year,
     language = "en",
@@ -432,6 +435,13 @@ router.post("/:formName/import/execute-chunk", async (req, res) => {
 
     const { schemaRow, fields } = result;
     const formYear = Number(year) || schemaRow.year;
+
+    /* Academic-year lock — checks the SELECTED year (header), blocks import. */
+    if (chunkIndex === 0) {
+      const ayLock = await getAcademicYearLockBlockForReq(pool, req, ctx.institutionId, formYear);
+      if (ayLock.locked)
+        return res.status(403).json({ success: false, message: ayLock.message });
+    }
 
     /* Build fileCol → schemaCol lookup */
     const fieldToCol = {};
@@ -560,6 +570,25 @@ router.post("/:formName/import/execute-chunk", async (req, res) => {
       }
     }
 
+    // Log once: on the last chunk, or every call when totalChunks is not provided.
+    const isLastChunk = totalChunks === null || chunkIndex + 1 >= Number(totalChunks);
+    if (isLastChunk && (success > 0 || skipped > 0)) {
+      await writeAuditLog(req, {
+        actionType: "FORM_DATA_IMPORTED",
+        entityType: "form_data",
+        entityId: null,
+        newValue: {
+          form_name: formName,
+          institution_id: ctx.institutionId,
+          department_id: resolvedDeptId,
+          imported: success,
+          skipped,
+          failed: errors.length,
+        },
+        message: `Form Data Imported - "${formName}" (${success} row${success !== 1 ? "s" : ""})`,
+      });
+    }
+
     return res.json({
       success:  true,
       imported: success,
@@ -647,6 +676,20 @@ router.get("/:formName/export", async (req, res) => {
        ORDER BY department_id NULLS LAST, created_at DESC`,
       queryParams
     );
+
+    await writeAuditLog(req, {
+      actionType: "FORM_DATA_EXPORTED",
+      entityType: "form_data",
+      entityId: null,
+      newValue: {
+        form_name: formName,
+        institution_id: ctx.institutionId,
+        department_id: ctx.departmentId,
+        format,
+        record_count: records.length,
+      },
+      message: `Form Data Exported - "${formName}" (${records.length} record${records.length !== 1 ? "s" : ""})`,
+    });
 
     /* Fetch dept names (both EN and HI) for institute admin export */
     let deptMap = {};

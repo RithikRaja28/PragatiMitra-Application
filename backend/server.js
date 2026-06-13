@@ -32,6 +32,20 @@ const auditLogRoutes              = require("./routes/auditLogs");
 const notificationTemplatesRouter = require("./routes/notificationTemplates");
 const nodalOfficerAssignmentsRouter = require("./routes/nodalOfficerAssignments");
 
+// Collaborative Report Builder
+const builderReportsRoutes       = require("./routes/builder/reports");
+const builderSectionsRoutes      = require("./routes/builder/sections");
+const builderBlocksRoutes        = require("./routes/builder/blocks");
+const builderAssignmentsRoutes   = require("./routes/builder/assignments");
+const builderApprovalsRoutes     = require("./routes/builder/approvals");
+const builderVersionsRoutes      = require("./routes/builder/versions");
+const builderCyclesRoutes        = require("./routes/builder/cycles");
+const builderWorkflowsRoutes     = require("./routes/builder/workflows");
+const builderTemplatesRoutes     = require("./routes/builder/templates");
+const builderCommentsRoutes      = require("./routes/builder/comments");
+const builderCompileRoutes       = require("./routes/builder/compile");
+const builderNotificationsRoutes = require("./routes/builder/notifications");
+
 const app  = express();
 const PORT = process.env.PORT || 3000;
 
@@ -135,6 +149,12 @@ pool
   .query(`ALTER TABLE table_list ADD COLUMN IF NOT EXISTS translate_to_hindi BOOLEAN NOT NULL DEFAULT TRUE`)
   .catch((e) => logger.error("Failed to ensure table_list.translate_to_hindi column", { stack: e.stack }));
 
+/* ── audit_logs: ensure columns added after initial table creation ── */
+pool.query(`ALTER TABLE public.audit_logs ADD COLUMN IF NOT EXISTS browser_name VARCHAR(50)`)
+  .catch((e) => logger.error("Failed to ensure audit_logs.browser_name column", { stack: e.stack }));
+pool.query(`ALTER TABLE public.audit_logs ADD COLUMN IF NOT EXISTS session_id UUID`)
+  .catch((e) => logger.error("Failed to ensure audit_logs.session_id column", { stack: e.stack }));
+
 /* ── Form deadline auto-lock: ensure columns, then start periodic checker ── */
 const { ensureDeadlineColumns, startDeadlineScheduler } = require("./services/formDeadlineService");
 ensureDeadlineColumns(pool)
@@ -176,6 +196,19 @@ pool.query(`
   ON CONFLICT (form_name, institution_id) DO NOTHING
 `).catch((e) => logger.error("Failed to sync shared-form form_lock_config", { stack: e.stack }));
 
+/* ── Department form management: ensure the additive department_* tables ── */
+const { ensureDepartmentFormTables } = require("./services/departmentFormService");
+ensureDepartmentFormTables(pool)
+  .catch((e) => logger.error("Failed to ensure department form tables", { stack: e.stack }));
+
+/* ── Shared-form schema repair: INSERT-ONLY backfill of missing schema rows for
+   institutions that can access a shared form but never got their own schema
+   (fixes "No active schema found"). Idempotent, non-destructive. ── */
+const { propagateAllSharedSchemas, ensureSchemaProvenanceColumns } = require("./services/schemaPropagationService");
+ensureSchemaProvenanceColumns(pool)
+  .then(() => propagateAllSharedSchemas(pool))
+  .catch((e) => logger.error("Failed to propagate shared form schemas", { stack: e.stack }));
+
 /* ── Import session cache: rows stored server-side after parse ───── */
 app.locals.importSessions = new Map();
 // Purge sessions older than 1 hour every 30 minutes
@@ -207,10 +240,27 @@ app.use("/api/upload",       uploadRoutes);
 app.use("/api/notification-templates", notificationTemplatesRouter);
 app.use("/api/kpi",                    require("./routes/kpi"));
 app.use("/api/forms",                  require("./routes/forms"));
+app.use("/api/department-forms",       require("./routes/departmentForms"));
+app.use("/api/department-form-data",   require("./routes/departmentFormData"));
 app.use("/api/academic-years",         require("./routes/academicYear"));
 app.use("/api/form-data",              require("./routes/formData"));
 app.use("/api/form-data",              require("./routes/formimportexport"));
 app.use("/api/nodal-officer-assignments", nodalOfficerAssignmentsRouter);
+
+// Collaborative Report Builder — /api/builder/*
+app.use("/api/builder/reports",       builderReportsRoutes);
+app.use("/api/builder/sections",      builderSectionsRoutes);
+app.use("/api/builder/blocks",        builderBlocksRoutes);
+app.use("/api/builder/assignments",   builderAssignmentsRoutes);
+app.use("/api/builder/approvals",     builderApprovalsRoutes);
+app.use("/api/builder/versions",      builderVersionsRoutes);
+app.use("/api/builder/cycles",        builderCyclesRoutes);
+app.use("/api/builder/workflows",     builderWorkflowsRoutes);
+app.use("/api/builder/templates",     builderTemplatesRoutes);
+app.use("/api/builder/comments",      builderCommentsRoutes);
+app.use("/api/builder/compile",       builderCompileRoutes);
+app.use("/api/builder/notifications", builderNotificationsRoutes);
+
 /* ─── Global error handler (must be last) ───────────────────── */
 app.use(errorHandler);
 
