@@ -18,6 +18,8 @@ export const ROLE_ROUTES = {
   reviewer:                   "/dashboard/reviewer",
   finance_officer:            "/dashboard/finance-officer",
   directors_office:           "/dashboard/directors-office",
+  hospital_admin:             "/dashboard/hospital-admin",
+  finance_admin:              "/dashboard/finance-admin",
 };
 
 export function redirectByRole(user, navigate) {

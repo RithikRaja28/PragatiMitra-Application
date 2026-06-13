@@ -135,6 +135,7 @@ async function fetchUser(pool, whereClause, params) {
        u.id, u.email, u.full_name, u.password_hash,
        u.must_change_password, u.is_temporary_password, u.account_status,
        u.institution_id, u.department_id, u.profile_image_url,
+       COALESCE(u.role_domain, 'academic') AS role_domain,
        i.institution_name,
        d.name AS department_name,
        COALESCE(
@@ -179,6 +180,8 @@ function buildAccessPayload(user, sessionId) {
     institutionId:           isDeptNOA ? user.noa_institution_id : user.institution_id,
     departmentId:            isDeptNOA ? user.noa_department_id  : user.department_id,
     roles,
+    // Domain (academic|hospital|finance) drives shell + form visibility. Default academic.
+    roleDomain:              user.role_domain || "academic",
     noaActiveYears:          user.noa_active_years         || [],
     noaInstituteActiveYears: user.noa_institute_active_years || [],
     sessionId,
@@ -198,6 +201,8 @@ function buildUserObject(user) {
     profileImageUrl:         user.profile_image_url,
     mustChangePassword:      user.must_change_password,
     isTemporaryPassword:     user.is_temporary_password,
+    // Domain (academic|hospital|finance) — drives which shell/dashboard loads.
+    roleDomain:              user.role_domain || "academic",
     // Original roles from user_roles — NEVER includes NOA-derived roles.
     roles:                   user.roles || [],
     // Years for which user has an active dept-level NOA assignment.

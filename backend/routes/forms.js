@@ -7,6 +7,7 @@ const logger = require("../utils/logger");
 const { translateSentence, enrichSchemaLabels } = require("../services/translationService");
 const { formatAcademicYear, ensureYearRows, setFormStatusForYear, ensureFormArchivedIfUnclassified, getInstitutionStartYears, getAcademicYearLockBlockForReq } = require("../services/academicYearService");
 const { ensureSchemaExists } = require("../services/schemaPropagationService");
+const { resolveUserDomain, resolveListFilterDomain, assertFormDomainAccess, normalizeDomain } = require("../services/domainService");
 
 /* Academic-year lock guard for form-management writes. Checks the SELECTED year
    (X-Academic-Year header), falling back to the request's year / current year. */
@@ -34,6 +35,17 @@ async function autoFillHindiLabels(schema) {
 
 const router = express.Router();
 router.use(verifyToken);
+
+/* Guard: a scoped (non-super-admin) user may only manage a form in their own
+   domain. Blocks e.g. a Hospital Admin editing/locking an Academic form by name. */
+async function requireFormDomain(req, res, next) {
+  try {
+    const pool = req.app.locals.pool;
+    const acc = await assertFormDomainAccess(pool, req, req.params.formName);
+    if (!acc.allowed) return res.status(403).json({ success: false, message: acc.message });
+  } catch { /* never hard-fail the guard on a metadata read */ }
+  return next();
+}
 
 /* ── resolve institution_id for non-super-admin users ── */
 async function resolveInstitutionId(pool, req) {
@@ -87,6 +99,7 @@ router.get("/institution-forms", async (req, res) => {
       ({ rows } = await pool.query(
         `SELECT id, form_name, institute_access, share_table, created_by, created_at, updated_at,
                 COALESCE(translate_to_hindi, true) AS translate_to_hindi,
+                COALESCE(form_domain, 'academic') AS form_domain,
                 NULL::timestamptz AS deadline_at, false AS auto_locked,
                 false AS is_locked, NULL AS locked_by, NULL AS locked_at
          FROM table_list
@@ -97,6 +110,7 @@ router.get("/institution-forms", async (req, res) => {
       ({ rows } = await pool.query(
         `SELECT tl.id, tl.form_name, tl.institute_access, tl.share_table, tl.created_by, tl.created_at, tl.updated_at,
                 COALESCE(tl.translate_to_hindi, true) AS translate_to_hindi,
+                COALESCE(tl.form_domain, 'academic') AS form_domain,
                 flc.deadline_at,
                 COALESCE(flc.auto_locked, false) AS auto_locked,
                 COALESCE(flc.is_locked, false) AS is_locked,
@@ -109,6 +123,16 @@ router.get("/institution-forms", async (req, res) => {
          ORDER BY tl.form_name`,
         [institutionId]
       ));
+    }
+
+    /* ── Domain isolation: scope the list to the user's domain. Non-super-admin
+       users (incl. institution & department admins, and Hospital/Finance admins)
+       only ever see forms in their own domain — no cross-domain leak. super_admin
+       sees all (optionally narrowed by ?domain). Academic is the default, so
+       existing Academic users are unaffected. ── */
+    const filterDomain = await resolveListFilterDomain(pool, req);
+    if (filterDomain) {
+      rows = rows.filter((f) => (f.form_domain || "academic") === filterDomain);
     }
 
     /* ── Academic-year lifecycle status (opt-in via ?year=) ──────────────
@@ -174,11 +198,16 @@ router.get("/templates", async (req, res) => {
   const pool = req.app.locals.pool;
   const isSuperAdmin = (req.user.roles || []).includes("super_admin");
   try {
+    // No cross-domain sharing: a user only sees templates in their own domain.
+    const filterDomain = await resolveListFilterDomain(pool, req);
+    const domainClause = filterDomain ? ` AND COALESCE(form_domain, 'academic') = '${filterDomain}'` : "";
+
     if (isSuperAdmin) {
       const { rows } = await pool.query(
-        `SELECT id, form_name, institute_access, share_table, created_at
+        `SELECT id, form_name, institute_access, share_table, created_at,
+                COALESCE(form_domain, 'academic') AS form_domain
          FROM table_list
-         WHERE share_table = true
+         WHERE share_table = true${domainClause}
          ORDER BY form_name`
       );
       return res.json({ success: true, templates: rows });
@@ -190,10 +219,11 @@ router.get("/templates", async (req, res) => {
     // institute_access contains only institutions that have completed adoption.
     // A form is available to adopt when the institution is NOT yet in institute_access.
     const { rows } = await pool.query(
-      `SELECT id, form_name, institute_access, share_table, created_at
+      `SELECT id, form_name, institute_access, share_table, created_at,
+              COALESCE(form_domain, 'academic') AS form_domain
        FROM table_list
        WHERE share_table = true
-         AND NOT ($1::uuid = ANY(COALESCE(institute_access, '{}'::uuid[])))
+         AND NOT ($1::uuid = ANY(COALESCE(institute_access, '{}'::uuid[])))${domainClause}
        ORDER BY form_name`,
       [institutionId]
     );
@@ -211,16 +241,20 @@ router.get("/my-forms", async (req, res) => {
   const pool = req.app.locals.pool;
   const isSuperAdmin = (req.user.roles || []).includes("super_admin");
   try {
+    const filterDomain = await resolveListFilterDomain(pool, req);
+
     if (isSuperAdmin) {
-      const { rows } = await pool.query(
+      let { rows } = await pool.query(
         `SELECT tl.id, tl.form_name, tl.share_table, tl.institute_access, tl.created_at,
                 COALESCE(tl.translate_to_hindi, true) AS translate_to_hindi,
+                COALESCE(tl.form_domain, 'academic') AS form_domain,
                 COUNT(cfs.id)::int AS schema_count
          FROM table_list tl
          LEFT JOIN custom_field_schemas cfs ON cfs.form_name = tl.form_name
-         GROUP BY tl.id, tl.form_name, tl.share_table, tl.institute_access, tl.created_at, tl.translate_to_hindi
+         GROUP BY tl.id, tl.form_name, tl.share_table, tl.institute_access, tl.created_at, tl.translate_to_hindi, tl.form_domain
          ORDER BY tl.form_name`
       );
+      if (filterDomain) rows = rows.filter((f) => (f.form_domain || "academic") === filterDomain);
       return res.json({ success: true, forms: rows });
     }
 
@@ -232,6 +266,7 @@ router.get("/my-forms", async (req, res) => {
               cfs.schema, cfs.is_active, cfs.created_at,
               tl.share_table,
               COALESCE(tl.translate_to_hindi, true) AS translate_to_hindi,
+              COALESCE(tl.form_domain, 'academic') AS form_domain,
               COALESCE(flc.is_locked, false) AS is_locked,
               flc.locked_by,
               flc.locked_at
@@ -240,8 +275,9 @@ router.get("/my-forms", async (req, res) => {
        LEFT JOIN form_lock_config flc
          ON flc.form_name = cfs.form_name AND flc.institution_id = cfs.institution_id
        WHERE cfs.institution_id = $1 AND cfs.is_active = true
+         ${filterDomain ? "AND COALESCE(tl.form_domain, 'academic') = $2" : ""}
        ORDER BY cfs.form_name, cfs.year DESC`,
-      [institutionId]
+      filterDomain ? [institutionId, filterDomain] : [institutionId]
     );
     return res.json({ success: true, forms: rows, institutionId });
   } catch (err) {
@@ -380,9 +416,14 @@ router.post(
   requireRole(["super_admin", "institute_admin"]),
   async (req, res) => {
     const pool = req.app.locals.pool;
-    const { form_name, share_table = false, schema, year, translate_to_hindi } = req.body;
+    const { form_name, share_table = false, schema, year, translate_to_hindi, form_domain } = req.body;
     // Form-level Hindi translation toggle — defaults to TRUE (preserves behavior).
     const translateToHindi = translate_to_hindi === false ? false : true;
+    // Domain (academic|hospital|finance). Default academic → existing behavior.
+    const VALID_FORM_DOMAINS = ["academic", "hospital", "finance"];
+    const formDomain = VALID_FORM_DOMAINS.includes(String(form_domain).toLowerCase())
+      ? String(form_domain).toLowerCase()
+      : "academic";
 
     if (!form_name || !String(form_name).trim()) {
       return res.status(400).json({ success: false, message: "form_name is required." });
@@ -406,6 +447,12 @@ router.post(
         return res.status(400).json({ success: false, message: "Institution ID is required." });
       }
 
+      // Domain ownership: a scoped user (institution / hospital / finance admin)
+      // ALWAYS creates in their own domain — the selector cannot place a form in
+      // another domain. Only super_admin (cross-domain) may pick via the body.
+      const creatorDomain = await resolveUserDomain(pool, req);
+      const effectiveFormDomain = creatorDomain == null ? formDomain : creatorDomain;
+
       // Academic-year lock — block form creation when the selected year is locked.
       const ayLock = await ayLockGuard(pool, req, institutionId);
       if (ayLock.locked)
@@ -423,17 +470,17 @@ router.post(
         //    immediately visible everywhere. COALESCE guards empty-institutions edge case.
         //    Private forms: only the creator institution.
         await client.query(
-          `INSERT INTO table_list (form_name, share_table, institute_access, created_by, translate_to_hindi)
+          `INSERT INTO table_list (form_name, share_table, institute_access, created_by, translate_to_hindi, form_domain)
            VALUES (
              $1, $2,
              CASE WHEN $2
                THEN COALESCE((SELECT array_agg(institution_id) FROM institutions), ARRAY[$3::uuid])
                ELSE ARRAY[$3::uuid]
              END,
-             $4, $5
+             $4, $5, $6
            )
            ON CONFLICT (form_name) DO NOTHING`,
-          [normalizedName, share_table, institutionId, req.user.userId, translateToHindi]
+          [normalizedName, share_table, institutionId, req.user.userId, translateToHindi, effectiveFormDomain]
         );
 
         // For the ON CONFLICT path (form already exists), ensure the creator is in
@@ -686,6 +733,7 @@ router.post(
 router.put(
   "/:formName/schema",
   requireRole(["super_admin", "institute_admin"]),
+  requireFormDomain,
   async (req, res) => {
     const pool = req.app.locals.pool;
     const { formName } = req.params;
@@ -994,7 +1042,8 @@ router.get("/:formName/deadline", async (req, res) => {
 ───────────────────────────────────────────────────────────────────── */
 router.put(
   "/:formName/deadline",
-  requireRole(["super_admin", "institute_admin"]),
+  requireRole(["super_admin", "institute_admin", "hospital_admin", "finance_admin"]),
+  requireFormDomain,
   async (req, res) => {
     const pool = req.app.locals.pool;
     const { formName } = req.params;
@@ -1088,6 +1137,7 @@ router.put(
 router.post(
   "/:formName/lock",
   requireRole(["super_admin", "institute_admin"]),
+  requireFormDomain,
   async (req, res) => {
     const pool = req.app.locals.pool;
     const { formName } = req.params;
@@ -1133,6 +1183,7 @@ router.post(
 router.post(
   "/:formName/unlock",
   requireRole(["super_admin", "institute_admin"]),
+  requireFormDomain,
   async (req, res) => {
     const pool = req.app.locals.pool;
     const { formName } = req.params;

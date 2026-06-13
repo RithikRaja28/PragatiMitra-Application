@@ -9,6 +9,7 @@ const { getAcademicYearLockBlockForReq } = require("../services/academicYearServ
 const { getEffectiveState, messageFor, canWrite } = require("../services/stateResolver");
 const { SOURCE_LANGUAGE, isDerivedRow } = require("../services/translationOwnership");
 const { assertEquivalent } = require("../services/equivalenceGuard");
+const { assertFormDomainAccess } = require("../services/domainService");
 
 /* Latest active schema year for a form+institution — used to resolve which
    academic year a record operation belongs to (for academic-year lock checks). */
@@ -24,6 +25,19 @@ async function getFormActiveYear(pool, formName, institutionId) {
 
 const router = express.Router();
 router.use(verifyToken);
+
+/* Domain isolation guard — runs for EVERY :formName route. A non-super-admin
+   user may only touch records of a form in their own domain; a Hospital/Finance
+   form is invisible (403) to Academic users and vice-versa. super_admin is
+   cross-domain. Academic default keeps all existing behavior. */
+router.param("formName", async (req, res, next, formName) => {
+  try {
+    const pool = req.app.locals.pool;
+    const acc = await assertFormDomainAccess(pool, req, formName);
+    if (!acc.allowed) return res.status(403).json({ success: false, message: acc.message });
+  } catch { /* never hard-fail on a metadata read */ }
+  return next();
+});
 
 // Session-level cache: prevents repeated ALTER TABLE calls for source_row_id column
 const ensuredSourceRowIdTables = new Set();

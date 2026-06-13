@@ -62,6 +62,7 @@ import FinanceOverviewPage from "../../pages/Roles/financeofficer/FinanceOvervie
 import EstimatesPage       from "../../pages/Roles/financeofficer/EstimatesPage";
 import BalanceSheetPage    from "../../pages/Roles/financeofficer/BalanceSheetPage";
 
+
 /* ── Re-export so existing imports of PlaceholderPage from this file still work ── */
 export { default as PlaceholderPage } from "../shared/PlaceholderPage";
 
@@ -608,6 +609,44 @@ export const ROLE_CONFIG = {
     },
     defaultPage: "pc-sections",
     user: { name: "Publication Cell", initials: "PC", org: "PragatiMitra" },
+  },
+
+  /* ── HOSPITAL ADMIN ──────────────────────────────────────────────
+     CONSUMER role: data entry only. Reuses the existing Institute Admin pages
+     (one dashboard, one sidebar, one engine) — the nav deliberately OMITS Form
+     Management (create/schema/share/archive/lock), which stays Institution-Admin
+     only. Backend filters everything to form_domain = 'hospital'. */
+  hospital_admin: {
+    navItems: [
+      { group: "", items: [{ id: "ha-overview", label: "Dashboard", icon: "LayoutDashboard", permission: null }] },
+      { group: "Forms", items: [{ id: "ha-form-data", label: "Forms & Data Entry", icon: "ClipboardList", permission: null }] },
+      { group: "Reports", items: [{ id: "ha-report-setup", label: "Reports", icon: "FileText", permission: null }] },
+    ],
+    pages: {
+      "ha-overview":     <InstitutionAdminOverviewPage />,
+      "ha-form-data":    <FormDataPage />,
+      "ha-report-setup": <ReportSetupPage />,
+    },
+    defaultPage: "ha-overview",
+    user: { name: "Hospital Admin", initials: "HA", org: "PragatiMitra" },
+  },
+
+  /* ── FINANCE ADMIN ───────────────────────────────────────────────
+     CONSUMER role: data entry only. Same as Hospital Admin; backend filters to
+     form_domain = 'finance'. Form Management is intentionally omitted. */
+  finance_admin: {
+    navItems: [
+      { group: "", items: [{ id: "fa-overview", label: "Dashboard", icon: "LayoutDashboard", permission: null }] },
+      { group: "Forms", items: [{ id: "fa-form-data", label: "Forms & Data Entry", icon: "ClipboardList", permission: null }] },
+      { group: "Reports", items: [{ id: "fa-report-setup", label: "Reports", icon: "FileText", permission: null }] },
+    ],
+    pages: {
+      "fa-overview":     <InstitutionAdminOverviewPage />,
+      "fa-form-data":    <FormDataPage />,
+      "fa-report-setup": <ReportSetupPage />,
+    },
+    defaultPage: "fa-overview",
+    user: { name: "Finance Admin", initials: "FA", org: "PragatiMitra" },
   },
 
   /* ── FALLBACK ───────────────────────────────────────────────────

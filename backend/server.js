@@ -149,6 +149,31 @@ pool
   .query(`ALTER TABLE table_list ADD COLUMN IF NOT EXISTS translate_to_hindi BOOLEAN NOT NULL DEFAULT TRUE`)
   .catch((e) => logger.error("Failed to ensure table_list.translate_to_hindi column", { stack: e.stack }));
 
+/* ── Role/Form domain (Academic | Hospital | Finance) — additive metadata.
+   NOT NULL DEFAULT 'academic' backfills every existing user/form to 'academic',
+   so all current Academic behavior is preserved exactly (backward compatible). ── */
+pool
+  .query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS role_domain TEXT NOT NULL DEFAULT 'academic'`)
+  .catch((e) => logger.error("Failed to ensure users.role_domain column", { stack: e.stack }));
+pool
+  .query(`ALTER TABLE table_list ADD COLUMN IF NOT EXISTS form_domain TEXT NOT NULL DEFAULT 'academic'`)
+  .catch((e) => logger.error("Failed to ensure table_list.form_domain column", { stack: e.stack }));
+
+/* ── Seed the domain-admin roles (Hospital Admin / Finance Admin). Idempotent
+   (skips if already present). roles.name has no unique constraint, so we guard
+   with NOT EXISTS rather than ON CONFLICT. ── */
+pool
+  .query(`
+    INSERT INTO roles (name, display_name, description, permissions, is_system)
+    SELECT v.name, v.display_name, v.description, '{}'::jsonb, true
+    FROM (VALUES
+      ('hospital_admin', 'Hospital Admin', 'Manages Hospital-domain forms and data'),
+      ('finance_admin',  'Finance Admin',  'Manages Finance-domain forms and data')
+    ) AS v(name, display_name, description)
+    WHERE NOT EXISTS (SELECT 1 FROM roles r WHERE r.name = v.name)
+  `)
+  .catch((e) => logger.error("Failed to seed domain-admin roles", { stack: e.stack }));
+
 /* ── audit_logs: ensure columns added after initial table creation ── */
 pool.query(`ALTER TABLE public.audit_logs ADD COLUMN IF NOT EXISTS browser_name VARCHAR(50)`)
   .catch((e) => logger.error("Failed to ensure audit_logs.browser_name column", { stack: e.stack }));

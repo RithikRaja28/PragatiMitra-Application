@@ -8,6 +8,7 @@ const { randomUUID } = require("crypto");
 const { verifyToken, requireRole } = require("../middleware/auth");
 const { writeAuditLog }            = require("../utils/audit");
 const { sendWelcomeEmail }         = require("../services/mailService");
+const { domainForUser }            = require("../services/domainService");
 
 const logger            = require("../utils/logger");
 const { getLogContext } = logger;
@@ -654,6 +655,7 @@ router.get(
         SELECT
           u.id, u.full_name, u.email, u.account_status,
           u.last_login_at, u.created_at, u.institution_id, u.department_id,
+          COALESCE(u.role_domain, 'academic') AS role_domain,
           i.institution_name, d.name AS department_name,
           COALESCE(
             (SELECT json_agg(json_build_object('name', r.name, 'display_name', r.display_name))
@@ -902,6 +904,7 @@ router.get("/", verifyToken, requireRole(["super_admin", "institute_admin", "dep
         SELECT
           u.id, u.full_name, u.email, u.account_status,
           u.last_login_at, u.created_at, u.institution_id, u.department_id,
+          COALESCE(u.role_domain, 'academic') AS role_domain,
           i.institution_name, d.name AS department_name,
           COALESCE(
             (SELECT json_agg(json_build_object('name', r.name, 'display_name', r.display_name))
@@ -945,6 +948,7 @@ router.get("/", verifyToken, requireRole(["super_admin", "institute_admin", "dep
         SELECT
           u.id, u.full_name, u.email, u.account_status,
           u.last_login_at, u.created_at, u.institution_id, u.department_id,
+          COALESCE(u.role_domain, 'academic') AS role_domain,
           i.institution_name, d.name AS department_name,
           COALESCE(
             (SELECT json_agg(json_build_object('name', r.name, 'display_name', r.display_name))
@@ -989,6 +993,7 @@ router.get("/", verifyToken, requireRole(["super_admin", "institute_admin", "dep
         SELECT
           u.id, u.full_name, u.email, u.account_status,
           u.last_login_at, u.created_at, u.institution_id, u.department_id,
+          COALESCE(u.role_domain, 'academic') AS role_domain,
           i.institution_name, d.name AS department_name,
           COALESCE(
             (SELECT json_agg(json_build_object('name', r.name, 'display_name', r.display_name))
@@ -1019,10 +1024,17 @@ router.get("/", verifyToken, requireRole(["super_admin", "institute_admin", "dep
 router.put("/:id", verifyToken, requireRole(["super_admin", "institute_admin", "department_admin"]), async (req, res) => {
   const pool = req.app.locals.pool;
   const { id } = req.params;
-  let { full_name, email, institution_id, department_id, account_status } = req.body;
+  let { full_name, email, institution_id, department_id, account_status, role_domain } = req.body;
 
   if (!full_name?.trim() || !email?.trim())
     return res.status(400).json({ success: false, message: "Name and email are required." });
+
+  // Domain (academic|hospital|finance). Only updated when a valid value is sent;
+  // otherwise the existing value is preserved (COALESCE below) → backward compatible.
+  const VALID_DOMAINS = ["academic", "hospital", "finance"];
+  const roleDomain = VALID_DOMAINS.includes(String(role_domain).toLowerCase())
+    ? String(role_domain).toLowerCase()
+    : null;
 
   const validStatuses = ["ACTIVE", "INACTIVE", "SUSPENDED"];
   if (account_status && !validStatuses.includes(account_status))
@@ -1079,10 +1091,11 @@ router.put("/:id", verifyToken, requireRole(["super_admin", "institute_admin", "
     // 4. Perform the update
     const { rows } = await pool.query(
       `UPDATE users
-       SET full_name=$1, email=$2, institution_id=$3, department_id=$4, account_status=$5
+       SET full_name=$1, email=$2, institution_id=$3, department_id=$4, account_status=$5,
+           role_domain=COALESCE($7, role_domain)
        WHERE id=$6
-       RETURNING id, full_name, email, account_status, institution_id, department_id`,
-      [full_name.trim(), normalizedEmail, institution_id || null, department_id || null, account_status, id]
+       RETURNING id, full_name, email, account_status, institution_id, department_id, role_domain`,
+      [full_name.trim(), normalizedEmail, institution_id || null, department_id || null, account_status, id, roleDomain]
     );
 
     if (!rows.length)
@@ -1130,7 +1143,12 @@ router.put("/:id", verifyToken, requireRole(["super_admin", "institute_admin", "
 ───────────────────────────────────────────────────────────────────────────── */
 router.post("/", verifyToken, requireRole(["super_admin", "institute_admin", "department_admin"]), async (req, res) => {
   const pool = req.app.locals.pool;
-  let { full_name, email, password, institution_id, department_id, role_name } = req.body;
+  let { full_name, email, password, institution_id, department_id, role_name, role_domain } = req.body;
+
+  // Domain (academic|hospital|finance). A domain-admin role (hospital_admin /
+  // finance_admin) pins the domain; otherwise the explicit selection wins.
+  // Default academic → existing behavior.
+  const roleDomain = domainForUser(role_name, role_domain);
 
   if (isDeptAdmin(req)) {
     institution_id = req.user.institutionId;
@@ -1172,10 +1190,10 @@ router.post("/", verifyToken, requireRole(["super_admin", "institute_admin", "de
     const { rows } = await pool.query(
       `INSERT INTO users
          (full_name, email, password_hash, institution_id, department_id,
-          must_change_password, is_temporary_password, created_by)
-       VALUES ($1,$2,$3,$4,$5,true,true,$6)
-       RETURNING id, full_name, email, account_status`,
-      [full_name.trim(), normalizedEmail, passwordHash, institution_id, department_id || null, req.user.userId]
+          role_domain, must_change_password, is_temporary_password, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,true,true,$7)
+       RETURNING id, full_name, email, account_status, role_domain`,
+      [full_name.trim(), normalizedEmail, passwordHash, institution_id, department_id || null, roleDomain, req.user.userId]
     );
 
     await pool.query(

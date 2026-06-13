@@ -93,6 +93,8 @@ const router = createBrowserRouter([
           { path: "dashboard/reviewer",         element: null },
           { path: "dashboard/finance-officer",  element: null },
           { path: "dashboard/directors-office", element: null },
+          { path: "dashboard/hospital-admin",   element: null },
+          { path: "dashboard/finance-admin",    element: null },
 
           { path: "reports", element: null },
         ],

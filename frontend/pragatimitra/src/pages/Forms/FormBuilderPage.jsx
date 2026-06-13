@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { FileText, Wrench, CheckCircle2, CalendarRange, Check } from "lucide-react";
 import { useApi } from "../../hooks/useApi";
 import { useAcademicYear } from "../../store/AcademicYearContext";
+import { useAuth } from "../../store/AuthContext";
 import { S, isAuthError } from "../../components/shared/formUtils";
 import PageHeader from "../../components/shared/PageHeader";
 
@@ -336,6 +337,15 @@ function dbColToField(col, order) {
 export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDone, onBack }) {
   const { apiFetch } = useApi();
   const { selectedYear } = useAcademicYear() || {};
+  const { user } = useAuth();
+  // The creator's own domain. Cross-domain admins (super_admin / institute_admin)
+  // may choose the form's domain via the selector; Hospital/Finance admins always
+  // create in their own domain.
+  const userDomain = user?.roleDomain || "academic";
+  // The Institution Admin (and super_admin) manage forms across domains and pick
+  // the form's domain via the selector. Hospital/Finance admins don't create
+  // forms at all (consume only), so this is effectively the admin form builder.
+  const isCrossDomainAdmin = (user?.roles || []).some((r) => r.name === "super_admin" || r.name === "institute_admin");
 
   const isCreate = mode === "create";
   const isAdapt  = mode === "adapt";
@@ -352,6 +362,11 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
     // Form-level Hindi translation toggle. Default ON (preserves behavior);
     // for edit/adapt seed from the form's current value when available.
     translate_to_hindi: (isEdit || isAdapt) ? (initialData?.translate_to_hindi ?? true) : true,
+    // Domain (academic|hospital|finance). New forms inherit the creator's domain
+    // (super_admin can change it in the selector). Default Academic.
+    form_domain: (isEdit || isAdapt)
+      ? (initialData?.form_domain || "academic")
+      : (user?.roleDomain && user.roleDomain !== "academic" ? user.roleDomain : "academic"),
   });
   const [basicsErrors, setBasicsErrors] = useState({});
 
@@ -594,7 +609,7 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
       if (isCreate) {
         res = await apiFetch("/api/forms", {
           method: "POST",
-          body: JSON.stringify({ form_name: identifier, share_table: basics.share_table, schema, year: basics.year, translate_to_hindi: basics.translate_to_hindi }),
+          body: JSON.stringify({ form_name: identifier, share_table: basics.share_table, schema, year: basics.year, translate_to_hindi: basics.translate_to_hindi, form_domain: isCrossDomainAdmin ? basics.form_domain : userDomain }),
         });
       } else if (isAdapt) {
         res = await apiFetch("/api/forms/adopt", {
@@ -958,9 +973,49 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
           />
 
           <div style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: 14 }}>
+            {/* Form Domain — drives which user domain can see this form.
+                Cross-domain admins (super_admin / institute_admin) choose here;
+                Hospital/Finance admins create only in their own domain (read-only).
+                Create only. */}
+            {isCreate && isCrossDomainAdmin && (
+              <ReviewSection title="Form Domain">
+                <div style={{ display: "inline-flex", padding: 3, gap: 3, background: "#f1f5f9", border: "1px solid #e2e8f0", borderRadius: 10 }} role="group" aria-label="Form domain">
+                  {[
+                    { value: "academic", label: "Academic" },
+                    { value: "hospital", label: "Hospital" },
+                    { value: "finance",  label: "Finance"  },
+                  ].map((opt) => {
+                    const on = basics.form_domain === opt.value;
+                    return (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        aria-pressed={on}
+                        onClick={() => setBasics((b) => ({ ...b, form_domain: opt.value }))}
+                        style={{
+                          border: "none", borderRadius: 8, padding: "8px 20px", cursor: "pointer",
+                          fontSize: 13, fontWeight: on ? 700 : 600, fontFamily: "inherit",
+                          background: on ? "#fff" : "transparent",
+                          color: on ? ACCENT : "#64748b",
+                          boxShadow: on ? "0 1px 2px rgba(16,24,40,0.10)" : "none",
+                          transition: "all .15s",
+                        }}
+                      >
+                        {opt.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div style={{ fontSize: 11.5, color: "#94a3b8", marginTop: 8 }}>
+                  Only users in the same domain will see and fill this form. Defaults to Academic.
+                </div>
+              </ReviewSection>
+            )}
+
             <ReviewSection title="Form Metadata Review">
               <ReviewRow label="Form Name"       value={basics.form_name || initialData?.form_name} />
               <ReviewRow label="Academic Year"   value={`${basics.year}-${basics.year + 1}`} />
+              {isCreate && <ReviewRow label="Domain" value={(isCrossDomainAdmin ? basics.form_domain : userDomain).charAt(0).toUpperCase() + (isCrossDomainAdmin ? basics.form_domain : userDomain).slice(1)} />}
               {basics.description && <ReviewRow label="Description" value={basics.description} />}
               {isSuperAdmin && isCreate && (
                 <ReviewRow label="Shared Template" value={basics.share_table ? "Yes — available to all institutions" : "No — private to this institution"} />

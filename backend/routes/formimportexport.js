@@ -11,6 +11,7 @@ const { writeAuditLog } = require("../utils/audit");
 const { translateSentence, transliteratePhrase, lookupLabel, translateRow, resolveTranslationMode } = require("../services/translationService");
 const { getReadUrl } = require("../utils/s3");
 const { getAcademicYearLockBlockForReq } = require("../services/academicYearService");
+const { assertFormDomainAccess } = require("../services/domainService");
 
 /* 7 days — maximum presigned URL lifetime for long-term IAM credentials */
 const DOC_URL_TTL = 7 * 24 * 3600;
@@ -42,6 +43,18 @@ async function resolveLabel(source, language) {
 
 const router = express.Router();
 router.use(verifyToken);
+
+/* Domain isolation guard for every :formName route (import / export). Mirrors
+   formData.js: a non-super-admin can only import/export a form in their own
+   domain. Academic default → unchanged. */
+router.param("formName", async (req, res, next, formName) => {
+  try {
+    const pool = req.app.locals.pool;
+    const acc = await assertFormDomainAccess(pool, req, formName);
+    if (!acc.allowed) return res.status(403).json({ success: false, message: acc.message });
+  } catch { /* never hard-fail on a metadata read */ }
+  return next();
+});
 
 /* ── Multer: memory storage, 50 MB limit (raised for 10k rows) ── */
 const upload = multer({

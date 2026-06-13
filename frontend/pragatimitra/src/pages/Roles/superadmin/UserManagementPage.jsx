@@ -104,7 +104,15 @@ function PasswordInput({ value, onChange, hasError }) {
 const EMPTY_FORM = {
   full_name: "", email: "", password: "",
   institution_id: "", department_id: "", role_name: "",
+  role_domain: "academic",
 };
+
+/* User domain — academic keeps all current behavior; hospital/finance are isolated. */
+const ROLE_DOMAINS = [
+  { value: "academic", label: "Academic" },
+  { value: "hospital", label: "Hospital" },
+  { value: "finance",  label: "Finance"  },
+];
 
 function validateForm(form, isEdit) {
   const errs = {};
@@ -133,6 +141,7 @@ function UserForm({ mode, entity, onCreated, onSaved, onBack, apiFetch }) {
           institution_id: entity.institution_id || "",
           department_id:  entity.department_id  || "",
           account_status: entity.account_status,
+          role_domain:    entity.role_domain || "academic",
         }
       : { ...EMPTY_FORM }
   );
@@ -192,6 +201,7 @@ function UserForm({ mode, entity, onCreated, onSaved, onBack, apiFetch }) {
             institution_id: form.institution_id,
             department_id:  form.department_id || null,
             account_status: form.account_status,
+            role_domain:    form.role_domain,
           }),
         });
         const data = await res.json();
@@ -345,6 +355,21 @@ function UserForm({ mode, entity, onCreated, onSaved, onBack, apiFetch }) {
             {fieldErrs.role_name && <span style={S.errorText}>{fieldErrs.role_name}</span>}
           </div>
         )}
+
+        {/* Role Domain — single select. Academic (default) keeps current behavior;
+            Hospital/Finance route the user to an isolated dashboard + forms. */}
+        <div>
+          <label style={S.label}>{t("Role Domain", lang)}</label>
+          <select
+            style={S.select(false)}
+            value={form.role_domain}
+            onChange={(e) => set("role_domain", e.target.value)}
+          >
+            {ROLE_DOMAINS.map((d) => (
+              <option key={d.value} value={d.value}>{d.label}</option>
+            ))}
+          </select>
+        </div>
       </div>
     </FormScreen>
   );
