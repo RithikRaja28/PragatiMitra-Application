@@ -7,6 +7,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useAuth } from "../../../../store/AuthContext";
 import { useApi }  from "../../../../hooks/useApi";
 import { BLOCK_ICONS, BlockEditor, DEFAULT_CONTENT } from "./BlockEditors";
+import { generateSectionDocx, downloadBlob, printSectionAsPdf } from "./sectionToDocx";
 
 /* ═══════════════════════════════════════════════════════════════════════════
    SECTION COMMENTS PANEL  — chat-style sidebar, per-section thread
@@ -489,9 +490,11 @@ function WordBlock({ block }) {
     case "LIST": {
       const items = c.items || [];
       const Tag   = c.ordered ? "ol" : "ul";
+      const fs    = c.fontSize  || 11;
+      const fc    = c.fontColor || "#111827";
       return (
-        <Tag style={{ fontFamily: DOC_FONT, fontSize: 11, color: "#111827", paddingLeft: 20, lineHeight: 1.75, margin: "4px 0 10px" }}>
-          {items.map((it, i) => <li key={i} style={{ marginBottom: 2 }}>{it}</li>)}
+        <Tag style={{ fontFamily: DOC_FONT, fontSize: fs, color: fc, paddingLeft: 24, lineHeight: 1.8, margin: "4px 0 10px" }}>
+          {items.map((it, i) => <li key={i} style={{ marginBottom: 3 }}>{it}</li>)}
         </Tag>
       );
     }
@@ -868,6 +871,7 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack }) {
   const [reviewerComments, setReviewerComments] = useState([]); // sent-back comments from reviewers
   const [commentsOpen,     setCommentsOpen]     = useState(true);
   const [chatOpen,         setChatOpen]         = useState(false);
+  const [exporting,        setExporting]        = useState(false);
 
   const saveTimer        = useRef(null);
   const editorScrollRef  = useRef(null);
@@ -1026,6 +1030,25 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack }) {
     apiFetch("/api/builder/blocks/reorder", { method: "POST", body: JSON.stringify({ items }) });
   }
 
+  async function handleExportDocx() {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const blob     = await generateSectionDocx(section, blocks, reportMeta, reportSections);
+      const filename = `${(section?.title || "section").replace(/[^a-z0-9\s]/gi, "").trim()}.docx`;
+      downloadBlob(blob, filename);
+    } catch (err) {
+      console.error("docx export failed:", err);
+      alert("Export failed: " + (err?.message || "unknown error"));
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  function handleExportPdf() {
+    printSectionAsPdf(section, blocks, reportMeta);
+  }
+
   async function handleSubmit() {
     if (!window.confirm("Submit this section for review? You won't be able to edit it until the reviewer responds.")) return;
     setSubmitting(true);
@@ -1135,6 +1158,67 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack }) {
             {saveLabel}
           </div>
         )}
+
+        {/* Export to Word */}
+        <button
+          onClick={handleExportDocx}
+          disabled={exporting || blocks.length === 0}
+          title="Download as Word document (.docx)"
+          style={{
+            display: "flex", alignItems: "center", gap: 6, padding: "6px 14px",
+            border: "1.5px solid #d1fae5",
+            borderRadius: 20, flexShrink: 0,
+            background: exporting
+              ? "#f0fdf4"
+              : "linear-gradient(135deg,#ecfdf5,#d1fae5)",
+            fontSize: 12, fontWeight: 700,
+            color: exporting ? "#6ee7b7" : "#047857",
+            cursor: exporting || blocks.length === 0 ? "not-allowed" : "pointer",
+            opacity: blocks.length === 0 ? 0.5 : 1,
+            transition: "all 0.18s",
+            boxShadow: "0 1px 4px rgba(5,150,105,0.12)",
+          }}
+          onMouseEnter={e => { if (!exporting && blocks.length > 0) e.currentTarget.style.boxShadow = "0 3px 10px rgba(5,150,105,0.22)"; }}
+          onMouseLeave={e => { e.currentTarget.style.boxShadow = "0 1px 4px rgba(5,150,105,0.12)"; }}
+        >
+          {exporting ? (
+            <>⏳ Exporting…</>
+          ) : (
+            <>
+              <svg width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M4 16v1a1 1 0 001 1h10a1 1 0 001-1v-1M10 3v10m0 0l-3-3m3 3l3-3" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+              Convert to Word
+            </>
+          )}
+        </button>
+
+        {/* Convert to PDF */}
+        <button
+          onClick={handleExportPdf}
+          disabled={blocks.length === 0}
+          title="Print / Save as PDF"
+          style={{
+            display: "flex", alignItems: "center", gap: 6, padding: "6px 14px",
+            border: "1.5px solid #bfdbfe",
+            borderRadius: 20, flexShrink: 0,
+            background: "linear-gradient(135deg,#eff6ff,#dbeafe)",
+            fontSize: 12, fontWeight: 700,
+            color: "#1d4ed8",
+            cursor: blocks.length === 0 ? "not-allowed" : "pointer",
+            opacity: blocks.length === 0 ? 0.5 : 1,
+            transition: "all 0.18s",
+            boxShadow: "0 1px 4px rgba(59,130,246,0.12)",
+          }}
+          onMouseEnter={e => { if (blocks.length > 0) e.currentTarget.style.boxShadow = "0 3px 10px rgba(59,130,246,0.22)"; }}
+          onMouseLeave={e => { e.currentTarget.style.boxShadow = "0 1px 4px rgba(59,130,246,0.12)"; }}
+        >
+          <svg width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M7 7H5a2 2 0 00-2 2v6a2 2 0 002 2h10a2 2 0 002-2V9a2 2 0 00-2-2h-2M7 7V5a2 2 0 012-2h2a2 2 0 012 2v2M7 7h6" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d="M10 13v-2m0 4h.01" strokeLinecap="round"/>
+          </svg>
+          Convert to PDF
+        </button>
 
         {/* Comments toggle */}
         <button

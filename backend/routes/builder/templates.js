@@ -230,11 +230,51 @@ router.post("/:id/sections", requireRole(["super_admin", "institute_admin", "pub
   }
 });
 
+/* ── PUT /:id/sections/:secId ── update template section ───────────────────── */
+router.put("/:id/sections/:secId", requireRole(["super_admin", "institute_admin", "publication_cell"]), async (req, res) => {
+  const pool = req.app.locals.pool;
+  try {
+    const { id, secId } = req.params;
+    const allowed = ["title", "description", "order_index", "workflow_template_id"];
+    const sets = [], params = [];
+    for (const f of allowed) {
+      if (req.body[f] !== undefined) { params.push(req.body[f]); sets.push(`${f} = $${params.length}`); }
+    }
+    if (!sets.length) return res.status(400).json({ success: false, message: "Nothing to update" });
+    params.push(secId); params.push(id);
+    const { rows } = await pool.query(
+      `UPDATE public.template_sections SET ${sets.join(", ")} WHERE id = $${params.length - 1} AND template_id = $${params.length} RETURNING *`,
+      params
+    );
+    if (!rows.length) return res.status(404).json({ success: false, message: "Section not found" });
+    return res.json({ success: true, data: rows[0] });
+  } catch (err) {
+    logger.error("templates PUT section", { ...getLogContext(req), err: err.message });
+    return res.status(500).json({ success: false, message: "Failed to update section" });
+  }
+});
+
 /* ── DELETE /:id/sections/:secId ── remove template section ─────────────────── */
 router.delete("/:id/sections/:secId", requireRole(["super_admin", "institute_admin", "publication_cell"]), async (req, res) => {
   const pool = req.app.locals.pool;
   try {
     const { id, secId } = req.params;
+
+    // Guard: reject if section or any descendant has required blocks
+    const { rows: reqRows } = await pool.query(
+      `WITH RECURSIVE descendants AS (
+         SELECT id FROM public.template_sections WHERE id = $1 AND template_id = $2
+         UNION ALL
+         SELECT ts.id FROM public.template_sections ts
+         JOIN descendants d ON ts.parent_id = d.id WHERE ts.template_id = $2
+       )
+       SELECT COUNT(*) AS cnt FROM public.template_blocks tb
+       JOIN descendants d ON tb.template_section_id = d.id WHERE tb.is_required = TRUE`,
+      [secId, id]
+    );
+    if (Number(reqRows[0].cnt) > 0)
+      return res.status(409).json({ success: false, message: "Cannot delete: section contains required blocks" });
+
     await pool.query(
       `DELETE FROM public.template_sections WHERE id = $1 AND template_id = $2`, [secId, id]
     );
@@ -275,6 +315,47 @@ router.post("/:id/sections/:secId/blocks", requireRole(["super_admin", "institut
   } catch (err) {
     logger.error("templates POST block", { ...getLogContext(req), err: err.message });
     return res.status(500).json({ success: false, message: "Failed to add block" });
+  }
+});
+
+/* ── PUT /:id/sections/:secId/blocks/:blkId ── update block ─────────────────── */
+router.put("/:id/sections/:secId/blocks/:blkId", requireRole(["super_admin", "institute_admin", "publication_cell"]), async (req, res) => {
+  const pool = req.app.locals.pool;
+  try {
+    const { secId, blkId } = req.params;
+    const sets = [], params = [];
+    if (req.body.default_content !== undefined) { params.push(JSON.stringify(req.body.default_content)); sets.push(`default_content = $${params.length}`); }
+    if (req.body.is_required      !== undefined) { params.push(Boolean(req.body.is_required));            sets.push(`is_required = $${params.length}`); }
+    if (req.body.order_index      !== undefined) { params.push(Number(req.body.order_index));             sets.push(`order_index = $${params.length}`); }
+    if (!sets.length) return res.status(400).json({ success: false, message: "Nothing to update" });
+    params.push(blkId); params.push(secId);
+    const { rows } = await pool.query(
+      `UPDATE public.template_blocks SET ${sets.join(", ")} WHERE id = $${params.length - 1} AND template_section_id = $${params.length} RETURNING *`,
+      params
+    );
+    if (!rows.length) return res.status(404).json({ success: false, message: "Block not found" });
+    return res.json({ success: true, data: rows[0] });
+  } catch (err) {
+    logger.error("templates PUT block", { ...getLogContext(req), err: err.message });
+    return res.status(500).json({ success: false, message: "Failed to update block" });
+  }
+});
+
+/* ── DELETE /:id/sections/:secId/blocks/:blkId ── remove block ──────────────── */
+router.delete("/:id/sections/:secId/blocks/:blkId", requireRole(["super_admin", "institute_admin", "publication_cell"]), async (req, res) => {
+  const pool = req.app.locals.pool;
+  try {
+    const { secId, blkId } = req.params;
+    const { rows: chk } = await pool.query(
+      `SELECT is_required FROM public.template_blocks WHERE id = $1 AND template_section_id = $2`, [blkId, secId]
+    );
+    if (!chk.length) return res.status(404).json({ success: false, message: "Block not found" });
+    if (chk[0].is_required) return res.status(409).json({ success: false, message: "Cannot delete a required block" });
+    await pool.query(`DELETE FROM public.template_blocks WHERE id = $1`, [blkId]);
+    return res.json({ success: true, message: "Block removed" });
+  } catch (err) {
+    logger.error("templates DELETE block", { ...getLogContext(req), err: err.message });
+    return res.status(500).json({ success: false, message: "Failed to remove block" });
   }
 });
 

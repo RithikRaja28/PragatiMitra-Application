@@ -27,8 +27,9 @@ import React from "react";
 import PlaceholderPage from "../shared/PlaceholderPage";
 
 /* ── Collaborative Report Builder ──────────────────────────── */
-import ReportBuilderListPage  from "../../pages/Roles/shared/builder/ReportBuilderListPage";
-import MyAssignedSectionsPage from "../../pages/Roles/shared/builder/MyAssignedSectionsPage";
+import ReportBuilderListPage        from "../../pages/Roles/shared/builder/ReportBuilderListPage";
+import MyAssignedSectionsPage       from "../../pages/Roles/shared/builder/MyAssignedSectionsPage";
+import TemplateListPage              from "../../pages/Roles/shared/builder/TemplateListPage";
 
 /* ── Super Admin page imports ───────────────────────────────── */
 import SuperAdminOverviewPage    from "../../pages/Roles/superadmin/SuperAdminOverviewPage";
@@ -45,6 +46,8 @@ import ReportSetupPage                  from "../../pages/Roles/institutionadmin
 import InstituteAdminUserManagementPage from "../../pages/Roles/institutionadmin/InstituteAdminUserManagementPage";
 import InstituteAdminDepartmentPage     from "../../pages/Roles/institutionadmin/InstituteAdminDepartmentPage";
 import InstituteKpiPage                  from "../../pages/Roles/institutionadmin/InstituteKpiPage";
+import ReportCyclePage                  from "../../pages/Roles/institutionadmin/ReportCyclePage";
+import WorkflowTemplatePage             from "../../pages/Roles/institutionadmin/WorkflowTemplatePage";
 import InstituteFormManagementPage      from "../../pages/Forms/InstituteFormManagementPage";
 import DeptKpiPage                       from "../../pages/Roles/departmentadmin/DeptKpiPage";
 
@@ -325,6 +328,7 @@ export const ROLE_CONFIG = {
       {
         group: "Reports",
         items: [
+          { id: "ia-report-cycles",   label: "Report Cycles",   icon: "CalendarDays",  permission: null },
           { id: "ia-report-setup",    label: "Report Setup",    icon: "FileText",      permission: null, slug: "report-management" },
           { id: "ia-kpi",             label: "KPI Charts",      icon: "BarChart2",     permission: null, slug: "kpi-management",  subRoutes: KPI_INSTITUTE_SUB },
           { id: "ia-report-builder",  label: "Report Builder",  icon: "BookOpen",      permission: null, slug: "report-builder",  subRoutes: REPORT_BUILDER_SUB },
@@ -348,9 +352,15 @@ export const ROLE_CONFIG = {
         group: "Workflow",
         items: [
           {
+            id: "ia-workflow-templates",
+            label: "Workflow Templates",
+            icon: "GitBranch",
+            permission: null,
+          },
+          {
             id: "ia-workflow",
             label: "Workflow",
-            icon: "GitBranch",
+            icon: "Network",
             permission: null,
             slug: "workflow",
           },
@@ -388,13 +398,15 @@ export const ROLE_CONFIG = {
       "ia-users":             <InstituteAdminUserManagementPage />,
       "ia-departments":       <InstituteAdminDepartmentPage />,
       "ia-form-management":   <InstituteFormManagementPage />,
+      "ia-report-cycles":     <ReportCyclePage />,
       "ia-report-setup":      <ReportSetupPage />,
       "ia-kpi":               <InstituteKpiPage />,
       "ia-report-builder":    <ReportBuilderListPage />,
       "ia-my-sections":       <MyAssignedSectionsPage />,
       "ia-review-queue":      <ReviewQueuePage />,
-      "ia-sections":          <SectionsPage />,
-      "ia-workflow":          <WorkflowPage />,
+      "ia-sections":              <SectionsPage />,
+      "ia-workflow-templates":    <WorkflowTemplatePage />,
+      "ia-workflow":              <WorkflowPage />,
       "ia-task-workflow":     <TaskWorkflowPage />,
       "ia-version-control": <VersionControlPage />,
       "ia-system": <SystemPage />,
@@ -735,12 +747,19 @@ export const ROLE_CONFIG = {
       {
         group: "My Work",
         items: [
-          { id: "pc-sections", label: "My Sections", icon: "FileEdit", permission: null, slug: "my-sections", subRoutes: MY_SECTIONS_SUB },
+          { id: "pc-sections",         label: "My Sections",      icon: "FileEdit",   permission: null },
+        ],
+      },
+      {
+        group: "Templates",
+        items: [
+          { id: "pc-templates",        label: "Templates",        icon: "LayoutList", permission: null, slug: "my-sections", subRoutes: MY_SECTIONS_SUB },
         ],
       },
     ],
     pages: {
-      "pc-sections": <MyAssignedSectionsPage />,
+      "pc-sections":        <MyAssignedSectionsPage />,
+      "pc-templates": <TemplateListPage />,
     },
     defaultPage: "pc-sections",
     user: { name: "Publication Cell", initials: "PC", org: "PragatiMitra" },
