@@ -2,10 +2,8 @@ import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate, useLocation, Navigate } from "react-router-dom";
 import { useAuth } from "../../../../store/AuthContext";
 import { useApi }  from "../../../../hooks/useApi";
-
-const SLUG = "report-builder";
-import FormScreen   from "../../../../components/shared/FormScreen";
-import { S }        from "../../../../components/shared/formUtils";
+import FormScreen              from "../../../../components/shared/FormScreen";
+import { S }                  from "../../../../components/shared/formUtils";
 import CollaborativeEditorPage   from "./CollaborativeEditorPage";
 import CreateReportWizardPage    from "./CreateReportWizardPage";
 import ReportStructurePage       from "./ReportStructurePage";
@@ -13,6 +11,8 @@ import AssignSectionsPage        from "./AssignSectionsPage";
 import ReviewSectionPage         from "./ReviewSectionPage";
 import CompileReportPage         from "./CompileReportPage";
 import ReportDashboardPage       from "./ReportDashboardPage";
+
+const SLUG = "report-builder";
 
 /* ─── helpers ───────────────────────────────────────────────────────────── */
 function fmtDate(iso) {
@@ -745,8 +745,8 @@ export default function ReportBuilderListPage() {
                 key={r.id}
                 report={r}
                 prog={progress[r.id]}
-                onOpen={() => { setOpenReport({ id: r.id, title: r.title }); setView("structure"); }}
-                onStats={() => { setOpenReport({ id: r.id, title: r.title }); setView("dashboard"); }}
+                onOpen={() => navFn(`${listPath}/structure`, { state: { entity: { id: r.id, title: r.title } } })}
+                onStats={() => navFn(`${listPath}/dashboard`, { state: { entity: { id: r.id, title: r.title } } })}
                 onDelete={() => handleDelete(r.id, r.title)}
                 deleting={deletingId === r.id}
               />
