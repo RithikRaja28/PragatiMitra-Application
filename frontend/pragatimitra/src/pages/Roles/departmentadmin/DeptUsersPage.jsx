@@ -1,6 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
+import { useNavigate, useLocation, Navigate } from "react-router-dom";
 import { useApi } from "../../../hooks/useApi";
 import { useAuth } from "../../../store/AuthContext";
+
+const SLUG = "user-management";
 import { S, Toast } from "../../../components/shared/formUtils";
 import FormScreen from "../../../components/shared/FormScreen";
 import PageHeader from "../../../components/shared/PageHeader";
@@ -576,35 +579,38 @@ export default function DepartmentAdminUserManagementPage() {
   const { apiFetch } = useApi();
   const { user }     = useAuth();
   const { lang }     = useLanguage();
-  const [formView,   setFormView]   = useState(null);
-  const [toast,      setToast]      = useState(null);
-  const [refreshKey, setRefreshKey] = useState(0);
+  const navigate     = useNavigate();
+  const location     = useLocation();
+
+  const isCreate = location.pathname.endsWith("/create");
+  const isEdit   = location.pathname.endsWith("/edit");
+  const listPath = `/${SLUG}`;
+  const entity   = isEdit ? (location.state?.entity ?? null) : null;
+
+  const [toast, setToast] = useState(location.state?.toast ?? null);
 
   const institutionId   = user?.institutionId   || "";
   const institutionName = user?.institutionName || "Your Institution";
   const departmentId    = user?.departmentId    || "";
   const departmentName  = user?.departmentName  || "Your Department";
 
-  const showToast = (message, type = "success") => {
-    setToast({ message, type });
-    setTimeout(() => setToast(null), 3500);
-  };
+  if (isEdit && !entity) return <Navigate to={listPath} replace />;
 
-  if (formView) {
+  if (isCreate || isEdit) {
     return (
       <>
         {toast && <Toast message={toast.message} type={toast.type} />}
         <UserForm
-          mode={formView.mode}
-          entity={formView.entity}
+          mode={isEdit ? "edit" : "create"}
+          entity={entity}
           apiFetch={apiFetch}
           institutionId={institutionId}
           institutionName={institutionName}
           departmentId={departmentId}
           departmentName={departmentName}
-          onCreated={(msg) => { setFormView(null); showToast(msg); setRefreshKey((k) => k + 1); }}
-          onSaved={(msg)   => { setFormView(null); showToast(msg); setRefreshKey((k) => k + 1); }}
-          onBack={() => setFormView(null)}
+          onCreated={(msg) => navigate(listPath, { state: { toast: { message: msg, type: "success" } } })}
+          onSaved={(msg)   => navigate(listPath, { state: { toast: { message: msg, type: "success" } } })}
+          onBack={() => navigate(listPath)}
         />
       </>
     );
@@ -629,7 +635,7 @@ export default function DepartmentAdminUserManagementPage() {
         actions={
           <ActionButton
             variant="primary"
-            onClick={() => setFormView({ mode: "create", entity: null })}
+            onClick={() => navigate(`${listPath}/create`)}
             style={{ height: 38 }}
           >
             {t("+ New User", lang)}
@@ -638,9 +644,8 @@ export default function DepartmentAdminUserManagementPage() {
       />
 
       <UserList
-        key={refreshKey}
         apiFetch={apiFetch}
-        onEdit={(u) => setFormView({ mode: "edit", entity: u })}
+        onEdit={(u) => navigate(`${listPath}/edit`, { state: { entity: u } })}
       />
     </div>
   );

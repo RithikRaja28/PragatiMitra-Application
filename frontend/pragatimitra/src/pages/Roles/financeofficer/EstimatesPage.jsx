@@ -1,7 +1,14 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
+import { useNavigate, useLocation, Navigate } from "react-router-dom";
 import { Save, ClipboardList } from "lucide-react";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { t } from "../../../i18n/translations";
+
+const SLUG = "estimates";
+
+/* Ephemeral module-level store: persists across route transitions (client-side only, no API) */
+let _est_saved          = [];
+let _est_customSchemes  = null;
 
 /* ─── Color tokens (matching screenshot blue theme) ─── */
 const C = {
@@ -184,19 +191,39 @@ function SavedCard({ entry, onEdit, onDelete }) {
    MAIN PAGE
 ══════════════════════════════════════════════════════════════ */
 export default function EstimatesPage() {
-  const { lang } = useLanguage();
-  const [scheme,      setScheme]      = useState("");
-  const [programme,   setProgramme]   = useState("");
-  const [rows,        setRows]        = useState([newRow(), newRow(), newRow()]);
-  const [saved,       setSaved]       = useState([]);
-  const [editingId,   setEditingId]   = useState(null);
+  const { lang }   = useLanguage();
+  const navigate   = useNavigate();
+  const location   = useLocation();
+  const isNew      = location.pathname.endsWith("/new");
+  const isEdit     = location.pathname.endsWith("/edit");
+  const listPath   = `/${SLUG}`;
+
+  const editEntity = isEdit ? (location.state?.entity ?? null) : null;
+
+  const [scheme,      setScheme]      = useState(editEntity?.scheme ?? "");
+  const [programme,   setProgramme]   = useState(editEntity?.programme ?? "");
+  const [rows,        setRows]        = useState(() => editEntity?.rows?.map(r => ({ ...r })) ?? [newRow(), newRow(), newRow()]);
+  const [saved,       _setSaved]      = useState(_est_saved);
+  const [editingId]                   = useState(editEntity?.id ?? null);
   const [toast,       setToast]       = useState(null);
-  const [activeTab,   setActiveTab]   = useState("entry"); // "entry" | "saved"
   const [managingSchemes, setManagingSchemes] = useState(false);
-  const [customSchemes,   setCustomSchemes]   = useState({ ...SCHEMES });
+  const [customSchemes,   _setCustomSchemes]  = useState(() => _est_customSchemes ?? (_est_customSchemes = { ...SCHEMES }));
   const [newSchemeName,   setNewSchemeName]   = useState("");
   const [newProgName,     setNewProgName]     = useState("");
   const [editSchemeKey,   setEditSchemeKey]   = useState("");
+
+  const setSaved = useCallback((fn) => {
+    const next = typeof fn === "function" ? fn(_est_saved) : fn;
+    _est_saved = next;
+    _setSaved(next);
+  }, [_setSaved]);
+  const setCustomSchemes = useCallback((fn) => {
+    const next = typeof fn === "function" ? fn(_est_customSchemes) : fn;
+    _est_customSchemes = next;
+    _setCustomSchemes(next);
+  }, [_setCustomSchemes]);
+
+  if (isEdit && !editEntity) return <Navigate to={listPath} replace />;
 
   const programmes = useMemo(() => scheme ? (customSchemes[scheme] || []) : [], [scheme, customSchemes]);
 
@@ -210,8 +237,6 @@ export default function EstimatesPage() {
 
   const addRow = () => setRows(r => [...r, newRow()]);
   const delRow = (id) => setRows(r => r.filter(row => row.id !== id));
-
-  const resetForm = () => { setScheme(""); setProgramme(""); setRows([newRow(), newRow(), newRow()]); setEditingId(null); };
 
   const validate = () => {
     if (!scheme) { showToast("Please select a Scheme.", C.danger); return false; }
@@ -227,19 +252,14 @@ export default function EstimatesPage() {
     const entry = { id: editingId || Date.now(), scheme, programme, rows: [...rows], status };
     if (editingId) {
       setSaved(s => s.map(e => e.id === editingId ? entry : e));
-      showToast("Entry updated successfully.");
     } else {
       setSaved(s => [...s, entry]);
-      showToast(status === "Submitted" ? "Submitted for approval!" : "Saved as draft.");
     }
-    resetForm();
-    setActiveTab("saved");
+    navigate(listPath);
   };
 
   const handleEdit = (entry) => {
-    setScheme(entry.scheme); setProgramme(entry.programme);
-    setRows(entry.rows.map(r => ({ ...r }))); setEditingId(entry.id);
-    setActiveTab("entry");
+    navigate(`${listPath}/edit`, { state: { entity: entry } });
   };
 
   const handleDelete = (id) => {
@@ -303,16 +323,18 @@ export default function EstimatesPage() {
       {/* Tabs */}
       <div style={{ display: "flex", gap: 0, background: C.surface, border: `0.5px solid ${C.border}`,
         borderRadius: 10, padding: 4, width: "fit-content" }}>
-        {[["entry", editingId ? `✎ ${t("Edit Entry", lang)}` : `+ ${t("New Entry", lang)}`], ["saved", `${t("Saved Entries", lang)} (${saved.length})`]].map(([id, label]) => (
-          <button key={id} onClick={() => setActiveTab(id)}
-            style={{ ...btn(activeTab === id ? "primary" : "ghost", "sm"), borderRadius: 7, padding: "7px 18px", fontSize: 12 }}>
-            {label}
-          </button>
-        ))}
+        <button onClick={() => navigate(isEdit ? `${listPath}/edit` : `${listPath}/new`)}
+          style={{ ...btn((isNew || isEdit) ? "primary" : "ghost", "sm"), borderRadius: 7, padding: "7px 18px", fontSize: 12 }}>
+          {editingId ? `✎ ${t("Edit Entry", lang)}` : `+ ${t("New Entry", lang)}`}
+        </button>
+        <button onClick={() => navigate(listPath)}
+          style={{ ...btn((!isNew && !isEdit) ? "primary" : "ghost", "sm"), borderRadius: 7, padding: "7px 18px", fontSize: 12 }}>
+          {`${t("Saved Entries", lang)} (${saved.length})`}
+        </button>
       </div>
 
       {/* ── ENTRY FORM ── */}
-      {activeTab === "entry" && (
+      {(isNew || isEdit) && (
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
 
           {/* Scheme + Programme selectors */}
@@ -448,7 +470,7 @@ export default function EstimatesPage() {
       )}
 
       {/* ── SAVED ENTRIES ── */}
-      {activeTab === "saved" && (
+      {(!isNew && !isEdit) && (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {saved.length === 0
             ? <div style={{ background: C.surface, border: `0.5px solid ${C.border}`, borderRadius: 14,
@@ -456,7 +478,7 @@ export default function EstimatesPage() {
                 <ClipboardList size={32} strokeWidth={1.5} color={C.textSub} style={{ marginBottom: 12 }} />
                 <div style={{ fontSize: 14, fontWeight: 600, color: C.text, marginBottom: 6 }}>{t("No entries yet", lang)}</div>
                 <div style={{ fontSize: 12, color: C.textSub, marginBottom: 16 }}>{t("Create your first estimate using the entry form.", lang)}</div>
-                <button onClick={() => setActiveTab("entry")} style={btn("primary")}>+ {t("New Entry", lang)}</button>
+                <button onClick={() => navigate(`${listPath}/new`)} style={btn("primary")}>+ {t("New Entry", lang)}</button>
               </div>
             : <>
                 {/* Summary row */}

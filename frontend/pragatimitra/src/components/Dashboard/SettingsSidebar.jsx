@@ -81,6 +81,26 @@ export function flatSettingsItems(role) {
 }
 
 /* ══════════════════════════════════════════════════════════════
+   SettingsEmptyPage
+   Shown at /dashboard/<role>/settings for roles that have no
+   settings items (buildSettingsNav returns []), instead of the old
+   "No page registered" fallback.
+══════════════════════════════════════════════════════════════ */
+export function SettingsEmptyPage() {
+  return (
+    <div style={{
+      display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+      height: "100%", minHeight: 320, gap: 10, textAlign: "center",
+      fontFamily: "'Plus Jakarta Sans', sans-serif", color: "#94a3b8",
+    }}>
+      <Icons.Settings size={28} style={{ opacity: 0.5 }} />
+      <div style={{ fontSize: 15, fontWeight: 600, color: "#475569" }}>No settings available</div>
+      <div style={{ fontSize: 13 }}>There are no configurable settings for your role yet.</div>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════
    MAIN EXPORT
    Uses .sh-sidebar / .sh-nav-item / .sh-collapse-btn etc.
    directly — the exact same classes AppShell already has in CSS.

@@ -1,8 +1,11 @@
 "use client";
 import { useEffect, useRef, useState, useCallback } from "react";
+import { useNavigate, useLocation, Navigate } from "react-router-dom";
 import { useAuth } from "../../store/AuthContext";
 import FormScreen from "../shared/FormScreen";
 import { S } from "../shared/formUtils";
+
+const SLUG = "kpi-management";
 
 // ─── API ──────────────────────────────────────────────────────────────────────
 const API = "http://localhost:5000/api/kpi";
@@ -662,6 +665,8 @@ function KpiCard({ cfg, idx, isActive, generating, onEdit, onPreview, onDelete }
 
 // ─── Main component ───────────────────────────────────────────────────────────
 export default function KpiManagementPage({ scope = "institute" }) {
+  const navFn    = useNavigate();
+  const location = useLocation();
   const { accessToken } = useAuth();
   const apiFetch = useCallback(makeApiFetch(accessToken), [accessToken]); // eslint-disable-line
 
@@ -670,9 +675,10 @@ export default function KpiManagementPage({ scope = "institute" }) {
     ? "Configure and export KPI charts for your department's annual report."
     : "Configure and export KPI charts for the institute's annual report.";
 
-  // ── View state ──
-  const [view,       setView]       = useState("list"); // "list" | "create" | "edit"
-  const [editCfg,    setEditCfg]    = useState(null);
+  const listPath = `/${SLUG}`;
+  const isCreate = location.pathname.endsWith("/create");
+  const isEdit   = location.pathname.endsWith("/edit");
+  const editCfg  = isEdit ? (location.state?.entity ?? null) : null;
 
   // ── Data state ──
   const [configs,    setConfigs]    = useState([]);
@@ -798,7 +804,7 @@ export default function KpiManagementPage({ scope = "institute" }) {
     } catch(e){ notify(e.message,true); }
   },[activeCfg,apiFetch,notify]);
 
-  const handleSaved = (saved)=>{ loadConfigs(); setView("list"); regenerate(saved); };
+  const handleSaved = (saved)=>{ loadConfigs(); navFn(listPath); regenerate(saved); };
 
   const filtered = configs.filter(c=>{
     if (statusFilter==="exported") return !!c.svg_id;
@@ -807,15 +813,16 @@ export default function KpiManagementPage({ scope = "institute" }) {
   });
 
   // ── Form views ──────────────────────────────────────────────────────────────
-  if (view==="create"||view==="edit") {
+  if (isCreate || isEdit) {
+    if (isEdit && !editCfg) return <Navigate to={listPath} replace />;
     return (
       <KpiForm
-        cfg={view==="edit" ? editCfg : null}
+        cfg={isEdit ? editCfg : null}
         tables={tables}
         tabStatus={tabStatus}
         existingConfigs={configs}
         scope={scope}
-        onBack={()=>setView("list")}
+        onBack={()=>navFn(listPath)}
         onSaved={handleSaved}
         notify={notify}
         apiFetch={apiFetch}
@@ -861,7 +868,7 @@ export default function KpiManagementPage({ scope = "institute" }) {
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.95"/></svg>
             Refresh
           </button>
-          <button onClick={()=>setView("create")} style={{ display:"inline-flex", alignItems:"center", gap:6, padding:"9px 18px", borderRadius:10, border:"none", background:"#2563eb", color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer", boxShadow:"0 2px 8px rgba(37,99,235,.3)" }}>
+          <button onClick={()=>navFn(`${listPath}/create`)} style={{ display:"inline-flex", alignItems:"center", gap:6, padding:"9px 18px", borderRadius:10, border:"none", background:"#2563eb", color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer", boxShadow:"0 2px 8px rgba(37,99,235,.3)" }}>
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             New KPI Chart
           </button>
@@ -882,7 +889,7 @@ export default function KpiManagementPage({ scope = "institute" }) {
             <KpiCard key={cfg.id} cfg={cfg} idx={idx}
               isActive={activeCfg?.id===cfg.id}
               generating={generating}
-              onEdit={c=>{ setEditCfg(c); setView("edit"); }}
+              onEdit={c=>navFn(`${listPath}/edit`, { state: { entity: c } })}
               onPreview={c=>regenerate(c)}
               onDelete={deleteConfig}
             />

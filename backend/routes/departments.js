@@ -817,6 +817,46 @@ router.post(
   }
 );
 
+/* ── GET /api/departments/:id ───────────────────────────────────
+   Single-department fetch for the edit page — required so
+   /department-management/:deptId/edit can load its data directly
+   (refresh / deep link), not just via in-app navigation state.
+──────────────────────────────────────────────────────────────── */
+router.get(
+  "/:id",
+  requireRole(["super_admin", "institute_admin"]),
+  async (req, res) => {
+    const pool = req.app.locals.pool;
+    const departmentId = req.params.id;
+
+    if (!isUUID(departmentId)) {
+      return res.status(400).json({ success: false, message: "Invalid department ID." });
+    }
+
+    try {
+      const { rows } = await pool.query(
+        `SELECT department_id, name, name_hi, code, status, institution_id, created_at
+         FROM   departments
+         WHERE  department_id = $1`,
+        [departmentId]
+      );
+      if (!rows.length) {
+        return res.status(404).json({ success: false, message: "Department not found." });
+      }
+      const dept = rows[0];
+
+      if (isOnlyInstAdmin(req) && dept.institution_id !== req.user.institutionId) {
+        return res.status(403).json({ success: false, message: "You can only view departments in your own institution." });
+      }
+
+      return res.json({ success: true, data: dept });
+    } catch (err) {
+      logger.error("GET /api/departments/:id failed", { ...getLogContext(req), stack: err.stack });
+      return res.status(500).json({ success: false, message: "Failed to fetch department." });
+    }
+  }
+);
+
 /* ── PUT /api/departments/:id ───────────────────────────────────
    Super admin  → can update any department (unchanged).
    Inst. admin  → 403 if the department belongs to another institution.

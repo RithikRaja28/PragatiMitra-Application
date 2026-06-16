@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useCallback } from "react";
+import { useNavigate, useLocation, Navigate } from "react-router-dom";
 import { useAuth } from "../../../../store/AuthContext";
 import { useApi }  from "../../../../hooks/useApi";
+
+const SLUG = "report-builder";
 import FormScreen   from "../../../../components/shared/FormScreen";
 import { S }        from "../../../../components/shared/formUtils";
 import CollaborativeEditorPage   from "./CollaborativeEditorPage";
@@ -128,22 +131,22 @@ function CreateReportForm({ onBack, onCreate }) {
    REPORT BUILDER LIST PAGE
 ═══════════════════════════════════════════════════════════════════════════ */
 export default function ReportBuilderListPage() {
+  const navFn    = useNavigate();
+  const location = useLocation();
   const { user }     = useAuth();
   const { apiFetch } = useApi();
 
-  // view: "list" | "wizard" | "editor" | "structure" | "assign" | "compile" | "dashboard" | "review"
-  const [view,       setView]       = useState("list");
-  const [openReport, setOpenReport] = useState(null); // { id, title }
-  const [openSection, setOpenSection] = useState(null); // sectionId for review
-
-  const navigate = (viewName, id) => {
-    if (viewName === "review") {
-      setOpenSection(id);
-    } else if (id && viewName !== "list") {
-      setOpenReport(r => (r?.id === id ? r : { id, title: "" }));
-    }
-    setView(viewName);
-  };
+  const listPath  = `/${SLUG}`;
+  const pathname  = location.pathname;
+  const isCreate    = pathname.endsWith("/create");
+  const isStructure = pathname.endsWith("/structure");
+  const isEditor    = pathname.endsWith("/editor");
+  const isAssign    = pathname.endsWith("/assign");
+  const isCompile   = pathname.endsWith("/compile");
+  const isDashboard = pathname.endsWith("/dashboard");
+  const isReview    = pathname.endsWith("/review");
+  const reportEntity = location.state?.entity ?? null; // { id, title }
+  const sectionEntity = isReview ? location.state?.entity : null; // { id }
 
   const [reports,      setReports]      = useState([]);
   const [progress,     setProgress]     = useState({});
@@ -186,7 +189,7 @@ export default function ReportBuilderListPage() {
     const res  = await apiFetch("/api/builder/reports", { method: "POST", body: JSON.stringify(form) });
     const json = await res.json();
     if (!res.ok) throw new Error(json.message || "Failed to create");
-    setView("list");
+    navFn(listPath);
     fetchReports();
   }
 
@@ -203,70 +206,86 @@ export default function ReportBuilderListPage() {
   }
 
   /* ── sub-views ── */
-  if (view === "wizard") {
+  if (isCreate) {
     return (
       <CreateReportWizardPage
-        onCreated={(report) => { setOpenReport(report); setView("structure"); fetchReports(); }}
-        onCancel={() => setView("list")}
+        onCreated={(report) => {
+          fetchReports();
+          navFn(`${listPath}/structure`, { state: { entity: { id: report.id, title: report.title } } });
+        }}
+        onCancel={() => navFn(listPath)}
       />
     );
   }
 
-  if (view === "create") {
-    return <CreateReportForm onBack={() => setView("list")} onCreate={handleCreate} />;
-  }
-
-  if (view === "editor" && openReport) {
-    return (
-      <CollaborativeEditorPage
-        reportId={openReport.id}
-        reportTitle={openReport.title}
-        onBack={() => { setOpenReport(null); setView("list"); fetchReports(); }}
-      />
-    );
-  }
-
-  if (view === "structure" && openReport) {
+  if (isStructure) {
+    if (!reportEntity) return <Navigate to={listPath} replace />;
     return (
       <ReportStructurePage
-        reportId={openReport.id}
-        onNavigate={navigate}
+        reportId={reportEntity.id}
+        onNavigate={(viewName, id) => {
+          if (viewName === "review") {
+            navFn(`${listPath}/review`, { state: { entity: { id } } });
+          } else if (viewName === "list") {
+            navFn(listPath);
+          } else {
+            navFn(`${listPath}/${viewName}`, { state: { entity: reportEntity } });
+          }
+        }}
       />
     );
   }
 
-  if (view === "assign" && openReport) {
+  if (isEditor) {
+    if (!reportEntity) return <Navigate to={listPath} replace />;
+    return (
+      <CollaborativeEditorPage
+        reportId={reportEntity.id}
+        reportTitle={reportEntity.title}
+        onBack={() => { fetchReports(); navFn(listPath); }}
+      />
+    );
+  }
+
+  if (isAssign) {
+    if (!reportEntity) return <Navigate to={listPath} replace />;
     return (
       <AssignSectionsPage
-        reportId={openReport.id}
-        onBack={() => setView("structure")}
+        reportId={reportEntity.id}
+        onBack={() => navFn(`${listPath}/structure`, { state: { entity: reportEntity } })}
       />
     );
   }
 
-  if (view === "compile" && openReport) {
+  if (isCompile) {
+    if (!reportEntity) return <Navigate to={listPath} replace />;
     return (
       <CompileReportPage
-        reportId={openReport.id}
-        onBack={() => setView("structure")}
+        reportId={reportEntity.id}
+        onBack={() => navFn(`${listPath}/structure`, { state: { entity: reportEntity } })}
       />
     );
   }
 
-  if (view === "dashboard" && openReport) {
+  if (isDashboard) {
+    if (!reportEntity) return <Navigate to={listPath} replace />;
     return (
       <ReportDashboardPage
-        reportId={openReport.id}
-        onNavigate={navigate}
+        reportId={reportEntity.id}
+        onNavigate={(viewName, id) => {
+          if (viewName === "list") navFn(listPath);
+          else navFn(`${listPath}/${viewName}`, { state: { entity: reportEntity } });
+        }}
       />
     );
   }
 
-  if (view === "review" && openSection) {
+  if (isReview) {
+    if (!sectionEntity) return <Navigate to={listPath} replace />;
     return (
       <ReviewSectionPage
-        sectionId={openSection}
-        onBack={() => setView("structure")}
+        sectionId={sectionEntity.id}
+        onBack={() => navFn(listPath)}
       />
     );
   }
@@ -309,7 +328,7 @@ export default function ReportBuilderListPage() {
 
         {canCreate && (
           <div style={{ display: "flex", gap: 8 }}>
-            <button onClick={() => setView("wizard")} style={{
+            <button onClick={() => navFn(`${listPath}/create`)} style={{
               display: "flex", alignItems: "center", gap: 7, padding: "10px 18px",
               background: "#7c3aed", color: "#fff", border: "none", borderRadius: 9,
               fontSize: 13, fontWeight: 600, cursor: "pointer", flexShrink: 0,
@@ -359,7 +378,7 @@ export default function ReportBuilderListPage() {
             {!search && !filterStatus && "Create your first report to get started."}
           </div>
           {!search && !filterStatus && canCreate && (
-            <button onClick={() => setView("wizard")} style={{
+            <button onClick={() => navFn(`${listPath}/create`)} style={{
               padding: "10px 22px", background: "#7c3aed", color: "#fff",
               border: "none", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer",
             }}>
@@ -394,7 +413,7 @@ export default function ReportBuilderListPage() {
                 }}
                 onMouseEnter={(e) => (e.currentTarget.style.background = "#f8fafc")}
                 onMouseLeave={(e) => (e.currentTarget.style.background = "")}
-                onClick={() => { setOpenReport({ id: r.id, title: r.title }); setView("structure"); }}
+                onClick={() => navFn(`${listPath}/structure`, { state: { entity: { id: r.id, title: r.title } } })}
               >
                 <div>
                   <div style={{ fontSize: 14, fontWeight: 600, color: "#1e293b", marginBottom: 2 }}>{r.title}</div>
@@ -409,7 +428,7 @@ export default function ReportBuilderListPage() {
                     ? <ProgressBar prog={prog} />
                     : <span style={{ fontSize: 11, color: "#cbd5e1" }}>—</span>}
                 </div>
-                <div onClick={(e) => { e.stopPropagation(); setOpenReport({ id: r.id, title: r.title }); setView("dashboard"); }}>
+                <div onClick={(e) => { e.stopPropagation(); navFn(`${listPath}/dashboard`, { state: { entity: { id: r.id, title: r.title } } }); }}>
                   <button style={{ padding: "3px 8px", fontSize: 10, fontWeight: 600, background: "#e0e7ff",
                                    color: "#4338ca", border: "none", borderRadius: 5, cursor: "pointer" }}>
                     Stats

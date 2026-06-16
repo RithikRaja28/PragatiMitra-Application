@@ -6,6 +6,7 @@ import {
   useMemo,
   Fragment,
 } from "react";
+import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import * as Icons from "lucide-react";
 import { useAuth } from "../../store/AuthContext";
 import { useAcademicYear } from "../../store/AcademicYearContext";
@@ -982,7 +983,6 @@ function Sidebar({ navItems, collapsed, mobileOpen, onCollapse, onNavClick, acti
 /* ─── Main export ───────────────────────────────────────────── */
 export default function AppShell({
   navItems          = [],
-  pages             = {},
   defaultPage,
   logo,
   appName           = "PragatiMitra",
@@ -998,11 +998,11 @@ export default function AppShell({
 }) {
   injectCSS("app-shell-v4", CSS);
 
-  const firstId = defaultPage || navItems[0]?.items?.[0]?.id || Object.keys(pages)[0] || "";
-  const [activeId,     setActiveId]     = useState(firstId);
-  const [collapsed,    setCollapsed]    = useState(defaultCollapsed);
-  const [mobileOpen,   setMobileOpen]   = useState(false);
-  const [pageKey,      setPageKey]      = useState(0);
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  const [collapsed,  setCollapsed]  = useState(defaultCollapsed);
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   useEffect(() => {
     const fn = () => { if (window.innerWidth > 768) setMobileOpen(false); };
@@ -1010,11 +1010,28 @@ export default function AppShell({
     return () => window.removeEventListener("resize", fn);
   }, []);
 
-  // onNavigate may return false to cancel the navigation (used by the settings back button)
+  // The active nav item is derived from the URL — a flat, role-agnostic
+  // path (e.g. "user-management", "user-management/edit", or
+  // "settings/academic-year") matches an item whose `slug` is that path
+  // or a prefix of it, so nested sub-routes keep the same sidebar item
+  // highlighted as their parent. No local "current page" state.
+  const allItems = useMemo(
+    () => (navItems || []).flatMap((g) => g.items || []),
+    [navItems]
+  );
+  const path       = location.pathname.replace(/^\//, "");
+  const activeItem = allItems.find((i) => i.slug && (path === i.slug || path.startsWith(`${i.slug}/`)));
+  const activeId   = activeItem?.id ?? defaultPage;
+
+  // onNavigate may return false to cancel the navigation (used by the
+  // settings "Back to Dashboard" item, which performs its own navigate()).
   const handleNavClick = useCallback((id) => {
     const cancelled = onNavigate?.(id) === false;
-    if (!cancelled) { setActiveId(id); setPageKey((k) => k + 1); setMobileOpen(false); }
-  }, [onNavigate]);
+    if (cancelled) return;
+    const item = allItems.find((i) => i.id === id);
+    if (item?.slug) navigate(`/${item.slug}`);
+    setMobileOpen(false);
+  }, [onNavigate, allItems, navigate]);
 
   // Toggle collapse and notify the parent so the state survives the
   // dashboard ⇄ settings remount (RootLayout lifts it via onCollapseChange).
@@ -1025,12 +1042,6 @@ export default function AppShell({
       return next;
     });
   }, [onCollapseChange]);
-
-  const currentPage = pages[activeId] ?? (
-    <div style={{ padding: 40, color: "var(--sh-muted)", fontFamily: "var(--sh-font)" }}>
-      No page registered for <code style={{ fontFamily: "var(--sh-mono)" }}>"{activeId}"</code>.
-    </div>
-  );
 
   return (
     <ShellContext.Provider value={{ activeId, setActiveId: handleNavClick, collapsed, setCollapsed }}>
@@ -1064,8 +1075,8 @@ export default function AppShell({
             activeId={activeId}
           />
           <main className="sh-content">
-            <div key={pageKey} className="sh-page-enter">
-              {currentPage}
+            <div key={location.pathname} className="sh-page-enter">
+              <Outlet />
             </div>
           </main>
         </div>

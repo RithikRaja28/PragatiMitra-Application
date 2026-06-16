@@ -1,8 +1,11 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
+import { useNavigate, useLocation, Navigate } from "react-router-dom";
 import {
   FilePlus, Search, Plus, RefreshCw, Lock, Unlock, Eye, Settings2,
   CalendarClock, MoreHorizontal, Archive, ArchiveRestore, Languages, CalendarCog, Check,
 } from "lucide-react";
+
+const SLUG = "form-management";
 import { useApi } from "../../hooks/useApi";
 import { useAcademicYear } from "../../store/AcademicYearContext";
 import { Toast, isAuthError } from "../../components/shared/formUtils";
@@ -93,12 +96,16 @@ function DeadlineModal({ form, year, onClose, onSaved, showToast }) {
 }
 
 export default function DepartmentFormManagementPage() {
+  const navigate = useNavigate();
+  const location = useLocation();
   const { apiFetch } = useApi();
   const { selectedYear, academicYear } = useAcademicYear() || {};
 
-  const [view, setView] = useState("list");
-  const [builderMode, setBuilderMode] = useState(null);
-  const [selectedForm, setSelectedForm] = useState(null);
+  const isCreate  = location.pathname.endsWith("/create");
+  const isEdit    = location.pathname.endsWith("/edit");
+  const isRecords = location.pathname.endsWith("/records");
+  const listPath  = `/${SLUG}`;
+  const entity    = (isEdit || isRecords) ? (location.state?.entity ?? null) : null;
 
   const [forms, setForms] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -156,16 +163,16 @@ export default function DepartmentFormManagementPage() {
     finally { setBusyId(null); }
   }
 
-  function openCreate() { setSelectedForm(null); setBuilderMode("create"); setView("builder"); }
-  function openManage(f) { setSelectedForm(f); setBuilderMode("edit"); setView("builder"); }
-  function openRecords(f) { setSelectedForm(f); setView("records"); }
-  function onBuilderDone(message) { setView("list"); showToast(message); load(); }
-
-  if (view === "builder") {
-    return <DepartmentFormBuilderPage mode={builderMode} initialData={selectedForm} onDone={onBuilderDone} onBack={() => setView("list")} />;
+  if (isCreate) {
+    return <DepartmentFormBuilderPage mode="create" initialData={null} onDone={() => navigate(listPath)} onBack={() => navigate(listPath)} />;
   }
-  if (view === "records" && selectedForm) {
-    return <DepartmentFormRecordsPage form={selectedForm} year={selectedYear} onBack={() => { setView("list"); load(); }} />;
+  if (isEdit) {
+    if (!entity) return <Navigate to={listPath} replace />;
+    return <DepartmentFormBuilderPage mode="edit" initialData={entity} onDone={() => navigate(listPath)} onBack={() => navigate(listPath)} />;
+  }
+  if (isRecords) {
+    if (!entity) return <Navigate to={listPath} replace />;
+    return <DepartmentFormRecordsPage form={entity} year={selectedYear} onBack={() => navigate(listPath)} />;
   }
 
   const searching = search.trim().length > 0;
@@ -173,9 +180,9 @@ export default function DepartmentFormManagementPage() {
   function renderActions(form) {
     return (
       <div style={{ display: "inline-flex", alignItems: "center", gap: 6, justifyContent: "flex-end" }}>
-        <Button variant="secondary" iconOnly title="View records" icon={<Eye size={18} strokeWidth={STROKE} />} onClick={() => openRecords(form)} />
+        <Button variant="secondary" iconOnly title="View records" icon={<Eye size={18} strokeWidth={STROKE} />} onClick={() => navigate(`${listPath}/records`, { state: { entity: form } })} />
         <Button variant="secondary" iconOnly title="Manage deadline" icon={<CalendarClock size={18} strokeWidth={STROKE} />} onClick={() => setDeadlineForm(form)} />
-        <Button variant="secondary" iconOnly title="Manage form" icon={<Settings2 size={18} strokeWidth={STROKE} />} onClick={() => openManage(form)} />
+        <Button variant="secondary" iconOnly title="Manage form" icon={<Settings2 size={18} strokeWidth={STROKE} />} onClick={() => navigate(`${listPath}/edit`, { state: { entity: form } })} />
         <Dropdown align="right" width={210} button={({ toggle }) => (<Button variant="secondary" iconOnly title="More actions" icon={<MoreHorizontal size={18} strokeWidth={STROKE} />} onClick={toggle} />)}>
           <MenuLabel>Manage</MenuLabel>
           {form.is_archived
@@ -258,7 +265,7 @@ export default function DepartmentFormManagementPage() {
           <>
             <Button variant="secondary" icon={<RefreshCw size={18} strokeWidth={STROKE} />} onClick={load}>Refresh</Button>
             <Button variant="secondary" icon={<CalendarCog size={18} strokeWidth={STROKE} />} onClick={() => setCarryOpen(true)}>Set Up Year</Button>
-            <Button variant="primary" icon={<Plus size={18} strokeWidth={STROKE} />} onClick={openCreate}>Create Form</Button>
+            <Button variant="primary" icon={<Plus size={18} strokeWidth={STROKE} />} onClick={() => navigate(`${listPath}/create`)}>Create Form</Button>
           </>
         }
       />
@@ -304,7 +311,7 @@ export default function DepartmentFormManagementPage() {
             icon={searching ? <Search size={26} strokeWidth={1.5} /> : tab === "archived" ? <Archive size={26} strokeWidth={1.5} /> : <FilePlus size={26} strokeWidth={1.5} />}
             title={searching ? "No forms match your search" : tab === "archived" ? "No archived forms" : "No department forms yet"}
             description={searching ? "Try a different name or clear the search." : tab === "archived" ? "Forms archived for this academic year will appear here." : "Create your department's first form for this academic year."}
-            action={!searching && tab === "active" ? <Button variant="primary" icon={<Plus size={18} strokeWidth={STROKE} />} onClick={openCreate}>Create Form</Button> : undefined}
+            action={!searching && tab === "active" ? <Button variant="primary" icon={<Plus size={18} strokeWidth={STROKE} />} onClick={() => navigate(`${listPath}/create`)}>Create Form</Button> : undefined}
           />
         }
       />

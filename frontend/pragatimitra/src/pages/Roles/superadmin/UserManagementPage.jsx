@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useNavigate, useLocation, Navigate } from "react-router-dom";
 import {
   User, UsersRound, MoreHorizontal, Power, PowerOff,
   Pencil, Plus, Upload, Download, FileText, FileSpreadsheet,
@@ -778,14 +779,27 @@ function UserImportWizard({ onBack, onSuccess }) {
 }
 
 /* ── Main Export ─────────────────────────────────────────────────── */
+const SLUG = "user-management";
+
 export default function UserManagementPage() {
   const { lang } = useLanguage();
-  const [formView,   setFormView]   = useState(null);
+  const navigate  = useNavigate();
+  const location  = useLocation();
   const [refreshKey, setRefreshKey] = useState(0);
   const { apiFetch }      = useApi();
   const [toast,           setToast]           = useState(null);
-  const [showImport,      setShowImport]      = useState(false);
   const [exportingFormat, setExportingFormat] = useState(null);
+
+  const isCreate = location.pathname.endsWith("/create");
+  const isImport = location.pathname.endsWith("/import");
+  const isEdit   = location.pathname.endsWith("/edit");
+
+  const listPath = `/${SLUG}`;
+
+  // Edit mode reads the record passed via navigation state from the list's
+  // row menu — no id in the URL. Refresh/deep-link with no state bounces
+  // back to the list (see render guard below).
+  const entityForForm = isEdit ? (location.state?.entity ?? null) : null;
 
   const showToast = (message, type = "success") => {
     setToast({ message, type });
@@ -810,30 +824,32 @@ export default function UserManagementPage() {
     }
   };
 
-  if (formView) {
+  if (isCreate || isEdit) {
+    if (isEdit && !entityForForm) return <Navigate to={listPath} replace />;
     return (
       <>
         {toast && <Toast message={toast.message} type={toast.type} />}
         <UserForm
-          mode={formView.mode}
-          entity={formView.entity}
+          key={isEdit ? "edit" : "create"}
+          mode={isEdit ? "edit" : "create"}
+          entity={entityForForm}
           apiFetch={apiFetch}
-          onCreated={(msg) => { setFormView(null); showToast(msg); setRefreshKey((k) => k + 1); }}
-          onSaved={(msg)   => { setFormView(null); showToast(msg); setRefreshKey((k) => k + 1); }}
-          onBack={() => setFormView(null)}
+          onCreated={(msg) => { navigate(listPath); showToast(msg); setRefreshKey((k) => k + 1); }}
+          onSaved={(msg)   => { navigate(listPath); showToast(msg); setRefreshKey((k) => k + 1); }}
+          onBack={() => navigate(listPath)}
         />
       </>
     );
   }
 
-  if (showImport) {
+  if (isImport) {
     return (
       <>
         {toast && <Toast message={toast.message} type={toast.type} />}
         <UserImportWizard
-          onBack={() => setShowImport(false)}
+          onBack={() => navigate(listPath)}
           onSuccess={(result) => {
-            setShowImport(false);
+            navigate(listPath);
             setRefreshKey((k) => k + 1);
             showToast(`${result.imported} user${result.imported !== 1 ? "s" : ""} imported successfully.`);
           }}
@@ -859,10 +875,10 @@ export default function UserManagementPage() {
         actions={
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <ExportMenu loading={exportingFormat} onExport={handleExport} />
-            <Button variant="secondary" icon={<Upload size={17} strokeWidth={1.9} />} onClick={() => setShowImport(true)}>
+            <Button variant="secondary" icon={<Upload size={17} strokeWidth={1.9} />} onClick={() => navigate(`${listPath}/import`)}>
               {t("Import", lang)}
             </Button>
-            <Button variant="primary" icon={<Plus size={17} strokeWidth={2} />} onClick={() => setFormView({ mode: "create", entity: null })}>
+            <Button variant="primary" icon={<Plus size={17} strokeWidth={2} />} onClick={() => navigate(`${listPath}/create`)}>
               {t("New User", lang)}
             </Button>
           </div>
@@ -872,7 +888,7 @@ export default function UserManagementPage() {
       <UserList
         key={refreshKey}
         apiFetch={apiFetch}
-        onEdit={(u) => setFormView({ mode: "edit", entity: u })}
+        onEdit={(u) => navigate(`${listPath}/edit`, { state: { entity: u } })}
       />
     </div>
   );

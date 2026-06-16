@@ -25,6 +25,29 @@ router.get("/", verifyToken, requireRole(["super_admin", "institute_admin"]), as
   }
 });
 
+/* ── GET /api/roles/:id ── single role, for the edit page ──
+   Required so /role-access/:roleId/edit can load its data directly
+   (refresh / deep link), not just via in-app navigation state. ── */
+router.get("/:id", verifyToken, requireRole(["super_admin", "institute_admin"]), async (req, res) => {
+  const pool = req.app.locals.pool;
+  const { id } = req.params;
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, name, display_name, description, permissions, is_system, created_at
+       FROM roles
+       WHERE id = $1`,
+      [id]
+    );
+    if (!rows.length) {
+      return res.status(404).json({ success: false, message: "Role not found." });
+    }
+    res.json({ success: true, data: rows[0] });
+  } catch (err) {
+    logger.error("GET /api/roles/:id failed", { ...getLogContext(req), stack: err.stack });
+    res.status(500).json({ success: false, message: "Failed to fetch role." });
+  }
+});
+
 /* ── POST /api/roles ── create a custom role ── */
 router.post("/", verifyToken, requireRole(SUPER_ADMIN), async (req, res) => {
   const pool = req.app.locals.pool;

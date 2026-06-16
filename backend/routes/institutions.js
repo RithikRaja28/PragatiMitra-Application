@@ -718,6 +718,60 @@ router.post("/", async (req, res) => {
   }
 });
 
+/* ── GET /api/institutions/:id ──────────────────────────────────
+   Single-institution fetch for the edit page — required so
+   /institute-management/:institutionId/edit can load its data directly
+   (refresh / deep link), not just via in-app navigation state.
+──────────────────────────────────────────────────────────────── */
+router.get("/:id", async (req, res) => {
+  const pool = req.app.locals.pool;
+  const institutionId = req.params.id;
+
+  if (!isUUID(institutionId)) {
+    return res.status(400).json({ success: false, message: "Invalid institution ID." });
+  }
+
+  try {
+    const { rows } = await pool.query(
+      `SELECT
+         i.institution_id,
+         i.institution_name,
+         i.code,
+         i.email_domain,
+         i.address_line1,
+         i.address_line2,
+         i.city,
+         i.state,
+         i.country,
+         i.pincode,
+         i.status,
+         i.created_at,
+         (
+           SELECT COUNT(*)
+           FROM departments d
+           WHERE d.institution_id = i.institution_id
+             AND d.status = 'ACTIVE'
+         ) AS department_count,
+         (
+           SELECT COUNT(*)
+           FROM users u
+           WHERE u.institution_id = i.institution_id
+             AND u.account_status = 'ACTIVE'
+         ) AS user_count
+       FROM institutions i
+       WHERE i.institution_id = $1`,
+      [institutionId]
+    );
+    if (!rows.length) {
+      return res.status(404).json({ success: false, message: "Institution not found." });
+    }
+    return res.json({ success: true, data: rows[0] });
+  } catch (err) {
+    logger.error("GET /api/institutions/:id failed", { ...getLogContext(req), stack: err.stack });
+    return res.status(500).json({ success: false, message: "Failed to fetch institution." });
+  }
+});
+
 /* ── PUT /api/institutions/:id ── */
 router.put("/:id", async (req, res) => {
   const pool        = req.app.locals.pool;

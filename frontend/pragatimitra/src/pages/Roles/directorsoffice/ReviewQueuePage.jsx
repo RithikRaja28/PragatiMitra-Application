@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useCallback } from "react";
+import { useNavigate, useLocation, Navigate } from "react-router-dom";
 import { useApi } from "../../../hooks/useApi";
 import ReviewSectionPage from "../shared/builder/ReviewSectionPage";
+
+const SLUG = "review-queue";
 
 const C = {
   primary:   "#1d4ed8",
@@ -27,13 +30,18 @@ function timeAgo(iso) {
 }
 
 export default function ReviewQueuePage() {
+  const navigate = useNavigate();
+  const location = useLocation();
   const { apiFetch }  = useApi();
   const [queue,       setQueue]       = useState([]);
   const [loading,     setLoading]     = useState(true);
   const [err,         setErr]         = useState("");
   const [search,      setSearch]      = useState("");
   const [statusFilter,setStatusFilter]= useState("");
-  const [reviewing,   setReviewing]   = useState(null); // section id
+
+  const isReview = location.pathname.endsWith("/review");
+  const listPath = `/${SLUG}`;
+  const sectionId = isReview ? (location.state?.entity?.id ?? null) : null;
 
   const load = useCallback(async () => {
     setLoading(true); setErr("");
@@ -51,12 +59,12 @@ export default function ReviewQueuePage() {
 
   useEffect(() => { load(); }, [load]);
 
-  /* open ReviewSectionPage for a section */
-  if (reviewing) {
+  if (isReview) {
+    if (!sectionId) return <Navigate to={listPath} replace />;
     return (
       <ReviewSectionPage
-        sectionId={reviewing}
-        onBack={() => { setReviewing(null); load(); }}
+        sectionId={sectionId}
+        onBack={() => navigate(listPath)}
       />
     );
   }
@@ -179,7 +187,7 @@ export default function ReviewQueuePage() {
                     style={{ cursor: "pointer" }}
                     onMouseEnter={e => e.currentTarget.style.background = "#eff6ff"}
                     onMouseLeave={e => e.currentTarget.style.background = "transparent"}
-                    onClick={() => setReviewing(q.id)}
+                    onClick={() => navigate(`${listPath}/review`, { state: { entity: { id: q.id } } })}
                   >
                     <td style={{ padding: "13px 16px", borderTop: i > 0 ? `0.5px solid ${C.border}` : "none",
                       fontSize: 13, fontWeight: 600, color: C.text }}>
