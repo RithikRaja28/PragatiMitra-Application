@@ -1154,6 +1154,14 @@ router.put("/:id", verifyToken, requireRole(["super_admin", "institute_admin", "
 
     const updated = rows[0];
 
+    /* Account lifecycle: when a user is disabled / suspended / deleted, kill all
+       their active sessions immediately so the refresh-token flow can no longer
+       mint new access tokens (the per-request middleware already rejects the
+       short-lived access token). Best-effort — never block the update response. */
+    if (updated.account_status && updated.account_status !== "ACTIVE") {
+      await pool.query("DELETE FROM sessions WHERE user_id = $1", [updated.id]).catch(() => {});
+    }
+
     const changedFields = ["full_name", "email", "account_status", "institution_id", "department_id"]
       .filter((f) => String(existing[f] ?? "") !== String(updated[f] ?? ""));
 

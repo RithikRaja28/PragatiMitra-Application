@@ -10,7 +10,7 @@ const { getLogContext } = logger;
 const { writeAuditLog } = require("../utils/audit");
 const { translateSentence, transliteratePhrase, lookupLabel, translateRow, resolveTranslationMode } = require("../services/translationService");
 const { getReadUrl } = require("../utils/s3");
-const { getAcademicYearLockBlockForReq } = require("../services/academicYearService");
+const { getAcademicYearLockBlockForReq, getFormArchiveBlockForReq } = require("../services/academicYearService");
 const { assertFormDomainAccess } = require("../services/domainService");
 const { isFormAssignedAnyYear, isContributorOnly } = require("./formAssignments");
 
@@ -347,6 +347,11 @@ router.post("/:formName/import/parse", handleUpload, async (req, res) => {
     if (lockRows[0]?.is_locked)
       return res.status(403).json({ success: false, message: "This form is locked. Import is disabled." });
 
+    // Archive write policy — an archived form is view-only (import blocked).
+    const archiveBlock = await getFormArchiveBlockForReq(pool, req, ctx.institutionId, formName, Number(year) || null);
+    if (archiveBlock.blocked)
+      return res.status(403).json({ success: false, message: archiveBlock.message });
+
     const ext       = req.file.originalname.toLowerCase().split(".").pop();
     const encoding  = req.body.encoding  || "UTF-8";
     const delimiter = req.body.delimiter || ",";
@@ -462,6 +467,11 @@ router.post("/:formName/import/execute-chunk", async (req, res) => {
       const ayLock = await getAcademicYearLockBlockForReq(pool, req, ctx.institutionId, formYear);
       if (ayLock.locked)
         return res.status(403).json({ success: false, message: ayLock.message });
+
+      // Archive write policy — an archived form is view-only (import blocked).
+      const archiveBlock = await getFormArchiveBlockForReq(pool, req, ctx.institutionId, formName, formYear);
+      if (archiveBlock.blocked)
+        return res.status(403).json({ success: false, message: archiveBlock.message });
 
       /* Issue 5 — per-year deadline lock: if the SELECTED year's deadline has
          passed (or its row is locked), import into that year is disabled. Forms

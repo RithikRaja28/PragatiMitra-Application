@@ -16,6 +16,7 @@
 const express = require("express");
 const { verifyToken, requireRole } = require("../middleware/auth");
 const { writeAuditLog } = require("../utils/audit");
+const { getFormArchiveBlockForReq } = require("../services/academicYearService");
 const logger = require("../utils/logger");
 
 /* Assigner's (institution, department) context — read from the JWT, which is
@@ -180,6 +181,20 @@ router.post("/", requireRole(ASSIGN_ROLES), async (req, res) => {
     const { institutionId, departmentId } = assignerContext(req);
     if (!departmentId)
       return res.status(400).json({ success: false, message: "No department is associated with your account." });
+
+    // Archive write policy — an archived form is view-only, so assignment changes
+    // are blocked for it (the selected year). Resolve the form name from id when
+    // the body doesn't include it.
+    let fname = form_name;
+    if (!fname) {
+      const { rows: tl } = await pool.query("SELECT form_name FROM table_list WHERE id = $1", [form_id]);
+      fname = tl[0]?.form_name || null;
+    }
+    if (fname) {
+      const archiveBlock = await getFormArchiveBlockForReq(pool, req, institutionId, fname, year);
+      if (archiveBlock.blocked)
+        return res.status(403).json({ success: false, message: archiveBlock.message });
+    }
 
     // Only same-institution, same-department, active contributors are assignable —
     // and never the assigner themselves, nor a nodal-capable contributor.

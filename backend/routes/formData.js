@@ -5,7 +5,7 @@ const { verifyToken } = require("../middleware/auth");
 const logger = require("../utils/logger");
 const { writeAuditLog } = require("../utils/audit");
 const { translateRow, resolveTranslationMode, enrichSchemaLabels } = require("../services/translationService");
-const { getAcademicYearLockBlockForReq } = require("../services/academicYearService");
+const { getAcademicYearLockBlockForReq, getFormArchiveBlockForReq } = require("../services/academicYearService");
 const { getEffectiveState, messageFor, canWrite } = require("../services/stateResolver");
 const { SOURCE_LANGUAGE, isDerivedRow } = require("../services/translationOwnership");
 const { assertEquivalent } = require("../services/equivalenceGuard");
@@ -376,6 +376,19 @@ router.get("/:formName/records", async (req, res) => {
       ? await enrichSchemaLabels(schema, language)
       : schema;
 
+    /* Archive (highest precedence) → surface as view-only so the client hides
+       Save/Delete/Import and shows the view-only banner. Export & search still
+       work (they don't consult lock.is_locked). Writes are independently blocked
+       on the server (the POST/PUT/DELETE handlers above). */
+    const archiveView = await getFormArchiveBlockForReq(
+      pool, req, ctx.institutionId, formName, schema?.year ?? (year != null ? Number(year) : null)
+    );
+    if (archiveView.blocked) {
+      lock.is_locked = true;
+      lock.archived  = true;
+      lock.message   = archiveView.message;
+    }
+
     const payload = { success: true, records, schema: displaySchema, lock };
     if (paginate) { payload.total = total; payload.limit = limitNum; payload.offset = Math.max(0, offsetNum); }
     return res.json(payload);
@@ -495,6 +508,13 @@ router.post("/:formName/records", async (req, res) => {
     if (ayLock.locked)
       return res.status(403).json({ success: false, message: ayLock.message });
 
+    // Archive is a WRITE POLICY (highest precedence: Archive > Lock > Deadline).
+    // An archived form is view-only even when not locked. Checks the SELECTED
+    // year (X-Academic-Year header), falling back to the record's year.
+    const archiveBlock = await getFormArchiveBlockForReq(pool, req, ctx.institutionId, formName, formYear);
+    if (archiveBlock.blocked)
+      return res.status(403).json({ success: false, message: archiveBlock.message });
+
     const stdCols = ["form_name", "institution_id", "department_id", "year", "schema_id", "language", "created_by"];
     const stdVals = [formName, ctx.institutionId, ctx.departmentId, formYear, schema.id, language, createdBy];
     const fieldVals = fieldCols.map((col) => data[col] ?? null);
@@ -587,6 +607,11 @@ router.put("/:formName/records/:id", async (req, res) => {
     const ayLock = await getAcademicYearLockBlockForReq(pool, req, ctx.institutionId, schema.year);
     if (ayLock.locked)
       return res.status(403).json({ success: false, message: ayLock.message });
+
+    // Archive write policy (highest precedence) — archived form is view-only.
+    const archiveBlock = await getFormArchiveBlockForReq(pool, req, ctx.institutionId, formName, schema.year);
+    if (archiveBlock.blocked)
+      return res.status(403).json({ success: false, message: archiveBlock.message });
 
     const fields    = activeFields(schema);
     const fieldCols = fields.map((f) => dbCol(f.column_name));
@@ -710,6 +735,11 @@ router.delete("/:formName/records/bulk-delete", async (req, res) => {
     if (ayLock.locked)
       return res.status(403).json({ success: false, message: ayLock.message });
 
+    // Archive write policy (highest precedence) — archived form is view-only.
+    const archiveBlock = await getFormArchiveBlockForReq(pool, req, ctx.institutionId, formName, await getFormActiveYear(pool, formName, ctx.institutionId));
+    if (archiveBlock.blocked)
+      return res.status(403).json({ success: false, message: archiveBlock.message });
+
     await ensureSourceRowIdColumn(pool, `${formName}_records`);
 
     let whereClause   = "id = ANY($1::uuid[]) AND institution_id = $2";
@@ -791,6 +821,11 @@ router.delete("/:formName/records/:id", async (req, res) => {
     const ayLock = await getAcademicYearLockBlockForReq(pool, req, ctx.institutionId, await getFormActiveYear(pool, formName, ctx.institutionId));
     if (ayLock.locked)
       return res.status(403).json({ success: false, message: ayLock.message });
+
+    // Archive write policy (highest precedence) — archived form is view-only.
+    const archiveBlock = await getFormArchiveBlockForReq(pool, req, ctx.institutionId, formName, await getFormActiveYear(pool, formName, ctx.institutionId));
+    if (archiveBlock.blocked)
+      return res.status(403).json({ success: false, message: archiveBlock.message });
 
     await ensureSourceRowIdColumn(pool, `${formName}_records`);
 

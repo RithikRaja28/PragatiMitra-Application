@@ -115,10 +115,11 @@ async function loadForm(pool, req, id) {
   return { form: rows[0], departmentId, institutionId };
 }
 
-/* Effective lock for (form, year): per-year lock OR manual/auto/deadline lock. */
+/* Effective write-block for (form, year). Precedence Archive > Lock > Deadline.
+   ARCHIVED is now enforced as a WRITE POLICY (view-only), not a UI filter. */
 async function deptLockBlock(pool, form, year) {
   const { rows: ym } = await pool.query(
-    "SELECT is_locked FROM department_form_year_mapping WHERE department_form_id = $1 AND academic_year = $2",
+    "SELECT is_locked, is_archived FROM department_form_year_mapping WHERE department_form_id = $1 AND academic_year = $2",
     [form.id, year]
   );
   // Deadline is year-scoped: a deadline set for one academic year never affects
@@ -128,36 +129,44 @@ async function deptLockBlock(pool, form, year) {
     [form.id, year]
   );
   const row = lc[0] || {};
+  const isArchived      = ym[0]?.is_archived === true;
   const deadlineExpired = !!(row.deadline && new Date(row.deadline).getTime() <= Date.now());
+  const lockedOnly      = ym[0]?.is_locked === true || row.is_locked === true || deadlineExpired;
 
-  // LEGACY (authoritative): any blocking source locks; deadline/auto → deadline msg.
-  const anyLock = ym[0]?.is_locked === true || row.is_locked === true || deadlineExpired;
+  const ARCHIVE_MSG = "This form is archived for the selected academic year — it is now view-only.";
+
+  // LEGACY (authoritative): archive wins, then lock/deadline.
   let legacy;
-  if (!anyLock) {
-    legacy = { locked: false, message: null };
-  } else {
+  if (isArchived) {
+    legacy = { locked: true, message: ARCHIVE_MSG };
+  } else if (lockedOnly) {
     legacy = {
       locked: true,
       message: (deadlineExpired || row.auto_locked)
         ? "This form's deadline has expired for your department — it is now view-only."
         : "This form is locked for your department. You can only view records.",
     };
+  } else {
+    legacy = { locked: false, message: null };
   }
 
   // CANDIDATE (shadow — shared resolver picks precedence; dept keeps its wording).
   const state = getEffectiveState({
-    locked: anyLock,
+    archived: isArchived,
+    locked: lockedOnly,
     autoLocked: !!row.auto_locked,
     deadlineAt: row.deadline ?? null,
   });
   const candidate = state === STATE.ACTIVE
     ? { locked: false, message: null }
-    : {
-        locked: true,
-        message: state === STATE.DEADLINE_EXPIRED
-          ? "This form's deadline has expired for your department — it is now view-only."
-          : "This form is locked for your department. You can only view records.",
-      };
+    : state === STATE.ARCHIVED
+      ? { locked: true, message: ARCHIVE_MSG }
+      : {
+          locked: true,
+          message: state === STATE.DEADLINE_EXPIRED
+            ? "This form's deadline has expired for your department — it is now view-only."
+            : "This form is locked for your department. You can only view records.",
+        };
 
   return assertEquivalent("departmentFormData.deptLockBlock", legacy, candidate);
 }

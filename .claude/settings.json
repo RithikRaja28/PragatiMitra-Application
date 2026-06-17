@@ -17,7 +17,8 @@
       "Bash(node --check services/departmentFormService.js)",
       "Bash(node -e \"require\\('./server.js'\\); setTimeout\\(\\(\\)=>process.exit\\(0\\), 5000\\);\")",
       "Bash(node -e \"require\\('./server.js'\\); setTimeout\\(\\(\\)=>process.exit\\(0\\), 6000\\);\")",
-      "Bash(node --check routes/formimportexport.js)"
+      "Bash(node --check routes/formimportexport.js)",
+      "Bash(node --check routes/formAssignments.js)"
     ]
   }
 }
