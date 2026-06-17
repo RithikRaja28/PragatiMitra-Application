@@ -236,6 +236,11 @@ const { ensureDepartmentFormTables } = require("./services/departmentFormService
 ensureDepartmentFormTables(pool)
   .catch((e) => logger.error("Failed to ensure department form tables", { stack: e.stack }));
 
+/* ── Contributor form assignment: ensure the additive form_assignments table ── */
+const { ensureFormAssignmentsTable } = require("./routes/formAssignments");
+ensureFormAssignmentsTable(pool)
+  .catch((e) => logger.error("Failed to ensure form_assignments table", { stack: e.stack }));
+
 /* ── Shared-form schema repair: INSERT-ONLY backfill of missing schema rows for
    institutions that can access a shared form but never got their own schema
    (fixes "No active schema found"). Idempotent, non-destructive. ── */
@@ -281,6 +286,7 @@ app.use("/api/academic-years",         require("./routes/academicYear"));
 app.use("/api/form-data",              require("./routes/formData"));
 app.use("/api/form-data",              require("./routes/formimportexport"));
 app.use("/api/nodal-officer-assignments", nodalOfficerAssignmentsRouter);
+app.use("/api/form-assignments",       require("./routes/formAssignments").router);
 
 // Collaborative Report Builder — /api/builder/*
 app.use("/api/builder/reports",       builderReportsRoutes);

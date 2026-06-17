@@ -4,7 +4,8 @@ import ReactDOM from "react-dom";
 import { createPortal } from "react-dom";
 
 const SLUG = "form-data";
-import { Trash2, FileText, FilePlus, Lock, Clock, Globe, SearchX, Table2, LayoutGrid } from "lucide-react";
+import { Trash2, FileText, FilePlus, Lock, Clock, Globe, SearchX, Table2, LayoutGrid, UserPlus } from "lucide-react";
+import AssignContributorsModal from "./AssignContributorsModal";
 import { useApi } from "../../hooks/useApi";
 import { useAuth } from "../../store/AuthContext";
 import { useAcademicYear } from "../../store/AcademicYearContext";
@@ -1017,8 +1018,19 @@ export default function FormDataPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { apiFetch }    = useApi();
-  const { accessToken } = useAuth();
+  const { accessToken, user } = useAuth();
   const { lang }        = useLanguage();
+
+  // Who may assign forms to contributors:
+  //   • a real Department Admin, OR
+  //   • a Contributor who holds Nodal Officer capability — detected via the
+  //     existing NOA signal (user.noaActiveYears, set by the backend's
+  //     nodal_officer_assignments resolver). We do NOT hardcode a nodal role:
+  //     the frontend user.roles stays "contributor"; noaActiveYears is the flag.
+  const canAssign =
+    (user?.roles || []).some((r) => r.name === "department_admin" || r.name === "institute_admin") ||
+    (user?.noaActiveYears?.length || 0) > 0;
+  const [assignForm, setAssignForm] = useState(null);
 
   const isRecords = location.pathname.endsWith("/records");
   const listPath  = `/${SLUG}`;
@@ -1284,6 +1296,16 @@ export default function FormDataPage() {
     return (
       <div style={{ padding: "20px 28px", fontFamily: "'Plus Jakarta Sans', sans-serif", minHeight: "100%", maxWidth: 1440 }}>
         {toast && <Toast message={toast.message} type={toast.type} />}
+        {assignForm && (
+          <AssignContributorsModal
+            form={assignForm}
+            year={selectedYear}
+            departmentName={user?.departmentName}
+            onClose={() => setAssignForm(null)}
+            onAssigned={() => {}}
+            showToast={showToast}
+          />
+        )}
 
         <PageHeader
           breadcrumb={["Home", "Department", "Forms & Data Entry"]}
@@ -1399,14 +1421,27 @@ export default function FormDataPage() {
                           </span>
                         </td>
                         <td style={{ padding: "6px 14px", textAlign: "right" }}>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); openForm(form); }}
-                            style={{ display: "inline-flex", alignItems: "center", gap: 5, background: "#fff", color: ACCENT, border: `1px solid ${ACCENT}40`, borderRadius: 7, padding: "0 12px", height: 30, fontSize: 11.5, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap", transition: "background .15s, border-color .15s" }}
-                            onMouseEnter={(e) => { e.currentTarget.style.background = ACCENT + "12"; e.currentTarget.style.borderColor = ACCENT; }}
-                            onMouseLeave={(e) => { e.currentTarget.style.background = "#fff"; e.currentTarget.style.borderColor = ACCENT + "40"; }}
-                          >
-                            Open <span style={{ fontSize: 12 }}>→</span>
-                          </button>
+                          <div style={{ display: "inline-flex", alignItems: "center", gap: 6, justifyContent: "flex-end" }}>
+                            {canAssign && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); setAssignForm(form); }}
+                                title="Assign contributors" aria-label="Assign contributors"
+                                style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 30, height: 30, background: "#fff", color: ACCENT, border: `1px solid ${ACCENT}40`, borderRadius: 7, cursor: "pointer", transition: "background .15s, border-color .15s" }}
+                                onMouseEnter={(e) => { e.currentTarget.style.background = ACCENT + "12"; e.currentTarget.style.borderColor = ACCENT; }}
+                                onMouseLeave={(e) => { e.currentTarget.style.background = "#fff"; e.currentTarget.style.borderColor = ACCENT + "40"; }}
+                              >
+                                <UserPlus size={15} strokeWidth={1.9} />
+                              </button>
+                            )}
+                            <button
+                              onClick={(e) => { e.stopPropagation(); openForm(form); }}
+                              style={{ display: "inline-flex", alignItems: "center", gap: 5, background: "#fff", color: ACCENT, border: `1px solid ${ACCENT}40`, borderRadius: 7, padding: "0 12px", height: 30, fontSize: 11.5, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap", transition: "background .15s, border-color .15s" }}
+                              onMouseEnter={(e) => { e.currentTarget.style.background = ACCENT + "12"; e.currentTarget.style.borderColor = ACCENT; }}
+                              onMouseLeave={(e) => { e.currentTarget.style.background = "#fff"; e.currentTarget.style.borderColor = ACCENT + "40"; }}
+                            >
+                              Open <span style={{ fontSize: 12 }}>→</span>
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );

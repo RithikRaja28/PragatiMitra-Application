@@ -8,6 +8,7 @@ const { translateSentence, enrichSchemaLabels } = require("../services/translati
 const { formatAcademicYear, ensureYearRows, setFormStatusForYear, ensureFormArchivedIfUnclassified, getInstitutionStartYears, getAcademicYearLockBlockForReq } = require("../services/academicYearService");
 const { ensureSchemaExists, publishSchemaSnapshot } = require("../services/schemaPropagationService");
 const { resolveUserDomain, resolveListFilterDomain, assertFormDomainAccess, normalizeDomain } = require("../services/domainService");
+const { getAssignedFormIds, isContributorOnly } = require("./formAssignments");
 
 /* Academic-year lock guard for form-management writes. Checks the SELECTED year
    (X-Academic-Year header), falling back to the request's year / current year. */
@@ -133,6 +134,14 @@ router.get("/institution-forms", async (req, res) => {
     const filterDomain = await resolveListFilterDomain(pool, req);
     if (filterDomain) {
       rows = rows.filter((f) => (f.form_domain || "academic") === filterDomain);
+    }
+
+    /* ── Contributor visibility: a pure contributor only sees forms ASSIGNED to
+       them for the selected academic year (year-scoped). Other roles unaffected. ── */
+    if (isContributorOnly(req)) {
+      const y = req.query.year != null ? Number(req.query.year) : new Date().getFullYear();
+      const assignedIds = new Set(await getAssignedFormIds(pool, req.user.userId, y));
+      rows = rows.filter((f) => assignedIds.has(String(f.id)));
     }
 
     /* ── Academic-year lifecycle status (opt-in via ?year=) ──────────────

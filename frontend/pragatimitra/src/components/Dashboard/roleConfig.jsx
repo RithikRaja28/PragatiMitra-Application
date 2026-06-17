@@ -674,6 +674,16 @@ export const ROLE_CONFIG = {
             slug: "form-management",
             subRoutes: FORM_FILL_SUB,
           },
+          // Institution "Forms & Data Entry" — where a Nodal Officer assigns
+          // accessible forms to contributors (and enters records).
+          {
+            id: "dno-form-data",
+            label: "Forms & Data Entry",
+            icon: "ClipboardList",
+            permission: null,
+            slug: "form-data",
+            subRoutes: FORM_DATA_SUB,
+          },
         ],
       },
     ],
@@ -682,14 +692,24 @@ export const ROLE_CONFIG = {
       "dno-sections":    <MyAssignedSectionsPage />,
       "dno-submissions": <SubmissionsPage />,
       "dno-dept-forms":  <DepartmentFormFillPage />,
+      "dno-form-data":   <FormDataPage />,
     },
     defaultPage: "dno-dashboard",
     user: { name: "Nodal Officer", initials: "NO", org: "Samhita Siddhanta" },
   },
 
-  /* ── CONTRIBUTOR ─────────────────────────────────────────────── */
+  /* ── CONTRIBUTOR ─────────────────────────────────────────────────
+     Consumer role. Reuses the existing FormDataPage (one engine) — the backend
+     filters it to forms ASSIGNED to this contributor for the selected academic
+     year. No Form Management / Assign / lifecycle controls are exposed. */
   contributor: {
     navItems: [
+      {
+        group: "Forms",
+        items: [
+          { id: "c-form-data", label: "Forms & Data Entry", icon: "ClipboardList", permission: null, slug: "form-data", subRoutes: FORM_DATA_SUB },
+        ],
+      },
       {
         group: "My Work",
         items: [
@@ -698,9 +718,10 @@ export const ROLE_CONFIG = {
       },
     ],
     pages: {
-      "c-sections": <MyAssignedSectionsPage />,
+      "c-form-data": <FormDataPage />,
+      "c-sections":  <MyAssignedSectionsPage />,
     },
-    defaultPage: "c-sections",
+    defaultPage: "c-form-data",
     user: { name: "Contributor", initials: "CT", org: "PragatiMitra" },
   },
 

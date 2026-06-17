@@ -10,6 +10,7 @@ const { getEffectiveState, messageFor, canWrite } = require("../services/stateRe
 const { SOURCE_LANGUAGE, isDerivedRow } = require("../services/translationOwnership");
 const { assertEquivalent } = require("../services/equivalenceGuard");
 const { assertFormDomainAccess } = require("../services/domainService");
+const { isFormAssigned, isContributorOnly } = require("./formAssignments");
 
 /* Latest active schema year for a form+institution — used to resolve which
    academic year a record operation belongs to (for academic-year lock checks). */
@@ -35,6 +36,13 @@ router.param("formName", async (req, res, next, formName) => {
     const pool = req.app.locals.pool;
     const acc = await assertFormDomainAccess(pool, req, formName);
     if (!acc.allowed) return res.status(403).json({ success: false, message: acc.message });
+
+    // Contributor: may only touch forms ASSIGNED to them for the selected year.
+    if (isContributorOnly(req)) {
+      const year = Number(req.query.year) || Number(req.get("X-Academic-Year")) || Number(req.body?.year) || new Date().getFullYear();
+      const ok = await isFormAssigned(pool, req.user.userId, formName, year);
+      if (!ok) return res.status(403).json({ success: false, message: "This form is not assigned to you." });
+    }
   } catch { /* never hard-fail on a metadata read */ }
   return next();
 });

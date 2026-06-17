@@ -12,6 +12,7 @@ const { translateSentence, transliteratePhrase, lookupLabel, translateRow, resol
 const { getReadUrl } = require("../utils/s3");
 const { getAcademicYearLockBlockForReq } = require("../services/academicYearService");
 const { assertFormDomainAccess } = require("../services/domainService");
+const { isFormAssignedAnyYear, isContributorOnly } = require("./formAssignments");
 
 /* 7 days — maximum presigned URL lifetime for long-term IAM credentials */
 const DOC_URL_TTL = 7 * 24 * 3600;
@@ -52,6 +53,13 @@ router.param("formName", async (req, res, next, formName) => {
     const pool = req.app.locals.pool;
     const acc = await assertFormDomainAccess(pool, req, formName);
     if (!acc.allowed) return res.status(403).json({ success: false, message: acc.message });
+
+    // Contributor: only their assigned forms (export downloads may not carry the
+    // year header, so gate on "assigned in any active year" here).
+    if (isContributorOnly(req)) {
+      const ok = await isFormAssignedAnyYear(pool, req.user.userId, formName);
+      if (!ok) return res.status(403).json({ success: false, message: "This form is not assigned to you." });
+    }
   } catch { /* never hard-fail on a metadata read */ }
   return next();
 });
