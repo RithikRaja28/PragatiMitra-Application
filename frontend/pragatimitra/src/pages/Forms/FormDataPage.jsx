@@ -311,12 +311,19 @@ function RecordEditPage({ fields, record, onSave, onBack, getToken, formName, fo
     if (viewOnly) return;
     setSaving(true); setError("");
     const res = await onSave(formData);
-    setSaving(false);
     if (res?.success) {
-      // Stay on the page; refresh the Hindi preview once the server-side
-      // translation has had a moment to run (it's async on the backend).
+      if (!isEdit) {
+        // New record added → return to the list. Prevents a second click from
+        // re-submitting the still-populated form (duplicate record).
+        onBack();
+        return;
+      }
+      // Edit: stay on the page and refresh the Hindi preview once the
+      // server-side translation has had a moment to run (async on the backend).
+      setSaving(false);
       if (showReference) setTimeout(refetchCounterpart, 1200);
     } else {
+      setSaving(false);
       setError(res?.message || "Failed to save record.");
     }
   }
@@ -1302,7 +1309,7 @@ export default function FormDataPage() {
             year={selectedYear}
             departmentName={user?.departmentName}
             onClose={() => setAssignForm(null)}
-            onAssigned={() => {}}
+            onAssigned={loadForms}
             showToast={showToast}
           />
         )}

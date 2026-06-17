@@ -46,7 +46,7 @@ export default function AssignContributorsModal({ form, year, departmentName, on
   const toggle = (id) => setSelected((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
   async function assign() {
-    if (selected.size === 0) return;
+    if (selected.size === 0 || saving) return;   // also guards against double-submit
     setSaving(true);
     try {
       const res = await apiFetch("/api/form-assignments", {
@@ -54,10 +54,20 @@ export default function AssignContributorsModal({ form, year, departmentName, on
         body: JSON.stringify({ form_id: form.id, form_name: form.form_name, contributor_ids: Array.from(selected), year }),
       });
       const d = await res.json();
-      if (d.success) { showToast?.(d.message || "Assigned."); setSelected(new Set()); await load(); onAssigned?.(); }
-      else showToast?.(d.message || "Failed to assign.", "error");
-    } catch { showToast?.("Failed to assign.", "error"); }
-    finally { setSaving(false); }
+      if (d.success) {
+        // Standard success lifecycle: notify parent (refresh) → reset → close.
+        showToast?.(d.message || "Assigned successfully.");
+        setSelected(new Set());
+        onAssigned?.();
+        onClose();
+      } else {
+        showToast?.(d.message || "Failed to assign.", "error");
+        setSaving(false);
+      }
+    } catch {
+      showToast?.("Failed to assign.", "error");
+      setSaving(false);
+    }
   }
 
   async function unassign(id) {
