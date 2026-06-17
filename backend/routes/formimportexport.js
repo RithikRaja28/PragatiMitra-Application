@@ -12,6 +12,7 @@ const { translateSentence, transliteratePhrase, lookupLabel, translateRow, resol
 const { getReadUrl } = require("../utils/s3");
 const { getAcademicYearLockBlockForReq, getFormArchiveBlockForReq } = require("../services/academicYearService");
 const { assertFormDomainAccess } = require("../services/domainService");
+const { resolveEffectiveDepartment } = require("../services/departmentContext");
 const { isFormAssignedAnyYear, isContributorOnly } = require("./formAssignments");
 
 /* 7 days — maximum presigned URL lifetime for long-term IAM credentials */
@@ -194,16 +195,15 @@ async function resolveUserContext(pool, req) {
     };
   }
 
-  const { rows } = await pool.query(
-    "SELECT institution_id, department_id FROM users WHERE id = $1",
-    [req.user.userId]
-  );
-  const user = rows[0] || {};
   const isDeptAdmin = roles.includes("department_admin") || roles.includes("nodal_officer");
 
+  // EFFECTIVE (nodal-aware) context — exports/imports must scope to the Nodal
+  // Officer's NODAL department, matching records & assignments (Bug 4).
+  const { institutionId, departmentId } = await resolveEffectiveDepartment(pool, req);
+
   return {
-    institutionId: user.institution_id || null,
-    departmentId:  isDeptAdmin ? (user.department_id || null) : null,
+    institutionId: institutionId || null,
+    departmentId:  isDeptAdmin ? (departmentId || null) : null,
     role: isDeptAdmin ? "department_admin" : "institute_admin",
   };
 }

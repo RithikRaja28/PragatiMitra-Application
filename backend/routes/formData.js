@@ -10,6 +10,7 @@ const { getEffectiveState, messageFor, canWrite } = require("../services/stateRe
 const { SOURCE_LANGUAGE, isDerivedRow } = require("../services/translationOwnership");
 const { assertEquivalent } = require("../services/equivalenceGuard");
 const { assertFormDomainAccess } = require("../services/domainService");
+const { resolveEffectiveDepartment } = require("../services/departmentContext");
 const { isFormAssigned, isContributorOnly } = require("./formAssignments");
 
 /* Latest active schema year for a form+institution — used to resolve which
@@ -106,17 +107,16 @@ async function resolveUserContext(pool, req) {
     };
   }
 
-  const { rows } = await pool.query(
-    "SELECT institution_id, department_id FROM users WHERE id = $1",
-    [req.user.userId]
-  );
-  const user = rows[0] || {};
-
   const isDeptAdmin = roles.includes("department_admin") || roles.includes("nodal_officer");
 
+  // EFFECTIVE (nodal-aware) institution + department — a Nodal Officer scopes to
+  // their NODAL department, not their home department (Bug 4). Read via the single
+  // resolver so records here match the assignment/forms/export screens.
+  const { institutionId, departmentId } = await resolveEffectiveDepartment(pool, req);
+
   return {
-    institutionId: user.institution_id || null,
-    departmentId:  isDeptAdmin ? (user.department_id || null) : null,
+    institutionId: institutionId || null,
+    departmentId:  isDeptAdmin ? (departmentId || null) : null,
     role: isDeptAdmin ? "department_admin" : "institute_admin",
   };
 }

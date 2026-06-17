@@ -17,19 +17,16 @@ const express = require("express");
 const { verifyToken, requireRole } = require("../middleware/auth");
 const { writeAuditLog } = require("../utils/audit");
 const { getFormArchiveBlockForReq } = require("../services/academicYearService");
+const { resolveEffectiveDepartment } = require("../services/departmentContext");
 const logger = require("../utils/logger");
 
-/* Assigner's (institution, department) context — read from the JWT, which is
-   NOA-aware: for a Contributor who holds an active Nodal Officer assignment,
-   buildAccessPayload() (login.js) already injects "department_admin" and sets
-   institutionId/departmentId to the NODAL department. So both a real Department
-   Admin and a NOA-elevated Contributor get the correct department here, reusing
-   the existing nodal-capability resolution (no role hardcoding). */
-function assignerContext(req) {
-  return {
-    institutionId: req.user?.institutionId || null,
-    departmentId:  req.user?.departmentId  || null,
-  };
+/* Assigner's EFFECTIVE (institution, department) context. Delegates to the single
+   nodal-aware resolver so a NOA-elevated Contributor assigns for their NODAL
+   department and a real Department Admin assigns for their (live) home department
+   — the SAME resolver records/forms/exports use, so assignment and records can
+   never disagree on the department (Bug 4). */
+async function assignerContext(pool, req) {
+  return resolveEffectiveDepartment(pool, req);
 }
 
 /* ── Table (idempotent — safe on every boot) ── */
@@ -67,23 +64,33 @@ function isContributorOnly(req) {
   return !roles.some((r) => elevated.includes(r));
 }
 
-/* table_list.id values assigned (active) to a user for a given academic year. */
+/* table_list.id values assigned (active) to a user for a given academic year.
+   DEPARTMENT-SCOPED: an assignment only counts while fa.department_id still
+   matches the user's CURRENT department. So if the user is moved to another
+   department, the old department's assignments stop granting visibility on the
+   very next request (read live — no logout needed). A user with no department
+   matches nothing (fail-closed). */
 async function getAssignedFormIds(pool, userId, year) {
   const { rows } = await pool.query(
-    `SELECT DISTINCT form_id FROM form_assignments
-     WHERE assigned_to = $1 AND academic_year = $2 AND is_active = true`,
+    `SELECT DISTINCT fa.form_id FROM form_assignments fa
+     WHERE fa.assigned_to = $1 AND fa.academic_year = $2 AND fa.is_active = true
+       AND fa.department_id = (SELECT department_id FROM users WHERE id = $1)`,
     [userId, Number(year)]
   );
   return rows.map((r) => String(r.form_id));
 }
 
-/* Is a specific form (by name) actively assigned to a user for the year? */
+/* Is a specific form (by name) actively assigned to a user for the year?
+   Department-scoped (see getAssignedFormIds) — the assignment must belong to the
+   user's CURRENT department, so a department move revokes access immediately. */
 async function isFormAssigned(pool, userId, formName, year) {
   const { rows } = await pool.query(
     `SELECT 1 FROM form_assignments fa
      JOIN table_list tl ON tl.id = fa.form_id
      WHERE fa.assigned_to = $1 AND tl.form_name = $2
-       AND fa.academic_year = $3 AND fa.is_active = true LIMIT 1`,
+       AND fa.academic_year = $3 AND fa.is_active = true
+       AND fa.department_id = (SELECT department_id FROM users WHERE id = $1)
+     LIMIT 1`,
     [userId, formName, Number(year)]
   );
   return rows.length > 0;
@@ -92,12 +99,14 @@ async function isFormAssigned(pool, userId, formName, year) {
 /* Is the form assigned to the user in ANY active year? Used for export/import,
    where the request may not reliably carry the selected year (raw downloads).
    Visibility year-scoping is enforced on the form LIST, so this only gates
-   "is this form mine at all". */
+   "is this form mine at all". Department-scoped — see getAssignedFormIds. */
 async function isFormAssignedAnyYear(pool, userId, formName) {
   const { rows } = await pool.query(
     `SELECT 1 FROM form_assignments fa
      JOIN table_list tl ON tl.id = fa.form_id
-     WHERE fa.assigned_to = $1 AND tl.form_name = $2 AND fa.is_active = true LIMIT 1`,
+     WHERE fa.assigned_to = $1 AND tl.form_name = $2 AND fa.is_active = true
+       AND fa.department_id = (SELECT department_id FROM users WHERE id = $1)
+     LIMIT 1`,
     [userId, formName]
   );
   return rows.length > 0;
@@ -123,7 +132,7 @@ const ASSIGN_ROLES = ["super_admin", "department_admin", "nodal_officer"];
 router.get("/contributors", requireRole(ASSIGN_ROLES), async (req, res) => {
   const pool = req.app.locals.pool;
   try {
-    const { institutionId, departmentId } = assignerContext(req);
+    const { institutionId, departmentId } = await assignerContext(pool, req);
     if (!departmentId) return res.json({ success: true, contributors: [], assigned: [] });
     const year   = resolveYear(req);
     const formId = req.query.form_id || null;
@@ -178,7 +187,7 @@ router.post("/", requireRole(ASSIGN_ROLES), async (req, res) => {
     return res.status(400).json({ success: false, message: "form_id and contributor_ids are required." });
 
   try {
-    const { institutionId, departmentId } = assignerContext(req);
+    const { institutionId, departmentId } = await assignerContext(pool, req);
     if (!departmentId)
       return res.status(400).json({ success: false, message: "No department is associated with your account." });
 
@@ -247,7 +256,7 @@ router.post("/", requireRole(ASSIGN_ROLES), async (req, res) => {
 router.delete("/:id", requireRole(ASSIGN_ROLES), async (req, res) => {
   const pool = req.app.locals.pool;
   try {
-    const { departmentId } = assignerContext(req);
+    const { departmentId } = await assignerContext(pool, req);
     const { rowCount } = await pool.query(
       `UPDATE form_assignments SET is_active = false, updated_at = now()
        WHERE id = $1 AND department_id = $2`,

@@ -593,6 +593,15 @@ router.post(
              VALUES ${rt.join(",")} ON CONFLICT DO NOTHING`,
             rv
           );
+
+          /* A role change must take effect immediately: roles are carried in the
+             short-lived JWT, so drop the affected users' sessions to force a
+             re-login with fresh roles on their next request (same pattern as the
+             disable/delete session-kill). Best-effort — never fail the import. */
+          await pool.query(
+            `DELETE FROM sessions WHERE user_id = ANY($1::uuid[])`,
+            [usersWithRoles.map((u) => u.id)]
+          ).catch(() => {});
         }
 
         done += chunk.length;

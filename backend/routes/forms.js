@@ -8,6 +8,7 @@ const { translateSentence, enrichSchemaLabels } = require("../services/translati
 const { formatAcademicYear, ensureYearRows, setFormStatusForYear, ensureFormArchivedIfUnclassified, getInstitutionStartYears, getAcademicYearLockBlockForReq } = require("../services/academicYearService");
 const { ensureSchemaExists, publishSchemaSnapshot } = require("../services/schemaPropagationService");
 const { resolveUserDomain, resolveListFilterDomain, assertFormDomainAccess, normalizeDomain } = require("../services/domainService");
+const { resolveEffectiveDepartment } = require("../services/departmentContext");
 const { getAssignedFormIds, isContributorOnly } = require("./formAssignments");
 
 /* Academic-year lock guard for form-management writes. Checks the SELECTED year
@@ -54,15 +55,15 @@ async function requireFormDomain(req, res, next) {
   }
 }
 
-/* ── resolve institution_id for non-super-admin users ── */
+/* ── resolve EFFECTIVE institution_id for non-super-admin users ──
+   Uses the single nodal-aware resolver so a Nodal Officer's forms/deadlines scope
+   to their NODAL institution, matching records/assignments (Bug 4). Non-NOA users
+   get their live home institution exactly as before. */
 async function resolveInstitutionId(pool, req) {
   const isSuperAdmin = (req.user.roles || []).includes("super_admin");
   if (isSuperAdmin) return req.body.institution_id || req.query.institution_id || null;
-  const { rows } = await pool.query(
-    "SELECT institution_id FROM users WHERE id = $1",
-    [req.user.userId]
-  );
-  return rows[0]?.institution_id || null;
+  const { institutionId } = await resolveEffectiveDepartment(pool, req);
+  return institutionId;
 }
 
 /* ─────────────────────────────────────────────────────────────────────

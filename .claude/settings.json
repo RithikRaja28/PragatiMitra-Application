@@ -20,7 +20,11 @@
       "Bash(node --check routes/formimportexport.js)",
       "Bash(node --check routes/formAssignments.js)",
       "Bash(node -c services/domainService.js)",
-      "Bash(node -c routes/formimportexport.js)"
+      "Bash(node -c routes/formimportexport.js)",
+      "Bash(node -c services/departmentContext.js)",
+      "Bash(node -c services/departmentFormService.js)",
+      "Bash(node -c routes/formAssignments.js)",
+      "Bash(node -c routes/nodalOfficerAssignments.js)"
     ]
   }
 }
