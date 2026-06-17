@@ -32,10 +32,10 @@ router.use(verifyToken);
    form is invisible (403) to Academic users and vice-versa. super_admin is
    cross-domain. Academic default keeps all existing behavior. */
 router.param("formName", async (req, res, next, formName) => {
+  const pool = req.app.locals.pool;
   try {
-    const pool = req.app.locals.pool;
     const acc = await assertFormDomainAccess(pool, req, formName);
-    if (!acc.allowed) return res.status(403).json({ success: false, message: acc.message });
+    if (!acc.allowed) return res.status(acc.status || 403).json({ success: false, message: acc.message });
 
     // Contributor: may only touch forms ASSIGNED to them for the selected year.
     if (isContributorOnly(req)) {
@@ -43,8 +43,16 @@ router.param("formName", async (req, res, next, formName) => {
       const ok = await isFormAssigned(pool, req.user.userId, formName, year);
       if (!ok) return res.status(403).json({ success: false, message: "This form is not assigned to you." });
     }
-  } catch { /* never hard-fail on a metadata read */ }
-  return next();
+    return next();
+  } catch (err) {
+    // FAIL-CLOSED: an authorization lookup failure must DENY, never allow. Falling
+    // through to next() here would let a contributor / cross-domain user reach a
+    // form whenever the assignment/domain check errored.
+    logger.error("formData domain/assignment guard failed — denying (fail-closed)", {
+      formName, userId: req.user?.userId, route: req.originalUrl, stack: err.stack,
+    });
+    return res.status(503).json({ success: false, message: "Authorization is temporarily unavailable. Please try again." });
+  }
 });
 
 // Session-level cache: prevents repeated ALTER TABLE calls for source_row_id column

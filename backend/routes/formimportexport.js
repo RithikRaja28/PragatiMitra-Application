@@ -49,10 +49,10 @@ router.use(verifyToken);
    formData.js: a non-super-admin can only import/export a form in their own
    domain. Academic default → unchanged. */
 router.param("formName", async (req, res, next, formName) => {
+  const pool = req.app.locals.pool;
   try {
-    const pool = req.app.locals.pool;
     const acc = await assertFormDomainAccess(pool, req, formName);
-    if (!acc.allowed) return res.status(403).json({ success: false, message: acc.message });
+    if (!acc.allowed) return res.status(acc.status || 403).json({ success: false, message: acc.message });
 
     // Contributor: only their assigned forms (export downloads may not carry the
     // year header, so gate on "assigned in any active year" here).
@@ -60,8 +60,16 @@ router.param("formName", async (req, res, next, formName) => {
       const ok = await isFormAssignedAnyYear(pool, req.user.userId, formName);
       if (!ok) return res.status(403).json({ success: false, message: "This form is not assigned to you." });
     }
-  } catch { /* never hard-fail on a metadata read */ }
-  return next();
+    return next();
+  } catch (err) {
+    // FAIL-CLOSED: an authorization lookup failure must DENY export/import, never
+    // allow. A swallowed error here would let a cross-domain / unassigned user
+    // export or import a form's records.
+    logger.error("import/export domain/assignment guard failed — denying (fail-closed)", {
+      formName, userId: req.user?.userId, route: req.originalUrl, stack: err.stack,
+    });
+    return res.status(503).json({ success: false, message: "Authorization is temporarily unavailable. Please try again." });
+  }
 });
 
 /* ── Multer: memory storage, 50 MB limit (raised for 10k rows) ── */

@@ -43,9 +43,15 @@ async function requireFormDomain(req, res, next) {
   try {
     const pool = req.app.locals.pool;
     const acc = await assertFormDomainAccess(pool, req, req.params.formName);
-    if (!acc.allowed) return res.status(403).json({ success: false, message: acc.message });
-  } catch { /* never hard-fail the guard on a metadata read */ }
-  return next();
+    if (!acc.allowed) return res.status(acc.status || 403).json({ success: false, message: acc.message });
+    return next();
+  } catch (err) {
+    // FAIL-CLOSED: an authorization error must DENY, never fall through to the route.
+    logger.error("requireFormDomain: guard failed — denying (fail-closed)", {
+      formName: req.params.formName, userId: req.user?.userId, route: req.originalUrl, stack: err.stack,
+    });
+    return res.status(503).json({ success: false, message: "Authorization is temporarily unavailable. Please try again." });
+  }
 }
 
 /* ── resolve institution_id for non-super-admin users ── */
