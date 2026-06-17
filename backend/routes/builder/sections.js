@@ -94,7 +94,23 @@ router.get("/assigned", async (req, res) => {
          a.role           AS assignment_role,
          a.due_at,
          a.assigned_at,
-         a.completed_at
+         a.completed_at,
+         -- latest version description (most recent manual save)
+         (SELECT sv.description
+          FROM public.section_versions sv
+          WHERE sv.section_id = s.id
+          ORDER BY sv.version_num DESC LIMIT 1) AS latest_version_description,
+         (SELECT sv.version_num
+          FROM public.section_versions sv
+          WHERE sv.section_id = s.id
+          ORDER BY sv.version_num DESC LIMIT 1) AS latest_version_num,
+         -- unresolved block comment count
+         (SELECT COUNT(*)
+          FROM public.block_comments bc
+          WHERE bc.section_id = s.id
+            AND bc.is_resolved = FALSE
+            AND bc.deleted_at IS NULL
+            AND bc.parent_id IS NULL) AS unresolved_comment_count
        FROM public.section_assignments a
        JOIN public.report_sections s ON s.id = a.section_id AND s.deleted_at IS NULL
        JOIN public.reports r         ON r.id = s.report_id  AND r.deleted_at IS NULL

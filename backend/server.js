@@ -65,7 +65,7 @@ app.use(cors({
 
 app.use(rateLimit({
   windowMs: 15 * 60 * 1000,
-  max:      200,
+  max:      process.env.NODE_ENV === "production" ? 500 : 5000,
   message:  "Too many requests, try again later.",
 }));
 
@@ -179,6 +179,16 @@ pool.query(`ALTER TABLE public.audit_logs ADD COLUMN IF NOT EXISTS browser_name 
   .catch((e) => logger.error("Failed to ensure audit_logs.browser_name column", { stack: e.stack }));
 pool.query(`ALTER TABLE public.audit_logs ADD COLUMN IF NOT EXISTS session_id UUID`)
   .catch((e) => logger.error("Failed to ensure audit_logs.session_id column", { stack: e.stack }));
+
+/* ── section_versions: ensure reviewer/decision columns added after initial schema ── */
+pool.query(`
+  ALTER TABLE public.section_versions
+    ADD COLUMN IF NOT EXISTS description      TEXT,
+    ADD COLUMN IF NOT EXISTS reviewer_id      UUID REFERENCES public.users(id),
+    ADD COLUMN IF NOT EXISTS decision         TEXT,
+    ADD COLUMN IF NOT EXISTS reviewer_comment TEXT,
+    ADD COLUMN IF NOT EXISTS workflow_step_id UUID REFERENCES public.workflow_steps(id)
+`).catch((e) => logger.error("Failed to ensure section_versions reviewer columns", { stack: e.stack }));
 
 /* ── Form deadline auto-lock: ensure columns, then start periodic checker ── */
 const { ensureDeadlineColumns, startDeadlineScheduler } = require("./services/formDeadlineService");

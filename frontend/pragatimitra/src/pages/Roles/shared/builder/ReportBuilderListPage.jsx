@@ -136,7 +136,7 @@ function SkeletonCard() {
 }
 
 /* ─── report card ────────────────────────────────────────────────────────── */
-function ReportCard({ report, prog, onOpen, onStats, onDelete, deleting }) {
+function ReportCard({ report, prog, onOpen, onEdit, onStats, onDelete, deleting }) {
   const [hover,       setHover]       = useState(false);
   const [deleteHover, setDeleteHover] = useState(false);
   const meta    = STATUS_META[report.status] || STATUS_META.DRAFT;
@@ -263,6 +263,30 @@ function ReportCard({ report, prog, onOpen, onStats, onDelete, deleting }) {
             <path d="M5 12h14M12 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
         </button>
+
+        {/* Edit (DRAFT only) */}
+        {onEdit && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onEdit(); }}
+            style={{
+              padding: "7px 12px", borderRadius: 8,
+              border: "1px solid #e2e8f0", background: "#fff",
+              fontSize: 11, fontWeight: 600, color: "#7c3aed",
+              cursor: "pointer", flexShrink: 0,
+              display: "flex", alignItems: "center", gap: 4,
+              transition: "border-color 0.15s, background 0.15s",
+            }}
+            onMouseEnter={e => { e.currentTarget.style.borderColor = "#c4b5fd"; e.currentTarget.style.background = "#f5f3ff"; }}
+            onMouseLeave={e => { e.currentTarget.style.borderColor = "#e2e8f0"; e.currentTarget.style.background = "#fff"; }}
+            title="Continue editing this draft"
+          >
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
+              <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            Edit
+          </button>
+        )}
 
         {/* Stats */}
         <button
@@ -407,13 +431,14 @@ export default function ReportBuilderListPage() {
   const reportEntity = location.state?.entity ?? null; // { id, title }
   const sectionEntity = isReview ? location.state?.entity : null; // { id }
 
-  const [reports,      setReports]      = useState([]);
-  const [progress,     setProgress]     = useState({});
-  const [loading,      setLoading]      = useState(true);
-  const [err,          setErr]          = useState("");
-  const [search,       setSearch]       = useState("");
-  const [filterStatus, setFilterStatus] = useState("");
-  const [deletingId,   setDeletingId]   = useState(null);
+  const [reports,        setReports]        = useState([]);
+  const [progress,       setProgress]       = useState({});
+  const [loading,        setLoading]        = useState(true);
+  const [err,            setErr]            = useState("");
+  const [search,         setSearch]         = useState("");
+  const [filterStatus,   setFilterStatus]   = useState("");
+  const [deletingId,     setDeletingId]     = useState(null);
+  const [editingReportId, setEditingReportId] = useState(null);
 
   const roleNames    = new Set((user?.roles || []).map((r) => r.name || r));
   const isSuperAdmin = roleNames.has("super_admin");
@@ -465,6 +490,16 @@ export default function ReportBuilderListPage() {
   }
 
   /* ── sub-views ── */
+  if (editingReportId) {
+    return (
+      <CreateReportWizardPage
+        initialReportId={editingReportId}
+        onCreated={() => { setEditingReportId(null); fetchReports(); }}
+        onCancel={() => setEditingReportId(null)}
+      />
+    );
+  }
+
   if (isCreate) {
     return (
       <CreateReportWizardPage
@@ -746,6 +781,7 @@ export default function ReportBuilderListPage() {
                 report={r}
                 prog={progress[r.id]}
                 onOpen={() => navFn(`${listPath}/structure`, { state: { entity: { id: r.id, title: r.title } } })}
+                onEdit={r.status === "DRAFT" ? () => setEditingReportId(r.id) : null}
                 onStats={() => navFn(`${listPath}/dashboard`, { state: { entity: { id: r.id, title: r.title } } })}
                 onDelete={() => handleDelete(r.id, r.title)}
                 deleting={deletingId === r.id}

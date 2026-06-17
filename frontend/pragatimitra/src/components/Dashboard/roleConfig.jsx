@@ -328,7 +328,7 @@ export const ROLE_CONFIG = {
       {
         group: "Reports",
         items: [
-          { id: "ia-report-cycles",   label: "Report Cycles",   icon: "CalendarDays",  permission: null },
+          { id: "ia-report-cycles",   label: "Report Cycles",   icon: "CalendarDays",  permission: null, slug: "report-cycles" },
           { id: "ia-report-setup",    label: "Report Setup",    icon: "FileText",      permission: null, slug: "report-management" },
           { id: "ia-kpi",             label: "KPI Charts",      icon: "BarChart2",     permission: null, slug: "kpi-management",  subRoutes: KPI_INSTITUTE_SUB },
           { id: "ia-report-builder",  label: "Report Builder",  icon: "BookOpen",      permission: null, slug: "report-builder",  subRoutes: REPORT_BUILDER_SUB },
@@ -356,6 +356,7 @@ export const ROLE_CONFIG = {
             label: "Workflow Templates",
             icon: "GitBranch",
             permission: null,
+            slug: "workflow-templates",
           },
           {
             id: "ia-workflow",
@@ -747,13 +748,13 @@ export const ROLE_CONFIG = {
       {
         group: "My Work",
         items: [
-          { id: "pc-sections",         label: "My Sections",      icon: "FileEdit",   permission: null },
+          { id: "pc-sections", label: "My Sections", icon: "FileEdit", permission: null, slug: "my-sections", subRoutes: MY_SECTIONS_SUB },
         ],
       },
       {
         group: "Templates",
         items: [
-          { id: "pc-templates",        label: "Templates",        icon: "LayoutList", permission: null, slug: "my-sections", subRoutes: MY_SECTIONS_SUB },
+          { id: "pc-templates", label: "Templates", icon: "LayoutList", permission: null, slug: "templates" },
         ],
       },
     ],

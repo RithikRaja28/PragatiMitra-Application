@@ -68,7 +68,7 @@ router.get("/section/:sectionId", async (req, res) => {
        LEFT JOIN public.users u ON u.id = sv.reviewer_id
        LEFT JOIN public.workflow_steps ws ON ws.id = sv.workflow_step_id
        WHERE sv.section_id = $1
-         AND sv.event IN ('SUBMITTED','APPROVED','SENT_BACK')
+         AND (sv.event = 'SUBMITTED' OR sv.decision IS NOT NULL)
        ORDER BY sv.created_at DESC`, [sectionId]
     );
 
@@ -131,6 +131,10 @@ router.post("/section/:sectionId/submit", async (req, res) => {
     const { sectionId } = req.params;
     if (!isUUID(sectionId)) return res.status(400).json({ success: false, message: "Invalid section id" });
 
+    const { description } = req.body;
+    if (!description || !description.trim())
+      return res.status(400).json({ success: false, message: "description is required when submitting" });
+
     const { rows: sRows } = await pool.query(
       `SELECT s.*, wt.id AS workflow_id
        FROM public.report_sections s
@@ -144,19 +148,51 @@ router.post("/section/:sectionId/submit", async (req, res) => {
     if (!allowed.includes(section.status))
       return res.status(422).json({ success: false, message: `Cannot submit from status: ${section.status}` });
 
+    // Workflow must be assigned
+    if (!section.workflow_template_id)
+      return res.status(422).json({ success: false, message: "A workflow template must be assigned before submitting" });
+
+    // Validate all required blocks have content
+    const { rows: reqBlocks } = await pool.query(
+      `SELECT id, block_type, content FROM public.section_blocks
+       WHERE section_id = $1 AND is_required = TRUE AND deleted_at IS NULL`,
+      [sectionId]
+    );
+    const emptyRequired = reqBlocks.filter(b => {
+      const c = b.content || {};
+      if (b.block_type === "PARAGRAPH") return !(c.html || c.text || "").trim();
+      if (b.block_type === "HEADING")   return !(c.text || "").trim();
+      if (b.block_type === "TABLE")     return !(c.rows || []).length;
+      if (b.block_type === "LIST")      return !(c.items || []).filter(i => i?.trim()).length;
+      return false;
+    });
+    if (emptyRequired.length > 0) {
+      return res.status(422).json({
+        success: false,
+        message: `${emptyRequired.length} required block(s) have no content`,
+        empty_blocks: emptyRequired.map(b => b.id),
+      });
+    }
+
+    // Get unresolved comment count (for SENT_BACK re-submit warning in response)
+    const { rows: unresCnt } = await pool.query(
+      `SELECT COUNT(*) AS cnt FROM public.block_comments
+       WHERE section_id = $1 AND is_resolved = FALSE AND deleted_at IS NULL AND parent_id IS NULL`,
+      [sectionId]
+    );
+    const unresolvedCount = Number(unresCnt[0]?.cnt || 0);
+
     // Find first workflow step
     let firstStepId = null;
-    if (section.workflow_template_id) {
-      const { rows: stepRows } = await pool.query(
-        `SELECT id FROM public.workflow_steps WHERE template_id = $1 ORDER BY step_order LIMIT 1`,
-        [section.workflow_template_id]
-      );
-      if (stepRows.length) firstStepId = stepRows[0].id;
-    }
+    const { rows: stepRows } = await pool.query(
+      `SELECT id FROM public.workflow_steps WHERE template_id = $1 ORDER BY step_order LIMIT 1`,
+      [section.workflow_template_id]
+    );
+    if (stepRows.length) firstStepId = stepRows[0].id;
 
     let versionNum = null;
     try {
-      versionNum = await createSectionSnapshot(pool, sectionId, "SUBMITTED", req.user.userId);
+      versionNum = await createSectionSnapshot(pool, sectionId, "SUBMITTED", req.user.userId, null, description.trim());
     } catch (snapErr) {
       logger.warn("Snapshot failed on submit (non-fatal)", { sectionId, err: snapErr.message });
     }
@@ -171,17 +207,17 @@ router.post("/section/:sectionId/submit", async (req, res) => {
 
     // Notify approver at first step
     if (firstStepId) {
-      const { rows: stepRows } = await pool.query(
+      const { rows: notifRows } = await pool.query(
         `SELECT ws.*, u.id AS uid FROM public.workflow_steps ws
          LEFT JOIN public.users u ON u.id = ws.approver_user_id
          WHERE ws.id = $1`, [firstStepId]
       );
-      if (stepRows[0]?.uid) {
+      if (notifRows[0]?.uid) {
         await pool.query(
           `INSERT INTO public.notifications (user_id, type, title, body, entity_type, entity_id)
            VALUES ($1, 'REVIEW_REQUESTED', 'Section awaiting your review',
                    $2, 'SECTION', $3)`,
-          [stepRows[0].uid, `A section has been submitted for review at step: ${stepRows[0].step_name}`, sectionId]
+          [notifRows[0].uid, `A section has been submitted for review at step: ${notifRows[0].step_name}`, sectionId]
         ).catch(() => {});
       }
     }
@@ -192,7 +228,12 @@ router.post("/section/:sectionId/submit", async (req, res) => {
       status: "SUCCESS", message: `Section submitted (v${versionNum})`,
     });
 
-    return res.json({ success: true, data: rows[0], version_num: versionNum });
+    return res.json({
+      success:          true,
+      data:             rows[0],
+      version_num:      versionNum,
+      unresolved_count: unresolvedCount,
+    });
   } catch (err) {
     logger.error("approvals POST submit", { ...getLogContext(req), err: err.message });
     return res.status(500).json({ success: false, message: "Failed to submit section" });
@@ -232,8 +273,32 @@ router.post("/section/:sectionId/review", async (req, res) => {
 
     const dec = decision.toUpperCase();
 
-    // Snapshot the decision
-    const versionNum = await createSectionSnapshot(pool, sectionId, dec === "APPROVED" ? "APPROVED" : "SENT_BACK", req.user.userId, comment || null);
+    // Stamp the most recent SUBMITTED snapshot with the reviewer decision.
+    // ('APPROVED' and 'SENT_BACK' are not valid event types in section_versions;
+    //  the decision is stored in the decision/reviewer_* columns instead.)
+    const { rows: latestVer } = await pool.query(
+      `SELECT version_num FROM public.section_versions
+       WHERE section_id = $1 AND event = 'SUBMITTED'
+       ORDER BY version_num DESC LIMIT 1`,
+      [sectionId]
+    );
+    let versionNum = null;
+    if (latestVer.length) {
+      versionNum = latestVer[0].version_num;
+      await pool.query(
+        `UPDATE public.section_versions
+         SET reviewer_id            = $1,
+             decision               = $2,
+             reviewer_comment       = $3,
+             workflow_step_id       = $4,
+             latest_decision        = $2,
+             latest_decision_by     = $1,
+             latest_decision_at     = now(),
+             latest_decision_step_id = $4
+         WHERE section_id = $5 AND version_num = $6`,
+        [req.user.userId, dec, comment || null, section.current_step_id, sectionId, versionNum]
+      );
+    }
 
     let newStatus      = dec === "SENT_BACK" ? "SENT_BACK" : null;
     let nextStepId     = section.current_step_id;
@@ -291,14 +356,6 @@ router.post("/section/:sectionId/review", async (req, res) => {
        SET status = $1, current_step_id = $2, updated_by = $3
        WHERE id = $4 AND deleted_at IS NULL RETURNING *`,
       [newStatus, nextStepId, req.user.userId, sectionId]
-    );
-
-    // Record in section_versions with reviewer info
-    await pool.query(
-      `UPDATE public.section_versions
-       SET reviewer_id = $1, decision = $2, reviewer_comment = $3, workflow_step_id = $4
-       WHERE section_id = $5 AND version_num = $6`,
-      [req.user.userId, dec, comment || null, section.current_step_id, sectionId, versionNum]
     );
 
     // Also record in legacy builder_approvals for backwards compat

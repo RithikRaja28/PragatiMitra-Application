@@ -30,7 +30,7 @@ router.get("/section/:sectionId", async (req, res) => {
     if (!isUUID(sectionId)) return res.status(400).json({ success: false, message: "Invalid section id" });
 
     const { rows } = await pool.query(
-      `SELECT v.id, v.version_num, v.event, v.created_at,
+      `SELECT v.id, v.version_num, v.event, v.created_at, v.description,
               u.full_name AS created_by_name,
               v.snapshot->'meta' AS meta
        FROM public.section_versions v
@@ -96,10 +96,13 @@ router.post(
 
       const { section: snapSection, blocks: snapBlocks } = vRows[0].snapshot;
 
+      const { description: userDesc } = req.body;
+
       await client.query("BEGIN");
 
       // Snapshot current state before overwriting
-      await createSectionSnapshot(pool, sectionId, "RESTORED", req.user.userId, `Restored to v${vNum}`);
+      const restoreDesc = userDesc?.trim() || `Restored to version ${vNum}`;
+      await createSectionSnapshot(pool, sectionId, "RESTORED", req.user.userId, null, restoreDesc);
 
       // Restore section metadata (keep id, report_id, parent_id — restore title, description, order_index)
       await client.query(

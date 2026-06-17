@@ -368,10 +368,28 @@ function VersionHistoryPage({ sectionId, sectionTitle, reportTitle, apiFetch, is
 /* ═══════════════════════════════════════════════════════════════════════════
    SECTION DETAIL PANEL  (right side of main layout)
 ═══════════════════════════════════════════════════════════════════════════ */
-function SectionDetailPanel({ section, sections, apiFetch, isAdmin, onAssign, onVersions, onDelete, onAddSubsection, onSelectSection, assignmentsData, loadingAssignments, onRemoveAssignment }) {
+function SectionDetailPanel({ section, sections, apiFetch, isAdmin, onAssign, onVersions, onDelete, onAddSubsection, onSelectSection, assignmentsData, loadingAssignments, onRemoveAssignment, allWorkflows, onSectionUpdate }) {
   const [editingField, setEditingField] = useState(null);
   const [editVal,      setEditVal]      = useState("");
   const [saving,       setSaving]       = useState(false);
+  const [wfDraft,      setWfDraft]      = useState(section.workflow_template_id || "");
+  const [wfSaving,     setWfSaving]     = useState(false);
+
+  useEffect(() => {
+    setWfDraft(section.workflow_template_id || "");
+  }, [section.id, section.workflow_template_id]);
+
+  async function saveWorkflow() {
+    setWfSaving(true);
+    try {
+      const res = await apiFetch(`/api/builder/sections/${section.id}`, {
+        method: "PUT",
+        body:   JSON.stringify({ workflow_template_id: wfDraft || null }),
+      });
+      if (res.ok) onSectionUpdate(section.id, { workflow_template_id: wfDraft || null });
+    } catch {}
+    setWfSaving(false);
+  }
 
   async function saveField(field, value) {
     if (!value?.trim() || value.trim() === section[field]) { setEditingField(null); return; }
@@ -460,6 +478,42 @@ function SectionDetailPanel({ section, sections, apiFetch, isAdmin, onAssign, on
         </div>
 
         {saving && <div style={{ marginTop: 6, fontSize: 11, color: "#94a3b8" }}>Saving…</div>}
+      </div>
+
+      {/* ── Workflow panel ── */}
+      <div style={{ background: "#fff", borderBottom: "1px solid rgba(0,0,0,0.06)", padding: "18px 28px", marginTop: 8 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: "#374151", textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 12 }}>
+          Workflow Template
+        </div>
+        {isAdmin ? (
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <select
+              value={wfDraft}
+              onChange={(e) => setWfDraft(e.target.value)}
+              style={{ flex: 1, padding: "8px 10px", border: "1px solid #e2e8f0", borderRadius: 7, fontSize: 13, color: "#1e293b", background: "#fff" }}
+            >
+              <option value="">— No workflow —</option>
+              {(allWorkflows || []).map(w => (
+                <option key={w.id} value={w.id}>{w.name}</option>
+              ))}
+            </select>
+            {wfDraft !== (section.workflow_template_id || "") && (
+              <button
+                onClick={saveWorkflow}
+                disabled={wfSaving}
+                style={{ padding: "8px 16px", background: "#7c3aed", color: "#fff", border: "none", borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: wfSaving ? "not-allowed" : "pointer", opacity: wfSaving ? 0.7 : 1 }}
+              >
+                {wfSaving ? "Saving…" : "Save"}
+              </button>
+            )}
+          </div>
+        ) : (
+          <div style={{ fontSize: 13, color: "#475569" }}>
+            {(allWorkflows || []).find(w => w.id === section.workflow_template_id)?.name || (
+              <span style={{ color: "#f59e0b", fontWeight: 600 }}>No workflow assigned</span>
+            )}
+          </div>
+        )}
       </div>
 
       {/* ── Assignments panel ── */}
@@ -564,9 +618,10 @@ export default function CollaborativeEditorPage({ reportId, reportTitle, onBack 
   const roleNames    = new Set((user?.roles || []).map((r) => r.name || r));
   const isAdmin      = roleNames.has("super_admin") || roleNames.has("institute_admin");
 
-  const [report,   setReport]   = useState(null);
-  const [sections, setSections] = useState([]);
-  const [selected, setSelected] = useState(null);
+  const [report,       setReport]       = useState(null);
+  const [sections,     setSections]     = useState([]);
+  const [selected,     setSelected]     = useState(null);
+  const [allWorkflows, setAllWorkflows] = useState([]);
 
   const [assignments,       setAssignments]       = useState([]);
   const [loadingAssignments,setLoadingAssignments] = useState(false);
@@ -583,7 +638,7 @@ export default function CollaborativeEditorPage({ reportId, reportTitle, onBack 
   const [creatingSec,  setCreatingSec]  = useState(false);
   const [createSecErr, setCreateSecErr] = useState("");
 
-  /* ── load report + sections ── */
+  /* ── load report + sections + workflows ── */
   useEffect(() => {
     apiFetch(`/api/builder/reports/${reportId}`)
       .then((r) => r.json())
@@ -594,6 +649,11 @@ export default function CollaborativeEditorPage({ reportId, reportTitle, onBack 
           setSections(flat);
         }
       });
+
+    apiFetch("/api/builder/workflows")
+      .then((r) => r.json())
+      .then((d) => { if (d.success) setAllWorkflows(d.data || []); })
+      .catch(() => {});
   }, [reportId]);
 
   function flattenTree(tree) {
@@ -613,7 +673,7 @@ export default function CollaborativeEditorPage({ reportId, reportTitle, onBack 
     setLoadingAssignments(true);
     apiFetch(`/api/builder/assignments/section/${section.id}`)
       .then((r) => r.json())
-      .then((d) => { if (d.success) setAssignments(d.data || []); })
+      .then((d) => { if (d.success) setAssignments(d.data?.users || []); })
       .catch(() => {})
       .finally(() => setLoadingAssignments(false));
   }
@@ -623,9 +683,14 @@ export default function CollaborativeEditorPage({ reportId, reportTitle, onBack 
     setLoadingAssignments(true);
     apiFetch(`/api/builder/assignments/section/${selected.id}`)
       .then((r) => r.json())
-      .then((d) => { if (d.success) setAssignments(d.data || []); })
+      .then((d) => { if (d.success) setAssignments(d.data?.users || []); })
       .catch(() => {})
       .finally(() => setLoadingAssignments(false));
+  }
+
+  function updateSection(sectionId, updates) {
+    setSections((prev) => prev.map((s) => s.id === sectionId ? { ...s, ...updates } : s));
+    setSelected((s) => s?.id === sectionId ? { ...s, ...updates } : s);
   }
 
   async function removeAssignment(assignId) {
@@ -896,6 +961,8 @@ export default function CollaborativeEditorPage({ reportId, reportTitle, onBack 
             assignmentsData={assignments}
             loadingAssignments={loadingAssignments}
             onRemoveAssignment={removeAssignment}
+            allWorkflows={allWorkflows}
+            onSectionUpdate={updateSection}
           />
         )}
       </div>

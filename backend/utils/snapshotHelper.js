@@ -7,7 +7,7 @@
  * section_versions.  Called from approvals and version-restore routes.
  */
 
-async function createSectionSnapshot(pool, sectionId, event, userId, reason = null) {
+async function createSectionSnapshot(pool, sectionId, event, userId, reason = null, description = null) {
   // Load section row
   const { rows: sRows } = await pool.query(
     `SELECT * FROM public.report_sections WHERE id = $1`,
@@ -44,9 +44,9 @@ async function createSectionSnapshot(pool, sectionId, event, userId, reason = nu
 
   await pool.query(
     `INSERT INTO public.section_versions
-       (section_id, version_num, event, snapshot, created_by)
-     VALUES ($1, $2, $3, $4, $5)`,
-    [sectionId, versionNum, event, JSON.stringify(snapshot), userId || null]
+       (section_id, version_num, event, snapshot, created_by, description)
+     VALUES ($1, $2, $3, $4, $5, $6)`,
+    [sectionId, versionNum, event, JSON.stringify(snapshot), userId || null, description || null]
   );
 
   return versionNum;

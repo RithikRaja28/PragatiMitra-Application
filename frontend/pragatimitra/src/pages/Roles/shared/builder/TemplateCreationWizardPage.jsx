@@ -222,9 +222,11 @@ function Step1Details({ name, setName, desc, setDesc, reportType, setReportType,
           </select>
         </F>
         <F label="Version">
-          <input style={inp} value={version} onChange={e => setVersion(e.target.value)} placeholder="1.0"
-            onFocus={e => (e.target.style.borderColor = C.primary)}
-            onBlur={e  => (e.target.style.borderColor = C.border)} />
+          <div style={{ ...inp, display: "flex", alignItems: "center", gap: 8,
+            background: C.bg, color: C.textSub, cursor: "default", userSelect: "none" }}>
+            <span style={{ fontWeight: 700, color: C.primary }}>v{version || "1.0"}</span>
+            <span style={{ fontSize: 11, color: C.textMuted }}>— auto-increments on each save</span>
+          </div>
         </F>
         <div style={{ gridColumn: "1/-1" }}>
           <F label="Default Workflow (optional)">
@@ -422,13 +424,6 @@ function Step2Structure({
       </div>
       <hr style={{ border: "none", borderTop: `1px solid ${C.border}`, marginBottom: 20 }} />
 
-      {immutable && (
-        <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8, padding: "10px 14px",
-          fontSize: 12, color: "#92400e", marginBottom: 16, display: "flex", gap: 8, alignItems: "center" }}>
-          <span>⚠</span>
-          <span>Template is <strong>ACTIVE</strong>. Publish a new version to edit the structure.</span>
-        </div>
-      )}
 
       {/* Split panel */}
       <div style={{ display: "flex", gap: 0, border: `1px solid ${C.border}`, borderRadius: 12, overflow: "hidden", height: 560 }}>
@@ -850,12 +845,14 @@ export default function TemplateCreationWizardPage({ initialId = null, onDone: o
     try {
       if (!name.trim()) throw new Error("Template name is required");
       const payload = { name: name.trim(), description: desc || null, report_type: reportType || null,
-        version: version || "1.0", default_workflow_id: wfId || null };
+        default_workflow_id: wfId || null };
       if (!templateId) {
         const res = await apj(apiFetch, "/api/builder/templates", { method: "POST", body: JSON.stringify(payload) });
         setTemplateId(res.data.id); setTmplStatus(res.data.status || "DRAFT");
+        setVersion(res.data.version || "1.0");
       } else {
-        await apj(apiFetch, `/api/builder/templates/${templateId}`, { method: "PUT", body: JSON.stringify(payload) });
+        const res = await apj(apiFetch, `/api/builder/templates/${templateId}`, { method: "PUT", body: JSON.stringify(payload) });
+        setVersion(res.data.version || version);
       }
       setSecFetched(false); setStep(1);
     } catch (e) { setErr(e.message); }
@@ -884,7 +881,7 @@ export default function TemplateCreationWizardPage({ initialId = null, onDone: o
     setPublished(false); setTmplStatus("DRAFT"); setErr("");
   }
 
-  const immutable = tmplStatus === "ACTIVE";
+  const immutable = false;
 
   return (
     <div style={{ minHeight: "100vh", background: C.bg, fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
