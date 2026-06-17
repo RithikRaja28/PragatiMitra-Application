@@ -8,6 +8,8 @@ import { useAuth } from "../../../../store/AuthContext";
 import { useApi }  from "../../../../hooks/useApi";
 import { BLOCK_ICONS, BlockEditor, DEFAULT_CONTENT } from "./BlockEditors";
 import { generateSectionDocx, downloadBlob, printSectionAsPdf } from "./sectionToDocx";
+import FormImportWizard from "./FormImportWizard";
+import KpiImportWizard  from "./KpiImportWizard";
 
 /* ═══════════════════════════════════════════════════════════════════════════
    BLOCK COMMENTS SIDEBAR — threaded inline comments per content block
@@ -923,6 +925,7 @@ const INLINE_BLOCK_MENU = [
   { type: "LIST",       icon: "Lst", label: "List" },
   { type: "DIVIDER",    icon: "--",  label: "Divider" },
   { type: "FILE",       icon: "Fil", label: "File" },
+  { type: "KPI",        icon: "KPI", label: "KPI Chart" },
 ];
 
 function InlineAdder({ isOpen, onToggle, onAdd }) {
@@ -1029,6 +1032,14 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack }) {
   const [blockCounts,      setBlockCounts]      = useState({});
   const [selectedBlockId,  setSelectedBlockId]  = useState(null);
 
+  // table type choice modal + form import wizard
+  const [tableTypeModal,   setTableTypeModal]   = useState({ open: false, afterIndex: undefined });
+  const [formImportWizard, setFormImportWizard] = useState({ open: false, afterIndex: undefined, orderIndex: undefined });
+
+  // kpi type choice modal + kpi import wizard
+  const [kpiTypeModal,   setKpiTypeModal]   = useState({ open: false, afterIndex: undefined });
+  const [kpiImportWizard, setKpiImportWizard] = useState({ open: false, afterIndex: undefined, orderIndex: undefined });
+
   // dirty tracking + save description modal
   const [dirtyBlocks,     setDirtyBlocks]     = useState(new Set());
   const [saveDescModal,   setSaveDescModal]   = useState({ open: false, desc: "", error: "" });
@@ -1109,7 +1120,7 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack }) {
         const hRes  = await apiFetch(`/api/builder/approvals/section/${sectionId}`);
         const hJson = await hRes.json();
         if (hJson.success) {
-          const sentBack = (hJson.data || []).filter(h => h.event === "SENT_BACK" && h.reviewer_comment);
+          const sentBack = (hJson.data || []).filter(h => h.decision === "SENT_BACK" && h.reviewer_comment);
           setReviewerComments(sentBack);
           setCommentsOpen(sentBack.length > 0);
         }
@@ -1205,21 +1216,18 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack }) {
     }
   }
 
+  function computeOrderIndex(afterIndex) {
+    const insertAfter = afterIndex !== undefined ? afterIndex : blocks.length - 1;
+    if (blocks.length === 0)           return 1;
+    if (insertAfter < 0)               return (blocks[0].order_index || 1) - 1;
+    if (insertAfter >= blocks.length - 1) return (blocks[blocks.length - 1].order_index || blocks.length) + 1;
+    return ((blocks[insertAfter].order_index || insertAfter + 1) + (blocks[insertAfter + 1].order_index || insertAfter + 2)) / 2;
+  }
+
   async function addBlock(type, afterIndex) {
     // afterIndex: index of the block to insert AFTER (-1 = before first, undefined = after last)
     const insertAfter = afterIndex !== undefined ? afterIndex : blocks.length - 1;
-
-    // Compute order_index for the insertion slot
-    let orderIndex;
-    if (blocks.length === 0) {
-      orderIndex = 1;
-    } else if (insertAfter < 0) {
-      orderIndex = (blocks[0].order_index || 1) - 1;
-    } else if (insertAfter >= blocks.length - 1) {
-      orderIndex = (blocks[blocks.length - 1].order_index || blocks.length) + 1;
-    } else {
-      orderIndex = ((blocks[insertAfter].order_index || insertAfter + 1) + (blocks[insertAfter + 1].order_index || insertAfter + 2)) / 2;
-    }
+    const orderIndex  = computeOrderIndex(afterIndex);
 
     const res  = await apiFetch(`/api/builder/blocks/section/${sectionId}`, {
       method: "POST",
@@ -1244,6 +1252,47 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack }) {
         }, 80);
       }
     }
+  }
+
+  function handleAddBlock(type, afterIndex) {
+    if (type === "TABLE") {
+      setTableTypeModal({ open: true, afterIndex });
+      setActiveInserter(null);
+    } else if (type === "KPI") {
+      setKpiTypeModal({ open: true, afterIndex });
+      setActiveInserter(null);
+    } else {
+      addBlock(type, afterIndex);
+    }
+  }
+
+  function handleFormImported(blockData) {
+    const afterIndex  = formImportWizard.afterIndex;
+    const insertAfter = afterIndex !== undefined ? afterIndex : blocks.length - 1;
+    setBlocks((prev) => {
+      const next = [...prev];
+      const at   = insertAfter < 0 ? 0 : Math.min(insertAfter + 1, prev.length);
+      next.splice(at, 0, blockData);
+      return next;
+    });
+    setFormImportWizard({ open: false, afterIndex: undefined, orderIndex: undefined });
+  }
+
+  function handleKpiImported(blockData) {
+    const afterIndex  = kpiImportWizard.afterIndex;
+    const insertAfter = afterIndex !== undefined ? afterIndex : blocks.length - 1;
+    setBlocks((prev) => {
+      const next = [...prev];
+      const at   = insertAfter < 0 ? 0 : Math.min(insertAfter + 1, prev.length);
+      next.splice(at, 0, blockData);
+      return next;
+    });
+    setKpiImportWizard({ open: false, afterIndex: undefined, orderIndex: undefined });
+  }
+
+  function handleBlockRefetched(blockId, newContent) {
+    setBlocks((prev) => prev.map((b) => b.id === blockId ? { ...b, content: newContent } : b));
+    // Does NOT add to dirtyBlocks — DB was already updated by the refetch/reimport endpoint
   }
 
   async function deleteBlock(blockId) {
@@ -1867,7 +1916,7 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack }) {
                   <InlineAdder
                     isOpen={activeInserter === -1}
                     onToggle={(open) => setActiveInserter(open ? -1 : null)}
-                    onAdd={(type) => addBlock(type, -1)}
+                    onAdd={(type) => handleAddBlock(type, -1)}
                   />
                 </div>
               )}
@@ -1877,7 +1926,7 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack }) {
                 <InlineAdder
                   isOpen={activeInserter === -1}
                   onToggle={(open) => setActiveInserter(open ? -1 : null)}
-                  onAdd={(type) => addBlock(type, -1)}
+                  onAdd={(type) => handleAddBlock(type, -1)}
                 />
               )}
 
@@ -1943,6 +1992,9 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack }) {
                       block={block}
                       readOnly={readOnly}
                       onChange={(newContent) => handleBlockChange(block.id, newContent)}
+                      onRefetched={(newContent) => handleBlockRefetched(block.id, newContent)}
+                      blockId={block.id}
+                      apiFetch={apiFetch}
                     />
                   </div>
 
@@ -1951,7 +2003,7 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack }) {
                     <InlineAdder
                       isOpen={activeInserter === idx}
                       onToggle={(open) => setActiveInserter(open ? idx : null)}
-                      onAdd={(type) => addBlock(type, idx)}
+                      onAdd={(type) => handleAddBlock(type, idx)}
                     />
                   )}
                 </React.Fragment>
@@ -2146,6 +2198,167 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack }) {
               </div>
             </div>
           </div>
+        )}
+
+        {/* ── Table Type Choice Modal ── */}
+        {tableTypeModal.open && (
+          <div style={{
+            position: "fixed", inset: 0, background: "rgba(15,23,42,0.45)",
+            display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1200,
+            fontFamily: "'Plus Jakarta Sans', sans-serif",
+          }} onClick={e => { if (e.target === e.currentTarget) setTableTypeModal({ open: false, afterIndex: undefined }); }}>
+            <div style={{
+              background: "#fff", borderRadius: 18, padding: "32px 36px",
+              width: 480, boxShadow: "0 24px 64px rgba(15,23,42,0.28)",
+            }}>
+              <div style={{ fontSize: 17, fontWeight: 800, color: "#0f172a", marginBottom: 6 }}>Add a Table</div>
+              <div style={{ fontSize: 12, color: "#64748b", marginBottom: 28, lineHeight: 1.6 }}>
+                Create a blank table you fill manually, or pull live data from a form in the system.
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                {/* Manual */}
+                <button
+                  onClick={() => {
+                    setTableTypeModal({ open: false, afterIndex: undefined });
+                    addBlock("TABLE", tableTypeModal.afterIndex);
+                  }}
+                  style={{
+                    padding: "20px 18px", border: "2px solid #e2e8f0", borderRadius: 14,
+                    background: "#fff", cursor: "pointer", textAlign: "left", fontFamily: "inherit",
+                    transition: "all 0.15s",
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.borderColor = "#818cf8"; e.currentTarget.style.background = "#fafafe"; }}
+                  onMouseLeave={e => { e.currentTarget.style.borderColor = "#e2e8f0"; e.currentTarget.style.background = "#fff"; }}
+                >
+                  <div style={{ fontSize: 24, marginBottom: 10 }}>📋</div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "#1e293b", marginBottom: 4 }}>Manual Table</div>
+                  <div style={{ fontSize: 11, color: "#64748b", lineHeight: 1.5 }}>
+                    Blank table — type in each cell yourself.
+                  </div>
+                </button>
+
+                {/* Form Import */}
+                <button
+                  onClick={() => {
+                    const oi = computeOrderIndex(tableTypeModal.afterIndex);
+                    setTableTypeModal({ open: false, afterIndex: undefined });
+                    setFormImportWizard({ open: true, afterIndex: tableTypeModal.afterIndex, orderIndex: oi });
+                  }}
+                  style={{
+                    padding: "20px 18px", border: "2px solid #e2e8f0", borderRadius: 14,
+                    background: "#fff", cursor: "pointer", textAlign: "left", fontFamily: "inherit",
+                    transition: "all 0.15s",
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.borderColor = "#7c3aed"; e.currentTarget.style.background = "#fdf8ff"; }}
+                  onMouseLeave={e => { e.currentTarget.style.borderColor = "#e2e8f0"; e.currentTarget.style.background = "#fff"; }}
+                >
+                  <div style={{ fontSize: 24, marginBottom: 10 }}>🗄️</div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "#1e293b", marginBottom: 4 }}>Import from Form Data</div>
+                  <div style={{ fontSize: 11, color: "#64748b", lineHeight: 1.5 }}>
+                    Pull records from an existing form. Refresh anytime.
+                  </div>
+                </button>
+              </div>
+              <div style={{ marginTop: 20, textAlign: "right" }}>
+                <button
+                  onClick={() => setTableTypeModal({ open: false, afterIndex: undefined })}
+                  style={{ padding: "7px 18px", borderRadius: 10, border: "1.5px solid #e2e8f0", background: "#fff", color: "#64748b", fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}
+                >Cancel</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── Form Import Wizard ── */}
+        {formImportWizard.open && (
+          <FormImportWizard
+            sectionId={sectionId}
+            orderIndex={formImportWizard.orderIndex}
+            apiFetch={apiFetch}
+            onImported={handleFormImported}
+            onClose={() => setFormImportWizard({ open: false, afterIndex: undefined, orderIndex: undefined })}
+          />
+        )}
+
+        {/* ── KPI Type Choice Modal ── */}
+        {kpiTypeModal.open && (
+          <div style={{
+            position: "fixed", inset: 0, background: "rgba(15,23,42,0.45)",
+            display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1200,
+            fontFamily: "'Plus Jakarta Sans', sans-serif",
+          }} onClick={e => { if (e.target === e.currentTarget) setKpiTypeModal({ open: false, afterIndex: undefined }); }}>
+            <div style={{
+              background: "#fff", borderRadius: 18, padding: "32px 36px",
+              width: 480, boxShadow: "0 24px 64px rgba(15,23,42,0.28)",
+            }}>
+              <div style={{ fontSize: 17, fontWeight: 800, color: "#0f172a", marginBottom: 6 }}>Add a KPI Chart</div>
+              <div style={{ fontSize: 12, color: "#64748b", marginBottom: 28, lineHeight: 1.6 }}>
+                Insert a KPI chart block — manually configure one or import from saved KPI reports.
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                {/* Manual KPI — plain placeholder for now */}
+                <button
+                  onClick={() => {
+                    setKpiTypeModal({ open: false, afterIndex: undefined });
+                    addBlock("KPI", kpiTypeModal.afterIndex);
+                  }}
+                  style={{
+                    padding: "20px 18px", border: "2px solid #e2e8f0", borderRadius: 14,
+                    background: "#fff", cursor: "pointer", textAlign: "left", fontFamily: "inherit",
+                    transition: "all 0.15s",
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.borderColor = "#818cf8"; e.currentTarget.style.background = "#fafafe"; }}
+                  onMouseLeave={e => { e.currentTarget.style.borderColor = "#e2e8f0"; e.currentTarget.style.background = "#fff"; }}
+                >
+                  <div style={{ fontSize: 24, marginBottom: 10 }}>📊</div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "#1e293b", marginBottom: 4 }}>Manual KPI</div>
+                  <div style={{ fontSize: 11, color: "#64748b", lineHeight: 1.5 }}>
+                    Blank KPI block — enter values yourself.
+                  </div>
+                </button>
+
+                {/* Import from KPI Reports */}
+                <button
+                  onClick={() => {
+                    const oi = computeOrderIndex(kpiTypeModal.afterIndex);
+                    setKpiTypeModal({ open: false, afterIndex: undefined });
+                    setKpiImportWizard({ open: true, afterIndex: kpiTypeModal.afterIndex, orderIndex: oi });
+                  }}
+                  style={{
+                    padding: "20px 18px", border: "2px solid #e2e8f0", borderRadius: 14,
+                    background: "#fff", cursor: "pointer", textAlign: "left", fontFamily: "inherit",
+                    transition: "all 0.15s",
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.borderColor = "#7c3aed"; e.currentTarget.style.background = "#fdf8ff"; }}
+                  onMouseLeave={e => { e.currentTarget.style.borderColor = "#e2e8f0"; e.currentTarget.style.background = "#fff"; }}
+                >
+                  <div style={{ fontSize: 24, marginBottom: 10 }}>📈</div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "#1e293b", marginBottom: 4 }}>Import from KPI Reports</div>
+                  <div style={{ fontSize: 11, color: "#64748b", lineHeight: 1.5 }}>
+                    Pull a saved KPI chart with its data. Re-import anytime.
+                  </div>
+                </button>
+              </div>
+              <div style={{ marginTop: 20, textAlign: "right" }}>
+                <button
+                  onClick={() => setKpiTypeModal({ open: false, afterIndex: undefined })}
+                  style={{ padding: "7px 18px", borderRadius: 10, border: "1.5px solid #e2e8f0", background: "#fff", color: "#64748b", fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}
+                >Cancel</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── KPI Import Wizard ── */}
+        {kpiImportWizard.open && (
+          <KpiImportWizard
+            sectionId={sectionId}
+            orderIndex={kpiImportWizard.orderIndex}
+            defaultYear={reportMeta?.academic_year ? Number(String(reportMeta.academic_year).split("-")[0]) : undefined}
+            apiFetch={apiFetch}
+            onImported={handleKpiImported}
+            onClose={() => setKpiImportWizard({ open: false, afterIndex: undefined, orderIndex: undefined })}
+          />
         )}
 
         {/* RIGHT PANEL: shared container, cross-fades between Word preview and Comments */}

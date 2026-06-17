@@ -42,9 +42,10 @@ const builderVersionsRoutes      = require("./routes/builder/versions");
 const builderCyclesRoutes        = require("./routes/builder/cycles");
 const builderWorkflowsRoutes     = require("./routes/builder/workflows");
 const builderTemplatesRoutes     = require("./routes/builder/templates");
-const builderCommentsRoutes      = require("./routes/builder/comments");
-const builderCompileRoutes       = require("./routes/builder/compile");
-const builderNotificationsRoutes = require("./routes/builder/notifications");
+const builderCommentsRoutes          = require("./routes/builder/comments");
+const builderCompileRoutes           = require("./routes/builder/compile");
+const builderNotificationsRoutes     = require("./routes/builder/notifications");
+const builderReportIntegrationRoutes = require("./routes/builder/reportIntegration");
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -180,6 +181,19 @@ pool.query(`ALTER TABLE public.audit_logs ADD COLUMN IF NOT EXISTS browser_name 
 pool.query(`ALTER TABLE public.audit_logs ADD COLUMN IF NOT EXISTS session_id UUID`)
   .catch((e) => logger.error("Failed to ensure audit_logs.session_id column", { stack: e.stack }));
 
+/* ── kpi_svg_reports: ensure academic_year column + backfill from exported_at ── */
+pool.query(`ALTER TABLE public.kpi_svg_reports ADD COLUMN IF NOT EXISTS academic_year INTEGER`)
+  .then(() => pool.query(`
+    UPDATE public.kpi_svg_reports
+    SET academic_year = CASE
+      WHEN EXTRACT(MONTH FROM exported_at) >= 4
+        THEN EXTRACT(YEAR FROM exported_at)::int
+      ELSE EXTRACT(YEAR FROM exported_at)::int - 1
+    END
+    WHERE academic_year IS NULL
+  `))
+  .catch(e => logger.error("Failed to ensure kpi_svg_reports.academic_year", { stack: e.stack }));
+
 /* ── section_versions: ensure reviewer/decision columns added after initial schema ── */
 pool.query(`
   ALTER TABLE public.section_versions
@@ -300,7 +314,8 @@ app.use("/api/builder/workflows",     builderWorkflowsRoutes);
 app.use("/api/builder/templates",     builderTemplatesRoutes);
 app.use("/api/builder/comments",      builderCommentsRoutes);
 app.use("/api/builder/compile",       builderCompileRoutes);
-app.use("/api/builder/notifications", builderNotificationsRoutes);
+app.use("/api/builder/notifications",      builderNotificationsRoutes);
+app.use("/api/report-integration",         builderReportIntegrationRoutes);
 
 /* ─── Global error handler (must be last) ───────────────────── */
 app.use(errorHandler);

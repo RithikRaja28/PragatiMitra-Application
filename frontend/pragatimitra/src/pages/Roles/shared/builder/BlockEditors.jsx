@@ -469,8 +469,207 @@ export function ImageGridBlock({ content, onChange, readOnly }) {
   );
 }
 
+/* ── Form-import TABLE sub-component ────────────────────────────────── */
+function FormImportTableBlock({ blockId, content, onChange, onRefetched, readOnly, apiFetch }) {
+  const [refetching,   setRefetching]   = useState(false);
+  const [refetchErr,   setRefetchErr]   = useState("");
+  const [confirmOpen,  setConfirmOpen]  = useState(false);
+
+  const columns = content.columns || [];
+  const rows    = content.rows    || [];
+
+  const lastFetched = content.imported_at
+    ? new Date(content.imported_at).toLocaleString()
+    : null;
+
+  async function doRefetch() {
+    setConfirmOpen(false);
+    setRefetching(true);
+    setRefetchErr("");
+    try {
+      const res  = await apiFetch(`/api/report-integration/blocks/${blockId}/refetch`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.message || "Re-fetch failed");
+      // Backend returns { rows, imported_at, count } — update content without marking dirty
+      const newContent = {
+        ...content,
+        rows:        data.data.rows        || [],
+        imported_at: data.data.imported_at || new Date().toISOString(),
+      };
+      if (onRefetched) onRefetched(newContent);
+      else onChange(newContent);
+    } catch (ex) {
+      setRefetchErr(ex.message || "Re-fetch failed");
+    } finally {
+      setRefetching(false);
+    }
+  }
+
+  const cell = { border: "1px solid #d1d5db", padding: "6px 10px", fontSize: 12, minWidth: 80, verticalAlign: "top" };
+
+  return (
+    <div>
+      {/* ── Metadata bar ── */}
+      <div style={{
+        display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
+        padding: "8px 12px", background: "#f0f9ff", border: "1px solid #bae6fd",
+        borderRadius: 8, marginBottom: 10,
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flex: 1, minWidth: 0 }}>
+          <span style={{
+            fontSize: 9, fontWeight: 800, textTransform: "uppercase", letterSpacing: 0.4,
+            color: "#0369a1", background: "#e0f2fe", padding: "2px 7px", borderRadius: 4,
+          }}>Form Import</span>
+          <span style={{ fontSize: 11, fontWeight: 700, color: "#0c4a6e", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {content.form_display_name || content.form_name || "Unknown form"}
+          </span>
+          {content.academic_year && (
+            <span style={{ fontSize: 10, color: "#0369a1", background: "#e0f2fe", padding: "1px 6px", borderRadius: 4, flexShrink: 0 }}>
+              {content.academic_year}
+            </span>
+          )}
+          <span style={{ fontSize: 10, color: "#64748b", flexShrink: 0 }}>
+            {rows.length} rows
+          </span>
+          {lastFetched && (
+            <span style={{ fontSize: 10, color: "#94a3b8", flexShrink: 0 }}>
+              · fetched {lastFetched}
+            </span>
+          )}
+        </div>
+
+        {!readOnly && (
+          <button
+            onClick={() => setConfirmOpen(true)}
+            disabled={refetching}
+            style={{
+              display: "flex", alignItems: "center", gap: 5, padding: "5px 12px",
+              border: "1px solid #0369a1", borderRadius: 7,
+              background: refetching ? "#e0f2fe" : "#fff",
+              color: "#0369a1", fontSize: 11, fontWeight: 700, cursor: refetching ? "not-allowed" : "pointer",
+              flexShrink: 0, fontFamily: "inherit",
+            }}
+          >
+            {refetching ? "Fetching…" : "↻ Re-fetch"}
+          </button>
+        )}
+      </div>
+
+      {refetchErr && (
+        <div style={{ marginBottom: 8, padding: "7px 12px", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 7, fontSize: 11, color: "#b91c1c" }}>
+          {refetchErr}
+        </div>
+      )}
+
+      {/* ── Confirm re-fetch dialog ── */}
+      {confirmOpen && (
+        <div style={{
+          marginBottom: 10, padding: "12px 16px", background: "#fffbeb",
+          border: "1px solid #fcd34d", borderRadius: 8, fontSize: 12, color: "#92400e",
+        }}>
+          <div style={{ fontWeight: 700, marginBottom: 6 }}>Re-fetch data from form?</div>
+          <div style={{ marginBottom: 10 }}>
+            This will replace all current table rows with fresh data from the form. Manual edits will be lost.
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={doRefetch} style={{
+              padding: "5px 14px", borderRadius: 7, border: "none",
+              background: "#d97706", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit",
+            }}>Yes, Re-fetch</button>
+            <button onClick={() => setConfirmOpen(false)} style={{
+              padding: "5px 12px", borderRadius: 7, border: "1px solid #e2e8f0",
+              background: "#fff", color: "#64748b", fontSize: 12, cursor: "pointer", fontFamily: "inherit",
+            }}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Table ── */}
+      {columns.length === 0 ? (
+        <div style={{ padding: "20px", textAlign: "center", color: "#94a3b8", fontSize: 12, border: "1px dashed #e2e8f0", borderRadius: 8 }}>
+          No columns defined. Re-fetch to populate data.
+        </div>
+      ) : (
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ borderCollapse: "collapse", width: "100%" }}>
+            <thead>
+              <tr>
+                {columns.map((col, ci) => (
+                  <th key={ci} style={{ ...cell, background: "#f1f5f9", fontWeight: 700 }}>
+                    {col.label || col.key}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.length === 0 ? (
+                <tr>
+                  <td colSpan={columns.length} style={{ ...cell, textAlign: "center", color: "#94a3b8", fontStyle: "italic", padding: "20px" }}>
+                    No data — use Re-fetch to load records from the form.
+                  </td>
+                </tr>
+              ) : (
+                rows.map((row, ri) => (
+                  <tr key={ri} style={{ background: ri % 2 === 1 ? "#f9fafb" : "#fff" }}>
+                    {columns.map((col, ci) => (
+                      <td key={ci} style={cell}>
+                        {readOnly
+                          ? (row[col.key] != null ? String(row[col.key]) : "")
+                          : (
+                            <textarea
+                              value={row[col.key] != null ? String(row[col.key]) : ""}
+                              onChange={e => {
+                                const newRows = rows.map((r, idx) => idx === ri ? { ...r, [col.key]: e.target.value } : r);
+                                onChange({ ...content, rows: newRows });
+                              }}
+                              rows={1}
+                              style={{ border: "none", background: "transparent", fontSize: 12, width: "100%", outline: "none", resize: "vertical", fontFamily: "inherit" }}
+                            />
+                          )
+                        }
+                      </td>
+                    ))}
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {!readOnly && columns.length > 0 && (
+        <div style={{ marginTop: 8 }}>
+          <button
+            onClick={() => {
+              const emptyRow = {};
+              columns.forEach(c => { emptyRow[c.key] = ""; });
+              onChange({ ...content, rows: [...rows, emptyRow] });
+            }}
+            style={ADD_BTN_STYLE}
+          >+ Row</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ── Table ────────────────────────────────────────────────────────────── */
-export function TableBlock({ content, onChange, readOnly }) {
+export function TableBlock({ content, onChange, onRefetched, readOnly, blockId, apiFetch }) {
+  // Form-import variant
+  if (content.source === "form_import") {
+    return (
+      <FormImportTableBlock
+        blockId={blockId}
+        content={content}
+        onChange={onChange}
+        onRefetched={onRefetched}
+        readOnly={readOnly}
+        apiFetch={apiFetch}
+      />
+    );
+  }
+
+  // Manual table (original behaviour)
   const rows    = content.rows    || [["", ""], ["", ""]];
   const headers = content.headers || Array(rows[0]?.length || 2).fill("");
 
@@ -665,18 +864,252 @@ export function FileBlock({ content, onChange, readOnly }) {
   );
 }
 
+/* ── KPI Import Block ─────────────────────────────────────────────── */
+export function KpiImportBlock({ blockId, content, onChange, onRefetched, readOnly, apiFetch }) {
+  const [reimporting,  setReimporting]  = useState(false);
+  const [reimportErr,  setReimportErr]  = useState("");
+  const [confirmOpen,  setConfirmOpen]  = useState(false);
+  const [optionsOpen,  setOptionsOpen]  = useState(false);
+
+  const opts        = content.compile_options || {};
+  const showChart   = opts.show_chart       !== false;
+  const showTable   = opts.show_data_table  !== false;
+  const caption     = opts.caption          || "";
+
+  const year        = content.academic_year;
+  const yearLabel   = year ? `${year}-${String(year + 1).slice(-2)}` : "";
+  const importedAt  = content.imported_at
+    ? new Date(content.imported_at).toLocaleString()
+    : null;
+
+  const data     = content.data     || {};
+  const columns  = data.columns     || [];
+  const series   = data.series      || [];
+  const totals   = data.totals      || [];
+
+  async function doReimport() {
+    setConfirmOpen(false);
+    setReimporting(true);
+    setReimportErr("");
+    try {
+      const res  = await apiFetch(`/api/report-integration/blocks/${blockId}/kpi-reimport`, { method: "POST" });
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.message || "Re-import failed");
+      // Backend returns { content: { ...updatedContent } }
+      if (onRefetched) onRefetched(json.data.content);
+      else onChange(json.data.content);
+    } catch (ex) {
+      setReimportErr(ex.message || "Re-import failed");
+    } finally {
+      setReimporting(false);
+    }
+  }
+
+  function patchOpts(patch) {
+    onChange({ ...content, compile_options: { ...opts, ...patch } });
+  }
+
+  const fmtNum = n => (typeof n === "number" ? n.toLocaleString() : n);
+
+  return (
+    <div>
+      {/* ── Metadata bar ── */}
+      <div style={{
+        display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
+        padding: "8px 12px", background: "#f5f3ff", border: "1px solid #ddd6fe",
+        borderRadius: 8, marginBottom: 10,
+      }}>
+        <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontSize: 14 }}>📊</span>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#4c1d95", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {content.title || "KPI Chart"}
+              {yearLabel && <span style={{ fontSize: 10, color: "#7c3aed", fontWeight: 500, marginLeft: 6 }}>({yearLabel})</span>}
+            </div>
+            {importedAt && (
+              <div style={{ fontSize: 10, color: "#9f7aea" }}>Imported {importedAt}</div>
+            )}
+          </div>
+        </div>
+
+        {!readOnly && (
+          <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+            <button
+              onClick={() => setOptionsOpen(o => !o)}
+              style={{
+                padding: "4px 10px", border: `1px solid ${optionsOpen ? "#7c3aed" : "#c4b5fd"}`,
+                borderRadius: 6, background: optionsOpen ? "#ede9fe" : "#fff",
+                color: optionsOpen ? "#6d28d9" : "#7c3aed", fontSize: 11, fontWeight: 600,
+                cursor: "pointer", fontFamily: "inherit",
+              }}
+            >⚙ Options</button>
+            <button
+              onClick={() => setConfirmOpen(true)}
+              disabled={reimporting}
+              style={{
+                padding: "4px 10px", border: "1px solid #7c3aed",
+                borderRadius: 6, background: reimporting ? "#ede9fe" : "#fff",
+                color: "#7c3aed", fontSize: 11, fontWeight: 700,
+                cursor: reimporting ? "not-allowed" : "pointer", fontFamily: "inherit",
+              }}
+            >
+              {reimporting ? "Importing…" : "🔄 Re-import"}
+            </button>
+          </div>
+        )}
+      </div>
+
+      {reimportErr && (
+        <div style={{ marginBottom: 8, padding: "7px 12px", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 7, fontSize: 11, color: "#b91c1c" }}>
+          {reimportErr}
+        </div>
+      )}
+
+      {/* ── Confirm re-import ── */}
+      {confirmOpen && (
+        <div style={{
+          marginBottom: 10, padding: "14px 16px", background: "#fef3c7",
+          border: "1px solid #fcd34d", borderRadius: 8, fontSize: 12, color: "#92400e",
+        }}>
+          <div style={{ fontWeight: 700, marginBottom: 5 }}>Re-import KPI Chart?</div>
+          <div style={{ marginBottom: 3 }}>
+            This will fetch the latest version of <strong>{content.title}</strong>.
+          </div>
+          <div style={{ fontSize: 11, color: "#a16207", marginBottom: 10 }}>
+            The current chart and data will be replaced with the latest exported version.
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={doReimport} style={{
+              padding: "5px 14px", borderRadius: 7, border: "none",
+              background: "#7c3aed", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit",
+            }}>Re-import →</button>
+            <button onClick={() => setConfirmOpen(false)} style={{
+              padding: "5px 12px", borderRadius: 7, border: "1px solid #e2e8f0",
+              background: "#fff", color: "#64748b", fontSize: 12, cursor: "pointer", fontFamily: "inherit",
+            }}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Compile options ── */}
+      {optionsOpen && !readOnly && (
+        <div style={{
+          marginBottom: 12, padding: "12px 16px", background: "#fafafe",
+          border: "1px solid #e2e8f0", borderRadius: 8,
+        }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "#374151", marginBottom: 10, textTransform: "uppercase", letterSpacing: 0.4 }}>
+            Compile Options
+          </div>
+          <div style={{ marginBottom: 8 }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 12, color: "#374151" }}>
+              <input type="checkbox" checked={showChart} onChange={e => patchOpts({ show_chart: e.target.checked })} style={{ accentColor: "#7c3aed", width: 14, height: 14 }} />
+              Include chart image in compiled report (PDF / Word)
+            </label>
+          </div>
+          <div style={{ marginBottom: 10 }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 12, color: "#374151" }}>
+              <input type="checkbox" checked={showTable} onChange={e => patchOpts({ show_data_table: e.target.checked })} style={{ accentColor: "#7c3aed", width: 14, height: 14 }} />
+              Include data summary table in compiled report
+            </label>
+          </div>
+          <div>
+            <label style={{ fontSize: 11, fontWeight: 600, color: "#64748b", display: "block", marginBottom: 4 }}>Caption</label>
+            <input
+              type="text"
+              value={caption}
+              onChange={e => patchOpts({ caption: e.target.value })}
+              placeholder="e.g. Figure __ — X-Ray Monthly Statistics"
+              style={{
+                width: "100%", padding: "7px 10px", border: "1px solid #e2e8f0",
+                borderRadius: 7, fontSize: 12, outline: "none", fontFamily: "inherit",
+                color: "#1e293b", boxSizing: "border-box",
+              }}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* ── SVG Chart ── */}
+      {content.svg_data ? (
+        <div style={{
+          border: "1px solid #e2e8f0", borderRadius: 8, overflow: "auto",
+          background: "#fff", padding: 4, marginBottom: showTable && columns.length > 0 ? 10 : 0,
+        }}>
+          <div
+            style={{ pointerEvents: "none", lineHeight: 0, overflow: "hidden" }}
+            dangerouslySetInnerHTML={{ __html: content.svg_data }}
+          />
+        </div>
+      ) : (
+        <div style={{
+          height: 120, border: "1px dashed #e2e8f0", borderRadius: 8,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          color: "#94a3b8", fontSize: 12, background: "#f9fafb",
+          marginBottom: columns.length > 0 ? 10 : 0,
+        }}>
+          No chart — re-import to load
+        </div>
+      )}
+
+      {/* ── Data Summary Table ── */}
+      {columns.length > 0 && (
+        <div>
+          <div style={{ fontSize: 10, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>
+            Data Summary
+          </div>
+          <div style={{ overflowX: "auto", borderRadius: 6, border: "1px solid #e2e8f0" }}>
+            <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 11 }}>
+              <thead>
+                <tr style={{ background: "#f1f5f9" }}>
+                  <th style={{ padding: "6px 10px", textAlign: "left", fontWeight: 700, color: "#374151", borderBottom: "1px solid #e2e8f0", whiteSpace: "nowrap" }}>Series</th>
+                  {columns.map((col, i) => (
+                    <th key={i} style={{ padding: "6px 10px", textAlign: "right", fontWeight: 700, color: "#374151", borderBottom: "1px solid #e2e8f0", whiteSpace: "nowrap" }}>{col}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {series.map((s, si) => (
+                  <tr key={si} style={{ background: "#fff" }}>
+                    <td style={{ padding: "5px 10px", fontWeight: 600, color: "#1e293b", borderBottom: "1px solid #f1f5f9", whiteSpace: "nowrap" }}>{s.display_name || s.name}</td>
+                    {(s.values || []).map((v, vi) => (
+                      <td key={vi} style={{ padding: "5px 10px", textAlign: "right", color: "#374151", borderBottom: "1px solid #f1f5f9" }}>{fmtNum(v)}</td>
+                    ))}
+                  </tr>
+                ))}
+                {totals.length > 0 && (
+                  <tr style={{ background: "#f8fafc" }}>
+                    <td style={{ padding: "5px 10px", fontWeight: 700, color: "#1e293b" }}>Total</td>
+                    {totals.map((v, vi) => (
+                      <td key={vi} style={{ padding: "5px 10px", textAlign: "right", fontWeight: 700, color: "#1e293b" }}>{fmtNum(v)}</td>
+                    ))}
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ── Block router ─────────────────────────────────────────────────────── */
-export function BlockEditor({ block, onChange, readOnly }) {
+export function BlockEditor({ block, onChange, onRefetched, readOnly, blockId, apiFetch }) {
   const p = { content: block.content, onChange, readOnly };
   switch (block.block_type) {
     case "PARAGRAPH":  return <RichTextBlock  {...p} />;
     case "HEADING":    return <HeadingBlock   {...p} />;
     case "IMAGE":      return <ImageBlock     {...p} />;
     case "IMAGE_GRID": return <ImageGridBlock {...p} />;
-    case "TABLE":      return <TableBlock     {...p} />;
+    case "TABLE":      return <TableBlock     {...p} onRefetched={onRefetched} blockId={blockId || block.id} apiFetch={apiFetch} />;
     case "LIST":       return <ListBlock      {...p} />;
     case "DIVIDER":    return <DividerBlock />;
     case "FILE":       return <FileBlock      {...p} />;
+    case "KPI":
+      if ((block.content || {}).source === "kpi_import") {
+        return <KpiImportBlock blockId={blockId || block.id} content={block.content} onChange={onChange} onRefetched={onRefetched} readOnly={readOnly} apiFetch={apiFetch} />;
+      }
+      return <div style={{ color: "#94a3b8", fontSize: 13 }}>[KPI — id: {block.content?.kpi_id || "none"}]</div>;
     default:           return <div style={{ color: "#94a3b8", fontSize: 13 }}>[{block.block_type}]</div>;
   }
 }
