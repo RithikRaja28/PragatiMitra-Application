@@ -23,6 +23,7 @@ const { resolveDeptContext, deptRecordsTable, quoteIdent } = require("../service
 const { getEffectiveState, STATE } = require("../services/stateResolver");
 const { resolveActiveAcademicYear } = require("../services/academicYearService");
 const { assertEquivalent } = require("../services/equivalenceGuard");
+const { assertDomainOwnerAccess } = require("../services/domainService");
 
 const router = express.Router();
 router.use(verifyToken);
@@ -106,6 +107,12 @@ async function loadForm(pool, req, id) {
   );
   if (!rows.length) return { error: "Form not found in your department." };
   if (!validSlug(rows[0].form_name)) return { error: "Invalid form." };
+
+  // L-3 — domain isolation: a department form's domain is its creator's domain
+  // (no domain column on department_table_list). A Hospital/Finance user can never
+  // reach an Academic department form and vice-versa; cross-domain admins pass.
+  const dom = await assertDomainOwnerAccess(pool, req, rows[0].created_by);
+  if (!dom.allowed) return { error: dom.message };
 
   const userRoles = req.user.roles || [];
   const isManager = userRoles.includes("department_admin") || userRoles.includes("super_admin");

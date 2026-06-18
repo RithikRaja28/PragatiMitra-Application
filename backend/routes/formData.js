@@ -570,24 +570,43 @@ router.post("/:formName/records", async (req, res) => {
       return res.status(403).json({ success: false, message: lockBlock.message });
     }
 
-    let schema = await getActiveSchema(pool, formName, ctx.institutionId, year);
+    /* ── M-2 fix — ONE resolved academic year drives BOTH the schema lookup and
+       record.year, so a record can never belong to one year but reference another
+       year's schema. Resolve the effective year ONCE (explicit body → SELECTED
+       top-bar header → institution ACTIVE year; no calendar shortcut), look up the
+       schema FOR THAT YEAR, and only if that year has no schema fall back to the
+       latest active one (existing behavior — forms without a per-year schema still
+       save). record.year is then taken from the SCHEMA THAT WAS ACTUALLY USED, so
+       record.year === schema.year ALWAYS. ── */
+    const effectiveYear = Number(year)
+      || lockYearForReq(req)
+      || (Number.isInteger(req.institutionAcademicYear) ? req.institutionAcademicYear : null);
+
+    let schema = await getActiveSchema(pool, formName, ctx.institutionId, effectiveYear);
+    if (!schema && effectiveYear != null)
+      schema = await getActiveSchema(pool, formName, ctx.institutionId, null); // latest active fallback
     if (!schema)
       return res.status(404).json({ success: false, message: "No active schema found." });
-    // Bug 17 — store the CONSUMER institution's own schema id, never the creator's.
-    schema = await resolveOwnedSchema(pool, formName, ctx.institutionId, year, schema);
+    // Bug 17 — store the CONSUMER institution's own schema id (for the SAME year),
+    // never the creator's.
+    schema = await resolveOwnedSchema(pool, formName, ctx.institutionId, schema.year, schema);
 
     const fields    = activeFields(schema);
     const fieldCols = fields.map((f) => dbCol(f.column_name));
     const fieldModes = buildFieldModes(fields);
-    /* Bug 16 — the year a NEW record is stored under: explicit body year → the
-       SELECTED top-bar year (X-Academic-Year header) → the institution's ACTIVE
-       academic year → the active schema's year (last resort). Never the calendar
-       year. (Schema lookup above stays lenient so it always resolves a schema.) */
-    const formYear  = Number(year)
-      || lockYearForReq(req)
-      || (Number.isInteger(req.institutionAcademicYear) ? req.institutionAcademicYear : null)
-      || schema.year;
+    // SINGLE SOURCE OF TRUTH: the record's year is the year of the schema it uses.
+    const formYear  = schema.year;
     const createdBy = req.user.userId || null;
+
+    // Diagnostics only (M-2) — record_year/schema_year/resolved_year. After the
+    // resolution above record.year always equals schema.year; this logs the rare
+    // case where the SELECTED year had no schema and we fell back to another year's.
+    if (effectiveYear != null && Number(effectiveYear) !== Number(formYear)) {
+      logger.warn("formData record year fell back to schema year (selected year has no schema)", {
+        formName, institutionId: ctx.institutionId,
+        resolved_year: effectiveYear, schema_year: formYear, record_year: formYear,
+      });
+    }
 
     // Academic-year lock — checks the SELECTED year (X-Academic-Year header),
     // falling back to the schema year. View-only when locked.

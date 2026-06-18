@@ -22,6 +22,7 @@ const { resolveActiveAcademicYear } = require("../services/academicYearService")
 const { assertEquivalent } = require("../services/equivalenceGuard");
 const { enqueueEmail }    = require("../services/mailService");
 const { getDepartmentState, DEPARTMENT_INACTIVE_MESSAGE } = require("../services/departmentContext");
+const { assertDomainOwnerAccess, resolveUserDomain } = require("../services/domainService");
 const { ensureRecordsIndexes } = require("../services/recordsIndexService");
 
 const router = express.Router();
@@ -122,6 +123,10 @@ async function loadOwnedForm(pool, req, id) {
     [id, departmentId]
   );
   if (!rows.length) return { error: "Form not found in your department." };
+
+  // L-3 — domain isolation (form's domain = creator's domain; no domain column).
+  const dom = await assertDomainOwnerAccess(pool, req, rows[0].created_by);
+  if (!dom.allowed) return { error: dom.message };
 
   const userRoles = req.user.roles || [];
   const isManager = userRoles.includes("department_admin") || userRoles.includes("super_admin");
@@ -318,14 +323,22 @@ router.get("/assigned", async (req, res) => {
     const userRoles = req.user.roles || [];
     const isManager = userRoles.includes("department_admin") || userRoles.includes("super_admin");
 
-    // Access hierarchy: SAME institution AND SAME department (then role-filtered below).
+    // L-3 — viewer's business domain (null = cross-domain super/institute admin).
+    // Fail-closed: an unresolvable scoped-user domain yields an empty list.
+    let viewerDomain;
+    try { viewerDomain = await resolveUserDomain(pool, req); }
+    catch { return res.json({ success: true, forms: [], year }); }
+
+    // Access hierarchy: SAME institution AND SAME department (then domain- + role-filtered below).
     const { rows } = await pool.query(
       `SELECT dtl.id, dtl.form_name, dtl.form_description, dtl.academic_year, dtl.translate_enabled,
+              COALESCE(cu.role_domain, 'academic') AS creator_domain,
               ym.status AS year_status, COALESCE(ym.is_archived, false) AS year_archived, COALESCE(ym.is_locked, false) AS year_locked,
               dc.deadline_at AS deadline, COALESCE(dc.is_locked, false) AS deadline_locked, COALESCE(dc.auto_locked, false) AS auto_locked,
               (dc.deadline_at IS NOT NULL AND dc.deadline_at <= now()) AS deadline_expired,
               ARRAY(SELECT role_name FROM department_form_roles r WHERE r.department_form_id = dtl.id) AS roles
          FROM department_table_list dtl
+         LEFT JOIN users cu ON cu.id = dtl.created_by
          LEFT JOIN department_form_year_mapping ym ON ym.department_form_id = dtl.id AND ym.academic_year = $2
          LEFT JOIN department_form_deadline_config dc ON dc.department_form_id = dtl.id AND dc.academic_year = $2
         WHERE dtl.department_id = $1 AND (dtl.institution_id = $3 OR dtl.institution_id IS NULL)
@@ -334,6 +347,9 @@ router.get("/assigned", async (req, res) => {
     );
 
     const forms = rows.filter((f) => {
+      // L-3 — domain isolation: a scoped user only sees forms whose creator shares
+      // their domain (Academic/Hospital/Finance kept independent). Admins see all.
+      if (viewerDomain != null && (f.creator_domain || "academic") !== viewerDomain) return false;
       const hasMapping = f.year_status != null;
       const isArchived = hasMapping ? f.year_archived === true : (f.academic_year !== year);
       if (isArchived) return false;                 // non-admins see only active forms

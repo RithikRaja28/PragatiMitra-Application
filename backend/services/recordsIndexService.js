@@ -48,6 +48,39 @@ async function ensureRecordsIndexes(db, tableName) {
   );
 }
 
+/* Standard (non-searchable) columns — never get a trigram index. */
+const STD_COLS = new Set([
+  "form_name", "institution_id", "department_id", "year", "academic_year", "schema_id",
+  "status", "order_index", "custom_fields", "language", "source_row_id",
+  "created_by", "updated_by", "created_at", "updated_at", "role_name",
+]);
+
+/* L-1 — substring-search acceleration. The records search uses ILIKE '%term%' (a
+   leading wildcard a B-tree cannot use), so add a GIN trigram index on each
+   searchable TEXT/VARCHAR column. Results are byte-identical — only execution gets
+   faster. Built CONCURRENTLY (no table lock) and pool-only (never inside the
+   create-path transaction). Degrades gracefully: if pg_trgm isn't available the
+   index simply isn't created and search falls back to the existing scan. */
+async function ensureRecordsTrgmIndexes(pool, tableName) {
+  if (!/^[a-z][a-z0-9_]*$/.test(tableName)) return;
+  const { rows } = await pool.query(
+    `SELECT column_name FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = $1
+        AND data_type IN ('text', 'character varying')`,
+    [tableName]
+  );
+  for (const r of rows) {
+    const col = r.column_name;
+    if (STD_COLS.has(col) || !/^[a-z][a-z0-9_]*$/.test(col)) continue;
+    const ix = `ix_${tableName}_${col}_trgm`.slice(0, 63);
+    try {
+      await pool.query(`CREATE INDEX CONCURRENTLY IF NOT EXISTS ${ix} ON ${tableName} USING gin (${col} gin_trgm_ops)`);
+    } catch (e) {
+      logger.error(`trgm index failed for ${tableName}.${col}`, { stack: e.stack });
+    }
+  }
+}
+
 /* Backfill indexes on every existing record table. Runs async at boot (never
    blocks startup); failures on one table never stop the rest. */
 async function ensureAllRecordsIndexes(pool) {
@@ -63,6 +96,18 @@ async function ensureAllRecordsIndexes(pool) {
     catch (e) { logger.error(`ensureRecordsIndexes failed for ${r.table_name}`, { stack: e.stack }); }
   }
   logger.info(`Records indexes ensured for ${done}/${rows.length} table(s)`);
+
+  // L-1 — trigram search indexes (best-effort; requires the pg_trgm extension).
+  const trgmOk = await pool.query(`CREATE EXTENSION IF NOT EXISTS pg_trgm`)
+    .then(() => true)
+    .catch((e) => { logger.error("pg_trgm extension unavailable — search trigram indexes skipped", { stack: e.stack }); return false; });
+  if (trgmOk) {
+    for (const r of rows) {
+      try { await ensureRecordsTrgmIndexes(pool, r.table_name); }
+      catch (e) { logger.error(`ensureRecordsTrgmIndexes failed for ${r.table_name}`, { stack: e.stack }); }
+    }
+    logger.info(`Search (trigram) indexes ensured across ${rows.length} record table(s)`);
+  }
 }
 
-module.exports = { ensureRecordsIndexes, ensureAllRecordsIndexes };
+module.exports = { ensureRecordsIndexes, ensureRecordsTrgmIndexes, ensureAllRecordsIndexes };

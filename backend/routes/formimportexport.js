@@ -502,18 +502,30 @@ router.post("/:formName/import/execute-chunk", async (req, res) => {
         return res.status(403).json({ success: false, message: "This form is locked. Import is disabled." });
     }
 
-    let result = await getSchemaFields(pool, formName, ctx.institutionId, year);
+    /* ── M-2 fix — ONE resolved academic year drives BOTH the schema lookup and the
+       year every imported row is stored under, so an import batch can never tag rows
+       to one year while referencing another year's schema. Resolve the effective
+       year ONCE (explicit body → SELECTED header → institution ACTIVE; no calendar
+       shortcut), look up the schema FOR THAT YEAR, and only fall back to the latest
+       active schema when that year has none. Every row in the batch then gets
+       formYear = schemaRow.year (one year, one schema, no mixed batch). ── */
+    const importHeaderYear = Number(req.headers["x-academic-year"]);
+    const effectiveYear = Number(year)
+      || (Number.isInteger(importHeaderYear) && importHeaderYear > 0 ? importHeaderYear : null)
+      || (Number.isInteger(req.institutionAcademicYear) ? req.institutionAcademicYear : null);
+
+    let result = await getSchemaFields(pool, formName, ctx.institutionId, effectiveYear);
+    if (!result && effectiveYear != null)
+      result = await getSchemaFields(pool, formName, ctx.institutionId, null); // latest active fallback
     if (!result)
       return res.status(404).json({ success: false, message: "No active schema found." });
 
     /* Bug 17 — imported rows must reference the CONSUMER institution's own schema
-       copy, never the creator's. If the resolved schema belongs to another
-       institution (shared-form creator fallback), materialize this institution's
-       own copy (idempotent) and re-resolve so schema_id is the consumer's. */
+       copy (for the SAME year), never the creator's. */
     if (result.schemaRow && String(result.schemaRow.institution_id) !== String(ctx.institutionId)) {
       try {
         await ensureSchemaExists(pool, formName);
-        const own = await getSchemaFields(pool, formName, ctx.institutionId, year);
+        const own = await getSchemaFields(pool, formName, ctx.institutionId, result.schemaRow.year);
         if (own && own.schemaRow && String(own.schemaRow.institution_id) === String(ctx.institutionId)) result = own;
       } catch (e) {
         logger.error(`Bug 17 consumer-schema resolution failed for ${formName}`, { stack: e.stack });
@@ -521,14 +533,14 @@ router.post("/:formName/import/execute-chunk", async (req, res) => {
     }
 
     const { schemaRow, fields } = result;
-    /* Bug 16 — the year imported rows are stored under: explicit body year → the
-       SELECTED top-bar year (header) → the institution's ACTIVE academic year →
-       the schema's year (last resort). Never the calendar year. */
-    const importHeaderYear = Number(req.headers["x-academic-year"]);
-    const formYear = Number(year)
-      || (Number.isInteger(importHeaderYear) && importHeaderYear > 0 ? importHeaderYear : null)
-      || (Number.isInteger(req.institutionAcademicYear) ? req.institutionAcademicYear : null)
-      || schemaRow.year;
+    // SINGLE SOURCE OF TRUTH: imported rows' year == the year of the schema used.
+    const formYear = schemaRow.year;
+    if (effectiveYear != null && Number(effectiveYear) !== Number(formYear)) {
+      logger.warn("import rows year fell back to schema year (selected year has no schema)", {
+        formName, institutionId: ctx.institutionId,
+        resolved_year: effectiveYear, schema_year: formYear,
+      });
+    }
 
     /* Academic-year lock — checks the SELECTED year (header), blocks import.
        Bug 13 — re-evaluated on EVERY chunk (was chunk 0 only) so a year lock /
