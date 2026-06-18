@@ -107,6 +107,30 @@ async function assertFormDomainAccess(pool, req, formName) {
   }
 }
 
+/* L-3 — domain isolation for entities that carry NO domain column of their own
+   (department forms). The entity's domain is taken from its OWNER/creator's
+   role_domain. super_admin / institute_admin are cross-domain (allowed). A scoped
+   user is allowed only when the owner's domain matches theirs. Fail-closed: a
+   viewer-domain read error denies (resolveUserDomain throws → caught here). */
+async function assertDomainOwnerAccess(pool, req, ownerUserId) {
+  try {
+    const viewerDomain = await resolveUserDomain(pool, req);
+    if (viewerDomain == null) return { allowed: true }; // cross-domain admins
+    const { rows } = ownerUserId
+      ? await pool.query("SELECT COALESCE(role_domain, 'academic') AS d FROM users WHERE id = $1", [ownerUserId])
+      : { rows: [] };
+    const ownerDomain = rows[0]?.d || "academic"; // unknown/legacy owner → academic default
+    if (ownerDomain !== viewerDomain)
+      return { allowed: false, status: 403, message: "This form is not available in your domain." };
+    return { allowed: true };
+  } catch (err) {
+    logger.error("assertDomainOwnerAccess: domain lookup failed — denying (fail-closed)", {
+      ownerUserId, userId: req.user?.userId, reason: err.code || err.message,
+    });
+    return { allowed: false, status: 503, message: "Authorization is temporarily unavailable. Please try again." };
+  }
+}
+
 /* Resolve the domain to filter a form LIST by, for the requesting user.
    - non-super-admin → their own domain (forced; cannot be overridden)
    - super_admin     → optional ?domain query, else null (all domains)
@@ -137,5 +161,6 @@ module.exports = {
   resolveUserDomain,
   getFormDomain,
   assertFormDomainAccess,
+  assertDomainOwnerAccess,
   resolveListFilterDomain,
 };

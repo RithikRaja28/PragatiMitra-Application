@@ -675,9 +675,36 @@ app.use("/api/report-integration",         builderReportIntegrationRoutes);
 app.use(errorHandler);
 
 /* ─── Start ─────────────────────────────────────────────────── */
-app.listen(PORT, () => {
-  logger.info(`Server running on port ${PORT}`, {
-    port: PORT,
-    env: process.env.NODE_ENV || "development",
+/* L-2 — gate the server on the column/table ensures that the FIRST requests
+   (login + auth gate, notification inbox, forms/domain) read, so no route is ever
+   exposed before that schema exists. All idempotent (ADD COLUMN IF NOT EXISTS); the
+   broader seed/repair ensures above keep running in the background. On failure we
+   still start (logged) so a transient DDL error never bricks the server — but the
+   common missing-column startup races are eliminated. */
+async function bootCriticalSchema() {
+  await pool.query(`ALTER TABLE institutions
+    ADD COLUMN IF NOT EXISTS status     TEXT NOT NULL DEFAULT 'ACTIVE',
+    ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ`);
+  await pool.query(`ALTER TABLE users      ADD COLUMN IF NOT EXISTS role_domain        TEXT    NOT NULL DEFAULT 'academic'`);
+  await pool.query(`ALTER TABLE table_list ADD COLUMN IF NOT EXISTS form_domain        TEXT    NOT NULL DEFAULT 'academic'`);
+  await pool.query(`ALTER TABLE table_list ADD COLUMN IF NOT EXISTS translate_to_hindi BOOLEAN NOT NULL DEFAULT TRUE`);
+  await pool.query(`ALTER TABLE public.notifications
+    ADD COLUMN IF NOT EXISTS type        VARCHAR(50),
+    ADD COLUMN IF NOT EXISTS body        TEXT,
+    ADD COLUMN IF NOT EXISTS entity_type VARCHAR(50),
+    ADD COLUMN IF NOT EXISTS entity_id   UUID,
+    ADD COLUMN IF NOT EXISTS read_at     TIMESTAMPTZ`);
+  await pool.query(`ALTER TABLE public.notifications ALTER COLUMN event_id DROP NOT NULL`).catch(() => {});
+  await pool.query(`ALTER TABLE public.notifications ALTER COLUMN message  DROP NOT NULL`).catch(() => {});
+}
+
+bootCriticalSchema()
+  .catch((e) => logger.error("Critical schema ensure failed (starting anyway)", { stack: e.stack }))
+  .finally(() => {
+    app.listen(PORT, () => {
+      logger.info(`Server running on port ${PORT}`, {
+        port: PORT,
+        env: process.env.NODE_ENV || "development",
+      });
+    });
   });
-});
