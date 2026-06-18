@@ -194,15 +194,32 @@ pool.query(`ALTER TABLE public.kpi_svg_reports ADD COLUMN IF NOT EXISTS academic
   `))
   .catch(e => logger.error("Failed to ensure kpi_svg_reports.academic_year", { stack: e.stack }));
 
-/* ── section_versions: ensure reviewer/decision columns added after initial schema ── */
+/* ── section_versions: ensure reviewer/decision columns added after initial schema.
+   Guarded so it no-ops cleanly when the report-builder table hasn't been created
+   yet (its migration may not have run on this database). ── */
 pool.query(`
-  ALTER TABLE public.section_versions
-    ADD COLUMN IF NOT EXISTS description      TEXT,
-    ADD COLUMN IF NOT EXISTS reviewer_id      UUID REFERENCES public.users(id),
-    ADD COLUMN IF NOT EXISTS decision         TEXT,
-    ADD COLUMN IF NOT EXISTS reviewer_comment TEXT,
-    ADD COLUMN IF NOT EXISTS workflow_step_id UUID REFERENCES public.workflow_steps(id)
+  DO $$
+  BEGIN
+    IF to_regclass('public.section_versions') IS NOT NULL THEN
+      ALTER TABLE public.section_versions
+        ADD COLUMN IF NOT EXISTS description      TEXT,
+        ADD COLUMN IF NOT EXISTS reviewer_id      UUID REFERENCES public.users(id),
+        ADD COLUMN IF NOT EXISTS decision         TEXT,
+        ADD COLUMN IF NOT EXISTS reviewer_comment TEXT,
+        ADD COLUMN IF NOT EXISTS workflow_step_id UUID REFERENCES public.workflow_steps(id);
+    END IF;
+  END $$;
 `).catch((e) => logger.error("Failed to ensure section_versions reviewer columns", { stack: e.stack }));
+
+/* ── Institution lifecycle (Bug 10): ensure status + soft-delete columns exist at
+   boot. The login / refresh / me / verifyToken gates read institutions.status and
+   institutions.deleted_at on the FIRST request (before any institutions route runs
+   its lazy ensure), so these must be present from startup. Idempotent. ── */
+pool.query(`
+  ALTER TABLE institutions
+    ADD COLUMN IF NOT EXISTS status     TEXT NOT NULL DEFAULT 'ACTIVE',
+    ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ
+`).catch((e) => logger.error("Failed to ensure institutions lifecycle columns", { stack: e.stack }));
 
 /* ── Form deadline auto-lock: ensure columns, then start periodic checker ── */
 const { ensureDeadlineColumns, startDeadlineScheduler } = require("./services/formDeadlineService");

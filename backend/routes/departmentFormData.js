@@ -31,10 +31,10 @@ router.use(verifyToken);
    request carries no explicit year, resolve the institution's active year so the
    fallback inherits it (not the calendar year). Lookup runs only on the no-year
    path, so normal flows (always ?year) cost nothing. See departmentForms.js. */
+// A year counts as explicit only when positive (body.year may be null → 0).
+const validYear = (v) => Number.isInteger(Number(v)) && Number(v) > 0;
 function hasExplicitYear(req) {
-  return Number.isInteger(Number(req.query.year))
-    || Number.isInteger(Number(req.get("X-Academic-Year")))
-    || Number.isInteger(Number(req.body?.year));
+  return validYear(req.query.year) || validYear(req.get("X-Academic-Year")) || validYear(req.body?.year);
 }
 router.use(async (req, _res, next) => {
   try {
@@ -60,14 +60,13 @@ function dbCol(col) { return col.trim().toLowerCase().replace(/\s+/g, "_"); }
 function validSlug(s) { return /^[a-z][a-z0-9_]*$/.test(s); }
 
 function resolveYear(req) {
-  const q = Number(req.query.year); if (Number.isInteger(q)) return q;
-  const h = Number(req.get("X-Academic-Year")); if (Number.isInteger(h)) return h;
-  const b = Number(req.body?.year); if (Number.isInteger(b)) return b;
-  // Phase-1 shadow: legacy fallback (calendar year) is authoritative; the
-  // institution-active year is the candidate — logged if it would differ, never used.
-  const legacy = new Date().getFullYear();
-  const candidate = Number.isInteger(req.institutionAcademicYear) ? req.institutionAcademicYear : legacy;
-  return assertEquivalent("departmentFormData.resolveYear.fallback", legacy, candidate);
+  if (validYear(req.query.year)) return Number(req.query.year);
+  if (validYear(req.get("X-Academic-Year"))) return Number(req.get("X-Academic-Year"));
+  if (validYear(req.body?.year)) return Number(req.body?.year);
+  // Bug 16 — inherit the institution's ACTIVE academic year (computed by the
+  // middleware above) before falling back to the calendar year as a LAST resort.
+  if (Number.isInteger(req.institutionAcademicYear)) return req.institutionAcademicYear;
+  return new Date().getFullYear();
 }
 
 function activeFields(schema) {

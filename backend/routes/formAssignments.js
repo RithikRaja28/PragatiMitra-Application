@@ -16,7 +16,7 @@
 const express = require("express");
 const { verifyToken, requireRole } = require("../middleware/auth");
 const { writeAuditLog } = require("../utils/audit");
-const { getFormLifecycleStatus } = require("../services/academicYearService");
+const { getFormLifecycleStatus, resolveActiveAcademicYear } = require("../services/academicYearService");
 const { assertFormDomainAccess } = require("../services/domainService");
 const { resolveEffectiveDepartment, getDepartmentWriteBlock } = require("../services/departmentContext");
 const logger = require("../utils/logger");
@@ -119,15 +119,44 @@ async function isFormAssignedAnyYear(pool, userId, formName) {
   return rows.length > 0;
 }
 
+/* A year is "explicitly provided" only when it's a positive integer — guards
+   against body.year === null (the assign modal sends null when no year is
+   selected), since Number(null) === 0 would otherwise look like a valid year. */
+const validYear = (v) => Number.isInteger(Number(v)) && Number(v) > 0;
+function hasExplicitYear(req) {
+  return validYear(req.query.year) || validYear(req.get("X-Academic-Year")) || validYear(req.body?.year);
+}
+
+/* Bug 16 — the academic year an assignment targets when none is explicitly given:
+   ?year → X-Academic-Year header → body.year → the institution's ACTIVE academic
+   year (inherited, precomputed by the middleware below) → calendar year (last
+   resort only). Previously this fell straight to the calendar year, so an
+   assignment made in (e.g.) July 2026 while the institution's active year was
+   2025–2026 was wrongly saved to 2026. */
 function resolveYear(req) {
-  const q = Number(req.query.year);            if (Number.isInteger(q)) return q;
-  const h = Number(req.get("X-Academic-Year")); if (Number.isInteger(h)) return h;
-  const b = Number(req.body?.year);            if (Number.isInteger(b)) return b;
+  if (validYear(req.query.year))            return Number(req.query.year);
+  if (validYear(req.get("X-Academic-Year"))) return Number(req.get("X-Academic-Year"));
+  if (validYear(req.body?.year))            return Number(req.body?.year);
+  if (Number.isInteger(req.institutionAcademicYear)) return req.institutionAcademicYear;
   return new Date().getFullYear();
 }
 
 const router = express.Router();
 router.use(verifyToken);
+
+/* Precompute the institution's active academic year ONCE per request (only when
+   no explicit year is supplied) so resolveYear can inherit it. Mirrors the
+   department modules. Never blocks on error → falls back to the calendar year. */
+router.use(async (req, _res, next) => {
+  try {
+    if (!hasExplicitYear(req)) {
+      const pool = req.app.locals.pool;
+      const { institutionId } = await resolveEffectiveDepartment(pool, req);
+      req.institutionAcademicYear = await resolveActiveAcademicYear(pool, institutionId);
+    }
+  } catch { /* leave undefined → calendar-year fallback */ }
+  next();
+});
 
 /* Only Department Admin / Nodal Officer may assign (super_admin allowed as god).
    Contributors / Faculty / Hospital / Finance can NOT assign. */

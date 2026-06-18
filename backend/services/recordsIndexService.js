@@ -39,6 +39,10 @@ async function ensureRecordsIndexes(db, tableName) {
       `CREATE INDEX IF NOT EXISTS ${ix("ic")} ON ${tableName} (institution_id, created_at DESC)`
     );
   }
+  // Legacy records tables may predate source_row_id (added lazily on first write
+  // via ensureSourceRowIdColumn). Ensure it exists before indexing it — IF NOT
+  // EXISTS makes this a no-op when already present.
+  await db.query(`ALTER TABLE ${tableName} ADD COLUMN IF NOT EXISTS source_row_id UUID`);
   await db.query(
     `CREATE INDEX IF NOT EXISTS ${ix("sr")} ON ${tableName} (source_row_id)`
   );

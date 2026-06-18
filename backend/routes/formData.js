@@ -5,13 +5,34 @@ const { verifyToken } = require("../middleware/auth");
 const logger = require("../utils/logger");
 const { writeAuditLog } = require("../utils/audit");
 const { translateRow, resolveTranslationMode, enrichSchemaLabels } = require("../services/translationService");
-const { getAcademicYearLockBlockForReq, getFormArchiveBlockForReq } = require("../services/academicYearService");
+const { getAcademicYearLockBlockForReq, getFormArchiveBlockForReq, resolveActiveAcademicYear } = require("../services/academicYearService");
 const { getEffectiveState, messageFor, canWrite } = require("../services/stateResolver");
 const { SOURCE_LANGUAGE, isDerivedRow } = require("../services/translationOwnership");
 const { assertEquivalent } = require("../services/equivalenceGuard");
 const { assertFormDomainAccess } = require("../services/domainService");
 const { resolveEffectiveDepartment, getDepartmentWriteBlock } = require("../services/departmentContext");
+const { ensureSchemaExists } = require("../services/schemaPropagationService");
 const { isFormAssigned, isContributorOnly } = require("./formAssignments");
+
+/* Bug 17 — shared-form schema ownership. On a WRITE, a consumer institution must
+   store its OWN schema copy's id, never the creator's. getActiveSchema falls back
+   to the creator's canonical row when the consumer has no copy yet; this detects
+   that fallback, materializes the consumer's own copy (idempotent clone), and
+   re-resolves so the record's schema_id references the consumer's schema. Returns
+   the institution-owned schema (or the original if anything goes wrong → never
+   blocks the write). */
+async function resolveOwnedSchema(pool, formName, institutionId, year, schema) {
+  if (!schema || !institutionId) return schema;
+  if (String(schema.institution_id) === String(institutionId)) return schema; // already owned
+  try {
+    await ensureSchemaExists(pool, formName);
+    const own = await getActiveSchema(pool, formName, institutionId, year);
+    if (own && String(own.institution_id) === String(institutionId)) return own;
+  } catch (err) {
+    logger.error(`Bug 17 resolveOwnedSchema failed for ${formName}/${institutionId}`, { stack: err.stack });
+  }
+  return schema;
+}
 
 /* Latest active schema year for a form+institution — used to resolve which
    academic year a record operation belongs to (for academic-year lock checks). */
@@ -28,6 +49,24 @@ async function getFormActiveYear(pool, formName, institutionId) {
 const router = express.Router();
 router.use(verifyToken);
 
+/* Bug 16 — precompute the institution's ACTIVE academic year once per request
+   (only when no explicit year is supplied) so the contributor assignment guard and
+   any year fallback inherit it instead of jumping to the calendar year. Never
+   blocks on error. */
+router.use(async (req, _res, next) => {
+  try {
+    // Positive-year check guards against body.year === null (→ Number 0).
+    const vy = (v) => Number.isInteger(Number(v)) && Number(v) > 0;
+    const explicit = vy(req.query.year) || vy(req.get("X-Academic-Year")) || vy(req.body?.year);
+    if (!explicit) {
+      const pool = req.app.locals.pool;
+      const { institutionId } = await resolveEffectiveDepartment(pool, req);
+      req.institutionAcademicYear = await resolveActiveAcademicYear(pool, institutionId);
+    }
+  } catch { /* leave undefined → calendar-year fallback */ }
+  next();
+});
+
 /* Domain isolation guard — runs for EVERY :formName route. A non-super-admin
    user may only touch records of a form in their own domain; a Hospital/Finance
    form is invisible (403) to Academic users and vice-versa. super_admin is
@@ -40,7 +79,9 @@ router.param("formName", async (req, res, next, formName) => {
 
     // Contributor: may only touch forms ASSIGNED to them for the selected year.
     if (isContributorOnly(req)) {
-      const year = Number(req.query.year) || Number(req.get("X-Academic-Year")) || Number(req.body?.year) || new Date().getFullYear();
+      // Bug 16 — fall back to the institution's ACTIVE year (not the calendar year).
+      const year = Number(req.query.year) || Number(req.get("X-Academic-Year")) || Number(req.body?.year)
+        || (Number.isInteger(req.institutionAcademicYear) ? req.institutionAcademicYear : new Date().getFullYear());
       const ok = await isFormAssigned(pool, req.user.userId, formName, year);
       if (!ok) return res.status(403).json({ success: false, message: "This form is not assigned to you." });
     }
@@ -516,14 +557,23 @@ router.post("/:formName/records", async (req, res) => {
       return res.status(403).json({ success: false, message: lockBlock.message });
     }
 
-    const schema = await getActiveSchema(pool, formName, ctx.institutionId, year);
+    let schema = await getActiveSchema(pool, formName, ctx.institutionId, year);
     if (!schema)
       return res.status(404).json({ success: false, message: "No active schema found." });
+    // Bug 17 — store the CONSUMER institution's own schema id, never the creator's.
+    schema = await resolveOwnedSchema(pool, formName, ctx.institutionId, year, schema);
 
     const fields    = activeFields(schema);
     const fieldCols = fields.map((f) => dbCol(f.column_name));
     const fieldModes = buildFieldModes(fields);
-    const formYear  = Number(year) || schema.year;
+    /* Bug 16 — the year a NEW record is stored under: explicit body year → the
+       SELECTED top-bar year (X-Academic-Year header) → the institution's ACTIVE
+       academic year → the active schema's year (last resort). Never the calendar
+       year. (Schema lookup above stays lenient so it always resolves a schema.) */
+    const formYear  = Number(year)
+      || lockYearForReq(req)
+      || (Number.isInteger(req.institutionAcademicYear) ? req.institutionAcademicYear : null)
+      || schema.year;
     const createdBy = req.user.userId || null;
 
     // Academic-year lock — checks the SELECTED year (X-Academic-Year header),

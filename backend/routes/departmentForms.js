@@ -52,10 +52,10 @@ async function requireActiveDepartment(req, res, next) {
    institution's active year so the fallback inherits it instead of guessing the
    calendar year. It does the lookup ONLY on the no-year path, so normal flows
    (which always send ?year) pay nothing. */
+// A year counts as explicit only when positive (body.year may be null → 0).
+const validYear = (v) => Number.isInteger(Number(v)) && Number(v) > 0;
 function hasExplicitYear(req) {
-  return Number.isInteger(Number(req.query.year))
-    || Number.isInteger(Number(req.get("X-Academic-Year")))
-    || Number.isInteger(Number(req.body?.year));
+  return validYear(req.query.year) || validYear(req.get("X-Academic-Year")) || validYear(req.body?.year);
 }
 router.use(async (req, _res, next) => {
   try {
@@ -76,17 +76,13 @@ const WRITE_ROLES = ["department_admin"];
    body.year → institution's active year (inherited) → current calendar year.
    Mirrors how the institution side reads the top-bar year. */
 function resolveYear(req) {
-  const fromQuery = Number(req.query.year);
-  if (Number.isInteger(fromQuery)) return fromQuery;
-  const fromHeader = Number(req.get("X-Academic-Year"));
-  if (Number.isInteger(fromHeader)) return fromHeader;
-  const fromBody = Number(req.body?.year);
-  if (Number.isInteger(fromBody)) return fromBody;
-  // Phase-1 shadow: legacy fallback (calendar year) is authoritative; the
-  // institution-active year is the candidate — logged if it would differ, never used.
-  const legacy = new Date().getFullYear();
-  const candidate = Number.isInteger(req.institutionAcademicYear) ? req.institutionAcademicYear : legacy;
-  return assertEquivalent("departmentForms.resolveYear.fallback", legacy, candidate);
+  if (validYear(req.query.year)) return Number(req.query.year);
+  if (validYear(req.get("X-Academic-Year"))) return Number(req.get("X-Academic-Year"));
+  if (validYear(req.body?.year)) return Number(req.body?.year);
+  // Bug 16 — inherit the institution's ACTIVE academic year (computed by the
+  // middleware above) before falling back to the calendar year as a LAST resort.
+  if (Number.isInteger(req.institutionAcademicYear)) return req.institutionAcademicYear;
+  return new Date().getFullYear();
 }
 
 /* Auto-fill label.hi using Google Translate (only when translation enabled). */

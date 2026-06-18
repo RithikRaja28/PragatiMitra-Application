@@ -10,9 +10,10 @@ const { getLogContext } = logger;
 const { writeAuditLog } = require("../utils/audit");
 const { translateSentence, transliteratePhrase, lookupLabel, translateRow, resolveTranslationMode } = require("../services/translationService");
 const { getReadUrl } = require("../utils/s3");
-const { getAcademicYearLockBlockForReq, getFormArchiveBlockForReq } = require("../services/academicYearService");
+const { getAcademicYearLockBlockForReq, getFormArchiveBlockForReq, resolveActiveAcademicYear } = require("../services/academicYearService");
 const { assertFormDomainAccess } = require("../services/domainService");
 const { resolveEffectiveDepartment, getDepartmentWriteBlock } = require("../services/departmentContext");
+const { ensureSchemaExists } = require("../services/schemaPropagationService");
 const { isFormAssigned, isContributorOnly } = require("./formAssignments");
 
 /* 7 days — maximum presigned URL lifetime for long-term IAM credentials */
@@ -46,6 +47,22 @@ async function resolveLabel(source, language) {
 const router = express.Router();
 router.use(verifyToken);
 
+/* Bug 16 — precompute the institution's ACTIVE academic year once per request
+   (only when no explicit year is supplied) so the contributor import/export guard
+   inherits it instead of jumping to the calendar year. Never blocks on error. */
+router.use(async (req, _res, next) => {
+  try {
+    // Positive-year check guards against body.year === null (→ Number 0).
+    const vy = (v) => Number.isInteger(Number(v)) && Number(v) > 0;
+    const explicit = vy(req.query.year) || vy(req.get("X-Academic-Year")) || vy(req.body?.year);
+    if (!explicit) {
+      const { institutionId } = await resolveEffectiveDepartment(req.app.locals.pool, req);
+      req.institutionAcademicYear = await resolveActiveAcademicYear(req.app.locals.pool, institutionId);
+    }
+  } catch { /* leave undefined → calendar-year fallback */ }
+  next();
+});
+
 /* Domain isolation guard for every :formName route (import / export). Mirrors
    formData.js: a non-super-admin can only import/export a form in their own
    domain. Academic default → unchanged. */
@@ -62,7 +79,9 @@ router.param("formName", async (req, res, next, formName) => {
     // → body → current year) so a contributor assigned only for 2025 cannot
     // export/import while the top bar is on 2027.
     if (isContributorOnly(req)) {
-      const year = Number(req.query.year) || Number(req.get("X-Academic-Year")) || Number(req.body?.year) || new Date().getFullYear();
+      // Bug 16 — fall back to the institution's ACTIVE year (not the calendar year).
+      const year = Number(req.query.year) || Number(req.get("X-Academic-Year")) || Number(req.body?.year)
+        || (Number.isInteger(req.institutionAcademicYear) ? req.institutionAcademicYear : new Date().getFullYear());
       const ok = await isFormAssigned(pool, req.user.userId, formName, year);
       if (!ok) return res.status(403).json({ success: false, message: "This form is not assigned to you for the selected academic year." });
     }
@@ -483,12 +502,33 @@ router.post("/:formName/import/execute-chunk", async (req, res) => {
         return res.status(403).json({ success: false, message: "This form is locked. Import is disabled." });
     }
 
-    const result = await getSchemaFields(pool, formName, ctx.institutionId, year);
+    let result = await getSchemaFields(pool, formName, ctx.institutionId, year);
     if (!result)
       return res.status(404).json({ success: false, message: "No active schema found." });
 
+    /* Bug 17 — imported rows must reference the CONSUMER institution's own schema
+       copy, never the creator's. If the resolved schema belongs to another
+       institution (shared-form creator fallback), materialize this institution's
+       own copy (idempotent) and re-resolve so schema_id is the consumer's. */
+    if (result.schemaRow && String(result.schemaRow.institution_id) !== String(ctx.institutionId)) {
+      try {
+        await ensureSchemaExists(pool, formName);
+        const own = await getSchemaFields(pool, formName, ctx.institutionId, year);
+        if (own && own.schemaRow && String(own.schemaRow.institution_id) === String(ctx.institutionId)) result = own;
+      } catch (e) {
+        logger.error(`Bug 17 consumer-schema resolution failed for ${formName}`, { stack: e.stack });
+      }
+    }
+
     const { schemaRow, fields } = result;
-    const formYear = Number(year) || schemaRow.year;
+    /* Bug 16 — the year imported rows are stored under: explicit body year → the
+       SELECTED top-bar year (header) → the institution's ACTIVE academic year →
+       the schema's year (last resort). Never the calendar year. */
+    const importHeaderYear = Number(req.headers["x-academic-year"]);
+    const formYear = Number(year)
+      || (Number.isInteger(importHeaderYear) && importHeaderYear > 0 ? importHeaderYear : null)
+      || (Number.isInteger(req.institutionAcademicYear) ? req.institutionAcademicYear : null)
+      || schemaRow.year;
 
     /* Academic-year lock — checks the SELECTED year (header), blocks import.
        Bug 13 — re-evaluated on EVERY chunk (was chunk 0 only) so a year lock /
