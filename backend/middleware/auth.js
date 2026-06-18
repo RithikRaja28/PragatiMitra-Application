@@ -33,6 +33,9 @@ async function verifyToken(req, res, next) {
     const pool = req.app.locals.pool;
     const { rows } = await pool.query(
       `SELECT u.account_status,
+              u.institution_id,
+              inst.status     AS inst_status,
+              inst.deleted_at AS inst_deleted_at,
               CASE WHEN $1::uuid IS NULL THEN TRUE
                    ELSE EXISTS (SELECT 1 FROM sessions s WHERE s.id = $1 AND s.user_id = u.id)
               END AS session_ok,
@@ -46,6 +49,7 @@ async function verifyToken(req, res, next) {
                 ARRAY[]::text[]
               ) AS db_roles
          FROM users u
+         LEFT JOIN institutions inst ON inst.institution_id = u.institution_id
         WHERE u.id = $2`,
       [req.user.sessionId || null, req.user.userId]
     );
@@ -84,6 +88,20 @@ async function verifyToken(req, res, next) {
     if (req.user.noaInstituteActiveYears?.length && !roles.includes("institute_admin"))
       roles.unshift("institute_admin");
     req.user.roles = roles;
+
+    /* ── Bug 10: institution lifecycle gate (per-request) ──────────────────
+       An institution is the parent owner of its users/forms/data. When it is
+       archived (status != ACTIVE) or soft-deleted (deleted_at set), every user
+       under it must stop operating IMMEDIATELY — login elsewhere, an open tab,
+       a direct API call — exactly like a disabled user account. Super admins are
+       system-level and exempt (they manage / restore institutions). A user with
+       no institution (institution_id NULL) is unaffected. 401 reuses the client
+       logout flow. */
+    if (rows[0].institution_id && !roles.includes("super_admin")) {
+      if (rows[0].inst_status !== "ACTIVE" || rows[0].inst_deleted_at) {
+        return res.status(401).json({ success: false, disabled: true, message: "Your institution is no longer active. Please contact your administrator." });
+      }
+    }
   } catch {
     return res.status(500).json({ success: false, message: "Internal server error." });
   }

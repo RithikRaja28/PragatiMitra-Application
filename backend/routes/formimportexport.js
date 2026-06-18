@@ -12,7 +12,7 @@ const { translateSentence, transliteratePhrase, lookupLabel, translateRow, resol
 const { getReadUrl } = require("../utils/s3");
 const { getAcademicYearLockBlockForReq, getFormArchiveBlockForReq } = require("../services/academicYearService");
 const { assertFormDomainAccess } = require("../services/domainService");
-const { resolveEffectiveDepartment } = require("../services/departmentContext");
+const { resolveEffectiveDepartment, getDepartmentWriteBlock } = require("../services/departmentContext");
 const { isFormAssigned, isContributorOnly } = require("./formAssignments");
 
 /* 7 days — maximum presigned URL lifetime for long-term IAM credentials */
@@ -347,6 +347,12 @@ router.post("/:formName/import/parse", handleUpload, async (req, res) => {
     if (!ctx.institutionId)
       return res.status(400).json({ success: false, message: "Institution ID required." });
 
+    // Bug 11 — an inactive department blocks import (a write). Contributors are
+    // already gated by the assignment param guard; this covers dept admins.
+    const deptBlock = await getDepartmentWriteBlock(pool, { departmentId: ctx.departmentId, roles: req.user.roles });
+    if (deptBlock.blocked)
+      return res.status(403).json({ success: false, message: deptBlock.message });
+
     const result = await getSchemaFields(pool, formName, ctx.institutionId, year);
     if (!result)
       return res.status(404).json({ success: false, message: "No active schema found for this form." });
@@ -452,6 +458,12 @@ router.post("/:formName/import/execute-chunk", async (req, res) => {
     const ctx = await resolveUserContext(pool, req);
     if (!ctx.institutionId)
       return res.status(400).json({ success: false, message: "Institution ID required." });
+
+    // Bug 11 — an inactive department blocks import (a write). Dept admins gated
+    // here; contributors are already blocked by the assignment param guard.
+    const deptBlock = await getDepartmentWriteBlock(pool, { departmentId: ctx.departmentId, roles: req.user.roles });
+    if (deptBlock.blocked)
+      return res.status(403).json({ success: false, message: deptBlock.message });
 
     /* SECURITY: dept admin cannot override their own department */
     const resolvedDeptId = ctx.role === "department_admin"

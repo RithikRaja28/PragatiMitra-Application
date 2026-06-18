@@ -54,4 +54,62 @@ async function resolveEffectiveDepartment(pool, req) {
   };
 }
 
-module.exports = { resolveEffectiveDepartment, hasActiveNodalCapability };
+/* ─────────────────────────────────────────────────────────────────────────
+   Bug 11 — Department lifecycle state (single source of truth).
+
+   A department is the parent scope of its users / assignments / forms / records.
+   When it is INACTIVE every department-scoped WRITE must stop immediately
+   (create / edit / delete / import / assign / submit) while existing data stays
+   viewable — the "view-only or hidden" pattern. Enforcement is at the gate, so
+   children are never mutated and a restore resumes everything with zero data loss
+   (mirrors the institution lifecycle, Bug 10).
+
+   Precedence the caller should honor: Department INACTIVE > Archive > Lock >
+   Deadline > Active. This resolver answers only the department dimension; the
+   form-level Archive/Lock/Deadline continue to come from stateResolver. */
+
+const DEPARTMENT_INACTIVE_MESSAGE =
+  "This department is inactive. You have view-only access — contact your institution administrator.";
+
+/* Live ACTIVE/INACTIVE state of a department. A missing departmentId (institution-
+   level / super-admin contexts) is treated as ACTIVE so those flows are unaffected. */
+async function getDepartmentState(pool, departmentId) {
+  if (!departmentId) return { active: true, status: "ACTIVE" };
+  const { rows } = await pool.query(
+    "SELECT status FROM departments WHERE department_id = $1",
+    [departmentId]
+  );
+  const status = rows[0]?.status || "ACTIVE";
+  return { active: status === "ACTIVE", status };
+}
+
+/* Centralized write-gate: { blocked, message }. Institution-level roles
+   (super_admin / institute_admin) are above the department and never blocked;
+   department-scoped users (department_admin / nodal capability / contributor) are
+   blocked from writes when their effective department is inactive. Pass the
+   department the action targets (the record/assignment's department) so the gate
+   matches the data scope. */
+async function getDepartmentWriteBlock(pool, { departmentId, roles = [] } = {}) {
+  if (roles.includes("super_admin") || roles.includes("institute_admin"))
+    return { blocked: false };
+  if (!departmentId) return { blocked: false };
+  const { active } = await getDepartmentState(pool, departmentId);
+  return active ? { blocked: false } : { blocked: true, message: DEPARTMENT_INACTIVE_MESSAGE };
+}
+
+/* Request-level convenience: resolves the acting (nodal-aware) department and
+   returns its write-gate. Use where the route does not already have the target
+   department resolved. */
+async function getDepartmentWriteBlockForReq(pool, req) {
+  const { departmentId } = await resolveEffectiveDepartment(pool, req);
+  return getDepartmentWriteBlock(pool, { departmentId, roles: req.user?.roles || [] });
+}
+
+module.exports = {
+  resolveEffectiveDepartment,
+  hasActiveNodalCapability,
+  getDepartmentState,
+  getDepartmentWriteBlock,
+  getDepartmentWriteBlockForReq,
+  DEPARTMENT_INACTIVE_MESSAGE,
+};

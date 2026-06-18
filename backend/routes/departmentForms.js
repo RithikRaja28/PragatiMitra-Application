@@ -21,9 +21,27 @@ const {
 } = require("../services/departmentFormService");
 const { resolveActiveAcademicYear } = require("../services/academicYearService");
 const { assertEquivalent } = require("../services/equivalenceGuard");
+const { getDepartmentState, DEPARTMENT_INACTIVE_MESSAGE } = require("../services/departmentContext");
 
 const router = express.Router();
 router.use(verifyToken);
+
+/* Bug 11 — department lifecycle gate for WRITE routes. An inactive department is
+   view-only: form create / schema edit / role / deadline / lock / archive / carry-
+   forward are all blocked while existing data + GET listings stay available.
+   Restore re-enables everything (no children were mutated). */
+async function requireActiveDepartment(req, res, next) {
+  try {
+    const pool = req.app.locals.pool;
+    const { departmentId } = await resolveDeptContext(pool, req);
+    const { active } = await getDepartmentState(pool, departmentId);
+    if (!active) return res.status(403).json({ success: false, message: DEPARTMENT_INACTIVE_MESSAGE });
+    return next();
+  } catch (err) {
+    logger.error("requireActiveDepartment failed", { stack: err.stack });
+    return res.status(500).json({ success: false, message: "Failed to resolve department state." });
+  }
+}
 
 /* OWNERSHIP: the INSTITUTION owns the academic year; a department only INHERITS
    it. Departments never create / delete / lock academic years here (no route in
@@ -212,7 +230,7 @@ router.get("/year-preview", requireRole(WRITE_ROLES), async (req, res) => {
    Bulk-sets the department's per-year lifecycle for `year`: the listed forms
    become Active, all others become Archived. One step instead of toggling each
    form. Independent of the institution academic year. */
-router.post("/carry-forward", requireRole(WRITE_ROLES), async (req, res) => {
+router.post("/carry-forward", requireRole(WRITE_ROLES), requireActiveDepartment, async (req, res) => {
   const pool = req.app.locals.pool;
   const year = Number(req.body?.year) || resolveYear(req);
   const activeSet = new Set((Array.isArray(req.body?.activeFormIds) ? req.body.activeFormIds : []).map(String));
@@ -364,7 +382,7 @@ router.get("/:id/roles", async (req, res) => {
    selected year), lock config, and role access.
    Body: { form_name, form_description?, schema, translate_enabled?, roles?, year? }
 ───────────────────────────────────────────────────────────────────── */
-router.post("/", requireRole(WRITE_ROLES), async (req, res) => {
+router.post("/", requireRole(WRITE_ROLES), requireActiveDepartment, async (req, res) => {
   const pool = req.app.locals.pool;
   const { form_name, form_description = null, schema, translate_enabled, roles = [], deadline } = req.body;
 
@@ -483,7 +501,7 @@ router.post("/", requireRole(WRITE_ROLES), async (req, res) => {
    PUT /api/department-forms/:id/schema   — update schema (edit)
    Body: { schema, translate_enabled? }
 ───────────────────────────────────────────────────────────────────── */
-router.put("/:id/schema", requireRole(WRITE_ROLES), async (req, res) => {
+router.put("/:id/schema", requireRole(WRITE_ROLES), requireActiveDepartment, async (req, res) => {
   const pool = req.app.locals.pool;
   const { schema, translate_enabled } = req.body;
   if (!schema) return res.status(400).json({ success: false, message: "schema is required." });
@@ -565,7 +583,7 @@ router.put("/:id/schema", requireRole(WRITE_ROLES), async (req, res) => {
    PUT /api/department-forms/:id/roles   — replace role access list
    Body: { roles: string[] }
 ───────────────────────────────────────────────────────────────────── */
-router.put("/:id/roles", requireRole(WRITE_ROLES), async (req, res) => {
+router.put("/:id/roles", requireRole(WRITE_ROLES), requireActiveDepartment, async (req, res) => {
   const pool = req.app.locals.pool;
   const roles = Array.isArray(req.body?.roles) ? req.body.roles : [];
   try {
@@ -602,7 +620,7 @@ router.put("/:id/roles", requireRole(WRITE_ROLES), async (req, res) => {
    Body: { deadline }  (ISO string to set; null/"" to clear). Mirrors the
    institution deadline upsert: clearing a future deadline lifts auto-locks.
 ───────────────────────────────────────────────────────────────────── */
-router.put("/:id/deadline", requireRole(WRITE_ROLES), async (req, res) => {
+router.put("/:id/deadline", requireRole(WRITE_ROLES), requireActiveDepartment, async (req, res) => {
   const pool = req.app.locals.pool;
   const { deadline } = req.body;
   let newDeadline = null;
@@ -657,10 +675,10 @@ async function client_safe_audit(req, form, newDeadline, academicYear) {
    POST /api/department-forms/:id/lock   — lock the SELECTED academic year
    POST /api/department-forms/:id/unlock
 ───────────────────────────────────────────────────────────────────── */
-router.post("/:id/lock", requireRole(WRITE_ROLES), async (req, res) => {
+router.post("/:id/lock", requireRole(WRITE_ROLES), requireActiveDepartment, async (req, res) => {
   return setYearLock(req, res, true);
 });
-router.post("/:id/unlock", requireRole(WRITE_ROLES), async (req, res) => {
+router.post("/:id/unlock", requireRole(WRITE_ROLES), requireActiveDepartment, async (req, res) => {
   return setYearLock(req, res, false);
 });
 
@@ -706,7 +724,7 @@ async function setYearLock(req, res, locked) {
    PATCH /api/department-forms/:id/archive   — archive / restore for the year
    Body: { archived: boolean }
 ───────────────────────────────────────────────────────────────────── */
-router.patch("/:id/archive", requireRole(WRITE_ROLES), async (req, res) => {
+router.patch("/:id/archive", requireRole(WRITE_ROLES), requireActiveDepartment, async (req, res) => {
   const pool = req.app.locals.pool;
   const archived = req.body?.archived === true;
   try {

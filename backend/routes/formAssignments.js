@@ -17,7 +17,7 @@ const express = require("express");
 const { verifyToken, requireRole } = require("../middleware/auth");
 const { writeAuditLog } = require("../utils/audit");
 const { getFormArchiveBlockForReq } = require("../services/academicYearService");
-const { resolveEffectiveDepartment } = require("../services/departmentContext");
+const { resolveEffectiveDepartment, getDepartmentWriteBlock } = require("../services/departmentContext");
 const logger = require("../utils/logger");
 
 /* Assigner's EFFECTIVE (institution, department) context. Delegates to the single
@@ -74,7 +74,9 @@ async function getAssignedFormIds(pool, userId, year) {
   const { rows } = await pool.query(
     `SELECT DISTINCT fa.form_id FROM form_assignments fa
      WHERE fa.assigned_to = $1 AND fa.academic_year = $2 AND fa.is_active = true
-       AND fa.department_id = (SELECT department_id FROM users WHERE id = $1)`,
+       AND fa.department_id = (SELECT department_id FROM users WHERE id = $1)
+       AND EXISTS (SELECT 1 FROM departments d
+                    WHERE d.department_id = fa.department_id AND d.status = 'ACTIVE')`,
     [userId, Number(year)]
   );
   return rows.map((r) => String(r.form_id));
@@ -90,6 +92,8 @@ async function isFormAssigned(pool, userId, formName, year) {
      WHERE fa.assigned_to = $1 AND tl.form_name = $2
        AND fa.academic_year = $3 AND fa.is_active = true
        AND fa.department_id = (SELECT department_id FROM users WHERE id = $1)
+       AND EXISTS (SELECT 1 FROM departments d
+                    WHERE d.department_id = fa.department_id AND d.status = 'ACTIVE')
      LIMIT 1`,
     [userId, formName, Number(year)]
   );
@@ -106,6 +110,8 @@ async function isFormAssignedAnyYear(pool, userId, formName) {
      JOIN table_list tl ON tl.id = fa.form_id
      WHERE fa.assigned_to = $1 AND tl.form_name = $2 AND fa.is_active = true
        AND fa.department_id = (SELECT department_id FROM users WHERE id = $1)
+       AND EXISTS (SELECT 1 FROM departments d
+                    WHERE d.department_id = fa.department_id AND d.status = 'ACTIVE')
      LIMIT 1`,
     [userId, formName]
   );
@@ -190,6 +196,12 @@ router.post("/", requireRole(ASSIGN_ROLES), async (req, res) => {
     const { institutionId, departmentId } = await assignerContext(pool, req);
     if (!departmentId)
       return res.status(400).json({ success: false, message: "No department is associated with your account." });
+
+    // Bug 11 — an inactive department suspends all assignment activity (assign /
+    // approvals / contributor management). Highest precedence, before archive.
+    const deptBlock = await getDepartmentWriteBlock(pool, { departmentId, roles: req.user.roles });
+    if (deptBlock.blocked)
+      return res.status(403).json({ success: false, message: deptBlock.message });
 
     // Archive write policy — an archived form is view-only, so assignment changes
     // are blocked for it (the selected year). Resolve the form name from id when

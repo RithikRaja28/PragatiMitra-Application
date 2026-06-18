@@ -10,7 +10,7 @@ const { getEffectiveState, messageFor, canWrite } = require("../services/stateRe
 const { SOURCE_LANGUAGE, isDerivedRow } = require("../services/translationOwnership");
 const { assertEquivalent } = require("../services/equivalenceGuard");
 const { assertFormDomainAccess } = require("../services/domainService");
-const { resolveEffectiveDepartment } = require("../services/departmentContext");
+const { resolveEffectiveDepartment, getDepartmentWriteBlock } = require("../services/departmentContext");
 const { isFormAssigned, isContributorOnly } = require("./formAssignments");
 
 /* Latest active schema year for a form+institution — used to resolve which
@@ -397,6 +397,17 @@ router.get("/:formName/records", async (req, res) => {
       lock.message   = archiveView.message;
     }
 
+    /* Bug 11 — an inactive department makes ALL its records view-only (highest
+       precedence: Department inactive > Archive > Lock > Deadline). Surface it so
+       the client hides Save/Delete/Import; writes are independently blocked above.
+       Institution-level admins (no department scope) are unaffected. */
+    const deptView = await getDepartmentWriteBlock(pool, { departmentId: ctx.departmentId, roles: req.user.roles });
+    if (deptView.blocked) {
+      lock.is_locked           = true;
+      lock.department_inactive = true;
+      lock.message             = deptView.message;
+    }
+
     const payload = { success: true, records, schema: displaySchema, lock };
     if (paginate) { payload.total = total; payload.limit = limitNum; payload.offset = Math.max(0, offsetNum); }
     return res.json(payload);
@@ -494,6 +505,11 @@ router.post("/:formName/records", async (req, res) => {
     const ctx = await resolveUserContext(pool, req);
     if (!ctx.institutionId)
       return res.status(400).json({ success: false, message: "Institution ID required." });
+
+    // Bug 11 — department inactive is the highest-precedence write block.
+    const deptBlock = await getDepartmentWriteBlock(pool, { departmentId: ctx.departmentId, roles: req.user.roles });
+    if (deptBlock.blocked)
+      return res.status(403).json({ success: false, message: deptBlock.message });
 
     const lockBlock = await getLockBlock(pool, formName, ctx.institutionId, lockYearForReq(req, Number(year) || null));
     if (lockBlock.locked) {
@@ -600,6 +616,11 @@ router.put("/:formName/records/:id", async (req, res) => {
     const ctx = await resolveUserContext(pool, req);
     if (!ctx.institutionId)
       return res.status(400).json({ success: false, message: "Institution ID required." });
+
+    // Bug 11 — department inactive is the highest-precedence write block.
+    const deptBlock = await getDepartmentWriteBlock(pool, { departmentId: ctx.departmentId, roles: req.user.roles });
+    if (deptBlock.blocked)
+      return res.status(403).json({ success: false, message: deptBlock.message });
 
     const lockBlock = await getLockBlock(pool, formName, ctx.institutionId, lockYearForReq(req));
     if (lockBlock.locked) {
@@ -735,6 +756,11 @@ router.delete("/:formName/records/bulk-delete", async (req, res) => {
     if (!ctx.institutionId)
       return res.status(400).json({ success: false, message: "Institution ID required." });
 
+    // Bug 11 — department inactive is the highest-precedence write block.
+    const deptBlock = await getDepartmentWriteBlock(pool, { departmentId: ctx.departmentId, roles: req.user.roles });
+    if (deptBlock.blocked)
+      return res.status(403).json({ success: false, message: deptBlock.message });
+
     const lockBlock = await getLockBlock(pool, formName, ctx.institutionId, lockYearForReq(req));
     if (lockBlock.locked)
       return res.status(403).json({ success: false, message: lockBlock.message });
@@ -820,6 +846,11 @@ router.delete("/:formName/records/:id", async (req, res) => {
     const ctx = await resolveUserContext(pool, req);
     if (!ctx.institutionId)
       return res.status(400).json({ success: false, message: "Institution ID required." });
+
+    // Bug 11 — department inactive is the highest-precedence write block.
+    const deptBlock = await getDepartmentWriteBlock(pool, { departmentId: ctx.departmentId, roles: req.user.roles });
+    if (deptBlock.blocked)
+      return res.status(403).json({ success: false, message: deptBlock.message });
 
     const lockBlock = await getLockBlock(pool, formName, ctx.institutionId, lockYearForReq(req));
     if (lockBlock.locked) {

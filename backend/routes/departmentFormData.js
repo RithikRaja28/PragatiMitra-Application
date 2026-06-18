@@ -118,6 +118,21 @@ async function loadForm(pool, req, id) {
 /* Effective write-block for (form, year). Precedence Archive > Lock > Deadline.
    ARCHIVED is now enforced as a WRITE POLICY (view-only), not a UI filter. */
 async function deptLockBlock(pool, form, year) {
+  // Bug 11 — department inactive overrides everything (Department INACTIVE > Archive
+  // > Lock > Deadline). A department form whose owning department is inactive is
+  // view-only: existing records stay readable, all writes are blocked.
+  const { rows: deptRows } = await pool.query(
+    "SELECT status FROM departments WHERE department_id = $1",
+    [form.department_id]
+  );
+  if (deptRows[0] && deptRows[0].status !== "ACTIVE") {
+    return {
+      locked: true,
+      department_inactive: true,
+      message: "This department is inactive. You have view-only access — contact your institution administrator.",
+    };
+  }
+
   const { rows: ym } = await pool.query(
     "SELECT is_locked, is_archived FROM department_form_year_mapping WHERE department_form_id = $1 AND academic_year = $2",
     [form.id, year]
