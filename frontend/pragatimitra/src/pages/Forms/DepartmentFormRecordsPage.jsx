@@ -1,14 +1,16 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { Plus, Pencil, Trash2, Lock, FilePlus, Download, FileText as FileCsv, FileSpreadsheet, CalendarClock } from "lucide-react";
 import { useApi } from "../../hooks/useApi";
 import { useAuth } from "../../store/AuthContext";
-import { Toast, isAuthError, formatDate } from "../../components/shared/formUtils";
-import { color, Button, PageHeader, Badge, EmptyState, Modal, DataTable, Dropdown, MenuItem, MenuLabel, Input, Textarea, Select, FieldLabel } from "../../ui";
+import { Toast, isAuthError } from "../../components/shared/formUtils";
+import { color, Button, PageHeader, Badge, EmptyState, Modal, DataTable, Dropdown, MenuItem, MenuLabel, Input, Textarea, FieldLabel } from "../../ui";
+import { useLanguage } from "../../i18n/LanguageContext";
+import { t } from "../../i18n/translations";
 
-async function downloadDeptExport(formId, format, language, accessToken, year) {
+async function downloadDeptExport(formId, format, accessToken, year) {
   const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
   const yq = year != null ? `&year=${year}` : "";
-  const res = await fetch(`${API_BASE}/api/department-form-data/${formId}/export?format=${format}&language=${language}${yq}`,
+  const res = await fetch(`${API_BASE}/api/department-form-data/${formId}/export?format=${format}${yq}`,
     { headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {} });
   if (!res.ok) return;
   const blob = await res.blob();
@@ -35,14 +37,13 @@ function recordsDeadlineBadge(deadlineAt) {
   return { tone: days <= 3 ? "warning" : "success", label: `EXPIRES IN ${days} DAYS` };
 }
 
-/* ── Add / Edit record modal (English-authored; HI mirror is server-side) ── */
+/* ── Add / Edit record (single-language English form) ── */
 const labelStyle = { display: "block", fontSize: 13, fontWeight: 500, color: "#334155", marginBottom: 6 };
-const inputStyle = { width: "100%", height: 48, padding: "0 14px", border: `1px solid ${color.borderStrong}`, borderRadius: 10, fontSize: 14, color: color.text, outline: "none", boxSizing: "border-box", background: "#fff" };
-const paneTitle = { fontSize: 12, fontWeight: 800, letterSpacing: 0.5, textTransform: "uppercase", marginBottom: 14 };
 
 function ReadOnlyVal({ label, value, type }) {
+  const { lang } = useLanguage();
   let display;
-  if (type === "boolean") display = value === true || value === "true" ? "Yes" : value === false || value === "false" ? "No" : "—";
+  if (type === "boolean") display = value === true || value === "true" ? t("Yes", lang) : value === false || value === "false" ? t("No", lang) : "—";
   else display = value == null || value === "" ? "—" : String(value);
   const empty = display === "—";
   return (
@@ -57,44 +58,18 @@ function ReadOnlyVal({ label, value, type }) {
 
 /* ════════════════════════════════════════════════════════════════════
    RecordEditView — dedicated in-shell edit/add page for a department record.
-   English editable (left) + current Hindi read-only (right, 60/40). No live
-   translation; the read-only preview refreshes only AFTER a successful save.
+   Single-language (English); department forms do not support translation.
 ════════════════════════════════════════════════════════════════════ */
-function RecordEditView({ form, fields, record, allowedRoles, year, viewOnly = false, onBack, onReload, showToast }) {
+function RecordEditView({ form, fields, record, year, viewOnly = false, onBack, onReload, showToast }) {
   const { apiFetch } = useApi();
+  const { lang } = useLanguage();
   const isEdit = !!record;
   const yq = year != null ? `?year=${year}` : "";
-  const editLang = record?.language === "hi" ? "hi" : "en";
-  const refLang  = editLang === "hi" ? "en" : "hi";
-  const showReference = form.translate_enabled !== false && !!record?.id;
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const [roleName, setRoleName] = useState(record?.role_name || "");
   const [data, setData] = useState(() => { const init = {}; fields.forEach((f) => { const c = dbCol(f.column_name); init[c] = record ? (record[c] ?? "") : ""; }); return init; });
-  const [refData, setRefData] = useState({});
-  const [refLoading, setRefLoading] = useState(false);
   const set = (c, v) => setData((p) => ({ ...p, [c]: v }));
-
-  useEffect(() => {
-    const id = "pm-dept-rec-edit-css";
-    if (document.getElementById(id)) return;
-    const el = document.createElement("style");
-    el.id = id;
-    el.textContent = `.pm-dept-grid{display:grid;grid-template-columns:1.5fr 1fr;gap:32px}@media(max-width:1000px){.pm-dept-grid{grid-template-columns:1fr;gap:24px}}`;
-    document.head.appendChild(el);
-  }, []);
-
-  const refetch = useCallback(() => {
-    if (!showReference || !record?.id) return;
-    setRefLoading(true);
-    apiFetch(`/api/department-form-data/${form.id}/records/${record.id}/counterpart${yq}`)
-      .then((r) => r.json())
-      .then((d) => { const ref = d?.record || {}; const next = {}; fields.forEach((f) => { const c = dbCol(f.column_name); next[c] = ref[c] ?? ""; }); setRefData(next); })
-      .catch(() => {})
-      .finally(() => setRefLoading(false));
-  }, [showReference, record?.id, form.id, apiFetch, fields, yq]);
-  useEffect(() => { refetch(); }, [refetch]);
 
   async function save(e) {
     e.preventDefault();
@@ -103,17 +78,17 @@ function RecordEditView({ form, fields, record, allowedRoles, year, viewOnly = f
     try {
       const res = isEdit
         ? await apiFetch(`/api/department-form-data/${form.id}/records/${record.id}${yq}`, { method: "PUT", body: JSON.stringify({ data, year }) })
-        : await apiFetch(`/api/department-form-data/${form.id}/records${yq}`, { method: "POST", body: JSON.stringify({ data, role_name: roleName || null, year }) });
+        : await apiFetch(`/api/department-form-data/${form.id}/records${yq}`, { method: "POST", body: JSON.stringify({ data, year }) });
       const d = await res.json();
-      if (d.success) { showToast(d.message || "Saved."); onReload(); if (showReference) setTimeout(refetch, 1200); }
-      else setError(d.message || "Failed to save record.");
-    } catch (e2) { if (!isAuthError(e2)) setError("Network error. Please try again."); }
+      if (d.success) { showToast(d.message || t("Saved.", lang)); onReload(); }
+      else setError(d.message || t("Failed to save record.", lang));
+    } catch (e2) { if (!isAuthError(e2)) setError(t("Network error. Please try again.", lang)); }
     finally { setSaving(false); }
   }
 
   function renderInput(f) {
     const c = dbCol(f.column_name);
-    const label = f.label?.[editLang] || f.label?.en || displayCol(f.column_name);
+    const label = f.label?.en || displayCol(f.column_name);
     if (viewOnly) return <ReadOnlyVal key={c} label={label} value={data[c]} type={f.type} />;
     if (f.type === "boolean") {
       return (
@@ -122,7 +97,7 @@ function RecordEditView({ form, fields, record, allowedRoles, year, viewOnly = f
           <div style={{ display: "flex", gap: 16 }}>
             {[["true", "Yes"], ["false", "No"]].map(([val, txt]) => (
               <label key={val} style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 13, cursor: "pointer" }}>
-                <input type="radio" name={c} checked={String(data[c]) === val} onChange={() => set(c, val === "true")} style={{ accentColor: color.primary }} /> {txt}
+                <input type="radio" name={c} checked={String(data[c]) === val} onChange={() => set(c, val === "true")} style={{ accentColor: color.primary }} /> {t(txt, lang)}
               </label>
             ))}
           </div>
@@ -146,55 +121,32 @@ function RecordEditView({ form, fields, record, allowedRoles, year, viewOnly = f
     );
   }
 
-  const editPane = (
-    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      <div style={{ ...paneTitle, color: viewOnly ? "#64748b" : color.primary }}>{editLang === "hi" ? "Hindi" : "English"}{!viewOnly && " (Editable)"}</div>
-      {!isEdit && !viewOnly && allowedRoles.length > 0 && (
-        <div>
-          <FieldLabel>Role</FieldLabel>
-          <Select value={roleName} onChange={(e) => setRoleName(e.target.value)}>
-            <option value="">— None —</option>
-            {allowedRoles.map((r) => <option key={r} value={r}>{titleOf(r)}</option>)}
-          </Select>
-        </div>
-      )}
-      {fields.map(renderInput)}
-    </div>
-  );
-
-  const refPane = (
-    <div style={{ display: "flex", flexDirection: "column", gap: 14, background: "#F8FAFC", borderRadius: 8, padding: 16, border: `1px dashed ${color.border}` }}>
-      <div>
-        <div style={{ ...paneTitle, color: "#64748b", marginBottom: 4 }}>{editLang === "hi" ? "English Reference" : "Hindi Reference"} {refLoading && <span style={{ fontWeight: 600, color: "#94a3b8" }}>· loading…</span>}</div>
-        <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 8 }}>Translation updates after save.</div>
-      </div>
-      {fields.map((f) => {
-        const c = dbCol(f.column_name);
-        return <ReadOnlyVal key={c} label={f.label?.[refLang] || f.label?.en || displayCol(f.column_name)} value={refData[c]} type={f.type} />;
-      })}
-    </div>
-  );
-
   return (
-    <div className="pm-dept-rec-edit" style={{ padding: "24px 32px 96px", fontFamily: "'Plus Jakarta Sans', sans-serif", minHeight: "100%", maxWidth: 1440, margin: "0 auto" }}>
+    <div style={{ padding: "24px 32px 32px", fontFamily: "'Plus Jakarta Sans', sans-serif", minHeight: "100%", maxWidth: 1600, margin: "0 auto", display: "flex", flexDirection: "column" }}>
       <PageHeader
-        breadcrumb={["Home", "Department", { label: "Department Forms", onClick: onBack }, titleOf(form.form_name), isEdit ? "Edit Record" : "Add Record"]}
-        title={isEdit ? "Edit Record" : "Add Record"}
-        description={isEdit ? "Update data and review translated values." : "Fill in the details below."}
-        actions={<Button variant="secondary" onClick={onBack}>← Back</Button>}
+        breadcrumb={[t("Home", lang), t("Department", lang), { label: t("Department Forms", lang), onClick: onBack }, titleOf(form.form_name), isEdit ? t("Edit Record", lang) : t("Add Record", lang)]}
+        title={isEdit ? t("Edit Record", lang) : t("Add Record", lang)}
+        description={isEdit ? t("Update the record details.", lang) : t("Fill in the details below.", lang)}
+        actions={<Button variant="secondary" onClick={onBack}>{t("← Back", lang)}</Button>}
       />
       {viewOnly && (
-        <Badge tone="danger" icon={<Lock size={12} strokeWidth={2.2} />} style={{ marginBottom: 16 }}>VIEW ONLY</Badge>
+        <Badge tone="danger" icon={<Lock size={12} strokeWidth={2.2} />} style={{ marginBottom: 16 }}>{t("VIEW ONLY", lang)}</Badge>
       )}
-      <form onSubmit={save}>
-        <div style={{ background: "#fff", border: `1px solid ${color.border}`, borderRadius: 8, padding: 32, boxShadow: "0 1px 3px rgba(16,24,40,0.04)" }}>
-          {showReference ? <div className="pm-dept-grid">{editLang === "hi" ? refPane : editPane}{editLang === "hi" ? editPane : refPane}</div> : editPane}
-        </div>
-        {error && <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 8, padding: "10px 14px", fontSize: 13, color: "#B91C1C", marginTop: 16 }}>{error}</div>}
-        <div style={{ position: "sticky", bottom: 0, marginTop: 24 }}>
-          <div style={{ height: 72, margin: "0 -32px", padding: "0 32px", background: "#fff", borderTop: `1px solid ${color.border}`, boxShadow: "0 -4px 16px rgba(16,24,40,0.06)", display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 12 }}>
-            <Button variant="secondary" type="button" disabled={saving} onClick={onBack}>Cancel</Button>
-            {!viewOnly && <Button variant="primary" type="submit" loading={saving} disabled={saving}>{isEdit ? "Update Record" : "Add Record"}</Button>}
+      <form onSubmit={save} style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+        <div style={{ flex: 1, minHeight: 0, background: "#fff", border: `1px solid ${color.border}`, borderRadius: 12, boxShadow: "0 1px 3px rgba(16,24,40,0.04)", overflow: "hidden", display: "flex", flexDirection: "column" }}>
+          <div style={{ padding: "16px 28px", borderBottom: `1px solid ${color.border}` }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: color.text }}>{titleOf(form.form_name)}</div>
+            <div style={{ fontSize: 12, color: color.muted, marginTop: 2 }}>{isEdit ? t("Edit this record", lang) : t("Enter the details for a new record", lang)}</div>
+          </div>
+          <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 28, display: "flex", flexDirection: "column", gap: 20 }}>
+            {fields.length === 0
+              ? <div style={{ fontSize: 13, color: color.muted, textAlign: "center", padding: "12px 0" }}>{t("This form has no fields yet.", lang)}</div>
+              : fields.map(renderInput)}
+            {error && <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 8, padding: "10px 14px", fontSize: 13, color: "#B91C1C" }}>{error}</div>}
+          </div>
+          <div style={{ padding: "16px 28px", borderTop: `1px solid ${color.border}`, background: color.hover, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 12 }}>
+            <Button variant="secondary" type="button" disabled={saving} onClick={onBack}>{t("Cancel", lang)}</Button>
+            {!viewOnly && <Button variant="primary" type="submit" loading={saving} disabled={saving}>{isEdit ? t("Update Record", lang) : t("Add Record", lang)}</Button>}
           </div>
         </div>
       </form>
@@ -204,14 +156,20 @@ function RecordEditView({ form, fields, record, allowedRoles, year, viewOnly = f
 
 export default function DepartmentFormRecordsPage({ form, year = null, onBack }) {
   const { apiFetch } = useApi();
-  const { accessToken } = useAuth();
+  const { accessToken, user } = useAuth();
+  const { lang } = useLanguage();
+  // Only contributors may enter/modify data. Admins & nodal officers (who reach
+  // this page via "View records") get a read-only view.
+  const roleNames = (user?.roles || []).map((r) => (typeof r === "string" ? r : r?.name));
+  // TEMP (testing): contributor role not provisioned yet — allow department_admin
+  // to enter data too. Remove "department_admin" once contributors exist.
+  const canEnterData = roleNames.includes("contributor") || roleNames.includes("department_admin");
   const yq = year != null ? `&year=${year}` : "";
-  const [recordLang, setRecordLang] = useState("en");   // local toggle — re-fetches only
   const [records, setRecords] = useState([]);
   const [schema, setSchema] = useState(null);
   const [lock, setLock] = useState({ is_locked: false, message: null });
-  const [allowedRoles, setAllowedRoles] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [showSkeleton, setShowSkeleton] = useState(false);
   const [error, setError] = useState("");
   const [toast, setToast] = useState(null);
   const [editTarget, setEditTarget] = useState(null); // null = list · "new" = add · record = edit
@@ -220,28 +178,37 @@ export default function DepartmentFormRecordsPage({ form, year = null, onBack })
 
   const showToast = (message, type = "success") => { setToast({ message, type }); setTimeout(() => setToast(null), 3500); };
 
+  // Skeleton only on the FIRST load. On refreshes (year change, post-save reload)
+  // keep the current rows visible and swap them in place — no flicker / height jump.
+  const hasLoadedRef = useRef(false);
   const load = useCallback(async () => {
-    setLoading(true); setError("");
+    if (!hasLoadedRef.current) setLoading(true);
+    setError("");
     try {
-      const res = await apiFetch(`/api/department-form-data/${form.id}/records?language=${recordLang}${yq}`);
+      const res = await apiFetch(`/api/department-form-data/${form.id}/records${year != null ? `?year=${year}` : ""}`);
       const d = await res.json();
       if (d.success) { setRecords(d.records || []); setSchema(d.schema?.schema || null); setLock(d.lock || { is_locked: false }); }
-      else setError(d.message || "Failed to load records.");
-    } catch (e) { if (!isAuthError(e)) setError("Failed to load records."); }
-    finally { setLoading(false); }
-  }, [apiFetch, form.id, recordLang, yq]);
+      else setError(d.message || t("Failed to load records.", lang));
+    } catch (e) { if (!isAuthError(e)) setError(t("Failed to load records.", lang)); }
+    finally { setLoading(false); hasLoadedRef.current = true; }
+  }, [apiFetch, form.id, yq, lang]);
 
   useEffect(() => { load(); }, [load]);
+
+  /* Avoid the loading skeleton "flashing" on fast fetches: only reveal it if the
+     request is still pending after a short grace period. Fast loads go straight
+     to the data with no flicker. */
   useEffect(() => {
-    apiFetch(`/api/department-forms/${form.id}/roles`).then((r) => r.json()).then((d) => { if (d.success) setAllowedRoles(d.roles || []); }).catch(() => {});
-  }, [apiFetch, form.id]);
+    if (!loading) { setShowSkeleton(false); return; }
+    const tmr = setTimeout(() => setShowSkeleton(true), 220);
+    return () => clearTimeout(tmr);
+  }, [loading]);
 
   const excluded = new Set(schema?.excluded_fixed_columns || []);
   const fields = (schema?.fields || []).filter((f) => !excluded.has(dbCol(f.column_name)) && !excluded.has(f.column_name));
 
-  const viewingHi = recordLang === "hi";
-  const readOnly = lock.is_locked || viewingHi;   // add/delete disabled in HI / when locked
-  const canEdit = !lock.is_locked;                 // editing allowed in both languages unless locked
+  const readOnly = lock.is_locked || !canEnterData;   // add/delete disabled when locked or non-contributor
+  const canEdit = canEnterData && !lock.is_locked;    // row edit action only for contributors
 
   async function handleDelete() {
     if (!deleteId) return;
@@ -249,44 +216,33 @@ export default function DepartmentFormRecordsPage({ form, year = null, onBack })
     try {
       const res = await apiFetch(`/api/department-form-data/${form.id}/records/${deleteId}${year != null ? `?year=${year}` : ""}`, { method: "DELETE" });
       const d = await res.json();
-      if (d.success) { showToast("Record deleted."); load(); }
-      else showToast(d.message || "Failed to delete.", "error");
-    } catch (e) { if (!isAuthError(e)) showToast("Network error.", "error"); }
+      if (d.success) { showToast(t("Record deleted.", lang)); load(); }
+      else showToast(d.message || t("Failed to delete.", lang), "error");
+    } catch (e) { if (!isAuthError(e)) showToast(t("Network error.", lang), "error"); }
     finally { setDeleting(false); setDeleteId(null); }
   }
 
   const columns = [
-    { key: "role_name", header: "Role", width: 150, render: (r) => r.role_name ? <Badge tone="primary">{titleOf(r.role_name)}</Badge> : <span style={{ color: color.muted }}>—</span> },
+    { key: "entered_by", header: t("Added By", lang), width: 180, render: (r) => r.entered_by ? <span style={{ fontSize: 13, fontWeight: 600, color: color.text }}>{r.entered_by}</span> : <span style={{ color: color.muted }}>—</span> },
     ...fields.map((f) => ({
-      key: dbCol(f.column_name), header: f.label?.[recordLang] || f.label?.en || displayCol(f.column_name), ellipsis: true, width: 200,
+      key: dbCol(f.column_name), header: f.label?.en || displayCol(f.column_name), ellipsis: true, width: 200,
       render: (r) => {
         const v = r[dbCol(f.column_name)];
-        if (f.type === "boolean") return v === true || v === "true" ? "Yes" : v === false || v === "false" ? "No" : "—";
+        if (f.type === "boolean") return v === true || v === "true" ? t("Yes", lang) : v === false || v === "false" ? t("No", lang) : "—";
         return v ?? <span style={{ color: "#cbd5e1" }}>—</span>;
       },
     })),
-    { key: "language", header: "Language", width: 110, render: (r) => <Badge tone={r.language === "hi" ? "info" : "neutral"}>{r.language === "hi" ? "हिंदी" : "English"}</Badge> },
-    { key: "created_at", header: "Created", width: 130, render: (r) => <span style={{ fontSize: 12, color: color.muted }}>{formatDate(r.created_at)}</span> },
+    { key: "created_at", header: t("Created", lang), width: 140, render: (r) => <span style={{ fontSize: 12, color: color.muted }}>{r.created_at ? new Date(r.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—"}</span> },
     ...(canEdit ? [{
       key: "actions", header: "", align: "right", width: 100,
       render: (r) => (
         <div style={{ display: "inline-flex", gap: 6, justifyContent: "flex-end" }}>
-          <Button variant="secondary" iconOnly title="Edit" icon={<Pencil size={16} strokeWidth={STROKE} />} onClick={() => setEditTarget(r)} />
-          {!readOnly && <Button variant="outlineDanger" iconOnly title="Delete" icon={<Trash2 size={16} strokeWidth={STROKE} />} onClick={() => setDeleteId(r.id)} />}
+          <Button variant="secondary" iconOnly title={t("Edit", lang)} icon={<Pencil size={16} strokeWidth={STROKE} />} onClick={() => setEditTarget(r)} />
+          {!readOnly && <Button variant="outlineDanger" iconOnly title={t("Delete", lang)} icon={<Trash2 size={16} strokeWidth={STROKE} />} onClick={() => setDeleteId(r.id)} />}
         </div>
       ),
     }] : []),
   ];
-
-  const langBtn = (key, label) => {
-    const on = recordLang === key;
-    return (
-      <button key={key} onClick={() => setRecordLang(key)} className="ui-focusable"
-        style={{ border: "none", borderRadius: 8, padding: "7px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer", background: on ? color.surface : "transparent", color: on ? color.text : color.muted, boxShadow: on ? "0 1px 2px rgba(16,24,40,0.08)" : "none" }}>
-        {label}
-      </button>
-    );
-  };
 
   /* Dedicated in-shell edit/add page (no overlay) */
   if (editTarget) {
@@ -297,7 +253,6 @@ export default function DepartmentFormRecordsPage({ form, year = null, onBack })
           form={form}
           fields={fields}
           record={editTarget === "new" ? null : editTarget}
-          allowedRoles={allowedRoles}
           year={year}
           viewOnly={editTarget !== "new" && lock.is_locked}
           onBack={() => { setEditTarget(null); load(); }}
@@ -309,56 +264,56 @@ export default function DepartmentFormRecordsPage({ form, year = null, onBack })
   }
 
   return (
-    <div style={{ padding: "24px 32px", fontFamily: "'Plus Jakarta Sans', sans-serif", minHeight: "100%", maxWidth: 1600, margin: "0 auto" }}>
+    <div style={{ padding: "24px 32px", fontFamily: "'Plus Jakarta Sans', sans-serif", minHeight: "100%", maxWidth: 1600, margin: "0 auto", display: "flex", flexDirection: "column" }}>
       {toast && <Toast message={toast.message} type={toast.type} />}
       {deleteId && (
-        <Modal open onClose={() => setDeleteId(null)} width={420} title="Delete Record?"
+        <Modal open onClose={() => setDeleteId(null)} width={420} title={t("Delete Record?", lang)}
           footer={<>
-            <Button variant="secondary" disabled={deleting} onClick={() => setDeleteId(null)}>Cancel</Button>
-            <Button variant="danger" loading={deleting} disabled={deleting} onClick={handleDelete}>Delete Record</Button>
+            <Button variant="secondary" disabled={deleting} onClick={() => setDeleteId(null)}>{t("Cancel", lang)}</Button>
+            <Button variant="danger" loading={deleting} disabled={deleting} onClick={handleDelete}>{t("Delete Record", lang)}</Button>
           </>}>
-          <div style={{ fontSize: 13, color: color.muted, lineHeight: 1.6 }}>This record (and its Hindi copy) will be permanently deleted. This cannot be undone.</div>
+          <div style={{ fontSize: 13, color: color.muted, lineHeight: 1.6 }}>{t("This record will be permanently deleted. This cannot be undone.", lang)}</div>
         </Modal>
       )}
 
       <PageHeader
-        breadcrumb={["Home", "Department", { label: "Department Forms", onClick: onBack }, titleOf(form.form_name)]}
+        breadcrumb={[t("Home", lang), t("Department", lang), { label: t("Department Forms", lang), onClick: onBack }, titleOf(form.form_name)]}
         title={titleOf(form.form_name)}
-        description={loading
-          ? "Loading…"
-          : `${records.length} record${records.length !== 1 ? "s" : ""}${year != null ? ` · ${year}–${year + 1}` : ""} · your department only`}
         actions={
           <>
-            <div style={{ display: "inline-flex", border: `1px solid ${color.border}`, borderRadius: 10, padding: 3, gap: 2, background: color.hover }}>
-              {langBtn("en", "EN")}
-              {langBtn("hi", "हिंदी")}
-            </div>
             <Dropdown align="right" width={200} button={({ toggle }) => (
-              <Button variant="secondary" iconOnly title="Export" aria-label="Export" icon={<Download size={18} strokeWidth={STROKE} />} onClick={toggle} />
+              <Button variant="secondary" icon={<Download size={18} strokeWidth={STROKE} />} onClick={toggle}>{t("Export", lang)}</Button>
             )}>
-              <MenuLabel>Export</MenuLabel>
-              <MenuItem icon={<FileCsv size={16} strokeWidth={STROKE} />} onClick={() => downloadDeptExport(form.id, "csv", recordLang, accessToken, year)}>Download CSV</MenuItem>
-              <MenuItem icon={<FileSpreadsheet size={16} strokeWidth={STROKE} />} onClick={() => downloadDeptExport(form.id, "xlsx", recordLang, accessToken, year)}>Download Excel</MenuItem>
+              <MenuLabel>{t("Export", lang)}</MenuLabel>
+              <MenuItem icon={<FileCsv size={16} strokeWidth={STROKE} />} onClick={() => downloadDeptExport(form.id, "csv", accessToken, year)}>{t("Download CSV", lang)}</MenuItem>
+              <MenuItem icon={<FileSpreadsheet size={16} strokeWidth={STROKE} />} onClick={() => downloadDeptExport(form.id, "xlsx", accessToken, year)}>{t("Download Excel", lang)}</MenuItem>
             </Dropdown>
-            <Button
-              variant="primary" icon={<Plus size={18} strokeWidth={STROKE} />} disabled={readOnly}
-              title={lock.is_locked ? "Form is locked" : viewingHi ? "Switch to EN to add records" : ""}
-              onClick={() => { if (!readOnly) setEditTarget("new"); }}
-            >
-              Add Record
-            </Button>
+            {canEnterData && (
+              <Button
+                variant="primary" icon={<Plus size={18} strokeWidth={STROKE} />} disabled={readOnly}
+                title={lock.is_locked ? t("Form is locked", lang) : ""}
+                onClick={() => { if (!readOnly) setEditTarget("new"); }}
+              >
+                {t("Add Record", lang)}
+              </Button>
+            )}
           </>
         }
       />
 
       {(() => {
+        // When the form is locked, the access state is LOCKED — never show the
+        // deadline's "OPEN" badge (which only reflects the deadline window and
+        // would contradict the lock notice below).
         const b = recordsDeadlineBadge(form.deadline_at);
         return (
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: lock.is_locked ? 12 : 20 }}>
-            <Badge tone={b.tone} icon={<CalendarClock size={12} strokeWidth={STROKE} />}>{b.label}</Badge>
+            {lock.is_locked
+              ? <Badge tone="danger" icon={<Lock size={12} strokeWidth={STROKE} />}>{t("LOCKED", lang)}</Badge>
+              : <Badge tone={b.tone} icon={<CalendarClock size={12} strokeWidth={STROKE} />}>{b.label}</Badge>}
             {form.deadline_at && (
               <span style={{ fontSize: 12, color: color.muted }}>
-                Deadline: {new Date(form.deadline_at).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                {t("Deadline:", lang)} {new Date(form.deadline_at).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
               </span>
             )}
           </div>
@@ -368,21 +323,28 @@ export default function DepartmentFormRecordsPage({ form, year = null, onBack })
       {lock.is_locked && (
         <div style={{ display: "flex", alignItems: "center", gap: 12, background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 10, padding: "12px 18px", marginBottom: 20 }}>
           <Lock size={18} color="#B91C1C" strokeWidth={2} />
-          <div style={{ fontSize: 13, fontWeight: 600, color: "#B91C1C" }}>{lock.message || "This form is view-only."}</div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: "#B91C1C" }}>{lock.message || t("This form is view-only.", lang)}</div>
         </div>
       )}
 
       {error && <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 8, padding: "12px 16px", fontSize: 13, color: "#B91C1C", marginBottom: 20 }}>{error}</div>}
 
-      <DataTable
-        columns={columns}
-        rows={records}
-        rowKey={(r) => r.id}
-        loading={loading}
-        minWidth={760}
-        empty={<EmptyState icon={<FilePlus size={26} strokeWidth={1.5} />} title="No records yet" description={viewingHi ? "No Hindi records to show." : "Click “Add Record” to create the first entry."}
-          action={!readOnly ? <Button variant="primary" icon={<Plus size={18} strokeWidth={STROKE} />} onClick={() => setEditTarget("new")}>Add Record</Button> : undefined} />}
-      />
+      <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+        {loading && !showSkeleton ? (
+          <div style={{ flex: 1, background: color.surface, border: `1px solid ${color.border}`, borderRadius: 16 }} />
+        ) : (
+          <DataTable
+            fill
+            columns={columns}
+            rows={records}
+            rowKey={(r) => r.id}
+            loading={loading}
+            minWidth={760}
+            empty={<EmptyState icon={<FilePlus size={26} strokeWidth={1.5} />} title={t("No records yet", lang)} description={t("Click “Add Record” to create the first entry.", lang)}
+              action={!readOnly ? <Button variant="primary" icon={<Plus size={18} strokeWidth={STROKE} />} onClick={() => setEditTarget("new")}>{t("Add Record", lang)}</Button> : undefined} />}
+          />
+        )}
+      </div>
     </div>
   );
 }

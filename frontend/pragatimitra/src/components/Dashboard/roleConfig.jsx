@@ -47,7 +47,6 @@ import ReviewQueuePage        from "../../pages/Roles/directorsoffice/ReviewQueu
 /* ── Department Admin page imports ───────────────────────────── */
 import DeptAdminDashboardPage from "../../pages/Roles/departmentadmin/DeptAdminDashboardPage";
 import DeptUsersPage          from "../../pages/Roles/departmentadmin/DeptUsersPage";
-import TaskOverviewPage       from "../../pages/Roles/departmentadmin/TaskOverviewPage";
 import FormDataPage           from "../../pages/Forms/FormDataPage";
 import DepartmentFormManagementPage from "../../pages/Forms/DepartmentFormManagementPage";
 
@@ -411,17 +410,6 @@ export const ROLE_CONFIG = {
         ],
       },
       {
-        group: "Tasks",
-        items: [
-          {
-            id: "da-tasks",
-            label: "Task Overview",
-            icon: "ListChecks",
-            permission: null,
-          },
-        ],
-      },
-      {
         group: "Reports",
         items: [
           {
@@ -465,7 +453,6 @@ export const ROLE_CONFIG = {
     pages: {
       "da-dashboard":    <DeptAdminDashboardPage />,
       "da-users":        <DeptUsersPage />,
-      "da-tasks":        <TaskOverviewPage />,
       "da-kpi":          <DeptKpiPage />,
       "da-dept-forms":   <DepartmentFormManagementPage />,
       "da-form-data":    <FormDataPage />,
@@ -533,7 +520,7 @@ export const ROLE_CONFIG = {
       "dno-dashboard":   <NodalDashboardPage />,
       "dno-sections":    <MyAssignedSectionsPage />,
       "dno-submissions": <SubmissionsPage />,
-      "dno-dept-forms":  <DepartmentFormFillPage />,
+      "dno-dept-forms":  <DepartmentFormManagementPage />,
     },
     defaultPage: "dno-dashboard",
     user: { name: "Nodal Officer", initials: "NO", org: "Samhita Siddhanta" },
@@ -548,9 +535,16 @@ export const ROLE_CONFIG = {
           { id: "c-sections", label: "My Sections", icon: "FileEdit", permission: null },
         ],
       },
+      {
+        group: "Forms",
+        items: [
+          { id: "c-dept-forms", label: "Department Forms", icon: "FileStack", permission: null },
+        ],
+      },
     ],
     pages: {
       "c-sections": <MyAssignedSectionsPage />,
+      "c-dept-forms": <DepartmentFormFillPage />,
     },
     defaultPage: "c-sections",
     user: { name: "Contributor", initials: "CT", org: "PragatiMitra" },

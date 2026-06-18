@@ -345,6 +345,9 @@ const CSS = `
   .sh-content {
     flex: 1; overflow-y: auto; overflow-x: hidden; background: var(--sh-bg);
     scrollbar-width: thin; scrollbar-color: var(--sh-border) transparent;
+    /* Reserve the scrollbar gutter always, so the content width does not jump
+       when a vertical scrollbar appears/disappears (e.g. while data loads). */
+    scrollbar-gutter: stable;
   }
   .sh-content::-webkit-scrollbar { width: 6px; }
   .sh-content::-webkit-scrollbar-thumb { background: var(--sh-border); border-radius: 4px; }

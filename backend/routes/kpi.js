@@ -277,22 +277,11 @@ router.get("/tables", async (req, res) => {
   const { schema = "public" } = req.query;
   try {
     await ensureTables(req.pool);
-    // Use pg_class.reltuples (planner estimate) as primary row count — n_live_tup from
-    // pg_stat_user_tables is 0 until ANALYZE runs, so it's unreliable for new tables.
+    // Row counts are intentionally not fetched — the picker only needs table names.
     const { rows } = await req.pool.query(
       `SELECT t.table_name,
-              t.table_schema AS schema_name,
-              GREATEST(0,
-                CASE WHEN s.n_live_tup > 0 THEN s.n_live_tup
-                     ELSE GREATEST(0, c.reltuples::bigint)
-                END
-              ) AS row_count
+              t.table_schema AS schema_name
        FROM   information_schema.tables t
-       LEFT   JOIN pg_stat_user_tables s
-              ON s.schemaname = t.table_schema AND s.relname = t.table_name
-       LEFT   JOIN pg_class c
-              ON c.relname = t.table_name
-             AND c.relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = t.table_schema)
        WHERE  t.table_schema = $1
          AND  t.table_type   = 'BASE TABLE'
          AND  t.table_name NOT IN ('kpi_config','kpi_svg_reports','dashboard_kpi',

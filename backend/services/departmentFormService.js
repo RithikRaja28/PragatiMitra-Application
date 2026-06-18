@@ -20,6 +20,15 @@
 
 const logger = require("../utils/logger");
 
+/* Safely quote a SQL identifier (column name). Field column names are
+   user-defined and may collide with PostgreSQL reserved words (e.g. "column",
+   "desc", "order", "user"); without quoting, the generated DDL/DML is a syntax
+   error. Quoting lowercase identifiers is harmless and matches the existing
+   (unquoted → lowercase-folded) columns, so already-created tables still work. */
+function quoteIdent(name) {
+  return `"${String(name).replace(/"/g, '""')}"`;
+}
+
 /* Map a schema field type → PostgreSQL column type (mirrors forms.js). */
 function pgType(fieldType) {
   const map = {
@@ -75,7 +84,7 @@ function buildDeptRecordsTableDDL(tableName, fields) {
   ];
   const fixed = (fields || []).map((f) => {
     const col = f.column_name.toLowerCase().replace(/\s+/g, "_");
-    return `${col} ${pgType(f.type)}`;
+    return `${quoteIdent(col)} ${pgType(f.type)}`;
   });
   return `CREATE TABLE IF NOT EXISTS ${tableName} (\n  ${[...standard, ...fixed].join(",\n  ")}\n)`;
 }
@@ -187,6 +196,32 @@ async function ensureDepartmentFormTables(pool) {
   logger.info("department_form tables ensured");
 }
 
+/* Department forms are always restricted to this fixed role set — Contributors,
+   Department Nodal Officers, and Department Admins. Kept in sync with
+   FIXED_FORM_ROLES in routes/departmentForms.js. */
+const FIXED_FORM_ROLES = ["department_admin", "nodal_officer", "contributor"];
+
+/* Reconcile every existing department form to the fixed role set: insert the
+   three standard roles (carrying the form's institution/department/year) and
+   remove any other role rows. Idempotent — safe to run on every boot. This
+   replaces the removed per-form "Roles with access" picker so old forms that
+   were open to the whole department (or to ad-hoc roles) become restricted too. */
+async function backfillFixedFormRoles(pool) {
+  await pool.query(
+    `INSERT INTO department_form_roles
+       (department_form_id, role_name, institution_id, department_id, academic_year)
+     SELECT dtl.id, r.role_name, dtl.institution_id, dtl.department_id, dtl.academic_year
+       FROM department_table_list dtl
+       CROSS JOIN (VALUES ('department_admin'), ('nodal_officer'), ('contributor')) AS r(role_name)
+     ON CONFLICT (department_form_id, role_name) DO NOTHING`
+  );
+  const { rowCount } = await pool.query(
+    `DELETE FROM department_form_roles WHERE role_name <> ALL($1::text[])`,
+    [FIXED_FORM_ROLES]
+  );
+  logger.info("department_form_roles reconciled to fixed set", { removedNonFixed: rowCount });
+}
+
 /* Resolve the institution + department for the requesting user.
    Department Admins always have a department_id on their users row. */
 async function resolveDeptContext(pool, req) {
@@ -213,6 +248,9 @@ async function ensureDeptYearRow(client, { departmentFormId, academicYear, activ
 
 module.exports = {
   ensureDepartmentFormTables,
+  backfillFixedFormRoles,
+  FIXED_FORM_ROLES,
+  quoteIdent,
   resolveDeptContext,
   ensureDeptYearRow,
   pgType,

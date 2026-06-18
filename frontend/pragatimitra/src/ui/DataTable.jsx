@@ -15,12 +15,12 @@ import { SkeletonRows } from "./Skeleton";
  */
 export default function DataTable({
   columns, rows, rowKey = "id", loading = false, empty = null,
-  toolbar = null, pagination = null, minWidth = 720, onRowClick,
+  toolbar = null, pagination = null, minWidth = 720, onRowClick, fill = false,
 }) {
   const colCount = columns.length;
 
   return (
-    <div style={{ background: color.surface, border: `1px solid ${color.border}`, borderRadius: radius.xl, boxShadow: shadow.card, overflow: "hidden", fontFamily: font.family }}>
+    <div style={{ background: color.surface, border: `1px solid ${color.border}`, borderRadius: radius.xl, boxShadow: shadow.card, overflow: "hidden", fontFamily: font.family, ...(fill ? { flex: 1, minHeight: 0, display: "flex", flexDirection: "column" } : {}) }}>
       {toolbar && (
         <div style={{ padding: "14px 18px", borderBottom: `1px solid ${color.border}`, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
           {toolbar}
@@ -28,11 +28,11 @@ export default function DataTable({
       )}
 
       {loading ? (
-        <SkeletonRows rows={6} cols={Math.min(colCount, 5)} />
+        fill ? <div style={{ flex: 1, minHeight: 0 }}><SkeletonRows rows={6} cols={Math.min(colCount, 5)} /></div> : <SkeletonRows rows={6} cols={Math.min(colCount, 5)} />
       ) : rows.length === 0 ? (
-        empty
+        fill ? <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>{empty}</div> : empty
       ) : (
-        <div className="ui-scroll" style={{ overflowX: "auto" }}>
+        <div className="ui-scroll" style={{ overflowX: "auto", ...(fill ? { flex: 1, minHeight: 0, overflowY: "auto" } : {}) }}>
           <table style={{ width: "100%", borderCollapse: "collapse", minWidth }}>
             <thead>
               <tr>
@@ -49,7 +49,7 @@ export default function DataTable({
               </tr>
             </thead>
             <tbody>
-              {rows.map((row) => {
+              {rows.map((row, rowIndex) => {
                 const key = typeof rowKey === "function" ? rowKey(row) : row[rowKey];
                 return (
                   <tr
@@ -60,7 +60,7 @@ export default function DataTable({
                     onMouseLeave={(e) => { e.currentTarget.style.background = ""; }}
                   >
                     {columns.map((c) => {
-                      const content = c.render ? c.render(row) : row[c.key];
+                      const content = c.render ? c.render(row, rowIndex) : row[c.key];
                       return (
                         <td key={c.key} style={{
                           padding: "0 18px", textAlign: c.align || "left",

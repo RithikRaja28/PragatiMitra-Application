@@ -14,10 +14,9 @@ const express = require("express");
 const { verifyToken, requireRole } = require("../middleware/auth");
 const { writeAuditLog } = require("../utils/audit");
 const logger = require("../utils/logger");
-const { translateSentence } = require("../services/translationService");
 const {
   resolveDeptContext, ensureDeptYearRow, pgType, slugify,
-  deptRecordsTable, collectColumnNames, buildDeptRecordsTableDDL,
+  deptRecordsTable, collectColumnNames, buildDeptRecordsTableDDL, quoteIdent,
 } = require("../services/departmentFormService");
 const { resolveActiveAcademicYear } = require("../services/academicYearService");
 const { assertEquivalent } = require("../services/equivalenceGuard");
@@ -51,7 +50,15 @@ router.use(async (req, _res, next) => {
   next();
 });
 
-const WRITE_ROLES = ["department_admin"];
+// Form CONFIGURATION (create/edit schema, deadline, lock, archive, carry-forward)
+// is done by Department Admins and Department Nodal Officers. Contributors never
+// configure forms — they only enter data (see routes/departmentFormData.js).
+const WRITE_ROLES = ["department_admin", "nodal_officer"];
+
+/* Department forms are ALWAYS restricted to this fixed set of roles. The per-form
+   "Roles with access" picker was removed — every form is accessible only to
+   Contributors, Department Nodal Officers, and Department Admins. */
+const FIXED_FORM_ROLES = ["department_admin", "nodal_officer", "contributor"];
 
 /* Selected academic-year (start year int): ?year → X-Academic-Year header →
    body.year → institution's active year (inherited) → current calendar year.
@@ -68,21 +75,6 @@ function resolveYear(req) {
   const legacy = new Date().getFullYear();
   const candidate = Number.isInteger(req.institutionAcademicYear) ? req.institutionAcademicYear : legacy;
   return assertEquivalent("departmentForms.resolveYear.fallback", legacy, candidate);
-}
-
-/* Auto-fill label.hi using Google Translate (only when translation enabled). */
-async function autoFillHindiLabels(schema) {
-  const fields = schema?.fields;
-  if (!Array.isArray(fields)) return;
-  await Promise.all(fields.map(async (field) => {
-    const en = field.label?.en || field.column_name;
-    if (!en || field.label?.hi) return;
-    const hi = await translateSentence(en).catch(() => null);
-    if (hi && hi !== en) {
-      if (!field.label) field.label = {};
-      field.label.hi = hi;
-    }
-  }));
 }
 
 /* Load a department form by id, scoped to the caller's department. */
@@ -165,101 +157,6 @@ router.get("/", requireRole(WRITE_ROLES), async (req, res) => {
   } catch (err) {
     logger.error("GET /api/department-forms", { stack: err.stack });
     return res.status(500).json({ success: false, message: "Failed to fetch department forms." });
-  }
-});
-
-/* ─────────────────────────────────────────────────────────────────────
-   Academic-year cycle (department-scoped, independent of institution).
-   GET /api/department-forms/year-preview?year=YYYY
-     Lists the department's forms with their status in the previous year, so
-     the UI can pre-select which forms carry forward into the target year.
-───────────────────────────────────────────────────────────────────── */
-router.get("/year-preview", requireRole(WRITE_ROLES), async (req, res) => {
-  const pool = req.app.locals.pool;
-  try {
-    const { departmentId } = await resolveDeptContext(pool, req);
-    if (!departmentId) return res.json({ success: true, forms: [], year: resolveYear(req) });
-    const year = resolveYear(req);
-    const prevYear = year - 1;
-
-    const { rows } = await pool.query(
-      `SELECT dtl.id, dtl.form_name, dtl.academic_year,
-              cur.status      AS cur_status,  COALESCE(cur.is_archived, false) AS cur_archived,
-              prev.status     AS prev_status, COALESCE(prev.is_active, false)  AS prev_active, prev.is_archived AS prev_archived
-         FROM department_table_list dtl
-         LEFT JOIN department_form_year_mapping cur  ON cur.department_form_id  = dtl.id AND cur.academic_year  = $2
-         LEFT JOIN department_form_year_mapping prev ON prev.department_form_id = dtl.id AND prev.academic_year = $3
-        WHERE dtl.department_id = $1
-        ORDER BY dtl.form_name`,
-      [departmentId, year, prevYear]
-    );
-
-    const forms = rows.map((f) => {
-      const prevHas = f.prev_status != null;
-      const prevActive = prevHas ? (f.prev_archived !== true) : (f.academic_year === prevYear);
-      const curHas = f.cur_status != null;
-      const curActive = curHas ? (f.cur_archived !== true) : (f.academic_year === year);
-      return { id: f.id, form_name: f.form_name, academic_year: f.academic_year, prev_active: prevActive, current_active: curActive };
-    });
-    return res.json({ success: true, forms, year, previousYear: prevYear });
-  } catch (err) {
-    logger.error("GET /api/department-forms/year-preview", { stack: err.stack });
-    return res.status(500).json({ success: false, message: "Failed to build year preview." });
-  }
-});
-
-/* POST /api/department-forms/carry-forward   { year, activeFormIds: string[] }
-   Bulk-sets the department's per-year lifecycle for `year`: the listed forms
-   become Active, all others become Archived. One step instead of toggling each
-   form. Independent of the institution academic year. */
-router.post("/carry-forward", requireRole(WRITE_ROLES), async (req, res) => {
-  const pool = req.app.locals.pool;
-  const year = Number(req.body?.year) || resolveYear(req);
-  const activeSet = new Set((Array.isArray(req.body?.activeFormIds) ? req.body.activeFormIds : []).map(String));
-  try {
-    const { departmentId } = await resolveDeptContext(pool, req);
-    if (!departmentId) return res.status(400).json({ success: false, message: "No department is associated with your account." });
-
-    const { rows: formRows } = await pool.query(
-      "SELECT id FROM department_table_list WHERE department_id = $1",
-      [departmentId]
-    );
-
-    const client = await pool.connect();
-    let activated = 0;
-    try {
-      await client.query("BEGIN");
-      for (const { id } of formRows) {
-        const active = activeSet.has(String(id));
-        if (active) activated += 1;
-        await client.query(
-          `INSERT INTO department_form_year_mapping
-             (department_form_id, academic_year, status, is_active, is_archived, is_locked)
-           VALUES ($1, $2, $3, $4, $5, false)
-           ON CONFLICT (department_form_id, academic_year) DO UPDATE
-             SET status = $3, is_active = $4, is_archived = $5`,
-          [id, year, active ? "active" : "archived", active, !active]
-        );
-      }
-      await client.query("COMMIT");
-    } catch (err) {
-      await client.query("ROLLBACK");
-      throw err;
-    } finally {
-      client.release();
-    }
-
-    await writeAuditLog(req, {
-      actionType: "DEPARTMENT_YEAR_CARRY_FORWARD",
-      entityType: "department_form_year",
-      entityId: null,
-      newValue: { academic_year: year, activated, total: formRows.length },
-    }).catch(() => {});
-
-    return res.json({ success: true, message: `Set up ${year}–${year + 1}: ${activated} active, ${formRows.length - activated} archived.`, activated, total: formRows.length });
-  } catch (err) {
-    logger.error("POST /api/department-forms/carry-forward", { stack: err.stack });
-    return res.status(500).json({ success: false, message: "Failed to set up the academic year." });
   }
 });
 
@@ -362,11 +259,11 @@ router.get("/:id/roles", async (req, res) => {
    Create a department form: register in department_table_list, create the
    shared dept_form_<slug> table, seed the year mapping (active for the
    selected year), lock config, and role access.
-   Body: { form_name, form_description?, schema, translate_enabled?, roles?, year? }
+   Body: { form_name, form_description?, schema, year?, deadline? }
 ───────────────────────────────────────────────────────────────────── */
 router.post("/", requireRole(WRITE_ROLES), async (req, res) => {
   const pool = req.app.locals.pool;
-  const { form_name, form_description = null, schema, translate_enabled, roles = [], deadline } = req.body;
+  const { form_name, form_description = null, schema, deadline } = req.body;
 
   if (!form_name || !String(form_name).trim())
     return res.status(400).json({ success: false, message: "form_name is required." });
@@ -385,7 +282,8 @@ router.post("/", requireRole(WRITE_ROLES), async (req, res) => {
     if (!isNaN(d.getTime())) createDeadline = d.toISOString();
   }
 
-  const translateEnabled = translate_enabled === false ? false : true;
+  // Department forms are single-language — translation is not supported.
+  const translateEnabled = false;
   const year = resolveYear(req);
   let table; // set after department is resolved (table is namespaced per department)
 
@@ -396,7 +294,6 @@ router.post("/", requireRole(WRITE_ROLES), async (req, res) => {
 
     table = deptRecordsTable(departmentId, slug);
 
-    if (translateEnabled) await autoFillHindiLabels(schema);
     const usedColNames = collectColumnNames(schema.fields);
 
     const client = await pool.connect();
@@ -439,8 +336,8 @@ router.post("/", requireRole(WRITE_ROLES), async (req, res) => {
         );
       }
 
-      for (const rn of Array.isArray(roles) ? roles : []) {
-        if (!rn || typeof rn !== "string") continue;
+      // Access is fixed (no per-form role selection): always grant the standard set.
+      for (const rn of FIXED_FORM_ROLES) {
         await client.query(
           `INSERT INTO department_form_roles (department_form_id, role_name, institution_id, department_id, academic_year)
            VALUES ($1, $2, $3, $4, $5) ON CONFLICT (department_form_id, role_name) DO NOTHING`,
@@ -453,7 +350,7 @@ router.post("/", requireRole(WRITE_ROLES), async (req, res) => {
       for (const field of (schema.fields || [])) {
         const col = field.column_name.trim().toLowerCase().replace(/\s+/g, "_");
         if (/^[a-z][a-z0-9_]*$/.test(col)) {
-          await client.query(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS ${col} ${pgType(field.type)}`);
+          await client.query(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS ${quoteIdent(col)} ${pgType(field.type)}`);
         }
       }
 
@@ -481,19 +378,16 @@ router.post("/", requireRole(WRITE_ROLES), async (req, res) => {
 
 /* ─────────────────────────────────────────────────────────────────────
    PUT /api/department-forms/:id/schema   — update schema (edit)
-   Body: { schema, translate_enabled? }
+   Body: { schema }
 ───────────────────────────────────────────────────────────────────── */
 router.put("/:id/schema", requireRole(WRITE_ROLES), async (req, res) => {
   const pool = req.app.locals.pool;
-  const { schema, translate_enabled } = req.body;
+  const { schema } = req.body;
   if (!schema) return res.status(400).json({ success: false, message: "schema is required." });
 
   try {
     const { form, error } = await loadOwnedForm(pool, req, req.params.id);
     if (error) return res.status(404).json({ success: false, message: error });
-
-    const effectiveTranslate = typeof translate_enabled === "boolean" ? translate_enabled : form.translate_enabled;
-    if (effectiveTranslate) await autoFillHindiLabels(schema);
 
     const table = deptRecordsTable(form.department_id, form.form_name);
     const currentNames = new Set((form.schema?.fields || []).map((f) => f.column_name));
@@ -504,10 +398,10 @@ router.put("/:id/schema", requireRole(WRITE_ROLES), async (req, res) => {
       await client.query("BEGIN");
       await client.query(
         `UPDATE department_table_list
-           SET schema = $1::jsonb, used_column_names = $2, translate_enabled = $3,
-               updated_by = $4, updated_at = now()
-         WHERE id = $5`,
-        [JSON.stringify(schema), mergedUsed, effectiveTranslate, req.user.userId, form.id]
+           SET schema = $1::jsonb, used_column_names = $2,
+               updated_by = $3, updated_at = now()
+         WHERE id = $4`,
+        [JSON.stringify(schema), mergedUsed, req.user.userId, form.id]
       );
 
       const excluded = new Set(schema.excluded_fixed_columns || []);
@@ -515,7 +409,7 @@ router.put("/:id/schema", requireRole(WRITE_ROLES), async (req, res) => {
         if (excluded.has(field.column_name) || currentNames.has(field.column_name)) continue;
         const col = field.column_name.trim().toLowerCase().replace(/\s+/g, "_");
         if (/^[a-z][a-z0-9_]*$/.test(col)) {
-          await client.query(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS ${col} ${pgType(field.type)}`);
+          await client.query(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS ${quoteIdent(col)} ${pgType(field.type)}`);
         }
       }
       await client.query("COMMIT");

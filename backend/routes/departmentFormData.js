@@ -3,11 +3,13 @@
 /**
  * routes/departmentFormData.js  →  mounted at /api/department-form-data
  * ─────────────────────────────────────────────────────────────────────────
- * Records CRUD for department forms. Mirrors routes/formData.js (EN row +
- * async Hindi mirror via source_row_id, language-aware reads, lock/deadline
- * enforcement) but operates ONLY on dept_form_<slug> tables scoped by
- * department_id + academic_year. Reads the department_* metadata tables; never
- * touches table_list / custom_field_schemas / form_lock_config / *_records.
+ * Records CRUD for department forms. Department forms are SINGLE-LANGUAGE
+ * (English) — there is no translation: no Hindi mirror rows, no language-aware
+ * reads. Operates ONLY on dept_form_<slug> tables scoped by department_id +
+ * academic_year. Reads the department_* metadata tables; never touches
+ * table_list / custom_field_schemas / form_lock_config / *_records.
+ * (Legacy rows keep a `language` column; reads filter to 'en'/NULL, and deletes
+ * still clean up any old source_row_id-linked Hindi mirror.)
  *
  * Path param :id is the department_table_list.id (the form), so two
  * departments with the same slug never collide.
@@ -17,11 +19,9 @@ const express = require("express");
 const ExcelJS = require("exceljs");
 const { verifyToken } = require("../middleware/auth");
 const logger = require("../utils/logger");
-const { translateRow, resolveTranslationMode, enrichSchemaLabels } = require("../services/translationService");
-const { resolveDeptContext, deptRecordsTable } = require("../services/departmentFormService");
+const { resolveDeptContext, deptRecordsTable, quoteIdent } = require("../services/departmentFormService");
 const { getEffectiveState, STATE } = require("../services/stateResolver");
 const { resolveActiveAcademicYear } = require("../services/academicYearService");
-const { SOURCE_LANGUAGE, isDerivedRow } = require("../services/translationOwnership");
 const { assertEquivalent } = require("../services/equivalenceGuard");
 
 const router = express.Router();
@@ -59,6 +59,20 @@ async function ensureSourceRowIdColumn(pool, tableName) {
 function dbCol(col) { return col.trim().toLowerCase().replace(/\s+/g, "_"); }
 function validSlug(s) { return /^[a-z][a-z0-9_]*$/.test(s); }
 
+/* Data entry (create / edit / delete records) is restricted to CONTRIBUTORS.
+   Department Admins and Nodal Officers configure forms but cannot enter data —
+   they may only view/export records. Returns true if the caller may write;
+   otherwise sends a 403 and returns false. */
+// TEMP (testing): the contributor role is not provisioned yet, so department_admin
+// is allowed to enter data for now. Remove "department_admin" below once real
+// contributors exist, to restore contributor-only data entry.
+const DATA_ENTRY_ROLES = ["contributor", "department_admin"];
+function requireContributor(req, res) {
+  if ((req.user.roles || []).some((r) => DATA_ENTRY_ROLES.includes(r))) return true;
+  res.status(403).json({ success: false, message: "Only contributors can enter or modify department form data." });
+  return false;
+}
+
 function resolveYear(req) {
   const q = Number(req.query.year); if (Number.isInteger(q)) return q;
   const h = Number(req.get("X-Academic-Year")); if (Number.isInteger(h)) return h;
@@ -78,11 +92,6 @@ function activeFields(schema) {
     if (excluded.has(col) || excluded.has(f.column_name) || seen.has(col)) return false;
     seen.add(col); return true;
   });
-}
-function buildFieldModes(fields) {
-  const modes = {};
-  for (const f of fields) modes[dbCol(f.column_name)] = resolveTranslationMode(f);
-  return modes;
 }
 
 /* Load a department form owned by the caller's department, enforcing role
@@ -163,11 +172,11 @@ async function deptLockBlock(pool, form, year) {
 }
 
 /* ─────────────────────────────────────────────────────────────────────
-   GET /api/department-form-data/:id/records?language=&year=
+   GET /api/department-form-data/:id/records?year=
+   Department forms are single-language (English) — no translation.
 ───────────────────────────────────────────────────────────────────── */
 router.get("/:id/records", async (req, res) => {
   const pool = req.app.locals.pool;
-  const { language = SOURCE_LANGUAGE } = req.query;
   try {
     const { form, departmentId, error } = await loadForm(pool, req, req.params.id);
     if (error) return res.status(404).json({ success: false, message: error });
@@ -183,42 +192,26 @@ router.get("/:id/records", async (req, res) => {
     );
     if (!ex.length) {
       const lk = await deptLockBlock(pool, form, year);
-      return res.json({ success: true, records: [], schema: { schema: form.schema, year, form_name: form.form_name }, translate_enabled: form.translate_enabled, lock: { is_locked: lk.locked, message: lk.message } });
-    }
-    await ensureSourceRowIdColumn(pool, table);
-
-    const params = [departmentId, year];
-    let recordsQuery;
-    if (language === "en") {
-      recordsQuery = `SELECT * FROM ${table}
-                      WHERE department_id = $1 AND academic_year = $2 AND (language = 'en' OR language IS NULL)
-                      ORDER BY role_name NULLS LAST, created_at DESC`;
-    } else {
-      params.push(language);
-      const lp = `$${params.length}`;
-      recordsQuery = `
-        WITH has_translation AS (
-          SELECT source_row_id FROM ${table}
-          WHERE language = ${lp} AND source_row_id IS NOT NULL AND department_id = $1 AND academic_year = $2
-        )
-        SELECT * FROM ${table}
-        WHERE department_id = $1 AND academic_year = $2
-          AND ( language = ${lp}
-             OR ((language = 'en' OR language IS NULL) AND id NOT IN (SELECT source_row_id FROM has_translation)) )
-        ORDER BY role_name NULLS LAST, created_at DESC`;
+      return res.json({ success: true, records: [], schema: { schema: form.schema, year, form_name: form.form_name }, lock: { is_locked: lk.locked, message: lk.message } });
     }
 
-    const { rows: records } = await pool.query(recordsQuery, params);
+    // Only original (English) rows — any legacy Hindi mirror rows are ignored.
+    // entered_by = the full name of the user who created the row (resolved from
+    // created_by), so admins can see who entered each record.
+    const { rows: records } = await pool.query(
+      `SELECT t.*, u.full_name AS entered_by
+       FROM ${table} t
+       LEFT JOIN users u ON u.id = t.created_by
+       WHERE t.department_id = $1 AND t.academic_year = $2 AND (t.language = 'en' OR t.language IS NULL)
+       ORDER BY t.created_at DESC`,
+      [departmentId, year]
+    );
     const lock = await deptLockBlock(pool, form, year);
-    const displaySchema = language !== "en"
-      ? await enrichSchemaLabels({ schema: form.schema }, language).then((s) => s.schema || form.schema).catch(() => form.schema)
-      : form.schema;
 
     return res.json({
       success: true,
       records,
-      schema: { schema: displaySchema, year, form_name: form.form_name },
-      translate_enabled: form.translate_enabled,
+      schema: { schema: form.schema, year, form_name: form.form_name },
       lock: { is_locked: lock.locked, message: lock.message },
     });
   } catch (err) {
@@ -227,48 +220,15 @@ router.get("/:id/records", async (req, res) => {
   }
 });
 
-/* GET counterpart (read-only reference for the edit dialog). */
-router.get("/:id/records/:recordId/counterpart", async (req, res) => {
-  const pool = req.app.locals.pool;
-  try {
-    const { form, departmentId, error } = await loadForm(pool, req, req.params.id);
-    if (error) return res.status(404).json({ success: false, message: error });
-    const table = deptRecordsTable(form.department_id, form.form_name);
-    await ensureSourceRowIdColumn(pool, table);
-
-    const { rows: selfRows } = await pool.query(
-      `SELECT * FROM ${table} WHERE id = $1 AND department_id = $2`,
-      [req.params.recordId, departmentId]
-    );
-    if (!selfRows.length) return res.status(404).json({ success: false, message: "Record not found." });
-    const self = selfRows[0];
-    let counterpart = null;
-    // Shadow-equivalence: legacy boolean is authoritative; isDerivedRow is the candidate.
-    const selfIsDerivedLegacy = self.language === "hi" && !!self.source_row_id;
-    const selfIsDerived = assertEquivalent(
-      "departmentFormData.isDerivedRow", selfIsDerivedLegacy, isDerivedRow(self)
-    );
-    if (selfIsDerived) {
-      // Derived (Hindi) row → its counterpart is the English source it points to.
-      const { rows } = await pool.query(`SELECT * FROM ${table} WHERE id = $1 AND department_id = $2`, [self.source_row_id, departmentId]);
-      counterpart = rows[0] || null;
-    } else {
-      const { rows } = await pool.query(`SELECT * FROM ${table} WHERE source_row_id = $1 AND department_id = $2 LIMIT 1`, [self.id, departmentId]);
-      counterpart = rows[0] || null;
-    }
-    return res.json({ success: true, record: counterpart });
-  } catch (err) {
-    logger.error("GET /api/department-form-data counterpart", { stack: err.stack });
-    return res.status(500).json({ success: false, message: "Failed to fetch counterpart." });
-  }
-});
-
 /* ─────────────────────────────────────────────────────────────────────
-   POST /api/department-form-data/:id/records   { data, role_name?, language? }
+   POST /api/department-form-data/:id/records   { data }
+   The submitter is recorded automatically via created_by (from the JWT); no
+   role is asked for. "Who entered this" is shown by resolving created_by → name.
 ───────────────────────────────────────────────────────────────────── */
 router.post("/:id/records", async (req, res) => {
   const pool = req.app.locals.pool;
-  const { data, role_name = null, language = SOURCE_LANGUAGE } = req.body;
+  if (!requireContributor(req, res)) return;
+  const { data } = req.body;
   if (!data || typeof data !== "object")
     return res.status(400).json({ success: false, message: "data is required." });
   try {
@@ -282,12 +242,12 @@ router.post("/:id/records", async (req, res) => {
 
     const fields = activeFields(form.schema);
     const fieldCols = fields.map((f) => dbCol(f.column_name));
-    const fieldModes = buildFieldModes(fields);
     const createdBy = req.user.userId || null;
 
+    // role_name is no longer collected from the user — kept null for column compat.
     const stdCols = ["form_name", "department_id", "institution_id", "academic_year", "role_name", "schema_id", "language", "created_by"];
-    const stdVals = [form.form_name, departmentId, institutionId, year, role_name, form.id, language, createdBy];
-    const allCols = [...stdCols, ...fieldCols];
+    const stdVals = [form.form_name, departmentId, institutionId, year, null, form.id, "en", createdBy];
+    const allCols = [...stdCols, ...fieldCols.map(quoteIdent)];
     const allVals = [...stdVals, ...fieldCols.map((c) => data[c] ?? null)];
     const ph = allVals.map((_, i) => `$${i + 1}`).join(", ");
 
@@ -295,25 +255,8 @@ router.post("/:id/records", async (req, res) => {
       `INSERT INTO ${table} (${allCols.join(", ")}) VALUES (${ph}) RETURNING *`,
       allVals
     );
-    const enRow = rows[0];
 
-    if (language === "en" && form.translate_enabled !== false) {
-      setImmediate(async () => {
-        try {
-          await ensureSourceRowIdColumn(pool, table);
-          const hiData = await translateRow(data, fieldModes);
-          const hiCols = [...stdCols, ...fieldCols, "source_row_id"];
-          const hiVals = [form.form_name, departmentId, institutionId, year, role_name, form.id, "hi", createdBy,
-                          ...fieldCols.map((c) => hiData[c] ?? null), enRow.id];
-          const hiPh = hiVals.map((_, i) => `$${i + 1}`).join(", ");
-          await pool.query(`INSERT INTO ${table} (${hiCols.join(", ")}) VALUES (${hiPh})`, hiVals);
-        } catch (e) {
-          logger.error(`Dept Hindi row insert failed for ${table}`, { stack: e.stack });
-        }
-      });
-    }
-
-    return res.json({ success: true, record: enRow, message: "Record created successfully." });
+    return res.json({ success: true, record: rows[0], message: "Record created successfully." });
   } catch (err) {
     logger.error("POST /api/department-form-data/:id/records", { stack: err.stack });
     return res.status(500).json({ success: false, message: "Failed to create record." });
@@ -325,6 +268,7 @@ router.post("/:id/records", async (req, res) => {
 ───────────────────────────────────────────────────────────────────── */
 router.put("/:id/records/:recordId", async (req, res) => {
   const pool = req.app.locals.pool;
+  if (!requireContributor(req, res)) return;
   const { data } = req.body;
   if (!data || typeof data !== "object")
     return res.status(400).json({ success: false, message: "data is required." });
@@ -339,17 +283,9 @@ router.put("/:id/records/:recordId", async (req, res) => {
 
     const fields = activeFields(form.schema);
     const fieldCols = fields.map((f) => dbCol(f.column_name));
-    const fieldModes = buildFieldModes(fields);
-
-    const { rows: target } = await pool.query(
-      `SELECT language FROM ${table} WHERE id = $1 AND department_id = $2`,
-      [req.params.recordId, departmentId]
-    );
-    if (!target.length) return res.status(404).json({ success: false, message: "Record not found." });
-    const editedLanguage = target[0].language === "hi" ? "hi" : "en";
 
     let idx = 1;
-    const setClauses = [...fieldCols.map((c) => `${c} = $${idx++}`), "updated_at = now()"];
+    const setClauses = [...fieldCols.map((c) => `${quoteIdent(c)} = $${idx++}`), "updated_at = now()"];
     const whereClause = `department_id = $${idx++} AND id = $${idx++}`;
     const vals = [...fieldCols.map((c) => data[c] ?? null), departmentId, req.params.recordId];
 
@@ -358,21 +294,6 @@ router.put("/:id/records/:recordId", async (req, res) => {
       vals
     );
     if (!rows.length) return res.status(404).json({ success: false, message: "Record not found." });
-
-    if (editedLanguage === "en" && form.translate_enabled !== false) {
-      setImmediate(async () => {
-        try {
-          await ensureSourceRowIdColumn(pool, table);
-          const hiData = await translateRow(data, fieldModes);
-          let hidx = 1;
-          const hiSet = [...fieldCols.map((c) => `${c} = $${hidx++}`), "updated_at = now()"];
-          const hiVals = [...fieldCols.map((c) => hiData[c] ?? null), req.params.recordId];
-          await pool.query(`UPDATE ${table} SET ${hiSet.join(", ")} WHERE source_row_id = $${hidx}`, hiVals);
-        } catch (e) {
-          logger.error(`Dept Hindi row update failed for ${table}`, { stack: e.stack });
-        }
-      });
-    }
 
     return res.json({ success: true, record: rows[0], message: "Record updated successfully." });
   } catch (err) {
@@ -384,6 +305,7 @@ router.put("/:id/records/:recordId", async (req, res) => {
 /* DELETE bulk — MUST be before the single-delete route. */
 router.delete("/:id/records/bulk-delete", async (req, res) => {
   const pool = req.app.locals.pool;
+  if (!requireContributor(req, res)) return;
   const { ids } = req.body;
   if (!Array.isArray(ids) || ids.length === 0)
     return res.status(400).json({ success: false, message: "ids must be a non-empty array." });
@@ -412,41 +334,35 @@ router.delete("/:id/records/bulk-delete", async (req, res) => {
 });
 
 /* ─────────────────────────────────────────────────────────────────────
-   GET /api/department-form-data/:id/export?format=csv|xlsx&language=
-   Exports the department's records for the selected year/language.
+   GET /api/department-form-data/:id/export?format=csv|xlsx
+   Exports the department's records for the selected year (English only).
 ───────────────────────────────────────────────────────────────────── */
 router.get("/:id/export", async (req, res) => {
   const pool = req.app.locals.pool;
-  const { format = "csv", language = SOURCE_LANGUAGE } = req.query;
+  const { format = "csv" } = req.query;
   try {
     const { form, departmentId, error } = await loadForm(pool, req, req.params.id);
     if (error) return res.status(404).json({ success: false, message: error });
     const table = deptRecordsTable(form.department_id, form.form_name);
     const year = resolveYear(req);
-    await ensureSourceRowIdColumn(pool, table);
 
     const fields = activeFields(form.schema);
     const cols = fields.map((f) => dbCol(f.column_name));
-    const headers = fields.map((f) => f.label?.[language] || f.label?.en || f.column_name.replace(/_/g, " "));
+    const headers = fields.map((f) => f.label?.en || f.column_name.replace(/_/g, " "));
 
-    const params = [departmentId, year];
-    let q;
-    if (language === "en") {
-      q = `SELECT * FROM ${table} WHERE department_id = $1 AND academic_year = $2 AND (language = 'en' OR language IS NULL) ORDER BY role_name NULLS LAST, created_at DESC`;
-    } else {
-      params.push(language);
-      const lp = `$${params.length}`;
-      q = `WITH has_translation AS (SELECT source_row_id FROM ${table} WHERE language = ${lp} AND source_row_id IS NOT NULL AND department_id = $1 AND academic_year = $2)
-           SELECT * FROM ${table} WHERE department_id = $1 AND academic_year = $2
-             AND (language = ${lp} OR ((language = 'en' OR language IS NULL) AND id NOT IN (SELECT source_row_id FROM has_translation)))
-           ORDER BY role_name NULLS LAST, created_at DESC`;
-    }
-    const { rows } = await pool.query(q, params);
+    const { rows } = await pool.query(
+      `SELECT t.*, u.full_name AS entered_by
+       FROM ${table} t
+       LEFT JOIN users u ON u.id = t.created_by
+       WHERE t.department_id = $1 AND t.academic_year = $2 AND (t.language = 'en' OR t.language IS NULL)
+       ORDER BY t.created_at DESC`,
+      [departmentId, year]
+    );
 
-    const allHeaders = ["#", "Role", ...headers, "Created"];
+    const allHeaders = ["#", "Added By", ...headers, "Created"];
     const dataRows = rows.map((r, i) => [
       i + 1,
-      r.role_name || "",
+      r.entered_by || "",
       ...cols.map((c) => {
         const v = r[c];
         if (v == null) return "";
@@ -457,8 +373,7 @@ router.get("/:id/export", async (req, res) => {
       r.created_at ? new Date(r.created_at).toISOString().slice(0, 10) : "",
     ]);
 
-    const langTag = language !== "en" ? `_${language}` : "";
-    const baseName = `${form.form_name}${langTag}_${year}`;
+    const baseName = `${form.form_name}_${year}`;
 
     if (format === "xlsx") {
       const wb = new ExcelJS.Workbook();
@@ -487,6 +402,7 @@ router.get("/:id/export", async (req, res) => {
 /* DELETE single — deletes the row and its Hindi mirror. */
 router.delete("/:id/records/:recordId", async (req, res) => {
   const pool = req.app.locals.pool;
+  if (!requireContributor(req, res)) return;
   try {
     const { form, departmentId, error } = await loadForm(pool, req, req.params.id);
     if (error) return res.status(404).json({ success: false, message: error });

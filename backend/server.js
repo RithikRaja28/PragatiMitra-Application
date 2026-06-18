@@ -63,10 +63,24 @@ app.use(cors({
   credentials: true,
 }));
 
+/* ─── Global API rate limiter ───────────────────────────────────
+   Protects against abuse WITHOUT throttling normal SPA usage — a single
+   dashboard page load fires many requests, so the old 200-per-15-min cap (with a
+   15-minute lockout) was exhausted almost immediately and blocked legitimate
+   users for a long time. We now use a short 1-minute window (a brief burst
+   recovers in ≤60s instead of 15 min) with a high per-IP ceiling. In
+   development/testing it is effectively disabled so QA is never throttled.
+   NOTE: in production, run behind a reverse proxy and set `app.set("trust proxy", 1)`
+   so the limit is applied per real client IP (otherwise every user shares the
+   proxy's IP and hits the cap collectively). */
+const RATE_LIMIT_MAX = Number(process.env.RATE_LIMIT_MAX)
+  || (process.env.NODE_ENV === "production" ? 1000 : 100000);
 app.use(rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max:      200,
-  message:  "Too many requests, try again later.",
+  windowMs:        60 * 1000,   // 1 minute
+  max:             RATE_LIMIT_MAX,
+  standardHeaders: true,        // expose RateLimit-* headers
+  legacyHeaders:   false,
+  message:         { success: false, message: "Too many requests, try again later." },
 }));
 
 app.use(express.json({ limit: "50mb" }));
@@ -222,8 +236,9 @@ pool.query(`
 `).catch((e) => logger.error("Failed to sync shared-form form_lock_config", { stack: e.stack }));
 
 /* ── Department form management: ensure the additive department_* tables ── */
-const { ensureDepartmentFormTables } = require("./services/departmentFormService");
+const { ensureDepartmentFormTables, backfillFixedFormRoles } = require("./services/departmentFormService");
 ensureDepartmentFormTables(pool)
+  .then(() => backfillFixedFormRoles(pool))
   .catch((e) => logger.error("Failed to ensure department form tables", { stack: e.stack }));
 
 /* ── Shared-form schema repair: INSERT-ONLY backfill of missing schema rows for
