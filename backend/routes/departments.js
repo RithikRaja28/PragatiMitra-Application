@@ -1139,21 +1139,11 @@ router.patch(
         return res.status(409).json({ success: false, message: "Department is already inactive." });
       }
 
-      const { rows: [{ active_count }] } = await pool.query(
-        `SELECT COUNT(*) AS active_count
-         FROM   users
-         WHERE  department_id  = $1
-           AND  institution_id = $2
-           AND  account_status = 'ACTIVE'`,
-        [departmentId, institution_id]
-      );
-
-      if (Number(active_count) > 0) {
-        return res.status(409).json({
-          success: false,
-          message: `Cannot deactivate "${dept.name}": ${active_count} user(s) are still active. Deactivate all members first.`,
-        });
-      }
+      /* Bug 11 — deactivation no longer requires emptying the department first.
+         Department state is now the single source of truth: an inactive department
+         suspends its users / assignments / forms / records via the gate (read-only),
+         and a restore resumes everything with no data loss. So we deactivate even
+         with active members rather than forcing them to be deactivated one by one. */
 
       await pool.query(
         `UPDATE departments

@@ -328,7 +328,7 @@ export const ROLE_CONFIG = {
       {
         group: "Reports",
         items: [
-          { id: "ia-report-cycles",   label: "Report Cycles",   icon: "CalendarDays",  permission: null },
+          { id: "ia-report-cycles",   label: "Report Cycles",   icon: "CalendarDays",  permission: null, slug: "report-cycles" },
           { id: "ia-report-setup",    label: "Report Setup",    icon: "FileText",      permission: null, slug: "report-management" },
           { id: "ia-kpi",             label: "KPI Charts",      icon: "BarChart2",     permission: null, slug: "kpi-management",  subRoutes: KPI_INSTITUTE_SUB },
           { id: "ia-report-builder",  label: "Report Builder",  icon: "BookOpen",      permission: null, slug: "report-builder",  subRoutes: REPORT_BUILDER_SUB },
@@ -356,6 +356,7 @@ export const ROLE_CONFIG = {
             label: "Workflow Templates",
             icon: "GitBranch",
             permission: null,
+            slug: "workflow-templates",
           },
           {
             id: "ia-workflow",
@@ -673,6 +674,16 @@ export const ROLE_CONFIG = {
             slug: "form-management",
             subRoutes: FORM_FILL_SUB,
           },
+          // Institution "Forms & Data Entry" — where a Nodal Officer assigns
+          // accessible forms to contributors (and enters records).
+          {
+            id: "dno-form-data",
+            label: "Forms & Data Entry",
+            icon: "ClipboardList",
+            permission: null,
+            slug: "form-data",
+            subRoutes: FORM_DATA_SUB,
+          },
         ],
       },
     ],
@@ -681,14 +692,28 @@ export const ROLE_CONFIG = {
       "dno-sections":    <MyAssignedSectionsPage />,
       "dno-submissions": <SubmissionsPage />,
       "dno-dept-forms":  <DepartmentFormFillPage />,
+      "dno-form-data":   <FormDataPage />,
     },
     defaultPage: "dno-dashboard",
     user: { name: "Nodal Officer", initials: "NO", org: "Samhita Siddhanta" },
   },
 
-  /* ── CONTRIBUTOR ─────────────────────────────────────────────── */
+  /* ── CONTRIBUTOR ─────────────────────────────────────────────────
+     Consumer role. Reuses the existing FormDataPage (one engine) — the backend
+     filters it to forms ASSIGNED to this contributor for the selected academic
+     year. No Form Management / Assign / lifecycle controls are exposed. */
   contributor: {
     navItems: [
+      {
+        group: "Forms",
+        items: [
+          { id: "c-form-data", label: "Forms & Data Entry", icon: "ClipboardList", permission: null, slug: "form-data", subRoutes: FORM_DATA_SUB },
+          // Department-owned forms the contributor may fill (same department +
+          // assigned role + selected academic year — enforced server-side by
+          // GET /api/department-forms/assigned). Reuses the existing fill page.
+          { id: "c-dept-forms", label: "Department Forms", icon: "FileStack", permission: null, slug: "form-management", subRoutes: FORM_FILL_SUB },
+        ],
+      },
       {
         group: "My Work",
         items: [
@@ -697,9 +722,11 @@ export const ROLE_CONFIG = {
       },
     ],
     pages: {
-      "c-sections": <MyAssignedSectionsPage />,
+      "c-form-data":  <FormDataPage />,
+      "c-dept-forms": <DepartmentFormFillPage />,
+      "c-sections":   <MyAssignedSectionsPage />,
     },
-    defaultPage: "c-sections",
+    defaultPage: "c-form-data",
     user: { name: "Contributor", initials: "CT", org: "PragatiMitra" },
   },
 
@@ -747,13 +774,13 @@ export const ROLE_CONFIG = {
       {
         group: "My Work",
         items: [
-          { id: "pc-sections",         label: "My Sections",      icon: "FileEdit",   permission: null },
+          { id: "pc-sections", label: "My Sections", icon: "FileEdit", permission: null, slug: "my-sections", subRoutes: MY_SECTIONS_SUB },
         ],
       },
       {
         group: "Templates",
         items: [
-          { id: "pc-templates",        label: "Templates",        icon: "LayoutList", permission: null, slug: "my-sections", subRoutes: MY_SECTIONS_SUB },
+          { id: "pc-templates", label: "Templates", icon: "LayoutList", permission: null, slug: "templates" },
         ],
       },
     ],

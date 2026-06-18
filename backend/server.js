@@ -42,9 +42,10 @@ const builderVersionsRoutes      = require("./routes/builder/versions");
 const builderCyclesRoutes        = require("./routes/builder/cycles");
 const builderWorkflowsRoutes     = require("./routes/builder/workflows");
 const builderTemplatesRoutes     = require("./routes/builder/templates");
-const builderCommentsRoutes      = require("./routes/builder/comments");
-const builderCompileRoutes       = require("./routes/builder/compile");
-const builderNotificationsRoutes = require("./routes/builder/notifications");
+const builderCommentsRoutes          = require("./routes/builder/comments");
+const builderCompileRoutes           = require("./routes/builder/compile");
+const builderNotificationsRoutes     = require("./routes/builder/notifications");
+const builderReportIntegrationRoutes = require("./routes/builder/reportIntegration");
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -65,7 +66,7 @@ app.use(cors({
 
 app.use(rateLimit({
   windowMs: 15 * 60 * 1000,
-  max:      200,
+  max:      process.env.NODE_ENV === "production" ? 500 : 5000,
   message:  "Too many requests, try again later.",
 }));
 
@@ -462,6 +463,46 @@ pool.query(`ALTER TABLE public.audit_logs ADD COLUMN IF NOT EXISTS browser_name 
 pool.query(`ALTER TABLE public.audit_logs ADD COLUMN IF NOT EXISTS session_id UUID`)
   .catch((e) => logger.error("Failed to ensure audit_logs.session_id column", { stack: e.stack }));
 
+/* ── kpi_svg_reports: ensure academic_year column + backfill from exported_at ── */
+pool.query(`ALTER TABLE public.kpi_svg_reports ADD COLUMN IF NOT EXISTS academic_year INTEGER`)
+  .then(() => pool.query(`
+    UPDATE public.kpi_svg_reports
+    SET academic_year = CASE
+      WHEN EXTRACT(MONTH FROM exported_at) >= 4
+        THEN EXTRACT(YEAR FROM exported_at)::int
+      ELSE EXTRACT(YEAR FROM exported_at)::int - 1
+    END
+    WHERE academic_year IS NULL
+  `))
+  .catch(e => logger.error("Failed to ensure kpi_svg_reports.academic_year", { stack: e.stack }));
+
+/* ── section_versions: ensure reviewer/decision columns added after initial schema.
+   Guarded so it no-ops cleanly when the report-builder table hasn't been created
+   yet (its migration may not have run on this database). ── */
+pool.query(`
+  DO $$
+  BEGIN
+    IF to_regclass('public.section_versions') IS NOT NULL THEN
+      ALTER TABLE public.section_versions
+        ADD COLUMN IF NOT EXISTS description      TEXT,
+        ADD COLUMN IF NOT EXISTS reviewer_id      UUID REFERENCES public.users(id),
+        ADD COLUMN IF NOT EXISTS decision         TEXT,
+        ADD COLUMN IF NOT EXISTS reviewer_comment TEXT,
+        ADD COLUMN IF NOT EXISTS workflow_step_id UUID REFERENCES public.workflow_steps(id);
+    END IF;
+  END $$;
+`).catch((e) => logger.error("Failed to ensure section_versions reviewer columns", { stack: e.stack }));
+
+/* ── Institution lifecycle (Bug 10): ensure status + soft-delete columns exist at
+   boot. The login / refresh / me / verifyToken gates read institutions.status and
+   institutions.deleted_at on the FIRST request (before any institutions route runs
+   its lazy ensure), so these must be present from startup. Idempotent. ── */
+pool.query(`
+  ALTER TABLE institutions
+    ADD COLUMN IF NOT EXISTS status     TEXT NOT NULL DEFAULT 'ACTIVE',
+    ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ
+`).catch((e) => logger.error("Failed to ensure institutions lifecycle columns", { stack: e.stack }));
+
 /* ── Form deadline auto-lock: ensure columns, then start periodic checker ── */
 const { ensureDeadlineColumns, startDeadlineScheduler } = require("./services/formDeadlineService");
 ensureDeadlineColumns(pool)
@@ -543,6 +584,18 @@ pool.query(`
   })
   .catch((e) => logger.error("Failed to initialise email queue", { stack: e.stack }));
 
+/* ── Contributor form assignment: ensure the additive form_assignments table ── */
+const { ensureFormAssignmentsTable } = require("./routes/formAssignments");
+ensureFormAssignmentsTable(pool)
+  .catch((e) => logger.error("Failed to ensure form_assignments table", { stack: e.stack }));
+
+/* ── Bug 14 (scale): backfill indexes on every existing record table so
+   list/search/pagination/export/pair-cascade stay fast at 100k+ rows. Async +
+   idempotent — never blocks startup; new tables are indexed at creation. ── */
+const { ensureAllRecordsIndexes } = require("./services/recordsIndexService");
+ensureAllRecordsIndexes(pool)
+  .catch((e) => logger.error("Failed to ensure records indexes", { stack: e.stack }));
+
 /* ── Shared-form schema repair: INSERT-ONLY backfill of missing schema rows for
    institutions that can access a shared form but never got their own schema
    (fixes "No active schema found"). Idempotent, non-destructive. ── */
@@ -588,6 +641,7 @@ app.use("/api/academic-years",         require("./routes/academicYear"));
 app.use("/api/form-data",              require("./routes/formData"));
 app.use("/api/form-data",              require("./routes/formimportexport"));
 app.use("/api/nodal-officer-assignments", nodalOfficerAssignmentsRouter);
+app.use("/api/form-assignments",       require("./routes/formAssignments").router);
 
 // Collaborative Report Builder — /api/builder/*
 app.use("/api/builder/reports",       builderReportsRoutes);
@@ -601,7 +655,8 @@ app.use("/api/builder/workflows",     builderWorkflowsRoutes);
 app.use("/api/builder/templates",     builderTemplatesRoutes);
 app.use("/api/builder/comments",      builderCommentsRoutes);
 app.use("/api/builder/compile",       builderCompileRoutes);
-app.use("/api/builder/notifications", builderNotificationsRoutes);
+app.use("/api/builder/notifications",      builderNotificationsRoutes);
+app.use("/api/report-integration",         builderReportIntegrationRoutes);
 
 /* ─── Global error handler (must be last) ───────────────────── */
 app.use(errorHandler);

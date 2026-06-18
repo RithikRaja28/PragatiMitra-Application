@@ -9,7 +9,7 @@ const { writeAuditLog } = require("../utils/audit");
 
 const logger            = require("../utils/logger");
 const { getLogContext } = logger;
-const { propagateAllSharedSchemas } = require("../services/schemaPropagationService");
+const { propagateAllSharedSchemas, resolveInstitutionSharedForms } = require("../services/schemaPropagationService");
 const { enqueueEmail }              = require("../services/mailService");
 
 const router = express.Router();
@@ -18,6 +18,18 @@ router.use(verifyToken);
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const isUUID  = (v) => typeof v === "string" && UUID_RE.test(v);
+
+/* Bug 10 — institution lifecycle. `status` (ACTIVE | ARCHIVED | DELETED) + a
+   soft-delete timestamp. Enforcement is at the gate (login / refresh / me /
+   verifyToken): a non-ACTIVE or deleted institution disables every user under it,
+   so children are never physically mutated and restore is automatically lossless.
+   The column is ensured idempotently (it predates this feature in most envs). */
+let lifecycleColsEnsured = false;
+async function ensureLifecycleColumns(pool) {
+  if (lifecycleColsEnsured) return;
+  await pool.query(`ALTER TABLE institutions ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ`);
+  lifecycleColsEnsured = true;
+}
 
 /* ─── India states list ──────────────────────────────────────────── */
 const INDIA_STATES = [
@@ -577,6 +589,7 @@ router.get("/export/sample", requireRole(["super_admin"]), async (req, res) => {
 router.get("/", async (req, res) => {
   const pool = req.app.locals.pool;
   try {
+    await ensureLifecycleColumns(pool);
     const { rows } = await pool.query(
       `SELECT
          i.institution_id,
@@ -590,6 +603,7 @@ router.get("/", async (req, res) => {
          i.country,
          i.pincode,
          i.status,
+         i.deleted_at,
          i.created_at,
          (
            SELECT COUNT(*)
@@ -604,6 +618,7 @@ router.get("/", async (req, res) => {
              AND u.account_status = 'ACTIVE'
          ) AS user_count
        FROM institutions i
+       WHERE i.deleted_at IS NULL
        ORDER BY i.institution_name ASC`
     );
     return res.json({ success: true, data: rows });
@@ -675,29 +690,11 @@ router.post("/", async (req, res) => {
        rawCity, rawState, rawCountry, rawPincode, createdBy]
     );
 
-    // Shared forms are immediately visible to all institutions.
-    // Add the new institution to every shared form's institute_access and
-    // ensure a lock-config row exists so deadline management works from day one.
-    await pool.query(
-      `UPDATE table_list
-       SET institute_access = array_append(COALESCE(institute_access,'{}'), $1::uuid),
-           updated_at = now()
-       WHERE share_table = true
-         AND NOT ($1::uuid = ANY(COALESCE(institute_access, '{}'::uuid[])))`,
-      [newInst.institution_id]
-    );
-    await pool.query(
-      `INSERT INTO form_lock_config (form_name, institution_id, is_locked, deadline_at, auto_locked)
-       SELECT form_name, $1, false, NULL, false FROM table_list WHERE share_table = true
-       ON CONFLICT (form_name, institution_id) DO NOTHING`,
-      [newInst.institution_id]
-    );
-
-    // The new institution was just added to every shared form's institute_access.
-    // INSERT-ONLY backfill its missing schema rows (clone of the shared template)
-    // so those forms open immediately — keeps the fix fully dynamic on new
-    // institution creation. Never throws (errors are swallowed + logged inside).
-    await propagateAllSharedSchemas(pool);
+    // ISSUE 19 — deterministic shared-form onboarding (single resolver, same
+    // result every time): attach to every shared form (institute_access), ensure
+    // a lock-config row, and materialize this institution's ARCHIVED consumer
+    // schema rows. The institution admin activates them manually later.
+    await resolveInstitutionSharedForms(pool, newInst.institution_id);
 
     await writeAuditLog(req, {
       actionType: "INST_CREATED",
@@ -924,5 +921,71 @@ router.put("/:id", async (req, res) => {
     return res.status(500).json({ success: false, message: "Failed to update institution." });
   }
 });
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Institution lifecycle — Bug 10. Archive / restore / soft-delete. Super-admin
+   only. No active-user block (the whole point of archiving is to disable the
+   users via the gate); no cascade writes to children (they are gated by the
+   parent's status, so restore resumes everything with zero data loss).
+───────────────────────────────────────────────────────────────────────────── */
+async function setLifecycleState(req, res, { targetStatus, deletedAt, okMessage, action }) {
+  const pool = req.app.locals.pool;
+  const institutionId = req.params.id;
+  if (!isUUID(institutionId)) return res.status(400).json({ success: false, message: "Invalid institution ID." });
+
+  try {
+    await ensureLifecycleColumns(pool);
+    const { rows: existingRows } = await pool.query(
+      `SELECT institution_id, institution_name, status, deleted_at FROM institutions WHERE institution_id = $1`,
+      [institutionId]
+    );
+    if (!existingRows.length) return res.status(404).json({ success: false, message: "Institution not found." });
+    const existing = existingRows[0];
+
+    const { rows: [updated] } = await pool.query(
+      `UPDATE institutions
+          SET status = $1, deleted_at = $2, updated_at = now(), updated_by = $3
+        WHERE institution_id = $4
+        RETURNING institution_id, institution_name, status, deleted_at`,
+      [targetStatus, deletedAt, req.user?.userId || null, institutionId]
+    );
+
+    // ISSUE 19 — on RESTORE, re-run the same deterministic shared-form resolver so
+    // any shared forms created while this institution was archived/deleted are
+    // attached (as ARCHIVED) — onboarding stays identical to a fresh create. No-op
+    // when nothing changed; never throws.
+    if (targetStatus === "ACTIVE") {
+      await resolveInstitutionSharedForms(pool, institutionId);
+    }
+
+    await writeAuditLog(req, {
+      actionType: action,
+      entityType: "INSTITUTION",
+      entityId:   updated.institution_id,
+      oldValue:   { status: existing.status, deleted_at: existing.deleted_at },
+      newValue:   { status: updated.status,  deleted_at: updated.deleted_at },
+      status:     "SUCCESS",
+      message:    `Institution "${updated.institution_name}" ${okMessage}`,
+    });
+
+    return res.json({ success: true, message: `Institution "${updated.institution_name}" ${okMessage}.`, data: updated });
+  } catch (err) {
+    logger.error(`${action} /api/institutions/:id failed`, { ...getLogContext(req), stack: err.stack });
+    return res.status(500).json({ success: false, message: "Failed to update institution lifecycle state." });
+  }
+}
+
+/* Archive — institution + all its users/forms/data become inactive via the gate. */
+router.post("/:id/archive", requireRole(["super_admin"]), (req, res) =>
+  setLifecycleState(req, res, { targetStatus: "ARCHIVED", deletedAt: null, okMessage: "archived", action: "INST_ARCHIVED" }));
+
+/* Restore — back to ACTIVE and clear any soft-delete; everything resumes. */
+router.post("/:id/restore", requireRole(["super_admin"]), (req, res) =>
+  setLifecycleState(req, res, { targetStatus: "ACTIVE", deletedAt: null, okMessage: "restored", action: "INST_RESTORED" }));
+
+/* Soft delete — status DELETED + deleted_at. NEVER a physical delete, so no row
+   that children reference is ever removed → no orphan IDs. */
+router.delete("/:id", requireRole(["super_admin"]), (req, res) =>
+  setLifecycleState(req, res, { targetStatus: "DELETED", deletedAt: new Date(), okMessage: "deleted", action: "INST_DELETED" }));
 
 module.exports = router;

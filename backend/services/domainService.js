@@ -17,7 +17,15 @@
  * exactly as before (fully backward compatible).
  */
 
+const logger = require("../utils/logger");
+
 const VALID_DOMAINS = ["academic", "hospital", "finance"];
+
+/* Sentinel filter-domain returned when a scoped user's domain cannot be
+   POSITIVELY determined (lookup failed). It matches no form's form_domain, so a
+   form LIST filtered by it comes back empty — fail-closed: a transient metadata
+   failure must hide all forms, never leak another domain's forms. */
+const NO_DOMAIN_MATCH = "__no_domain_match__";
 
 /* Map the two domain-admin roles → their domain. Used so a Hospital Admin's
    account and forms are always 'hospital' regardless of any selector. */
@@ -50,39 +58,53 @@ function domainForUser(roleName, explicitDomain) {
 async function resolveUserDomain(pool, req) {
   const roles = req.user?.roles || [];
   if (roles.includes("super_admin") || roles.includes("institute_admin")) return null;
-  try {
-    const { rows } = await pool.query(
-      "SELECT COALESCE(role_domain, 'academic') AS d FROM users WHERE id = $1",
-      [req.user.userId]
-    );
-    return rows[0]?.d || "academic";
-  } catch {
-    return "academic"; // never block on a metadata read
+  /* Scoped user (hospital / finance / department / faculty / contributor): their
+     domain must be read POSITIVELY. A query failure here must NOT fall back to
+     'academic' — that would let a Hospital/Finance user reach Academic forms on a
+     transient DB error. Throw so every caller (guard / list filter) fails closed. */
+  const { rows } = await pool.query(
+    "SELECT COALESCE(role_domain, 'academic') AS d FROM users WHERE id = $1",
+    [req.user.userId]
+  );
+  if (!rows.length) {
+    const err = new Error("User domain could not be resolved.");
+    err.code = "DOMAIN_UNKNOWN";
+    throw err;
   }
+  return rows[0].d || "academic";
 }
 
-/* A form's domain (defaults to 'academic' for legacy rows / missing forms). */
+/* A form's domain. Throws on a query FAILURE so callers fail closed (an error
+   must never be read as 'academic' — that could expose a hospital/finance form to
+   an academic user). A legitimately ABSENT row (the form isn't registered, or is a
+   legacy form predating form_domain) resolves to the 'academic' default, matching
+   table_list's COALESCE default — backward compatible. */
 async function getFormDomain(pool, formName) {
-  try {
-    const { rows } = await pool.query(
-      "SELECT COALESCE(form_domain, 'academic') AS d FROM table_list WHERE form_name = $1",
-      [formName]
-    );
-    return rows[0]?.d || "academic";
-  } catch {
-    return "academic";
-  }
+  const { rows } = await pool.query(
+    "SELECT COALESCE(form_domain, 'academic') AS d FROM table_list WHERE form_name = $1",
+    [formName]
+  );
+  return rows[0]?.d || "academic";
 }
 
-/* Returns { allowed, message }. super_admin always allowed; others only when the
-   form's domain matches their own. Use to guard form-data + form-management ops. */
+/* Returns { allowed, status?, message }. FAIL-CLOSED: access is ALLOWED only when
+   positively confirmed (super/institute admin, or matching domain). Any lookup
+   failure / missing metadata DENIES (503) — never allows on error. Use to guard
+   form-data + form-management + import/export ops. */
 async function assertFormDomainAccess(pool, req, formName) {
-  const userDomain = await resolveUserDomain(pool, req);
-  if (userDomain == null) return { allowed: true };
-  const formDomain = await getFormDomain(pool, formName);
-  if (formDomain !== userDomain)
-    return { allowed: false, message: "This form is not available in your domain." };
-  return { allowed: true };
+  try {
+    const userDomain = await resolveUserDomain(pool, req);
+    if (userDomain == null) return { allowed: true }; // super_admin / institute_admin (cross-domain)
+    const formDomain = await getFormDomain(pool, formName);
+    if (formDomain !== userDomain)
+      return { allowed: false, status: 403, message: "This form is not available in your domain." };
+    return { allowed: true };
+  } catch (err) {
+    logger.error("assertFormDomainAccess: domain lookup failed — denying (fail-closed)", {
+      formName, userId: req.user?.userId, reason: err.code || err.message,
+    });
+    return { allowed: false, status: 503, message: "Authorization is temporarily unavailable. Please try again." };
+  }
 }
 
 /* Resolve the domain to filter a form LIST by, for the requesting user.
@@ -90,7 +112,17 @@ async function assertFormDomainAccess(pool, req, formName) {
    - super_admin     → optional ?domain query, else null (all domains)
    Returns a domain string to filter by, or null for "no filter (all)". */
 async function resolveListFilterDomain(pool, req) {
-  const userDomain = await resolveUserDomain(pool, req);
+  let userDomain;
+  try {
+    userDomain = await resolveUserDomain(pool, req);
+  } catch (err) {
+    // Fail-closed: cannot confirm a scoped user's domain → filter by a sentinel
+    // that matches nothing, so the list is empty instead of leaking cross-domain.
+    logger.error("resolveListFilterDomain: domain lookup failed — returning empty (fail-closed)", {
+      userId: req.user?.userId, reason: err.code || err.message,
+    });
+    return NO_DOMAIN_MATCH;
+  }
   if (userDomain != null) return userDomain; // scoped users: forced
   const dp = req.query?.domain ? String(req.query.domain).toLowerCase() : null;
   return VALID_DOMAINS.includes(dp) ? dp : null;
@@ -98,6 +130,7 @@ async function resolveListFilterDomain(pool, req) {
 
 module.exports = {
   VALID_DOMAINS,
+  NO_DOMAIN_MATCH,
   ROLE_TO_DOMAIN,
   normalizeDomain,
   domainForUser,

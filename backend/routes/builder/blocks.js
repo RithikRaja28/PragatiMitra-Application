@@ -6,7 +6,7 @@
  *
  * GET    /section/:sectionId     list blocks for a section
  * POST   /section/:sectionId     create block
- * PUT    /:id                    update block content
+ * PUT    /:id                    update block content (with locking + version snapshot)
  * DELETE /:id                    soft-delete block
  * POST   /reorder                bulk reorder blocks
  */
@@ -14,6 +14,7 @@
 const express           = require("express");
 const { verifyToken }   = require("../../middleware/auth");
 const { writeAuditLog } = require("../../utils/audit");
+const { createSectionSnapshot } = require("../../utils/snapshotHelper");
 const logger            = require("../../utils/logger");
 const { getLogContext } = logger;
 
@@ -90,14 +91,19 @@ router.post("/section/:sectionId", async (req, res) => {
   }
 });
 
-/* ─── PUT /:id — update block content ──────────────────────────────────── */
+/* ─── PUT /:id — update block content (with locking + version snapshot) ── */
 router.put("/:id", async (req, res) => {
-  const pool = req.app.locals.pool;
+  const pool   = req.app.locals.pool;
+  const client = await pool.connect();
   try {
-    const { id }    = req.params;
-    const { content, order_index } = req.body;
+    const { id } = req.params;
+    const { content, order_index, description, version_lock } = req.body;
 
     if (!isUUID(id)) return res.status(400).json({ success: false, message: "Invalid block id" });
+
+    // description is required for versioned saves
+    if (description !== undefined && typeof description === "string" && description.trim().length > 0 && description.trim().length < 5)
+      return res.status(400).json({ success: false, message: "description must be at least 5 characters" });
 
     const sets   = [];
     const params = [];
@@ -116,17 +122,132 @@ router.put("/:id", async (req, res) => {
     sets.push(`updated_by = $${params.length}`);
     params.push(id);
 
-    const { rows } = await pool.query(
+    // Fetch block to get section_id
+    const { rows: bRows } = await pool.query(
+      `SELECT b.section_id, rs.version_lock AS current_lock,
+              rs.locked_by, rs.locked_at, rs.status
+       FROM public.section_blocks b
+       JOIN public.report_sections rs ON rs.id = b.section_id
+       WHERE b.id = $1 AND b.deleted_at IS NULL`,
+      [id]
+    );
+    if (!bRows.length) return res.status(404).json({ success: false, message: "Block not found" });
+
+    const { section_id, current_lock, locked_by, locked_at, status } = bRows[0];
+    const userId = req.user.userId;
+
+    // Pessimistic lock check: another user has the section locked within 15 min
+    if (locked_by && locked_by !== userId && locked_at) {
+      const lockedAgo = (Date.now() - new Date(locked_at).getTime()) / 1000;
+      if (lockedAgo < 900) {
+        return res.status(423).json({
+          success: false,
+          message: "Section is currently being edited by another user",
+          locked_by,
+          locked_at,
+        });
+      }
+    }
+
+    await client.query("BEGIN");
+
+    // Update block content
+    const { rows } = await client.query(
       `UPDATE public.section_blocks SET ${sets.join(", ")}
        WHERE id = $${params.length} AND deleted_at IS NULL RETURNING *`,
       params
     );
-    if (!rows.length) return res.status(404).json({ success: false, message: "Block not found" });
+    if (!rows.length) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ success: false, message: "Block not found" });
+    }
 
-    return res.json({ success: true, data: rows[0] });
+    // If version_lock provided, apply optimistic locking on the section
+    let newVersionLock = current_lock;
+    let statusChanged  = false;
+    const prevStatus   = status;
+
+    if (version_lock !== undefined) {
+      const newStatus = status === "NOT_STARTED" ? "IN_PROGRESS" : status;
+      statusChanged   = newStatus !== prevStatus;
+
+      const { rowCount } = await client.query(
+        `UPDATE public.report_sections
+         SET version_lock = version_lock + 1,
+             locked_by    = $1,
+             locked_at    = NOW(),
+             status       = $2,
+             updated_by   = $1
+         WHERE id = $3 AND version_lock = $4 AND deleted_at IS NULL`,
+        [userId, newStatus, section_id, Number(version_lock)]
+      );
+
+      if (rowCount === 0) {
+        await client.query("ROLLBACK");
+        // Return the latest version_num so client can show it
+        const { rows: vRows } = await pool.query(
+          `SELECT COALESCE(MAX(version_num), 0) AS latest FROM public.section_versions WHERE section_id = $1`,
+          [section_id]
+        );
+        return res.status(409).json({
+          success: false,
+          message: "Content was modified by someone else. Please reload.",
+          latest_version_num: vRows[0]?.latest || 0,
+        });
+      }
+
+      newVersionLock = Number(version_lock) + 1;
+    } else {
+      // No optimistic lock requested — just update locked_by/locked_at and status
+      const newStatus = status === "NOT_STARTED" ? "IN_PROGRESS" : status;
+      statusChanged   = newStatus !== prevStatus;
+      await client.query(
+        `UPDATE public.report_sections
+         SET locked_by = $1, locked_at = NOW(), status = $2, updated_by = $1
+         WHERE id = $3 AND deleted_at IS NULL`,
+        [userId, newStatus, section_id]
+      );
+    }
+
+    await client.query("COMMIT");
+
+    // Audit log if status changed
+    if (statusChanged) {
+      await writeAuditLog(req, {
+        actionType: "SECTION_STATUS_CHANGED",
+        entityType: "SECTION",
+        entityId:   section_id,
+        oldValue:   { status: prevStatus },
+        newValue:   { status: "IN_PROGRESS" },
+        status:     "SUCCESS",
+        message:    "Section moved to IN_PROGRESS on first edit",
+      }).catch(() => {});
+    }
+
+    // Create version snapshot if description provided
+    let versionNum = null;
+    if (description && description.trim().length >= 5) {
+      try {
+        versionNum = await createSectionSnapshot(
+          pool, section_id, "MANUAL", userId, null, description.trim()
+        );
+      } catch (snapErr) {
+        logger.warn("Snapshot failed on block save (non-fatal)", { section_id, err: snapErr.message });
+      }
+    }
+
+    return res.json({
+      success:      true,
+      data:         rows[0],
+      version_lock: newVersionLock,
+      version_num:  versionNum,
+    });
   } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
     logger.error("builder/blocks PUT /:id", { ...getLogContext(req), err: err.message });
     return res.status(500).json({ success: false, message: "Failed to update block" });
+  } finally {
+    client.release();
   }
 });
 

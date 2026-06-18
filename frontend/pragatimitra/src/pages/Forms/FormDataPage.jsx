@@ -4,7 +4,8 @@ import ReactDOM from "react-dom";
 import { createPortal } from "react-dom";
 
 const SLUG = "form-data";
-import { Trash2, FileText, FilePlus, Lock, Clock, Globe, SearchX, Table2, LayoutGrid } from "lucide-react";
+import { Trash2, FileText, FilePlus, Lock, Clock, Globe, SearchX, Table2, LayoutGrid, UserPlus } from "lucide-react";
+import AssignContributorsModal from "./AssignContributorsModal";
 import { useApi } from "../../hooks/useApi";
 import { useAuth } from "../../store/AuthContext";
 import { useAcademicYear } from "../../store/AcademicYearContext";
@@ -310,12 +311,19 @@ function RecordEditPage({ fields, record, onSave, onBack, getToken, formName, fo
     if (viewOnly) return;
     setSaving(true); setError("");
     const res = await onSave(formData);
-    setSaving(false);
     if (res?.success) {
-      // Stay on the page; refresh the Hindi preview once the server-side
-      // translation has had a moment to run (it's async on the backend).
+      if (!isEdit) {
+        // New record added → return to the list. Prevents a second click from
+        // re-submitting the still-populated form (duplicate record).
+        onBack();
+        return;
+      }
+      // Edit: stay on the page and refresh the Hindi preview once the
+      // server-side translation has had a moment to run (async on the backend).
+      setSaving(false);
       if (showReference) setTimeout(refetchCounterpart, 1200);
     } else {
+      setSaving(false);
       setError(res?.message || "Failed to save record.");
     }
   }
@@ -468,7 +476,7 @@ function ImportProgressPanel({ total, processed, remaining, percent, chunksDone,
 /* ════════════════════════════════════════════════════════════════════
    FormImportWizard — with dept selection, rendered via ModalPortal
 ════════════════════════════════════════════════════════════════════ */
-function FormImportWizard({ formName, onClose, onDone, apiFetch, getToken }) {
+function FormImportWizard({ formName, onClose, onDone, apiFetch, getToken, selectedYear = null }) {
   const [step, setStep] = useState(1);
   const fileRef = useRef(null);
 
@@ -517,11 +525,17 @@ function FormImportWizard({ formName, onClose, onDone, apiFetch, getToken }) {
     setParsing(true); setParseError("");
     try {
       const fd = new FormData(); fd.append("file", file);
+      if (selectedYear != null) fd.append("year", selectedYear);
       const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
       const token = getToken();
+      // Bug 7 — send the selected academic year (header + form field) so the backend
+      // year-scoped assignment guard blocks parsing an import for an unassigned year.
       const res = await fetch(`${API_BASE}/api/form-data/${formName}/import/parse`, {
         method: "POST", body: fd,
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...(selectedYear != null ? { "X-Academic-Year": String(selectedYear) } : {}),
+        },
       });
       const data = await res.json();
       if (!data.success) { setParseError(data.message || "Parse failed."); return; }
@@ -570,7 +584,15 @@ function FormImportWizard({ formName, onClose, onDone, apiFetch, getToken }) {
     try {
       const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
       const token = getToken();
-      const res = await fetch(`${API_BASE}/api/form-data/${formName}/export/sample?format=${format}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+      const res = await fetch(`${API_BASE}/api/form-data/${formName}/export/sample?format=${format}`, {
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          // Bug 7 — carry the selected academic year so the year-scoped assignment
+          // guard authorizes the contributor for THIS year (else it falls back to the
+          // calendar year and would wrongly block the sample for their assigned year).
+          ...(selectedYear != null ? { "X-Academic-Year": String(selectedYear) } : {}),
+        },
+      });
       if (!res.ok) return;
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
@@ -790,7 +812,7 @@ function useDropDirection(open, estimatedHeight = 240) {
 }
 
 /* ── Export dropdown with progress bar ── */
-function ExportDropdown({ formName, accessToken, language = "en" }) {
+function ExportDropdown({ formName, accessToken, language = "en", selectedYear = null }) {
   const [open, setOpen]                   = useState(false);
   const [exporting, setExporting]         = useState(null);
   const [exportPercent, setExportPercent] = useState(0);
@@ -814,9 +836,12 @@ function ExportDropdown({ formName, accessToken, language = "en" }) {
   }
 
   const langTag = language !== "en" ? `_${language}` : "";
+  // Bug 7 — carry the selected academic year so the backend can enforce the
+  // year-scoped assignment (export of an unassigned year is blocked server-side).
+  const yearQ = selectedYear != null ? `&year=${selectedYear}` : "";
   const options = [
-    { key: "csv",  label: "Export as CSV",  action: () => download(`/api/form-data/${formName}/export?format=csv&language=${language}`,  `${formName}${langTag}_export.csv`,  "csv")  },
-    { key: "xlsx", label: "Export as Excel", action: () => download(`/api/form-data/${formName}/export?format=xlsx&language=${language}`, `${formName}${langTag}_export.xlsx`, "xlsx") },
+    { key: "csv",  label: "Export as CSV",  action: () => download(`/api/form-data/${formName}/export?format=csv&language=${language}${yearQ}`,  `${formName}${langTag}_export.csv`,  "csv")  },
+    { key: "xlsx", label: "Export as Excel", action: () => download(`/api/form-data/${formName}/export?format=xlsx&language=${language}${yearQ}`, `${formName}${langTag}_export.xlsx`, "xlsx") },
   ];
 
   const [wrapRef, openUp] = useDropDirection(open && !exporting, 130);
@@ -1017,8 +1042,19 @@ export default function FormDataPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { apiFetch }    = useApi();
-  const { accessToken } = useAuth();
+  const { accessToken, user } = useAuth();
   const { lang }        = useLanguage();
+
+  // Who may assign forms to contributors:
+  //   • a real Department Admin, OR
+  //   • a Contributor who holds Nodal Officer capability — detected via the
+  //     existing NOA signal (user.noaActiveYears, set by the backend's
+  //     nodal_officer_assignments resolver). We do NOT hardcode a nodal role:
+  //     the frontend user.roles stays "contributor"; noaActiveYears is the flag.
+  const canAssign =
+    (user?.roles || []).some((r) => r.name === "department_admin" || r.name === "institute_admin") ||
+    (user?.noaActiveYears?.length || 0) > 0;
+  const [assignForm, setAssignForm] = useState(null);
 
   const isRecords = location.pathname.endsWith("/records");
   const listPath  = `/${SLUG}`;
@@ -1284,6 +1320,16 @@ export default function FormDataPage() {
     return (
       <div style={{ padding: "20px 28px", fontFamily: "'Plus Jakarta Sans', sans-serif", minHeight: "100%", maxWidth: 1440 }}>
         {toast && <Toast message={toast.message} type={toast.type} />}
+        {assignForm && (
+          <AssignContributorsModal
+            form={assignForm}
+            year={selectedYear}
+            departmentName={user?.departmentName}
+            onClose={() => setAssignForm(null)}
+            onAssigned={loadForms}
+            showToast={showToast}
+          />
+        )}
 
         <PageHeader
           breadcrumb={["Home", "Department", "Forms & Data Entry"]}
@@ -1399,14 +1445,27 @@ export default function FormDataPage() {
                           </span>
                         </td>
                         <td style={{ padding: "6px 14px", textAlign: "right" }}>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); openForm(form); }}
-                            style={{ display: "inline-flex", alignItems: "center", gap: 5, background: "#fff", color: ACCENT, border: `1px solid ${ACCENT}40`, borderRadius: 7, padding: "0 12px", height: 30, fontSize: 11.5, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap", transition: "background .15s, border-color .15s" }}
-                            onMouseEnter={(e) => { e.currentTarget.style.background = ACCENT + "12"; e.currentTarget.style.borderColor = ACCENT; }}
-                            onMouseLeave={(e) => { e.currentTarget.style.background = "#fff"; e.currentTarget.style.borderColor = ACCENT + "40"; }}
-                          >
-                            Open <span style={{ fontSize: 12 }}>→</span>
-                          </button>
+                          <div style={{ display: "inline-flex", alignItems: "center", gap: 6, justifyContent: "flex-end" }}>
+                            {canAssign && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); setAssignForm(form); }}
+                                title="Assign contributors" aria-label="Assign contributors"
+                                style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 30, height: 30, background: "#fff", color: ACCENT, border: `1px solid ${ACCENT}40`, borderRadius: 7, cursor: "pointer", transition: "background .15s, border-color .15s" }}
+                                onMouseEnter={(e) => { e.currentTarget.style.background = ACCENT + "12"; e.currentTarget.style.borderColor = ACCENT; }}
+                                onMouseLeave={(e) => { e.currentTarget.style.background = "#fff"; e.currentTarget.style.borderColor = ACCENT + "40"; }}
+                              >
+                                <UserPlus size={15} strokeWidth={1.9} />
+                              </button>
+                            )}
+                            <button
+                              onClick={(e) => { e.stopPropagation(); openForm(form); }}
+                              style={{ display: "inline-flex", alignItems: "center", gap: 5, background: "#fff", color: ACCENT, border: `1px solid ${ACCENT}40`, borderRadius: 7, padding: "0 12px", height: 30, fontSize: 11.5, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap", transition: "background .15s, border-color .15s" }}
+                              onMouseEnter={(e) => { e.currentTarget.style.background = ACCENT + "12"; e.currentTarget.style.borderColor = ACCENT; }}
+                              onMouseLeave={(e) => { e.currentTarget.style.background = "#fff"; e.currentTarget.style.borderColor = ACCENT + "40"; }}
+                            >
+                              Open <span style={{ fontSize: 12 }}>→</span>
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -1475,6 +1534,7 @@ export default function FormDataPage() {
           formName={formEntity.form_name}
           apiFetch={apiFetch}
           getToken={getToken}
+          selectedYear={selectedYear}
           onClose={() => setImportOpen(false)}
           onDone={() => { setImportOpen(false); showToast("Import complete!"); loadRecords(formEntity); }}
         />
@@ -1553,7 +1613,7 @@ export default function FormDataPage() {
               sortDir={sortDir}
               onSort={(dir) => { setSortDir(dir); setSortField("created_at"); setCurrentPage(1); setSelectedIds(new Set()); }}
             />
-            <ExportDropdown formName={formEntity?.form_name} accessToken={accessToken} language={lang} />
+            <ExportDropdown formName={formEntity?.form_name} accessToken={accessToken} language={lang} selectedYear={selectedYear} />
             <button
               onClick={() => { if (!readOnly) setImportOpen(true); }}
               disabled={readOnly}

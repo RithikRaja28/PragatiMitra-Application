@@ -10,8 +10,11 @@ const { getLogContext } = logger;
 const { writeAuditLog } = require("../utils/audit");
 const { translateSentence, transliteratePhrase, lookupLabel, translateRow, resolveTranslationMode } = require("../services/translationService");
 const { getReadUrl } = require("../utils/s3");
-const { getAcademicYearLockBlockForReq } = require("../services/academicYearService");
+const { getAcademicYearLockBlockForReq, getFormArchiveBlockForReq, resolveActiveAcademicYear } = require("../services/academicYearService");
 const { assertFormDomainAccess } = require("../services/domainService");
+const { resolveEffectiveDepartment, getDepartmentWriteBlock } = require("../services/departmentContext");
+const { ensureSchemaExists } = require("../services/schemaPropagationService");
+const { isFormAssigned, isContributorOnly } = require("./formAssignments");
 
 /* 7 days — maximum presigned URL lifetime for long-term IAM credentials */
 const DOC_URL_TTL = 7 * 24 * 3600;
@@ -44,16 +47,54 @@ async function resolveLabel(source, language) {
 const router = express.Router();
 router.use(verifyToken);
 
+/* Bug 16 — precompute the institution's ACTIVE academic year once per request
+   (only when no explicit year is supplied) so the contributor import/export guard
+   inherits it instead of jumping to the calendar year. Never blocks on error. */
+router.use(async (req, _res, next) => {
+  try {
+    // Positive-year check guards against body.year === null (→ Number 0).
+    const vy = (v) => Number.isInteger(Number(v)) && Number(v) > 0;
+    const explicit = vy(req.query.year) || vy(req.get("X-Academic-Year")) || vy(req.body?.year);
+    if (!explicit) {
+      const { institutionId } = await resolveEffectiveDepartment(req.app.locals.pool, req);
+      req.institutionAcademicYear = await resolveActiveAcademicYear(req.app.locals.pool, institutionId);
+    }
+  } catch { /* leave undefined → calendar-year fallback */ }
+  next();
+});
+
 /* Domain isolation guard for every :formName route (import / export). Mirrors
    formData.js: a non-super-admin can only import/export a form in their own
    domain. Academic default → unchanged. */
 router.param("formName", async (req, res, next, formName) => {
+  const pool = req.app.locals.pool;
   try {
-    const pool = req.app.locals.pool;
     const acc = await assertFormDomainAccess(pool, req, formName);
-    if (!acc.allowed) return res.status(403).json({ success: false, message: acc.message });
-  } catch { /* never hard-fail on a metadata read */ }
-  return next();
+    if (!acc.allowed) return res.status(acc.status || 403).json({ success: false, message: acc.message });
+
+    // Contributor: only their assigned forms FOR THE SELECTED ACADEMIC YEAR (Bug 7).
+    // Import/export authorization must be year-scoped exactly like record entry —
+    // an assignment is User + Form + Academic Year, not User + Form. Resolve the
+    // year identically to formData.js's param guard (query → X-Academic-Year header
+    // → body → current year) so a contributor assigned only for 2025 cannot
+    // export/import while the top bar is on 2027.
+    if (isContributorOnly(req)) {
+      // Bug 16 — fall back to the institution's ACTIVE year (not the calendar year).
+      const year = Number(req.query.year) || Number(req.get("X-Academic-Year")) || Number(req.body?.year)
+        || (Number.isInteger(req.institutionAcademicYear) ? req.institutionAcademicYear : new Date().getFullYear());
+      const ok = await isFormAssigned(pool, req.user.userId, formName, year);
+      if (!ok) return res.status(403).json({ success: false, message: "This form is not assigned to you for the selected academic year." });
+    }
+    return next();
+  } catch (err) {
+    // FAIL-CLOSED: an authorization lookup failure must DENY export/import, never
+    // allow. A swallowed error here would let a cross-domain / unassigned user
+    // export or import a form's records.
+    logger.error("import/export domain/assignment guard failed — denying (fail-closed)", {
+      formName, userId: req.user?.userId, route: req.originalUrl, stack: err.stack,
+    });
+    return res.status(503).json({ success: false, message: "Authorization is temporarily unavailable. Please try again." });
+  }
 });
 
 /* ── Multer: memory storage, 50 MB limit (raised for 10k rows) ── */
@@ -178,16 +219,15 @@ async function resolveUserContext(pool, req) {
     };
   }
 
-  const { rows } = await pool.query(
-    "SELECT institution_id, department_id FROM users WHERE id = $1",
-    [req.user.userId]
-  );
-  const user = rows[0] || {};
   const isDeptAdmin = roles.includes("department_admin") || roles.includes("nodal_officer");
 
+  // EFFECTIVE (nodal-aware) context — exports/imports must scope to the Nodal
+  // Officer's NODAL department, matching records & assignments (Bug 4).
+  const { institutionId, departmentId } = await resolveEffectiveDepartment(pool, req);
+
   return {
-    institutionId: user.institution_id || null,
-    departmentId:  isDeptAdmin ? (user.department_id || null) : null,
+    institutionId: institutionId || null,
+    departmentId:  isDeptAdmin ? (departmentId || null) : null,
     role: isDeptAdmin ? "department_admin" : "institute_admin",
   };
 }
@@ -326,6 +366,12 @@ router.post("/:formName/import/parse", handleUpload, async (req, res) => {
     if (!ctx.institutionId)
       return res.status(400).json({ success: false, message: "Institution ID required." });
 
+    // Bug 11 — an inactive department blocks import (a write). Contributors are
+    // already gated by the assignment param guard; this covers dept admins.
+    const deptBlock = await getDepartmentWriteBlock(pool, { departmentId: ctx.departmentId, roles: req.user.roles });
+    if (deptBlock.blocked)
+      return res.status(403).json({ success: false, message: deptBlock.message });
+
     const result = await getSchemaFields(pool, formName, ctx.institutionId, year);
     if (!result)
       return res.status(404).json({ success: false, message: "No active schema found for this form." });
@@ -338,6 +384,11 @@ router.post("/:formName/import/parse", handleUpload, async (req, res) => {
     );
     if (lockRows[0]?.is_locked)
       return res.status(403).json({ success: false, message: "This form is locked. Import is disabled." });
+
+    // Archive write policy — an archived form is view-only (import blocked).
+    const archiveBlock = await getFormArchiveBlockForReq(pool, req, ctx.institutionId, formName, Number(year) || null);
+    if (archiveBlock.blocked)
+      return res.status(403).json({ success: false, message: archiveBlock.message });
 
     const ext       = req.file.originalname.toLowerCase().split(".").pop();
     const encoding  = req.body.encoding  || "UTF-8";
@@ -427,13 +478,22 @@ router.post("/:formName/import/execute-chunk", async (req, res) => {
     if (!ctx.institutionId)
       return res.status(400).json({ success: false, message: "Institution ID required." });
 
+    // Bug 11 — an inactive department blocks import (a write). Dept admins gated
+    // here; contributors are already blocked by the assignment param guard.
+    const deptBlock = await getDepartmentWriteBlock(pool, { departmentId: ctx.departmentId, roles: req.user.roles });
+    if (deptBlock.blocked)
+      return res.status(403).json({ success: false, message: deptBlock.message });
+
     /* SECURITY: dept admin cannot override their own department */
     const resolvedDeptId = ctx.role === "department_admin"
       ? ctx.departmentId
       : (departmentId || null);
 
-    /* Lock check — only on the first chunk to avoid repeated DB hits */
-    if (chunkIndex === 0) {
+    /* Bug 13 — re-check the manual form lock on EVERY chunk (not just chunk 0) so
+       locking the form mid-import stops the remaining chunks immediately. Chunks
+       already committed are preserved (no rollback). The few extra lightweight
+       reads per chunk are the cost of making the lock take effect continuously. */
+    {
       const { rows: lockRows } = await pool.query(
         `SELECT is_locked FROM form_lock_config WHERE form_name = $1 AND institution_id = $2`,
         [formName, ctx.institutionId]
@@ -442,18 +502,46 @@ router.post("/:formName/import/execute-chunk", async (req, res) => {
         return res.status(403).json({ success: false, message: "This form is locked. Import is disabled." });
     }
 
-    const result = await getSchemaFields(pool, formName, ctx.institutionId, year);
+    let result = await getSchemaFields(pool, formName, ctx.institutionId, year);
     if (!result)
       return res.status(404).json({ success: false, message: "No active schema found." });
 
-    const { schemaRow, fields } = result;
-    const formYear = Number(year) || schemaRow.year;
+    /* Bug 17 — imported rows must reference the CONSUMER institution's own schema
+       copy, never the creator's. If the resolved schema belongs to another
+       institution (shared-form creator fallback), materialize this institution's
+       own copy (idempotent) and re-resolve so schema_id is the consumer's. */
+    if (result.schemaRow && String(result.schemaRow.institution_id) !== String(ctx.institutionId)) {
+      try {
+        await ensureSchemaExists(pool, formName);
+        const own = await getSchemaFields(pool, formName, ctx.institutionId, year);
+        if (own && own.schemaRow && String(own.schemaRow.institution_id) === String(ctx.institutionId)) result = own;
+      } catch (e) {
+        logger.error(`Bug 17 consumer-schema resolution failed for ${formName}`, { stack: e.stack });
+      }
+    }
 
-    /* Academic-year lock — checks the SELECTED year (header), blocks import. */
-    if (chunkIndex === 0) {
+    const { schemaRow, fields } = result;
+    /* Bug 16 — the year imported rows are stored under: explicit body year → the
+       SELECTED top-bar year (header) → the institution's ACTIVE academic year →
+       the schema's year (last resort). Never the calendar year. */
+    const importHeaderYear = Number(req.headers["x-academic-year"]);
+    const formYear = Number(year)
+      || (Number.isInteger(importHeaderYear) && importHeaderYear > 0 ? importHeaderYear : null)
+      || (Number.isInteger(req.institutionAcademicYear) ? req.institutionAcademicYear : null)
+      || schemaRow.year;
+
+    /* Academic-year lock — checks the SELECTED year (header), blocks import.
+       Bug 13 — re-evaluated on EVERY chunk (was chunk 0 only) so a year lock /
+       archive / deadline that lands mid-import stops the remaining chunks at once. */
+    {
       const ayLock = await getAcademicYearLockBlockForReq(pool, req, ctx.institutionId, formYear);
       if (ayLock.locked)
         return res.status(403).json({ success: false, message: ayLock.message });
+
+      // Archive write policy — an archived form is view-only (import blocked).
+      const archiveBlock = await getFormArchiveBlockForReq(pool, req, ctx.institutionId, formName, formYear);
+      if (archiveBlock.blocked)
+        return res.status(403).json({ success: false, message: archiveBlock.message });
 
       /* Issue 5 — per-year deadline lock: if the SELECTED year's deadline has
          passed (or its row is locked), import into that year is disabled. Forms
@@ -511,48 +599,83 @@ router.post("/:formName/import/execute-chunk", async (req, res) => {
         `ALTER TABLE ${recordsTable} ADD COLUMN IF NOT EXISTS source_row_id UUID`
       );
 
-      for (const rowData of prepared) {
-        if (duplicateHandling !== "new") {
-          const requiredCols = fields.filter((f) => f.required).map((f) => dbCol(f.column_name));
-          if (requiredCols.length > 0) {
-            const whereClause = requiredCols.map((col, idx) => `${col} = $${idx + 3}`).join(" AND ");
-            const deptClause  = resolvedDeptId
-              ? `AND department_id = $2`
-              : `AND (department_id IS NULL OR department_id = $2)`;
-            const checkVals = [ctx.institutionId, resolvedDeptId, ...requiredCols.map((col) => rowData[col])];
-            const { rows: existing } = await client.query(
-              `SELECT id FROM ${recordsTable} WHERE institution_id = $1 ${deptClause} AND ${whereClause} LIMIT 1`,
-              checkVals
-            );
+      /* Bug 14 — batched duplicate detection. The previous code ran ONE SELECT per
+         row (10k rows → 10k sequential scans, the dominant import cost). Instead we
+         pre-resolve every existing match for this chunk in a SINGLE query, then
+         decide skip/overwrite/insert in memory.
 
-            if (existing.length > 0) {
-              if (duplicateHandling === "skip") { skipped++; continue; }
-              if (duplicateHandling === "overwrite") {
-                let idx = 1;
-                const setClauses = [...fieldCols.map((col) => `${col} = $${idx++}`), `updated_at = now()`];
-                const updateVals = [...fieldCols.map((col) => rowData[col] ?? null), ctx.institutionId, existing[0].id];
-                await client.query(
-                  `UPDATE ${recordsTable} SET ${setClauses.join(", ")} WHERE institution_id = $${idx++} AND id = $${idx}`,
-                  updateVals
-                );
-                success++; continue;
-              }
+         Correctness: the match runs in SQL via an ordinal-tagged VALUES join with
+         each key column CAST to its real column type, so it is byte-identical to the
+         old per-row `col = $n` coercion (no JS-side comparison of DB values, which
+         would risk numeric/date/boolean type drift). Intra-chunk duplicates — a key
+         first seen within this same chunk — are tracked in `seenInChunk` using the
+         freshly cast row values (both sides come from processRow, so same JS types),
+         exactly reproducing the old "an earlier row in this transaction is found by a
+         later row" behavior. Skip/overwrite/insert outcomes are unchanged. */
+      const PG_TYPE = { text: "TEXT", textarea: "TEXT", description: "TEXT", email: "TEXT", phone: "TEXT", document: "TEXT", number: "NUMERIC", date: "DATE", boolean: "BOOLEAN" };
+      const requiredFields = fields.filter((f) => f.required);
+      const requiredCols   = requiredFields.map((f) => dbCol(f.column_name));
+      const requiredTypes  = requiredFields.map((f) => PG_TYPE[f.type] || "TEXT");
+      const dedupActive    = duplicateHandling !== "new" && requiredCols.length > 0;
+      const keyOf = (rd) => JSON.stringify(requiredCols.map((c) => rd[c] ?? null));
+
+      const preloadMap = new Map();   // prepared-row ordinal → existing row id
+      if (dedupActive && prepared.length > 0) {
+        const params = [ctx.institutionId, resolvedDeptId];
+        let p = 3;
+        const valuesRows = prepared.map((rowData, ord) => {
+          const ks = requiredCols.map((col, j) => { params.push(rowData[col] ?? null); return `$${p++}::${requiredTypes[j]}`; });
+          return `(${ord}, ${ks.join(", ")})`;
+        });
+        const vCols     = requiredCols.map((_, j) => `k${j}`).join(", ");
+        const joinOn    = requiredCols.map((col, j) => `r.${col} = v.k${j}`).join(" AND ");
+        const deptMatch = resolvedDeptId ? `r.department_id = $2` : `(r.department_id IS NULL OR r.department_id = $2)`;
+        const { rows: matches } = await client.query(
+          `SELECT DISTINCT ON (v.ord) v.ord, r.id
+             FROM (VALUES ${valuesRows.join(", ")}) AS v(ord, ${vCols})
+             JOIN ${recordsTable} r
+               ON r.institution_id = $1 AND ${deptMatch} AND ${joinOn}
+            ORDER BY v.ord, r.id`,
+          params
+        );
+        for (const m of matches) if (!preloadMap.has(m.ord)) preloadMap.set(m.ord, m.id);
+      }
+
+      const seenInChunk = new Map();  // intra-chunk key → inserted id
+      const stdCols = ["form_name", "institution_id", "department_id", "year", "schema_id", "language"];
+      const stdVals = [formName, ctx.institutionId, resolvedDeptId, formYear, schemaRow.id, language];
+      const allCols = [...stdCols, ...fieldCols];
+
+      for (let ord = 0; ord < prepared.length; ord++) {
+        const rowData = prepared[ord];
+
+        if (dedupActive) {
+          let existingId = preloadMap.get(ord);
+          if (existingId === undefined) existingId = seenInChunk.get(keyOf(rowData));
+          if (existingId !== undefined) {
+            if (duplicateHandling === "skip") { skipped++; continue; }
+            if (duplicateHandling === "overwrite") {
+              let idx = 1;
+              const setClauses = [...fieldCols.map((col) => `${col} = $${idx++}`), `updated_at = now()`];
+              const updateVals = [...fieldCols.map((col) => rowData[col] ?? null), ctx.institutionId, existingId];
+              await client.query(
+                `UPDATE ${recordsTable} SET ${setClauses.join(", ")} WHERE institution_id = $${idx++} AND id = $${idx}`,
+                updateVals
+              );
+              success++; continue;
             }
           }
         }
 
         /* INSERT — capture the new row's id for Hindi linking */
-        const stdCols = ["form_name", "institution_id", "department_id", "year", "schema_id", "language"];
-        const stdVals = [formName, ctx.institutionId, resolvedDeptId, formYear, schemaRow.id, language];
-        const allCols = [...stdCols, ...fieldCols];
         const allVals = [...stdVals, ...fieldCols.map((col) => rowData[col] ?? null)];
         const placeholders = allVals.map((_, i) => `$${i + 1}`).join(", ");
-
         const { rows: [inserted] } = await client.query(
           `INSERT INTO ${recordsTable} (${allCols.join(", ")}) VALUES (${placeholders}) RETURNING id`,
           allVals
         );
         insertedRows.push({ id: inserted.id, rowData });
+        if (dedupActive) seenInChunk.set(keyOf(rowData), inserted.id);
         success++;
       }
 

@@ -427,7 +427,7 @@ function TemplateCard({ template: t, busy, onEdit, onChangeStatus }) {
                 onClick={() => onEdit(t.id)}
                 variant="primary"
                 style={{ flex: 1 }}
-              >👁 View</CardBtn>
+              >✏ Edit</CardBtn>
               <CardBtn
                 onClick={() => onChangeStatus(t.id, "ARCHIVED")}
                 variant="ghost"
@@ -442,7 +442,7 @@ function TemplateCard({ template: t, busy, onEdit, onChangeStatus }) {
                 onClick={() => onEdit(t.id)}
                 variant="ghost"
                 style={{ flex: 1 }}
-              >👁 View</CardBtn>
+              >✏ Edit</CardBtn>
               <CardBtn
                 onClick={() => onChangeStatus(t.id, "DRAFT")}
                 variant="warning"

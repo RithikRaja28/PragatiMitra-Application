@@ -19,6 +19,7 @@
  * ───────────────────────────────────────────────────────────────────────── */
 
 const logger = require("../utils/logger");
+const { resolveEffectiveDepartment } = require("./departmentContext");
 
 /* Map a schema field type → PostgreSQL column type (mirrors forms.js). */
 function pgType(fieldType) {
@@ -187,17 +188,12 @@ async function ensureDepartmentFormTables(pool) {
   logger.info("department_form tables ensured");
 }
 
-/* Resolve the institution + department for the requesting user.
-   Department Admins always have a department_id on their users row. */
+/* Resolve the EFFECTIVE institution + department for the requesting user.
+   Delegates to the single nodal-aware resolver so a Nodal Officer scopes to their
+   NODAL department here too (Bug 4) — consistent with records/assignments/exports.
+   Non-NOA users get their live home department exactly as before. */
 async function resolveDeptContext(pool, req) {
-  const { rows } = await pool.query(
-    "SELECT institution_id, department_id FROM users WHERE id = $1",
-    [req.user.userId]
-  );
-  return {
-    institutionId: rows[0]?.institution_id || null,
-    departmentId:  rows[0]?.department_id || null,
-  };
+  return resolveEffectiveDepartment(pool, req);
 }
 
 /* Ensure a year-mapping row exists for (form, year). */

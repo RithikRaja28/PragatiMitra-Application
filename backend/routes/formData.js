@@ -5,11 +5,34 @@ const { verifyToken } = require("../middleware/auth");
 const logger = require("../utils/logger");
 const { writeAuditLog } = require("../utils/audit");
 const { translateRow, resolveTranslationMode, enrichSchemaLabels } = require("../services/translationService");
-const { getAcademicYearLockBlockForReq } = require("../services/academicYearService");
+const { getAcademicYearLockBlockForReq, getFormArchiveBlockForReq, resolveActiveAcademicYear } = require("../services/academicYearService");
 const { getEffectiveState, messageFor, canWrite } = require("../services/stateResolver");
 const { SOURCE_LANGUAGE, isDerivedRow } = require("../services/translationOwnership");
 const { assertEquivalent } = require("../services/equivalenceGuard");
 const { assertFormDomainAccess } = require("../services/domainService");
+const { resolveEffectiveDepartment, getDepartmentWriteBlock } = require("../services/departmentContext");
+const { ensureSchemaExists } = require("../services/schemaPropagationService");
+const { isFormAssigned, isContributorOnly } = require("./formAssignments");
+
+/* Bug 17 — shared-form schema ownership. On a WRITE, a consumer institution must
+   store its OWN schema copy's id, never the creator's. getActiveSchema falls back
+   to the creator's canonical row when the consumer has no copy yet; this detects
+   that fallback, materializes the consumer's own copy (idempotent clone), and
+   re-resolves so the record's schema_id references the consumer's schema. Returns
+   the institution-owned schema (or the original if anything goes wrong → never
+   blocks the write). */
+async function resolveOwnedSchema(pool, formName, institutionId, year, schema) {
+  if (!schema || !institutionId) return schema;
+  if (String(schema.institution_id) === String(institutionId)) return schema; // already owned
+  try {
+    await ensureSchemaExists(pool, formName);
+    const own = await getActiveSchema(pool, formName, institutionId, year);
+    if (own && String(own.institution_id) === String(institutionId)) return own;
+  } catch (err) {
+    logger.error(`Bug 17 resolveOwnedSchema failed for ${formName}/${institutionId}`, { stack: err.stack });
+  }
+  return schema;
+}
 
 /* Latest active schema year for a form+institution — used to resolve which
    academic year a record operation belongs to (for academic-year lock checks). */
@@ -26,17 +49,52 @@ async function getFormActiveYear(pool, formName, institutionId) {
 const router = express.Router();
 router.use(verifyToken);
 
+/* Bug 16 — precompute the institution's ACTIVE academic year once per request
+   (only when no explicit year is supplied) so the contributor assignment guard and
+   any year fallback inherit it instead of jumping to the calendar year. Never
+   blocks on error. */
+router.use(async (req, _res, next) => {
+  try {
+    // Positive-year check guards against body.year === null (→ Number 0).
+    const vy = (v) => Number.isInteger(Number(v)) && Number(v) > 0;
+    const explicit = vy(req.query.year) || vy(req.get("X-Academic-Year")) || vy(req.body?.year);
+    if (!explicit) {
+      const pool = req.app.locals.pool;
+      const { institutionId } = await resolveEffectiveDepartment(pool, req);
+      req.institutionAcademicYear = await resolveActiveAcademicYear(pool, institutionId);
+    }
+  } catch { /* leave undefined → calendar-year fallback */ }
+  next();
+});
+
 /* Domain isolation guard — runs for EVERY :formName route. A non-super-admin
    user may only touch records of a form in their own domain; a Hospital/Finance
    form is invisible (403) to Academic users and vice-versa. super_admin is
    cross-domain. Academic default keeps all existing behavior. */
 router.param("formName", async (req, res, next, formName) => {
+  const pool = req.app.locals.pool;
   try {
-    const pool = req.app.locals.pool;
     const acc = await assertFormDomainAccess(pool, req, formName);
-    if (!acc.allowed) return res.status(403).json({ success: false, message: acc.message });
-  } catch { /* never hard-fail on a metadata read */ }
-  return next();
+    if (!acc.allowed) return res.status(acc.status || 403).json({ success: false, message: acc.message });
+
+    // Contributor: may only touch forms ASSIGNED to them for the selected year.
+    if (isContributorOnly(req)) {
+      // Bug 16 — fall back to the institution's ACTIVE year (not the calendar year).
+      const year = Number(req.query.year) || Number(req.get("X-Academic-Year")) || Number(req.body?.year)
+        || (Number.isInteger(req.institutionAcademicYear) ? req.institutionAcademicYear : new Date().getFullYear());
+      const ok = await isFormAssigned(pool, req.user.userId, formName, year);
+      if (!ok) return res.status(403).json({ success: false, message: "This form is not assigned to you." });
+    }
+    return next();
+  } catch (err) {
+    // FAIL-CLOSED: an authorization lookup failure must DENY, never allow. Falling
+    // through to next() here would let a contributor / cross-domain user reach a
+    // form whenever the assignment/domain check errored.
+    logger.error("formData domain/assignment guard failed — denying (fail-closed)", {
+      formName, userId: req.user?.userId, route: req.originalUrl, stack: err.stack,
+    });
+    return res.status(503).json({ success: false, message: "Authorization is temporarily unavailable. Please try again." });
+  }
 });
 
 // Session-level cache: prevents repeated ALTER TABLE calls for source_row_id column
@@ -90,17 +148,16 @@ async function resolveUserContext(pool, req) {
     };
   }
 
-  const { rows } = await pool.query(
-    "SELECT institution_id, department_id FROM users WHERE id = $1",
-    [req.user.userId]
-  );
-  const user = rows[0] || {};
-
   const isDeptAdmin = roles.includes("department_admin") || roles.includes("nodal_officer");
 
+  // EFFECTIVE (nodal-aware) institution + department — a Nodal Officer scopes to
+  // their NODAL department, not their home department (Bug 4). Read via the single
+  // resolver so records here match the assignment/forms/export screens.
+  const { institutionId, departmentId } = await resolveEffectiveDepartment(pool, req);
+
   return {
-    institutionId: user.institution_id || null,
-    departmentId:  isDeptAdmin ? (user.department_id || null) : null,
+    institutionId: institutionId || null,
+    departmentId:  isDeptAdmin ? (departmentId || null) : null,
     role: isDeptAdmin ? "department_admin" : "institute_admin",
   };
 }
@@ -368,6 +425,43 @@ router.get("/:formName/records", async (req, res) => {
       ? await enrichSchemaLabels(schema, language)
       : schema;
 
+    /* Archive (highest precedence) → surface as view-only so the client hides
+       Save/Delete/Import and shows the view-only banner. Export & search still
+       work (they don't consult lock.is_locked). Writes are independently blocked
+       on the server (the POST/PUT/DELETE handlers above). */
+    const archiveView = await getFormArchiveBlockForReq(
+      pool, req, ctx.institutionId, formName, schema?.year ?? (year != null ? Number(year) : null)
+    );
+    if (archiveView.blocked) {
+      lock.is_locked = true;
+      lock.archived  = true;
+      lock.message   = archiveView.message;
+    }
+
+    /* Issue 18 — surface the ACADEMIC-YEAR (master) lock/archive in the banner too,
+       using the SAME helper the write handlers enforce (getAcademicYearLockBlockForReq).
+       Without this the year could be locked — blocking POST/PUT/DELETE — while the UI
+       still showed the form as editable (list state ≠ save state). Now the view-only
+       banner matches exactly what a save would do. */
+    const ayView = await getAcademicYearLockBlockForReq(
+      pool, req, ctx.institutionId, schema?.year ?? (year != null ? Number(year) : null)
+    );
+    if (ayView.locked) {
+      lock.is_locked = true;
+      lock.message   = lock.message || ayView.message;
+    }
+
+    /* Bug 11 — an inactive department makes ALL its records view-only (highest
+       precedence: Department inactive > Archive > Lock > Deadline). Surface it so
+       the client hides Save/Delete/Import; writes are independently blocked above.
+       Institution-level admins (no department scope) are unaffected. */
+    const deptView = await getDepartmentWriteBlock(pool, { departmentId: ctx.departmentId, roles: req.user.roles });
+    if (deptView.blocked) {
+      lock.is_locked           = true;
+      lock.department_inactive = true;
+      lock.message             = deptView.message;
+    }
+
     const payload = { success: true, records, schema: displaySchema, lock };
     if (paginate) { payload.total = total; payload.limit = limitNum; payload.offset = Math.max(0, offsetNum); }
     return res.json(payload);
@@ -466,19 +560,33 @@ router.post("/:formName/records", async (req, res) => {
     if (!ctx.institutionId)
       return res.status(400).json({ success: false, message: "Institution ID required." });
 
+    // Bug 11 — department inactive is the highest-precedence write block.
+    const deptBlock = await getDepartmentWriteBlock(pool, { departmentId: ctx.departmentId, roles: req.user.roles });
+    if (deptBlock.blocked)
+      return res.status(403).json({ success: false, message: deptBlock.message });
+
     const lockBlock = await getLockBlock(pool, formName, ctx.institutionId, lockYearForReq(req, Number(year) || null));
     if (lockBlock.locked) {
       return res.status(403).json({ success: false, message: lockBlock.message });
     }
 
-    const schema = await getActiveSchema(pool, formName, ctx.institutionId, year);
+    let schema = await getActiveSchema(pool, formName, ctx.institutionId, year);
     if (!schema)
       return res.status(404).json({ success: false, message: "No active schema found." });
+    // Bug 17 — store the CONSUMER institution's own schema id, never the creator's.
+    schema = await resolveOwnedSchema(pool, formName, ctx.institutionId, year, schema);
 
     const fields    = activeFields(schema);
     const fieldCols = fields.map((f) => dbCol(f.column_name));
     const fieldModes = buildFieldModes(fields);
-    const formYear  = Number(year) || schema.year;
+    /* Bug 16 — the year a NEW record is stored under: explicit body year → the
+       SELECTED top-bar year (X-Academic-Year header) → the institution's ACTIVE
+       academic year → the active schema's year (last resort). Never the calendar
+       year. (Schema lookup above stays lenient so it always resolves a schema.) */
+    const formYear  = Number(year)
+      || lockYearForReq(req)
+      || (Number.isInteger(req.institutionAcademicYear) ? req.institutionAcademicYear : null)
+      || schema.year;
     const createdBy = req.user.userId || null;
 
     // Academic-year lock — checks the SELECTED year (X-Academic-Year header),
@@ -486,6 +594,13 @@ router.post("/:formName/records", async (req, res) => {
     const ayLock = await getAcademicYearLockBlockForReq(pool, req, ctx.institutionId, formYear);
     if (ayLock.locked)
       return res.status(403).json({ success: false, message: ayLock.message });
+
+    // Archive is a WRITE POLICY (highest precedence: Archive > Lock > Deadline).
+    // An archived form is view-only even when not locked. Checks the SELECTED
+    // year (X-Academic-Year header), falling back to the record's year.
+    const archiveBlock = await getFormArchiveBlockForReq(pool, req, ctx.institutionId, formName, formYear);
+    if (archiveBlock.blocked)
+      return res.status(403).json({ success: false, message: archiveBlock.message });
 
     const stdCols = ["form_name", "institution_id", "department_id", "year", "schema_id", "language", "created_by"];
     const stdVals = [formName, ctx.institutionId, ctx.departmentId, formYear, schema.id, language, createdBy];
@@ -565,6 +680,11 @@ router.put("/:formName/records/:id", async (req, res) => {
     if (!ctx.institutionId)
       return res.status(400).json({ success: false, message: "Institution ID required." });
 
+    // Bug 11 — department inactive is the highest-precedence write block.
+    const deptBlock = await getDepartmentWriteBlock(pool, { departmentId: ctx.departmentId, roles: req.user.roles });
+    if (deptBlock.blocked)
+      return res.status(403).json({ success: false, message: deptBlock.message });
+
     const lockBlock = await getLockBlock(pool, formName, ctx.institutionId, lockYearForReq(req));
     if (lockBlock.locked) {
       return res.status(403).json({ success: false, message: lockBlock.message });
@@ -579,6 +699,11 @@ router.put("/:formName/records/:id", async (req, res) => {
     const ayLock = await getAcademicYearLockBlockForReq(pool, req, ctx.institutionId, schema.year);
     if (ayLock.locked)
       return res.status(403).json({ success: false, message: ayLock.message });
+
+    // Archive write policy (highest precedence) — archived form is view-only.
+    const archiveBlock = await getFormArchiveBlockForReq(pool, req, ctx.institutionId, formName, schema.year);
+    if (archiveBlock.blocked)
+      return res.status(403).json({ success: false, message: archiveBlock.message });
 
     const fields    = activeFields(schema);
     const fieldCols = fields.map((f) => dbCol(f.column_name));
@@ -642,11 +767,31 @@ router.put("/:formName/records/:id", async (req, res) => {
         hiSetClauses.push(`updated_at = now()`);
         const hiVals = [...fieldCols.map((col) => hiData[col] ?? null), id];
 
-        await pool.query(
+        const upd = await pool.query(
           `UPDATE ${tableName} SET ${hiSetClauses.join(", ")}
            WHERE source_row_id = $${hidx}`,
           hiVals
         );
+
+        /* Bug 12 — translation-failure / toggle-on recovery: if NO Hindi mirror
+           exists (the create-time translation failed, or "Translate to Hindi" was
+           enabled only after this record was created), editing the English row must
+           CREATE the missing Hindi row, not silently no-op. Re-pair from the updated
+           English row so English↔Hindi counts stay equal. */
+        if (upd.rowCount === 0) {
+          const enRow = rows[0];
+          const hiCols = ["form_name", "institution_id", "department_id", "year", "schema_id", "language", "created_by", "source_row_id", ...fieldCols];
+          const hiAllVals = [
+            formName, enRow.institution_id, enRow.department_id, enRow.year, enRow.schema_id,
+            "hi", enRow.created_by ?? req.user.userId ?? null, enRow.id,
+            ...fieldCols.map((col) => hiData[col] ?? null),
+          ];
+          const ph = hiAllVals.map((_, i) => `$${i + 1}`).join(", ");
+          await pool.query(
+            `INSERT INTO ${tableName} (${hiCols.join(", ")}) VALUES (${ph})`,
+            hiAllVals
+          );
+        }
       } catch (err) {
         logger.error(`Hindi row update failed for ${formName}/${id}`, { stack: err.stack });
       }
@@ -694,6 +839,11 @@ router.delete("/:formName/records/bulk-delete", async (req, res) => {
     if (!ctx.institutionId)
       return res.status(400).json({ success: false, message: "Institution ID required." });
 
+    // Bug 11 — department inactive is the highest-precedence write block.
+    const deptBlock = await getDepartmentWriteBlock(pool, { departmentId: ctx.departmentId, roles: req.user.roles });
+    if (deptBlock.blocked)
+      return res.status(403).json({ success: false, message: deptBlock.message });
+
     const lockBlock = await getLockBlock(pool, formName, ctx.institutionId, lockYearForReq(req));
     if (lockBlock.locked)
       return res.status(403).json({ success: false, message: lockBlock.message });
@@ -701,6 +851,11 @@ router.delete("/:formName/records/bulk-delete", async (req, res) => {
     const ayLock = await getAcademicYearLockBlockForReq(pool, req, ctx.institutionId, await getFormActiveYear(pool, formName, ctx.institutionId));
     if (ayLock.locked)
       return res.status(403).json({ success: false, message: ayLock.message });
+
+    // Archive write policy (highest precedence) — archived form is view-only.
+    const archiveBlock = await getFormArchiveBlockForReq(pool, req, ctx.institutionId, formName, await getFormActiveYear(pool, formName, ctx.institutionId));
+    if (archiveBlock.blocked)
+      return res.status(403).json({ success: false, message: archiveBlock.message });
 
     await ensureSourceRowIdColumn(pool, `${formName}_records`);
 
@@ -713,16 +868,26 @@ router.delete("/:formName/records/bulk-delete", async (req, res) => {
     }
 
     const { rows: deletedRows, rowCount } = await pool.query(
-      `DELETE FROM ${formName}_records WHERE ${whereClause} RETURNING id`,
+      `DELETE FROM ${formName}_records WHERE ${whereClause} RETURNING id, source_row_id, language`,
       queryParams
     );
 
+    /* Bug 12 — keep every language pair consistent regardless of which side was in
+       the selection. Cascade to BOTH directions: the Hindi mirrors of any deleted
+       English rows (source_row_id = deletedEnglishId) AND the English sources of any
+       deleted Hindi rows (id = deletedHindiRow.source_row_id). */
     if (deletedRows.length > 0) {
-      await pool.query(
-        `DELETE FROM ${formName}_records
-         WHERE source_row_id = ANY($1::uuid[]) AND institution_id = $2`,
-        [deletedRows.map((r) => r.id), ctx.institutionId]
-      );
+      const cascadeIds = [...new Set([
+        ...deletedRows.filter((r) => r.language !== "hi").map((r) => r.id),
+        ...deletedRows.filter((r) => r.language === "hi" && r.source_row_id).map((r) => r.source_row_id),
+      ])];
+      if (cascadeIds.length) {
+        await pool.query(
+          `DELETE FROM ${formName}_records
+           WHERE (source_row_id = ANY($1::uuid[]) OR id = ANY($1::uuid[])) AND institution_id = $2`,
+          [cascadeIds, ctx.institutionId]
+        );
+      }
     }
 
     const deleted = rowCount ?? 0;
@@ -775,6 +940,11 @@ router.delete("/:formName/records/:id", async (req, res) => {
     if (!ctx.institutionId)
       return res.status(400).json({ success: false, message: "Institution ID required." });
 
+    // Bug 11 — department inactive is the highest-precedence write block.
+    const deptBlock = await getDepartmentWriteBlock(pool, { departmentId: ctx.departmentId, roles: req.user.roles });
+    if (deptBlock.blocked)
+      return res.status(403).json({ success: false, message: deptBlock.message });
+
     const lockBlock = await getLockBlock(pool, formName, ctx.institutionId, lockYearForReq(req));
     if (lockBlock.locked) {
       return res.status(403).json({ success: false, message: lockBlock.message });
@@ -784,10 +954,26 @@ router.delete("/:formName/records/:id", async (req, res) => {
     if (ayLock.locked)
       return res.status(403).json({ success: false, message: ayLock.message });
 
+    // Archive write policy (highest precedence) — archived form is view-only.
+    const archiveBlock = await getFormArchiveBlockForReq(pool, req, ctx.institutionId, formName, await getFormActiveYear(pool, formName, ctx.institutionId));
+    if (archiveBlock.blocked)
+      return res.status(403).json({ success: false, message: archiveBlock.message });
+
     await ensureSourceRowIdColumn(pool, `${formName}_records`);
 
+    /* Bug 12 — delete the WHOLE language pair, whichever side was targeted.
+       Resolve the English source id first: a Hindi row points at its source via
+       source_row_id; an English row is its own root. Then deleting
+       (id = root OR source_row_id = root) removes both, so a Hindi row can never be
+       deleted on its own (English orphan) and vice-versa. */
+    const { rows: tgtRows } = await pool.query(
+      `SELECT source_row_id FROM ${formName}_records WHERE id = $1 AND institution_id = $2`,
+      [id, ctx.institutionId]
+    );
+    const rootId = tgtRows[0]?.source_row_id || id;
+
     let whereClause = "(id = $1 OR source_row_id = $1) AND institution_id = $2";
-    const whereVals = [id, ctx.institutionId];
+    const whereVals = [rootId, ctx.institutionId];
 
     if (ctx.role === "department_admin" && ctx.departmentId) {
       whereClause += ` AND (department_id = $3 OR department_id IS NULL)`;

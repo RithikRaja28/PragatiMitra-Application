@@ -150,12 +150,22 @@ router.put("/:id", requireRole(["super_admin", "institute_admin", "publication_c
     const { id } = req.params;
     if (!isUUID(id)) return res.status(400).json({ success: false, message: "Invalid id" });
 
-    const allowed = ["name","description","report_type","version","default_workflow_id"];
+    // Fetch current version to auto-bump it
+    const { rows: cur } = await pool.query(
+      `SELECT version FROM public.report_templates WHERE id = $1`, [id]
+    );
+    if (!cur.length) return res.status(404).json({ success: false, message: "Template not found" });
+
+    const [maj, min] = (cur[0].version || "1.0").split(".").map(n => parseInt(n, 10) || 0);
+    const nextVersion = `${maj}.${min + 1}`;
+
+    const allowed = ["name","description","report_type","default_workflow_id"];
     const sets = [], params = [];
     for (const f of allowed) {
       if (req.body[f] !== undefined) { params.push(req.body[f]); sets.push(`${f} = $${params.length}`); }
     }
-    if (!sets.length) return res.status(400).json({ success: false, message: "Nothing to update" });
+    // Always bump version on save
+    params.push(nextVersion); sets.push(`version = $${params.length}`);
 
     params.push(req.user.userId); sets.push(`updated_by = $${params.length}`);
     params.push(id);
@@ -164,7 +174,6 @@ router.put("/:id", requireRole(["super_admin", "institute_admin", "publication_c
       `UPDATE public.report_templates SET ${sets.join(", ")} WHERE id = $${params.length} RETURNING *`,
       params
     );
-    if (!rows.length) return res.status(404).json({ success: false, message: "Template not found" });
 
     return res.json({ success: true, data: rows[0] });
   } catch (err) {

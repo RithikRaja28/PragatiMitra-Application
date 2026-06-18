@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useApi }  from "../../../../hooks/useApi";
 import { useAuth } from "../../../../store/AuthContext";
+import { useShell } from "../../../../components/Dashboard/shellContext";
 import Toast from "../../../../components/shared/Toast";
 
 /* ── helpers ─────────────────────────────────────────────────────────────── */
@@ -52,9 +53,10 @@ const lbl = {
 const STEPS = ["Details", "Structure", "Access", "Dept. Deadlines", "Assignments", "Summary"];
 
 /* ═══════════════════════════════════════════════════════════════════════════ */
-export default function CreateReportWizardPage({ onCreated, onCancel }) {
+export default function CreateReportWizardPage({ onCreated, onCancel, initialReportId }) {
   const { apiFetch } = useApi();
   const { user }     = useAuth();
+  const shell        = useShell();
 
   const [step,     setStep]    = useState(1);
   const [toast,    setToast]   = useState(null);
@@ -68,6 +70,7 @@ export default function CreateReportWizardPage({ onCreated, onCancel }) {
   const [allWorkflows, setAllWorkflows] = useState([]);
   const [allRoles,     setAllRoles]     = useState([]);
   const [departments,  setDepartments]  = useState([]);
+  const [users,        setUsers]        = useState([]);
 
   /* ── step 1 ─────────────────────────────────────────────────── */
   const [title,       setTitle]       = useState("");
@@ -76,7 +79,6 @@ export default function CreateReportWizardPage({ onCreated, onCancel }) {
   const [acYear,      setAcYear]      = useState(fmtAcYear(new Date().getFullYear()));
   const [lang,        setLang]        = useState("en");
   const [cycleId,     setCycleId]     = useState("");
-  const [tmplMode,    setTmplMode]    = useState("scratch");
   const [tmplId,      setTmplId]      = useState("");
   const [defaultWfId, setDefaultWfId] = useState("");
   const [subDl,       setSubDl]       = useState("");
@@ -84,19 +86,27 @@ export default function CreateReportWizardPage({ onCreated, onCancel }) {
   const [appDl,       setAppDl]       = useState("");
 
   /* ── step 2 ─────────────────────────────────────────────────── */
-  const [sections,   setSections]   = useState([]);
-  const [secFetched, setSecFetched] = useState(false);
+  const [sections,    setSections]    = useState([]);
+  const [secFetched,  setSecFetched]  = useState(false);
+  const [secFetchErr, setSecFetchErr] = useState("");
 
   /* ── step 3 ─────────────────────────────────────────────────── */
-  const [grantedRoles, setGrantedRoles] = useState(new Set());
+  const [grantedRoles,  setGrantedRoles]  = useState(new Set());
+  const [accessTab,     setAccessTab]     = useState("3a");
+  const [sectionAccess, setSectionAccess] = useState({});
+  // { [section_id]: [{ localId, type: 'ROLE'|'USER'|'DEPT', roleName:'', userId:'', deptId:'' }] }
 
   /* ── step 4 ─────────────────────────────────────────────────── */
   const [deptDl, setDeptDl] = useState({}); /* {deptId:{sub,rev,app}} */
 
   /* ── step 5 ─────────────────────────────────────────────────── */
-  const [wfDetail, setWfDetail] = useState(null);
-  const [assigns,  setAssigns]  = useState({});
-  /* {sectionId: {auth:{type,userId,deptId,roleName,dueAt}, steps:{stepId:{...}}}} */
+  const [wfDetail,        setWfDetail]        = useState(null);
+  const [assigns,         setAssigns]         = useState({});
+  const [secWorkflows,    setSecWorkflows]    = useState({});  // { [secId]: wfId }
+  const [secWfSteps,      setSecWfSteps]      = useState({});  // { [wfId]: [steps] }
+  const [brandingFiles, setBrandingFiles] = useState({ COVER_IMAGE: null, LOGO: null, BG_IMAGE: null });
+  const [brandingUrls,  setBrandingUrls]  = useState({ COVER_IMAGE: "", LOGO: "", BG_IMAGE: "" });
+  /* assigns: {sectionId: {auth:{type,userId,deptId,roleName,dueAt}, steps:{stepId:{...}}}} */
 
   /* ── mount: prefetch ────────────────────────────────────────── */
   useEffect(() => {
@@ -105,6 +115,8 @@ export default function CreateReportWizardPage({ onCreated, onCancel }) {
     apj(apiFetch, "/api/builder/templates?status=ACTIVE")
       .then(d => setTemplates(d.data || []))
       .catch(e => setTmplFetchErr(e.message || "Could not load templates"));
+
+    apj(apiFetch, "/api/users").then(d => setUsers(d.users || [])).catch(() => {});
 
     Promise.all([
       apj(apiFetch, "/api/builder/cycles").catch(() => ({ data: [] })),
@@ -124,13 +136,94 @@ export default function CreateReportWizardPage({ onCreated, onCancel }) {
   /* ── load sections after report created ─────────────────────── */
   useEffect(() => {
     if (!reportId || secFetched) return;
+    setSecFetchErr("");
     apj(apiFetch, `/api/builder/reports/${reportId}`)
       .then(r => {
         const tree = buildTree(r.data?.sections || []);
-        setSections(tree.map((s, i) => ({ ...s, order_index: (i + 1) * 1000, isNew: false })));
+        const loaded = tree.map((s, i) => ({ ...s, order_index: (i + 1) * 1000, isNew: false }));
+        setSections(loaded);
+        // Pre-populate per-section workflow from stamped data
+        const wfMap = {};
+        for (const s of r.data?.sections || []) {
+          if (s.workflow_template_id) wfMap[s.id] = s.workflow_template_id;
+        }
+        setSecWorkflows(wfMap);
         setSecFetched(true);
-      }).catch(() => setSecFetched(true));
+      }).catch(err => {
+        setSecFetchErr(err.message || "Failed to load sections");
+        setSecFetched(true);
+      });
   }, [reportId, secFetched]);
+
+  /* ── load existing draft report for editing/continuing ──────── */
+  useEffect(() => {
+    if (!initialReportId) return;
+    setReportId(initialReportId);
+
+    // Step 1 fields
+    apj(apiFetch, `/api/builder/reports/${initialReportId}`)
+      .then(r => {
+        const d = r.data || {};
+        if (d.title)               setTitle(d.title);
+        if (d.description)         setDesc(d.description || "");
+        if (d.report_type)         setRepType(d.report_type);
+        if (d.academic_year)       setAcYear(d.academic_year);
+        if (d.primary_language)    setLang(d.primary_language);
+        if (d.cycle_id)            setCycleId(d.cycle_id);
+        if (d.template_id)         setTmplId(d.template_id);
+        if (d.default_workflow_id) setDefaultWfId(d.default_workflow_id);
+        if (d.submission_deadline) setSubDl(d.submission_deadline.slice(0, 16));
+        if (d.review_deadline)     setRevDl(d.review_deadline.slice(0, 16));
+        if (d.approval_deadline)   setAppDl(d.approval_deadline.slice(0, 16));
+      }).catch(() => {});
+
+    // Step 3 — access grants
+    apj(apiFetch, `/api/builder/reports/${initialReportId}/access`)
+      .then(ac => {
+        const roles = (ac.data || []).map(r => r.role_name).filter(Boolean);
+        if (roles.length) setGrantedRoles(new Set(roles));
+      }).catch(() => {});
+
+    // Step 4 — dept deadlines
+    apj(apiFetch, `/api/builder/reports/${initialReportId}/department-deadlines`)
+      .then(dd => {
+        const dlMap = {};
+        for (const row of (dd.data || [])) {
+          dlMap[row.department_id] = {
+            sub: row.submission_deadline ? row.submission_deadline.slice(0, 16) : "",
+            rev: row.review_deadline     ? row.review_deadline.slice(0, 16)     : "",
+            app: row.approval_deadline   ? row.approval_deadline.slice(0, 16)   : "",
+          };
+        }
+        if (Object.keys(dlMap).length) setDeptDl(dlMap);
+      }).catch(() => {});
+
+    // Step 5 — workflow assignments (author + review steps)
+    apj(apiFetch, `/api/builder/reports/${initialReportId}/workflow-assignments`)
+      .then(wa => {
+        const rows = wa.data || [];
+        const newAssigns = {};
+        for (const a of rows) {
+          const sid = a.section_id;
+          if (!newAssigns[sid]) newAssigns[sid] = { auth: {}, steps: {} };
+          const typeMap = { USER: "USER", DEPARTMENT: "DEPT", ROLE: "ROLE" };
+          const t = typeMap[a.assignee_type] || a.assignee_type;
+          const entry = {
+            type:     t,
+            userId:   a.user_id        || "",
+            deptId:   a.department_id  || "",
+            roleName: a.role_name      || "",
+            dueAt:    a.due_at ? a.due_at.slice(0, 16) : "",
+          };
+          if (!a.workflow_step_id) {
+            newAssigns[sid].auth = entry;
+          } else {
+            newAssigns[sid].steps[a.workflow_step_id] = entry;
+          }
+        }
+        if (Object.keys(newAssigns).length) setAssigns(newAssigns);
+      }).catch(() => {});
+  }, [initialReportId, apiFetch]);
 
   /* ── load workflow steps when defaultWfId changes ───────────── */
   useEffect(() => {
@@ -168,6 +261,16 @@ export default function CreateReportWizardPage({ onCreated, onCancel }) {
   /* ══ step 3 helpers ═════════════════════════════════════════════ */
   const toggleRole = (name) => setGrantedRoles(p => { const n = new Set(p); n.has(name) ? n.delete(name) : n.add(name); return n; });
 
+  const addSecAccess = (secId) => setSectionAccess(p => ({
+    ...p, [secId]: [...(p[secId]||[]), { localId: Date.now(), type: "", roleName: "", userId: "", deptId: "" }]
+  }));
+  const updSecAccess = (secId, localId, k, v) => setSectionAccess(p => ({
+    ...p, [secId]: (p[secId]||[]).map(a => a.localId === localId ? {...a, [k]: v} : a)
+  }));
+  const delSecAccess = (secId, localId) => setSectionAccess(p => ({
+    ...p, [secId]: (p[secId]||[]).filter(a => a.localId !== localId)
+  }));
+
   /* ══ step 4 helpers ═════════════════════════════════════════════ */
   const setDeptField = (deptId, field, val) => setDeptDl(p => ({ ...p, [deptId]: { ...(p[deptId] || {}), [field]: val } }));
   const prefillDepts = () => {
@@ -183,6 +286,25 @@ export default function CreateReportWizardPage({ onCreated, onCancel }) {
     return { ...p, [sid]: { ...sec, steps: { ...(sec.steps||{}), [wsId]: { ...(sec.steps?.[wsId]||{}), [k]: v } } } };
   });
 
+  const loadSecWfSteps = async (wfId) => {
+    if (!wfId || secWfSteps[wfId]) return;
+    const d = await apj(apiFetch, `/api/builder/workflows/${wfId}`).catch(() => null);
+    if (d?.data?.steps) setSecWfSteps(p => ({ ...p, [wfId]: d.data.steps }));
+  };
+
+  /* ── navigate to workflow templates page, saving draft first if needed ─ */
+  const navigateToWorkflowTemplates = async () => {
+    if (!reportId) {
+      if (!title.trim()) {
+        setToast({ type: "error", message: "Enter a report name first, then try again." });
+        return;
+      }
+      const ok = await saveStep1();
+      if (!ok) return;
+    }
+    shell?.setActiveId("ia-workflow-templates");
+  };
+
   /* ══ save functions ═════════════════════════════════════════════ */
   const saveStep1 = async () => {
     if (!title.trim()) { setToast({ type: "error", message: "Report name is required" }); return false; }
@@ -192,7 +314,7 @@ export default function CreateReportWizardPage({ onCreated, onCancel }) {
         title: title.trim(), description: desc || null,
         report_type: repType, academic_year: acYear, primary_language: lang,
         cycle_id: cycleId || undefined,
-        template_id: tmplMode === "template" && tmplId ? tmplId : undefined,
+        template_id: tmplId ? tmplId : undefined,
         default_workflow_id: defaultWfId || undefined,
         submission_deadline: subDl || undefined,
         review_deadline:     revDl || undefined,
@@ -259,6 +381,22 @@ export default function CreateReportWizardPage({ onCreated, onCancel }) {
         method: "PUT", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ role_names: Array.from(grantedRoles) }),
       });
+      // Save section-specific access (best-effort)
+      for (const [secId, grants] of Object.entries(sectionAccess)) {
+        const valid = grants.filter(g => g.type && (g.roleName || g.userId || g.deptId));
+        if (!valid.length) continue;
+        await apj(apiFetch, `/api/builder/sections/${secId}/access`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            grants: valid.map(g => ({
+              role_name:     g.type === "ROLE" ? g.roleName : null,
+              user_id:       g.type === "USER" ? g.userId   : null,
+              department_id: g.type === "DEPT" ? g.deptId   : null,
+            }))
+          }),
+        }).catch(() => {}); // best-effort, endpoint may not exist yet
+      }
       return true;
     } catch (err) {
       setToast({ type: "error", message: err.message || "Failed to save access" });
@@ -292,11 +430,22 @@ export default function CreateReportWizardPage({ onCreated, onCancel }) {
     if (!reportId) return true;
     setBusy(true);
     try {
-      const flat = [];
       const allSecs = sections.flatMap(s => [s, ...(s.subsections || [])]);
       const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
       const isUUID = v => typeof v === "string" && UUID_RE.test(v);
 
+      // Save per-section workflow — explicit override OR fall back to report default
+      for (const sec of allSecs) {
+        const wfId = secWorkflows[sec.id] || defaultWfId;
+        if (wfId && !sec.isNew) {
+          await apj(apiFetch, `/api/builder/sections/${sec.id}`, {
+            method: "PUT", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ workflow_template_id: wfId }),
+          }).catch(() => {});
+        }
+      }
+
+      const flat = [];
       for (const sec of allSecs) {
         const a = assigns[sec.id] || {};
         const auth = a.auth || {};
@@ -321,6 +470,32 @@ export default function CreateReportWizardPage({ onCreated, onCancel }) {
       await apj(apiFetch, `/api/builder/reports/${reportId}/workflow-assignments`, {
         method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ assignments: flat }),
       });
+
+      // Upload branding files to S3 and save public URLs (best-effort)
+      const uploadedUrls = { ...brandingUrls };
+      for (const [assetType, file] of Object.entries(brandingFiles)) {
+        if (!file) continue;
+        try {
+          const presign = await apj(apiFetch, "/api/upload/presign", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ fileName: file.name, fileType: file.type, fileSize: file.size, folder: "branding" }),
+          });
+          await fetch(presign.uploadUrl, { method: "PUT", body: file, headers: { "Content-Type": file.type } });
+          uploadedUrls[assetType] = presign.publicUrl;
+          setBrandingUrls(p => ({ ...p, [assetType]: presign.publicUrl }));
+        } catch { /* best-effort */ }
+      }
+      if (Object.values(uploadedUrls).some(u => u)) {
+        await apj(apiFetch, `/api/builder/reports/${reportId}/branding`, {
+          method: "PUT", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            cover_image_url: uploadedUrls.COVER_IMAGE || null,
+            logo_url:        uploadedUrls.LOGO || null,
+            bg_image_url:    uploadedUrls.BG_IMAGE || null,
+          }),
+        }).catch(() => {});
+      }
+
       return true;
     } catch (err) {
       setToast({ type: "error", message: err.message || "Failed to save assignments" });
@@ -450,80 +625,50 @@ export default function CreateReportWizardPage({ onCreated, onCancel }) {
                   {allWorkflows.map(w =>
                     <option key={w.id} value={w.id}>{w.name}{w.is_default ? " ★" : ""} ({w.step_count} steps)</option>)}
                 </select>
+                {allWorkflows.length === 0 && (
+                  <button type="button" onClick={navigateToWorkflowTemplates} style={{
+                    marginTop: 6, background: "none", border: "none", padding: 0,
+                    fontSize: 12, color: C.primary, cursor: "pointer", textDecoration: "underline",
+                    fontFamily: "inherit",
+                  }}>No workflows yet — Create a workflow template →</button>
+                )}
               </F>
 
-              {/* Template source */}
+              {/* Template picker — always show, no scratch/template toggle */}
               <div style={{ gridColumn: "1/-1", marginTop: 4 }}>
-                <div style={lbl}>Report Structure</div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                  {[
-                    { v: "scratch", icon: "✦", title: "Start from Scratch", desc: "Build sections manually in Step 2" },
-                    { v: "template", icon: "📂", title: "Use a Template",     desc: "Pre-fill sections from an existing template" },
-                  ].map(opt => (
-                    <div key={opt.v}
-                      onClick={() => { setTmplMode(opt.v); if (opt.v === "scratch") setTmplId(""); }}
-                      style={{
-                        border: `2px solid ${tmplMode === opt.v ? C.primary : C.border}`,
-                        borderRadius: 10, padding: "12px 14px", cursor: "pointer",
-                        background: tmplMode === opt.v ? C.primaryLt : C.surface,
-                        display: "flex", alignItems: "flex-start", gap: 10, transition: "all 0.15s",
-                      }}>
-                      <div style={{ width: 34, height: 34, borderRadius: 8, flexShrink: 0, fontSize: 18,
-                        background: tmplMode === opt.v ? C.primary : C.bg,
-                        display: "flex", alignItems: "center", justifyContent: "center" }}>{opt.icon}</div>
-                      <div>
-                        <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{opt.title}</div>
-                        <div style={{ fontSize: 11, color: C.textSub, lineHeight: 1.5 }}>{opt.desc}</div>
-                      </div>
-                      <div style={{ marginLeft: "auto", flexShrink: 0 }}>
-                        <div style={{
-                          width: 18, height: 18, borderRadius: "50%",
-                          border: `2px solid ${tmplMode === opt.v ? C.primary : C.border}`,
-                          background: tmplMode === opt.v ? C.primary : "transparent",
-                          display: "flex", alignItems: "center", justifyContent: "center",
-                        }}>
-                          {tmplMode === opt.v && <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#fff" }} />}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                {tmplMode === "template" && (
-                  <div style={{ marginTop: 12 }}>
-                    {tmplFetchErr ? (
-                      <div style={{ padding: "10px 14px", background: "#fef2f2", border: "1px solid #fca5a5",
-                        borderRadius: 8, fontSize: 12, color: "#dc2626" }}>
-                        ✕ Failed to load templates: {tmplFetchErr}
-                      </div>
-                    ) : (
-                      <>
-                        <select
-                          value={tmplId}
-                          onChange={e => setTmplId(e.target.value)}
-                          style={{
-                            width: "100%", padding: "9px 12px", borderRadius: 8,
-                            border: `1.5px solid ${tmplId ? C.primary : C.border}`,
-                            background: C.surface, color: tmplId ? C.text : C.textMuted,
-                            fontSize: 13, fontFamily: "inherit", outline: "none", cursor: "pointer",
-                          }}
-                        >
-                          <option value="">— Select a template —</option>
-                          {templates.map(t => (
-                            <option key={t.id} value={t.id}>
-                              {t.name}{t.report_type ? ` (${t.report_type})` : ""}{t.version ? ` · v${t.version}` : ""}
-                              {t.section_count != null ? ` · ${t.section_count} section${Number(t.section_count) !== 1 ? "s" : ""}` : ""}
-                            </option>
-                          ))}
-                        </select>
-                        {templates.length === 0 && (
-                          <div style={{ marginTop: 8, fontSize: 12, color: "#92400e", padding: "10px 14px",
-                            background: C.warningLt, border: "1px solid #fde68a", borderRadius: 8 }}>
-                            ⚠ No active templates found. Ask the Publication Cell to publish a template first.
-                          </div>
-                        )}
-                      </>
-                    )}
+                <div style={lbl}>Report Template</div>
+                {tmplFetchErr ? (
+                  <div style={{ padding: "10px 14px", background: "#fef2f2", border: "1px solid #fca5a5",
+                    borderRadius: 8, fontSize: 12, color: "#dc2626" }}>
+                    Failed to load templates: {tmplFetchErr}
                   </div>
+                ) : (
+                  <>
+                    <select
+                      value={tmplId}
+                      onChange={e => setTmplId(e.target.value)}
+                      style={{
+                        width: "100%", padding: "9px 12px", borderRadius: 8,
+                        border: `1.5px solid ${tmplId ? C.primary : C.border}`,
+                        background: C.surface, color: tmplId ? C.text : C.textMuted,
+                        fontSize: 13, fontFamily: "inherit", outline: "none", cursor: "pointer",
+                      }}
+                    >
+                      <option value="">— Select a template —</option>
+                      {templates.map(t => (
+                        <option key={t.id} value={t.id}>
+                          {t.name}{t.report_type ? ` (${t.report_type})` : ""}{t.version ? ` · v${t.version}` : ""}
+                          {t.section_count != null ? ` · ${t.section_count} section${Number(t.section_count) !== 1 ? "s" : ""}` : ""}
+                        </option>
+                      ))}
+                    </select>
+                    {templates.length === 0 && (
+                      <div style={{ marginTop: 8, fontSize: 12, color: "#92400e", padding: "10px 14px",
+                        background: C.warningLt, border: "1px solid #fde68a", borderRadius: 8 }}>
+                        No active templates found. Ask the Publication Cell to publish a template first.
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
 
@@ -553,17 +698,31 @@ export default function CreateReportWizardPage({ onCreated, onCancel }) {
         {step === 2 && (
           <div>
             <StepHeading icon="🗂" title="Section Structure"
-              subtitle={tmplMode === "template"
-                ? "Sections pre-loaded from the template. Reorder, add, or remove as needed."
-                : "Add sections and subsections for this report."} />
+              subtitle="Sections pre-loaded from template. Reorder, add, or remove as needed." />
 
-            {tmplMode === "template" && !secFetched && (
+            {!secFetched && (
               <div style={{ textAlign: "center", padding: "48px", color: C.textSub, fontSize: 13 }}>
-                Loading template sections…
+                Loading sections…
               </div>
             )}
 
-            {(secFetched || tmplMode === "scratch") && (
+            {secFetched && secFetchErr && (
+              <div style={{
+                padding: "12px 16px", marginBottom: 16,
+                background: C.dangerLt, border: `1px solid #fca5a5`,
+                borderRadius: 8, fontSize: 13, color: C.danger,
+                display: "flex", alignItems: "center", justifyContent: "space-between",
+              }}>
+                <span>Could not load existing sections: {secFetchErr}</span>
+                <button onClick={() => { setSecFetched(false); setSecFetchErr(""); }} style={{
+                  padding: "5px 12px", background: "transparent", border: `1px solid ${C.danger}`,
+                  borderRadius: 6, cursor: "pointer", fontSize: 12, color: C.danger,
+                  fontFamily: "inherit", fontWeight: 600,
+                }}>Retry</button>
+              </div>
+            )}
+
+            {secFetched && (
               <>
                 <div style={{ border: `1px solid ${C.border}`, borderRadius: 12, overflow: "hidden" }}>
                   <div style={{
@@ -631,58 +790,175 @@ export default function CreateReportWizardPage({ onCreated, onCancel }) {
           <div>
             <StepHeading icon="🔐" title="Access Configuration"
               subtitle="Choose which roles can view this report. Institute Admins always have full access." />
-            <div style={{
-              padding: "10px 14px", background: "#eff6ff", border: "1px solid #bfdbfe",
-              borderRadius: 8, fontSize: 12, color: "#1e40af", marginBottom: 20,
-            }}>
-              ℹ Role grants here allow that role to view the report and its sections. Per-section write
-              assignments are configured in Step 5 and can also be managed after creation.
+
+            {/* Tab bar */}
+            <div style={{ display: "flex", gap: 0, borderBottom: `2px solid ${C.border}`, marginBottom: 20 }}>
+              {[
+                { id: "3a", label: "3a · Report Access" },
+                { id: "3b", label: "3b · Section Access" },
+              ].map(tab => (
+                <button key={tab.id} onClick={() => setAccessTab(tab.id)} style={{
+                  padding: "9px 20px", border: "none", borderBottom: `2px solid ${accessTab === tab.id ? C.primary : "transparent"}`,
+                  marginBottom: -2, background: "transparent", cursor: "pointer",
+                  fontSize: 13, fontWeight: accessTab === tab.id ? 700 : 500,
+                  color: accessTab === tab.id ? C.primary : C.textSub,
+                  fontFamily: "inherit", transition: "all 0.15s",
+                }}>{tab.label}</button>
+              ))}
             </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {allRoles.length === 0 && (
-                <div style={{ textAlign: "center", padding: "32px", color: C.textSub, fontSize: 13 }}>
-                  No roles available. Access can be configured after creation.
+
+            {/* 3a — Report-wide role access */}
+            {accessTab === "3a" && (
+              <>
+                <div style={{
+                  padding: "10px 14px", background: "#eff6ff", border: "1px solid #bfdbfe",
+                  borderRadius: 8, fontSize: 12, color: "#1e40af", marginBottom: 20,
+                }}>
+                  Role grants here allow that role to view the report and its sections. Per-section write
+                  assignments are configured in Step 5 and can also be managed after creation.
                 </div>
-              )}
-              {allRoles.map(role => {
-                const granted = grantedRoles.has(role.name);
-                return (
-                  <div key={role.id || role.name} onClick={() => toggleRole(role.name)} style={{
-                    display: "flex", alignItems: "center", justifyContent: "space-between",
-                    padding: "12px 16px", borderRadius: 10, cursor: "pointer",
-                    border: `1.5px solid ${granted ? C.primary : C.border}`,
-                    background: granted ? C.primaryLt : C.surface, transition: "all 0.15s",
-                  }}>
-                    <div>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{role.display_name || role.name}</div>
-                      {role.description && <div style={{ fontSize: 11, color: C.textSub, marginTop: 2 }}>{role.description}</div>}
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {allRoles.length === 0 && (
+                    <div style={{ textAlign: "center", padding: "32px", color: C.textSub, fontSize: 13 }}>
+                      No roles available. Access can be configured after creation.
                     </div>
-                    <div style={{
-                      width: 22, height: 22, borderRadius: 6, flexShrink: 0,
-                      background: granted ? C.primary : C.bg,
-                      border: `2px solid ${granted ? C.primary : C.border}`,
-                      display: "flex", alignItems: "center", justifyContent: "center",
-                    }}>
-                      {granted && <span style={{ color: "#fff", fontSize: 12, fontWeight: 700 }}>✓</span>}
-                    </div>
+                  )}
+                  {allRoles.map(role => {
+                    const granted = grantedRoles.has(role.name);
+                    return (
+                      <div key={role.id || role.name} onClick={() => toggleRole(role.name)} style={{
+                        display: "flex", alignItems: "center", justifyContent: "space-between",
+                        padding: "12px 16px", borderRadius: 10, cursor: "pointer",
+                        border: `1.5px solid ${granted ? C.primary : C.border}`,
+                        background: granted ? C.primaryLt : C.surface, transition: "all 0.15s",
+                      }}>
+                        <div>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{role.display_name || role.name}</div>
+                          {role.description && <div style={{ fontSize: 11, color: C.textSub, marginTop: 2 }}>{role.description}</div>}
+                        </div>
+                        <div style={{
+                          width: 22, height: 22, borderRadius: 6, flexShrink: 0,
+                          background: granted ? C.primary : C.bg,
+                          border: `2px solid ${granted ? C.primary : C.border}`,
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                        }}>
+                          {granted && <span style={{ color: "#fff", fontSize: 12, fontWeight: 700 }}>✓</span>}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                {grantedRoles.size > 0 && (
+                  <div style={{ marginTop: 16, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <span style={{ fontSize: 11, color: C.textSub }}>Granted to:</span>
+                    {Array.from(grantedRoles).map(rn => {
+                      const r = allRoles.find(x => x.name === rn);
+                      return (
+                        <span key={rn} style={{
+                          padding: "3px 10px", background: C.primaryLt, color: C.primary,
+                          borderRadius: 20, fontSize: 11, fontWeight: 600, border: `1px solid ${C.primaryMid}`,
+                        }}>{r?.display_name || rn}</span>
+                      );
+                    })}
                   </div>
-                );
-              })}
-            </div>
-            {grantedRoles.size > 0 && (
-              <div style={{ marginTop: 16, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                <span style={{ fontSize: 11, color: C.textSub }}>Granted to:</span>
-                {Array.from(grantedRoles).map(rn => {
-                  const r = allRoles.find(x => x.name === rn);
+                )}
+              </>
+            )}
+
+            {/* 3b — Section-specific access */}
+            {accessTab === "3b" && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                {sections.length === 0 ? (
+                  <div style={{ textAlign: "center", padding: "32px", color: C.textSub, fontSize: 13 }}>
+                    No sections defined yet. Add sections in Step 2 first.
+                  </div>
+                ) : sections.map(sec => {
+                  const grants = sectionAccess[sec.id] || [];
                   return (
-                    <span key={rn} style={{
-                      padding: "3px 10px", background: C.primaryLt, color: C.primary,
-                      borderRadius: 20, fontSize: 11, fontWeight: 600, border: `1px solid ${C.primaryMid}`,
-                    }}>{r?.display_name || rn}</span>
+                    <div key={sec.id} style={{ border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden" }}>
+                      <div style={{ padding: "10px 16px", background: C.bg, borderBottom: `1px solid ${C.border}`,
+                        display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{sec.title || "(untitled)"}</span>
+                        <button onClick={() => addSecAccess(sec.id)} style={{
+                          padding: "5px 12px", background: C.primaryLt, color: C.primary,
+                          border: `1px solid ${C.primaryMid}`, borderRadius: 7,
+                          cursor: "pointer", fontSize: 11, fontWeight: 600, fontFamily: "inherit",
+                        }}>+ Add Access</button>
+                      </div>
+                      <div style={{ padding: "12px 16px" }}>
+                        {grants.length === 0 ? (
+                          <div style={{ fontSize: 12, color: C.textMuted, fontStyle: "italic" }}>
+                            No section-specific access — inherits report-level access.
+                          </div>
+                        ) : (
+                          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                            {grants.map(grant => (
+                              <div key={grant.localId} style={{ display: "grid", gridTemplateColumns: "140px 1fr 36px", gap: 10, alignItems: "end" }}>
+                                <div>
+                                  <div style={lbl}>Type</div>
+                                  <select style={{ ...inp, padding: "7px 10px" }}
+                                    value={grant.type}
+                                    onChange={e => updSecAccess(sec.id, grant.localId, "type", e.target.value)}>
+                                    <option value="">— Select —</option>
+                                    <option value="ROLE">Role</option>
+                                    <option value="USER">User</option>
+                                    <option value="DEPT">Department</option>
+                                  </select>
+                                </div>
+                                <div>
+                                  {grant.type === "ROLE" && (
+                                    <>
+                                      <div style={lbl}>Role</div>
+                                      <select style={{ ...inp, padding: "7px 10px" }}
+                                        value={grant.roleName}
+                                        onChange={e => updSecAccess(sec.id, grant.localId, "roleName", e.target.value)}>
+                                        <option value="">— Select role —</option>
+                                        {allRoles.map(r => <option key={r.id || r.name} value={r.name}>{r.display_name || r.name}</option>)}
+                                      </select>
+                                    </>
+                                  )}
+                                  {grant.type === "USER" && (
+                                    <>
+                                      <div style={lbl}>User</div>
+                                      <select style={{ ...inp, padding: "7px 10px" }}
+                                        value={grant.userId}
+                                        onChange={e => updSecAccess(sec.id, grant.localId, "userId", e.target.value)}>
+                                        <option value="">— Select user —</option>
+                                        {users.map(u => <option key={u.id} value={u.id}>{u.full_name} ({u.email})</option>)}
+                                      </select>
+                                    </>
+                                  )}
+                                  {grant.type === "DEPT" && (
+                                    <>
+                                      <div style={lbl}>Department</div>
+                                      <select style={{ ...inp, padding: "7px 10px" }}
+                                        value={grant.deptId}
+                                        onChange={e => updSecAccess(sec.id, grant.localId, "deptId", e.target.value)}>
+                                        <option value="">— Select department —</option>
+                                        {departments.map(d => <option key={d.department_id} value={d.department_id}>{d.name}</option>)}
+                                      </select>
+                                    </>
+                                  )}
+                                  {!grant.type && <div />}
+                                </div>
+                                <div style={{ paddingBottom: 2 }}>
+                                  <button onClick={() => delSecAccess(sec.id, grant.localId)} style={{
+                                    width: 32, height: 34, background: C.dangerLt, border: `1px solid #fca5a5`,
+                                    borderRadius: 7, cursor: "pointer", color: C.danger, fontSize: 16,
+                                    display: "flex", alignItems: "center", justifyContent: "center",
+                                  }}>×</button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   );
                 })}
               </div>
             )}
+
             <NavBar onBack={goBack} onNext={goNext} busy={busy} />
           </div>
         )}
@@ -767,7 +1043,7 @@ export default function CreateReportWizardPage({ onCreated, onCancel }) {
                 padding: "10px 14px", background: C.warningLt, border: "1px solid #fde68a",
                 borderRadius: 8, fontSize: 12, color: "#92400e", marginBottom: 16,
               }}>
-                ⚠ No workflow selected. You can assign authors here; review steps require a workflow template.
+                No workflow selected. You can assign authors here; review steps require a workflow template.
                 Set one in Step 1 before configuring step-level assignments.
               </div>
             )}
@@ -778,20 +1054,111 @@ export default function CreateReportWizardPage({ onCreated, onCancel }) {
               </div>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {sections.flatMap(s => [s, ...(s.subsections || []).map(sub => ({ ...sub, _indent: true }))]).map(sec => (
-                  <SectionAssignPanel
-                    key={sec.id}
-                    section={sec}
-                    wfSteps={wfDetail?.steps || []}
-                    assigns={assigns[sec.id] || {}}
-                    departments={departments}
-                    roles={allRoles}
-                    onAuthChange={(k, v) => setAuth(sec.id, k, v)}
-                    onStepChange={(wsId, k, v) => setStepA(sec.id, wsId, k, v)}
-                  />
-                ))}
+                {sections.flatMap(s => [s, ...(s.subsections || []).map(sub => ({ ...sub, _indent: true }))]).map(sec => {
+                  const secWfId = secWorkflows[sec.id] || defaultWfId || "";
+                  const secSteps = secWfSteps[secWfId] || wfDetail?.steps || [];
+                  return (
+                    <div key={sec.id} style={{
+                      border: `1.5px solid ${assigns[sec.id]?.auth?.type ? C.primary : C.border}`,
+                      borderRadius: 10, overflow: "hidden",
+                      marginLeft: sec._indent ? 32 : 0,
+                    }}>
+                      {/* Section header with per-section workflow selector */}
+                      <div style={{ padding: "10px 16px", background: assigns[sec.id]?.auth?.type ? C.primaryLt : C.bg,
+                        borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", gap: 12 }}>
+                        <span style={{ fontSize: sec._indent ? 12 : 13, fontWeight: 700, color: C.text, flex: 1 }}>
+                          {sec._indent ? "↳ " : ""}{sec.title || "(untitled)"}
+                        </span>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0, flexWrap: "wrap" }}>
+                          <span style={{ fontSize: 11, color: C.textSub, fontWeight: 600 }}>Workflow:</span>
+                          <select
+                            style={{ ...inp, width: "auto", padding: "5px 10px", fontSize: 12, minWidth: 180 }}
+                            value={secWfId}
+                            onChange={e => {
+                              const val = e.target.value;
+                              setSecWorkflows(p => ({ ...p, [sec.id]: val }));
+                              loadSecWfSteps(val);
+                            }}
+                          >
+                            <option value="">— No workflow —</option>
+                            {allWorkflows.map(w => (
+                              <option key={w.id} value={w.id}>{w.name}{w.is_default ? " ★" : ""}</option>
+                            ))}
+                          </select>
+                          {allWorkflows.length === 0 && (
+                            <button type="button" onClick={navigateToWorkflowTemplates} style={{
+                              background: "none", border: "none", padding: 0,
+                              fontSize: 11, color: C.primary, cursor: "pointer",
+                              textDecoration: "underline", fontFamily: "inherit", flexShrink: 0,
+                            }}>Create one →</button>
+                          )}
+                        </div>
+                      </div>
+                      <SectionAssignPanel
+                        section={sec}
+                        wfSteps={secSteps}
+                        assigns={assigns[sec.id] || {}}
+                        departments={departments}
+                        roles={allRoles}
+                        users={users}
+                        onAuthChange={(k, v) => setAuth(sec.id, k, v)}
+                        onStepChange={(wsId, k, v) => setStepA(sec.id, wsId, k, v)}
+                        inlineHeader
+                      />
+                    </div>
+                  );
+                })}
               </div>
             )}
+
+            {/* Branding — direct file upload */}
+            <div style={{ marginTop: 28, border: `1px solid ${C.border}`, borderRadius: 12, overflow: "hidden" }}>
+              <div style={{ padding: "12px 18px", background: C.bg, borderBottom: `1px solid ${C.border}`,
+                display: "flex", alignItems: "center", gap: 10 }}>
+                <span style={{ fontSize: 16 }}>🖼</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: C.text }}>Branding Assets</span>
+                <span style={{ fontSize: 11, color: C.textMuted, marginLeft: 4 }}>(optional — uploaded to S3 on save)</span>
+              </div>
+              <div style={{ padding: "16px 18px", display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14 }}>
+                {[
+                  { key: "COVER_IMAGE", label: "Cover Image", icon: "🖼" },
+                  { key: "LOGO",        label: "Logo",        icon: "🏷" },
+                  { key: "BG_IMAGE",    label: "Background",  icon: "🎨" },
+                ].map(asset => (
+                  <div key={asset.key}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: C.textSub, textTransform: "uppercase",
+                      letterSpacing: "0.07em", marginBottom: 6 }}>{asset.icon} {asset.label}</div>
+                    <label style={{ display: "block", cursor: "pointer" }}>
+                      <div style={{
+                        border: `1.5px dashed ${brandingFiles[asset.key] ? C.primary : C.border}`,
+                        borderRadius: 8, padding: "10px 12px", fontSize: 12,
+                        color: brandingFiles[asset.key] ? C.primary : C.textMuted,
+                        background: brandingFiles[asset.key] ? C.primaryLt : C.bg,
+                        transition: "all 0.15s", display: "flex", alignItems: "center", gap: 8,
+                      }}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                          <circle cx="8.5" cy="8.5" r="1.5"/>
+                          <polyline points="21 15 16 10 5 21"/>
+                        </svg>
+                        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {brandingFiles[asset.key] ? brandingFiles[asset.key].name : "Click to upload…"}
+                        </span>
+                      </div>
+                      <input type="file" accept="image/*" style={{ display: "none" }}
+                        onChange={e => {
+                          const f = e.target.files[0];
+                          if (f) setBrandingFiles(p => ({ ...p, [asset.key]: f }));
+                        }} />
+                    </label>
+                    {brandingUrls[asset.key] && (
+                      <div style={{ fontSize: 10, color: C.success, marginTop: 3 }}>✓ Uploaded</div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+
             <NavBar onBack={goBack} onNext={goNext} busy={busy} nextLabel="Save & Review →" />
           </div>
         )}
@@ -824,7 +1191,7 @@ export default function CreateReportWizardPage({ onCreated, onCancel }) {
                 <SumRow k="Language"      v={{ en: "English", hi: "Hindi", ta: "Tamil" }[lang] || lang} />
                 <SumRow k="Cycle"         v={cycles.find(c => c.id === cycleId)?.name || "—"} />
                 <SumRow k="Workflow"      v={allWorkflows.find(w => w.id === defaultWfId)?.name || "None"} />
-                <SumRow k="Structure"     v={tmplMode === "template" ? (templates.find(t => t.id === tmplId)?.name || "Template") : "From Scratch"} />
+                <SumRow k="Structure"     v={templates.find(t => t.id === tmplId)?.name || "None"} />
               </SumCard>
 
               <SumCard label="Structure" icon="🗂">
@@ -877,7 +1244,7 @@ export default function CreateReportWizardPage({ onCreated, onCancel }) {
                       {noAuth > 0 && (
                         <div style={{ padding: "6px 10px", background: C.warningLt, border: "1px solid #fde68a",
                           borderRadius: 6, fontSize: 11, color: "#92400e", marginTop: 8 }}>
-                          ⚠ {noAuth} section{noAuth !== 1 ? "s" : ""} without an author — assign later from the Report Dashboard.
+                          {noAuth} section{noAuth !== 1 ? "s" : ""} without an author — assign later from the Report Dashboard.
                         </div>
                       )}
                     </>
@@ -1006,12 +1373,71 @@ function arrowBtn(disabled) {
 }
 
 /* ══ Section assignment panel ════════════════════════════════════════════ */
-function SectionAssignPanel({ section, wfSteps, assigns, departments, roles, onAuthChange, onStepChange }) {
+function SectionAssignPanel({ section, wfSteps, assigns, departments, roles, users, onAuthChange, onStepChange, inlineHeader }) {
   const [open, setOpen] = useState(false);
   const auth  = assigns.auth  || {};
   const steps = assigns.steps || {};
   const hasAuth = !!auth.type;
   const assignedSteps = wfSteps.filter(ws => !!steps[ws.id]?.type).length;
+
+  // When rendered with inlineHeader=true, the outer border/header is managed by the parent
+  // We just render the collapsible body with a minimal trigger row
+  if (inlineHeader) {
+    return (
+      <div>
+        <div style={{
+          display: "flex", alignItems: "center", gap: 12, padding: "10px 16px",
+          background: hasAuth ? C.primaryLt : C.surface, cursor: "pointer", borderTop: `1px solid ${C.border}`,
+        }} onClick={() => setOpen(o => !o)}>
+          <div style={{ flex: 1, display: "flex", gap: 6 }}>
+            <Chip color={hasAuth ? C.primary : C.textMuted}>
+              {hasAuth ? (auth.type === "ROLE" ? `Role: ${auth.roleName || "…"}` : auth.type === "USER" ? "User assigned" : "Dept assigned") : "No author set"}
+            </Chip>
+            {wfSteps.length > 0 && (
+              <Chip color={assignedSteps === wfSteps.length ? C.success : C.textMuted}>
+                {assignedSteps}/{wfSteps.length} steps
+              </Chip>
+            )}
+          </div>
+          <span style={{ fontSize: 13, color: C.textSub }}>{open ? "▾" : "▸"} {open ? "Collapse" : "Configure"}</span>
+        </div>
+        {open && (
+          <div style={{ padding: "16px", borderTop: `1px solid ${C.border}` }}>
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ ...lbl, marginBottom: 10 }}>Authoring — who writes this section?</div>
+              <AssignRow val={auth} onChange={onAuthChange} departments={departments} roles={roles} users={users} />
+            </div>
+            {wfSteps.length > 0 && (
+              <div>
+                <div style={{ ...lbl, marginBottom: 10 }}>Review steps</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  {wfSteps.map((ws, i) => (
+                    <div key={ws.id} style={{ border: `1px solid ${C.border}`, borderRadius: 8, padding: "12px 14px",
+                      background: steps[ws.id]?.type ? "#fafbff" : C.surface }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                        <div style={{ width: 22, height: 22, borderRadius: "50%", background: C.primary,
+                          color: "#fff", fontSize: 10, fontWeight: 700,
+                          display: "flex", alignItems: "center", justifyContent: "center" }}>{i + 1}</div>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: C.text }}>{ws.step_name}</span>
+                        {ws.approver_role && (
+                          <span style={{ fontSize: 10, color: C.textSub }}>
+                            template: {ws.approver_role}
+                            {ws.approver_department_name ? ` @ ${ws.approver_department_name}` : ""}
+                          </span>
+                        )}
+                      </div>
+                      <AssignRow val={steps[ws.id] || {}} onChange={(k, v) => onStepChange(ws.id, k, v)}
+                        departments={departments} roles={roles} users={users} />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div style={{
@@ -1028,7 +1454,7 @@ function SectionAssignPanel({ section, wfSteps, assigns, departments, roles, onA
         </div>
         <div style={{ display: "flex", gap: 6 }}>
           <Chip color={hasAuth ? C.primary : C.textMuted}>
-            {hasAuth ? (auth.type === "ROLE" ? `🎭 ${auth.roleName || "Role"}` : auth.type === "DEPT" ? "🏢 Dept" : "Author set") : "No author"}
+            {hasAuth ? (auth.type === "ROLE" ? `Role: ${auth.roleName || "…"}` : auth.type === "USER" ? "User assigned" : "Dept assigned") : "No author"}
           </Chip>
           {wfSteps.length > 0 && (
             <Chip color={assignedSteps === wfSteps.length ? C.success : C.textMuted}>
@@ -1042,7 +1468,7 @@ function SectionAssignPanel({ section, wfSteps, assigns, departments, roles, onA
         <div style={{ padding: "16px", borderTop: `1px solid ${C.border}` }}>
           <div style={{ marginBottom: 20 }}>
             <div style={{ ...lbl, marginBottom: 10 }}>Authoring — who writes this section?</div>
-            <AssignRow val={auth} onChange={onAuthChange} departments={departments} roles={roles} />
+            <AssignRow val={auth} onChange={onAuthChange} departments={departments} roles={roles} users={users} />
           </div>
           {wfSteps.length > 0 && (
             <div>
@@ -1064,7 +1490,7 @@ function SectionAssignPanel({ section, wfSteps, assigns, departments, roles, onA
                       )}
                     </div>
                     <AssignRow val={steps[ws.id] || {}} onChange={(k, v) => onStepChange(ws.id, k, v)}
-                      departments={departments} roles={roles} />
+                      departments={departments} roles={roles} users={users} />
                   </div>
                 ))}
               </div>
@@ -1076,17 +1502,18 @@ function SectionAssignPanel({ section, wfSteps, assigns, departments, roles, onA
   );
 }
 
-function AssignRow({ val, onChange, departments, roles }) {
-  const { type = "", deptId = "", roleName = "", dueAt = "" } = val;
+function AssignRow({ val, onChange, departments, roles, users }) {
+  const { type = "", deptId = "", roleName = "", userId = "", dueAt = "" } = val;
   return (
     <div style={{ display: "grid", gridTemplateColumns: "130px 1fr 170px", gap: 10, alignItems: "end" }}>
       <div>
         <div style={lbl}>Assignee type</div>
         <select style={{ ...inp, padding: "7px 10px" }} value={type}
-          onChange={e => { onChange("type", e.target.value); onChange("deptId", ""); onChange("roleName", ""); }}>
+          onChange={e => { onChange("type", e.target.value); onChange("deptId", ""); onChange("roleName", ""); onChange("userId", ""); }}>
           <option value="">— Skip —</option>
           <option value="ROLE">By Role</option>
           <option value="DEPT">By Department</option>
+          <option value="USER">By User</option>
         </select>
       </div>
       <div>
@@ -1105,6 +1532,15 @@ function AssignRow({ val, onChange, departments, roles }) {
             <select style={{ ...inp, padding: "7px 10px" }} value={deptId} onChange={e => onChange("deptId", e.target.value)}>
               <option value="">— Select department —</option>
               {departments.map(d => <option key={d.department_id} value={d.department_id}>{d.name}</option>)}
+            </select>
+          </>
+        )}
+        {type === "USER" && (
+          <>
+            <div style={lbl}>User</div>
+            <select style={{ ...inp, padding: "7px 10px" }} value={userId} onChange={e => onChange("userId", e.target.value)}>
+              <option value="">— Select user —</option>
+              {(users || []).map(u => <option key={u.id} value={u.id}>{u.full_name} ({u.email})</option>)}
             </select>
           </>
         )}

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate, useLocation, Navigate } from "react-router-dom";
 import {
   Building2, Pencil, Landmark, MoreHorizontal, Power, PowerOff,
-  Plus, Upload, Download, FileText, FileSpreadsheet,
+  Plus, Upload, Download, FileText, FileSpreadsheet, Archive, ArchiveRestore, Trash2,
 } from "lucide-react";
 import { useApi } from "../../../hooks/useApi";
 import FormScreen from "../../../components/shared/FormScreen";
@@ -582,6 +582,32 @@ export default function InstitutionManagementPage() {
     }
   }
 
+  /* Bug 10 — institution lifecycle: archive / restore / soft-delete. Archiving
+     (or deleting) disables every user under the institution via the gate; restore
+     resumes everything with no data loss. */
+  async function handleLifecycle(inst, kind) {
+    if (kind === "delete" && !window.confirm(
+      `Delete "${inst.institution_name}"? It will be soft-deleted (hidden, users disabled) and can be restored — no data is removed.`
+    )) return;
+
+    const path = kind === "archive" ? `/api/institutions/${inst.institution_id}/archive`
+               : kind === "restore" ? `/api/institutions/${inst.institution_id}/restore`
+               : `/api/institutions/${inst.institution_id}`;
+    const method = kind === "delete" ? "DELETE" : "POST";
+
+    setTogglingId(inst.institution_id);
+    try {
+      const res  = await apiFetch(path, { method });
+      const data = await res.json();
+      if (data.success) { showToast(data.message, "success"); fetchInstitutions(); }
+      else showToast(data.message || "Action failed.", "error");
+    } catch (err) {
+      if (!isAuthError(err)) showToast("Failed to update institution lifecycle.", "error");
+    } finally {
+      setTogglingId(null);
+    }
+  }
+
   /* ── Callbacks from InstitutionForm ── */
   function handleCreated(message) {
     navigate(listPath);
@@ -707,6 +733,7 @@ export default function InstitutionManagementPage() {
               <StyledSelect value={statusFilter} onChange={setStatusFilter} minWidth={150}>
                 <option value="ALL">{t("All Statuses", lang)}</option>
                 <option value="ACTIVE">{t("Active", lang)}</option>
+                <option value="ARCHIVED">{t("Archived", lang)}</option>
                 <option value="INACTIVE">{t("Inactive", lang)}</option>
               </StyledSelect>
             </>
@@ -749,11 +776,14 @@ export default function InstitutionManagementPage() {
             },
             {
               key: "status", header: t("Status", lang), width: 120,
-              render: (inst) => (
-                <Badge tone={inst.status === "ACTIVE" ? "success" : "neutral"}>
-                  {inst.status === "ACTIVE" ? t("Active", lang) : t("Inactive", lang)}
-                </Badge>
-              ),
+              render: (inst) => {
+                const tone = inst.status === "ACTIVE" ? "success"
+                           : inst.status === "ARCHIVED" ? "warning" : "neutral";
+                const label = inst.status === "ACTIVE" ? t("Active", lang)
+                            : inst.status === "ARCHIVED" ? t("Archived", lang)
+                            : t("Inactive", lang);
+                return <Badge tone={tone}>{label}</Badge>;
+              },
             },
             {
               key: "actions", header: t("Actions", lang), align: "right", width: 90,
@@ -772,14 +802,22 @@ export default function InstitutionManagementPage() {
                       {t("Edit", lang)}
                     </MenuItem>
                     {isActive ? (
-                      <MenuItem icon={<PowerOff size={16} strokeWidth={1.9} />} danger disabled={busy} onClick={() => handleToggleStatus(inst)}>
-                        {busy ? "…" : t("Deactivate", lang)}
-                      </MenuItem>
+                      <>
+                        <MenuItem icon={<PowerOff size={16} strokeWidth={1.9} />} disabled={busy} onClick={() => handleToggleStatus(inst)}>
+                          {busy ? "…" : t("Deactivate", lang)}
+                        </MenuItem>
+                        <MenuItem icon={<Archive size={16} strokeWidth={1.9} />} disabled={busy} onClick={() => handleLifecycle(inst, "archive")}>
+                          {busy ? "…" : t("Archive", lang)}
+                        </MenuItem>
+                      </>
                     ) : (
-                      <MenuItem icon={<Power size={16} strokeWidth={1.9} />} disabled={busy} onClick={() => handleToggleStatus(inst)}>
-                        {busy ? "…" : t("Activate", lang)}
+                      <MenuItem icon={<ArchiveRestore size={16} strokeWidth={1.9} />} disabled={busy} onClick={() => handleLifecycle(inst, "restore")}>
+                        {busy ? "…" : t("Restore", lang)}
                       </MenuItem>
                     )}
+                    <MenuItem icon={<Trash2 size={16} strokeWidth={1.9} />} danger disabled={busy} onClick={() => handleLifecycle(inst, "delete")}>
+                      {busy ? "…" : t("Delete", lang)}
+                    </MenuItem>
                   </Dropdown>
                 );
               },

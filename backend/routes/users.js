@@ -612,6 +612,8 @@ router.post(
              VALUES ${rt.join(",")} ON CONFLICT DO NOTHING`,
             rv
           );
+          /* Role changes take effect immediately via the per-request role refresh
+             in verifyToken (Bug 5) — no session kill / forced re-login needed. */
         }
 
         done += chunk.length;
@@ -1197,6 +1199,14 @@ router.put("/:id", verifyToken, requireRole(["super_admin", "institute_admin", "
           logger.error("Failed to enqueue account_reactivated email", { userId: updated.id, error: err.message })
         );
       }
+    }
+
+    /* Account lifecycle: when a user is disabled / suspended / deleted, kill all
+       their active sessions immediately so the refresh-token flow can no longer
+       mint new access tokens (the per-request middleware already rejects the
+       short-lived access token). Best-effort — never block the update response. */
+    if (updated.account_status && updated.account_status !== "ACTIVE") {
+      await pool.query("DELETE FROM sessions WHERE user_id = $1", [updated.id]).catch(() => {});
     }
 
     const changedFields = ["full_name", "email", "account_status", "institution_id", "department_id"]

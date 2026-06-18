@@ -743,6 +743,8 @@ router.put("/:id/workflow-assignments", requireRole(["super_admin", "institute_a
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
+
+      // Replace workflow assignments
       await client.query(`DELETE FROM public.section_workflow_assignments WHERE report_id = $1`, [id]);
       for (const a of assignments) {
         if (!isUUID(a.section_id)) continue;
@@ -762,6 +764,38 @@ router.put("/:id/workflow-assignments", requireRole(["super_admin", "institute_a
            req.user.userId]
         );
       }
+
+      // Mirror USER author assignments (no workflow_step_id) into section_assignments
+      // so GET /api/builder/sections/assigned can find them for assigned users.
+      await client.query(
+        `DELETE FROM public.section_assignments
+         WHERE section_id IN (
+           SELECT id FROM public.report_sections WHERE report_id = $1 AND deleted_at IS NULL
+         ) AND role = 'OWNER'`,
+        [id]
+      );
+      for (const a of assignments) {
+        if (!isUUID(a.section_id)) continue;
+        if (a.assignee_type !== "USER" || !isUUID(a.user_id)) continue;
+        if (a.workflow_step_id) continue; // skip review-step assignments; only mirror author assignments
+        await client.query(
+          `INSERT INTO public.section_assignments
+             (section_id, user_id, role, due_at, assigned_by)
+           VALUES ($1, $2, 'OWNER', $3, $4)
+           ON CONFLICT (section_id, user_id) DO UPDATE
+             SET role = 'OWNER', due_at = EXCLUDED.due_at,
+                 assigned_by = EXCLUDED.assigned_by, completed_at = NULL`,
+          [a.section_id, a.user_id, a.due_at || null, req.user.userId]
+        );
+        // Notify the assigned user
+        pool.query(
+          `INSERT INTO public.notifications (user_id, type, title, body, entity_type, entity_id)
+           VALUES ($1, 'SECTION_ASSIGNED', 'Section assigned to you',
+                   'You have been assigned to author a section.', 'SECTION', $2)`,
+          [a.user_id, a.section_id]
+        ).catch(() => {});
+      }
+
       await client.query("COMMIT");
     } catch (e) { await client.query("ROLLBACK"); throw e; }
     finally { client.release(); }

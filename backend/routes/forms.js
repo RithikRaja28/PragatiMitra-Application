@@ -9,6 +9,9 @@ const { formatAcademicYear, ensureYearRows, setFormStatusForYear, ensureFormArch
 const { ensureSchemaExists, publishSchemaSnapshot } = require("../services/schemaPropagationService");
 const { resolveUserDomain, resolveListFilterDomain, assertFormDomainAccess, normalizeDomain } = require("../services/domainService");
 const { enqueueEmail } = require("../services/mailService");
+const { resolveEffectiveDepartment } = require("../services/departmentContext");
+const { ensureRecordsIndexes } = require("../services/recordsIndexService");
+const { getAssignedFormIds, isContributorOnly } = require("./formAssignments");
 
 /* Academic-year lock guard for form-management writes. Checks the SELECTED year
    (X-Academic-Year header), falling back to the request's year / current year. */
@@ -43,20 +46,26 @@ async function requireFormDomain(req, res, next) {
   try {
     const pool = req.app.locals.pool;
     const acc = await assertFormDomainAccess(pool, req, req.params.formName);
-    if (!acc.allowed) return res.status(403).json({ success: false, message: acc.message });
-  } catch { /* never hard-fail the guard on a metadata read */ }
-  return next();
+    if (!acc.allowed) return res.status(acc.status || 403).json({ success: false, message: acc.message });
+    return next();
+  } catch (err) {
+    // FAIL-CLOSED: an authorization error must DENY, never fall through to the route.
+    logger.error("requireFormDomain: guard failed — denying (fail-closed)", {
+      formName: req.params.formName, userId: req.user?.userId, route: req.originalUrl, stack: err.stack,
+    });
+    return res.status(503).json({ success: false, message: "Authorization is temporarily unavailable. Please try again." });
+  }
 }
 
-/* ── resolve institution_id for non-super-admin users ── */
+/* ── resolve EFFECTIVE institution_id for non-super-admin users ──
+   Uses the single nodal-aware resolver so a Nodal Officer's forms/deadlines scope
+   to their NODAL institution, matching records/assignments (Bug 4). Non-NOA users
+   get their live home institution exactly as before. */
 async function resolveInstitutionId(pool, req) {
   const isSuperAdmin = (req.user.roles || []).includes("super_admin");
   if (isSuperAdmin) return req.body.institution_id || req.query.institution_id || null;
-  const { rows } = await pool.query(
-    "SELECT institution_id FROM users WHERE id = $1",
-    [req.user.userId]
-  );
-  return rows[0]?.institution_id || null;
+  const { institutionId } = await resolveEffectiveDepartment(pool, req);
+  return institutionId;
 }
 
 /* ─────────────────────────────────────────────────────────────────────
@@ -134,6 +143,14 @@ router.get("/institution-forms", async (req, res) => {
     const filterDomain = await resolveListFilterDomain(pool, req);
     if (filterDomain) {
       rows = rows.filter((f) => (f.form_domain || "academic") === filterDomain);
+    }
+
+    /* ── Contributor visibility: a pure contributor only sees forms ASSIGNED to
+       them for the selected academic year (year-scoped). Other roles unaffected. ── */
+    if (isContributorOnly(req)) {
+      const y = req.query.year != null ? Number(req.query.year) : new Date().getFullYear();
+      const assignedIds = new Set(await getAssignedFormIds(pool, req.user.userId, y));
+      rows = rows.filter((f) => assignedIds.has(String(f.id)));
     }
 
     /* ── Academic-year lifecycle status (opt-in via ?year=) ──────────────
@@ -600,6 +617,10 @@ router.post(
           }
         }
 
+        // Bug 14 — index the fresh records table immediately (empty → instant) so
+        // list/search/pagination/export stay fast as it grows. Idempotent.
+        await ensureRecordsIndexes(client, recordsTable);
+
         // 5. Academic-year lifecycle (Snapshot ownership model):
         //    • CREATOR  → ACTIVE for the creation year (its own choice).
         //    • CONSUMERS (shared forms) → ARCHIVED for every academic year they
@@ -910,6 +931,18 @@ router.put(
           });
         }
 
+        // Bug 9 — an existing field's TYPE is immutable: its records-table column
+        // was created with that type and is never ALTERed, so accepting a changed
+        // type would make the schema disagree with the stored data and corrupt new
+        // writes. Force each already-saved field back to its stored type (the
+        // builder locks this in the UI; this is the defense-in-depth backstop).
+        const existingTypeByCol = new Map(
+          (currentRow.schema?.fields || []).map((f) => [f.column_name, f.type])
+        );
+        for (const f of incomingFields) {
+          if (existingTypeByCol.has(f.column_name)) f.type = existingTypeByCol.get(f.column_name);
+        }
+
         // Merge new column names into used_column_names
         const newColNames = collectColumnNames(incomingFields);
         const mergedUsed = Array.from(new Set([...usedColumnNames, ...newColNames]));
@@ -1194,10 +1227,12 @@ router.put(
         return res.status(403).json({ success: false, message: ayLock.message });
 
       // Issue 5 — deadlines are scoped to the SELECTED academic year (X-Academic-
-      // Year header). When a year is in context we write the per-year row and clear
-      // the legacy form-wide deadline (virtual migration) so it no longer leaks into
-      // other years. With NO year context (e.g. a non-adopter institution) we keep
-      // the original form-wide behavior — fully backward compatible.
+      // Year header). When a year is in context we write ONLY that year's per-year
+      // row and leave every other year — and the legacy form-wide row — untouched.
+      // The legacy form_lock_config deadline is preserved as the FALLBACK for years
+      // that have no per-year override (read, never deleted — Bug 6 isolation). With
+      // NO year context (non-adopter institution) we keep the original form-wide
+      // behavior — fully backward compatible.
       const headerYear = Number(req.headers["x-academic-year"]);
       const yearScoped = Number.isInteger(headerYear);
 
@@ -1226,19 +1261,11 @@ router.put(
           [formName, institutionId, headerYear, newDeadline]
         ));
 
-        // Virtual migration: drop the legacy form-wide deadline + its auto-lock so
-        // it stops blocking other years. A MANUAL admin lock (auto_locked=false) is
-        // preserved.
-        await pool.query(
-          `UPDATE form_lock_config
-           SET deadline_at = NULL,
-               auto_locked = false,
-               is_locked   = CASE WHEN auto_locked THEN false ELSE is_locked END,
-               locked_at   = CASE WHEN auto_locked THEN NULL  ELSE locked_at END,
-               updated_at  = now()
-           WHERE form_name = $1 AND institution_id = $2`,
-          [formName, institutionId]
-        );
+        // NOTE (Bug 6): we intentionally do NOT touch form_lock_config here. The
+        // previous "virtual migration" nulled the legacy form-wide deadline on every
+        // year-scoped save, which silently erased the fallback deadline that every
+        // OTHER year (and the global default) relies on. Each year now owns its own
+        // row; the legacy row is the untouched fallback for years without an override.
       } else {
         const { rows: existingDeadlineRows } = await pool.query(
           `SELECT deadline_at FROM form_lock_config WHERE form_name = $1 AND institution_id = $2`,

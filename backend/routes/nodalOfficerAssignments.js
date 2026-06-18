@@ -194,6 +194,13 @@ router.post("/", verifyToken, requireRole(ALLOWED_ROLES), async (req, res) => {
       }
     });
 
+    /* NOA capability changed → invalidate the affected user's sessions so their
+       new EFFECTIVE (nodal) department takes effect on the next request. The nodal
+       department lives in the short-lived JWT (buildAccessPayload), so a re-login
+       is required to pick it up — same pattern as the role-change session-kill.
+       Best-effort: never block the response on session cleanup. */
+    await pool.query("DELETE FROM sessions WHERE user_id = $1", [user_id]).catch(() => {});
+
     return res.status(201).json({
       success:    true,
       message:    "Nodal Officer assigned successfully.",
@@ -330,6 +337,17 @@ router.put("/:id", verifyToken, requireRole(ALLOWED_ROLES), async (req, res) => 
       });
     }
 
+    /* NOA capability changed (activate / deactivate / reassign) → invalidate the
+       affected user(s)' sessions so the effective (nodal) department resolves
+       freshly on their next request. Revoke the previous holder, plus the new
+       holder when the assignment is reassigned to a different user. Best-effort. */
+    const affectedUserIds = new Set([assignment.user_id]);
+    if (user_id !== undefined) affectedUserIds.add(user_id);
+    await pool.query(
+      "DELETE FROM sessions WHERE user_id = ANY($1::uuid[])",
+      [[...affectedUserIds]]
+    ).catch(() => {});
+
     return res.json({ success: true, assignment: updated[0] });
   } catch (err) {
     logger.error("PUT /api/nodal-officer-assignments/:id failed", { ...getLogContext(req), stack: err.stack });
@@ -388,6 +406,10 @@ router.delete("/:id", verifyToken, requireRole(ALLOWED_ROLES), async (req, res) 
         logger.error("Failed to enqueue nodal_officer_removed email (DELETE)", { stack: err.stack });
       }
     });
+
+    /* NOA removed → invalidate the user's sessions so the effective department
+       falls back to their HOME department on the next request (TC-14). Best-effort. */
+    await pool.query("DELETE FROM sessions WHERE user_id = $1", [assignment.user_id]).catch(() => {});
 
     return res.json({ success: true, message: "Assignment deleted." });
   } catch (err) {

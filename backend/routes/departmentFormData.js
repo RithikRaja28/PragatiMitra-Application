@@ -31,10 +31,10 @@ router.use(verifyToken);
    request carries no explicit year, resolve the institution's active year so the
    fallback inherits it (not the calendar year). Lookup runs only on the no-year
    path, so normal flows (always ?year) cost nothing. See departmentForms.js. */
+// A year counts as explicit only when positive (body.year may be null → 0).
+const validYear = (v) => Number.isInteger(Number(v)) && Number(v) > 0;
 function hasExplicitYear(req) {
-  return Number.isInteger(Number(req.query.year))
-    || Number.isInteger(Number(req.get("X-Academic-Year")))
-    || Number.isInteger(Number(req.body?.year));
+  return validYear(req.query.year) || validYear(req.get("X-Academic-Year")) || validYear(req.body?.year);
 }
 router.use(async (req, _res, next) => {
   try {
@@ -60,14 +60,13 @@ function dbCol(col) { return col.trim().toLowerCase().replace(/\s+/g, "_"); }
 function validSlug(s) { return /^[a-z][a-z0-9_]*$/.test(s); }
 
 function resolveYear(req) {
-  const q = Number(req.query.year); if (Number.isInteger(q)) return q;
-  const h = Number(req.get("X-Academic-Year")); if (Number.isInteger(h)) return h;
-  const b = Number(req.body?.year); if (Number.isInteger(b)) return b;
-  // Phase-1 shadow: legacy fallback (calendar year) is authoritative; the
-  // institution-active year is the candidate — logged if it would differ, never used.
-  const legacy = new Date().getFullYear();
-  const candidate = Number.isInteger(req.institutionAcademicYear) ? req.institutionAcademicYear : legacy;
-  return assertEquivalent("departmentFormData.resolveYear.fallback", legacy, candidate);
+  if (validYear(req.query.year)) return Number(req.query.year);
+  if (validYear(req.get("X-Academic-Year"))) return Number(req.get("X-Academic-Year"));
+  if (validYear(req.body?.year)) return Number(req.body?.year);
+  // Bug 16 — inherit the institution's ACTIVE academic year (computed by the
+  // middleware above) before falling back to the calendar year as a LAST resort.
+  if (Number.isInteger(req.institutionAcademicYear)) return req.institutionAcademicYear;
+  return new Date().getFullYear();
 }
 
 function activeFields(schema) {
@@ -115,10 +114,26 @@ async function loadForm(pool, req, id) {
   return { form: rows[0], departmentId, institutionId };
 }
 
-/* Effective lock for (form, year): per-year lock OR manual/auto/deadline lock. */
+/* Effective write-block for (form, year). Precedence Archive > Lock > Deadline.
+   ARCHIVED is now enforced as a WRITE POLICY (view-only), not a UI filter. */
 async function deptLockBlock(pool, form, year) {
+  // Bug 11 — department inactive overrides everything (Department INACTIVE > Archive
+  // > Lock > Deadline). A department form whose owning department is inactive is
+  // view-only: existing records stay readable, all writes are blocked.
+  const { rows: deptRows } = await pool.query(
+    "SELECT status FROM departments WHERE department_id = $1",
+    [form.department_id]
+  );
+  if (deptRows[0] && deptRows[0].status !== "ACTIVE") {
+    return {
+      locked: true,
+      department_inactive: true,
+      message: "This department is inactive. You have view-only access — contact your institution administrator.",
+    };
+  }
+
   const { rows: ym } = await pool.query(
-    "SELECT is_locked FROM department_form_year_mapping WHERE department_form_id = $1 AND academic_year = $2",
+    "SELECT is_locked, is_archived FROM department_form_year_mapping WHERE department_form_id = $1 AND academic_year = $2",
     [form.id, year]
   );
   // Deadline is year-scoped: a deadline set for one academic year never affects
@@ -128,36 +143,44 @@ async function deptLockBlock(pool, form, year) {
     [form.id, year]
   );
   const row = lc[0] || {};
+  const isArchived      = ym[0]?.is_archived === true;
   const deadlineExpired = !!(row.deadline && new Date(row.deadline).getTime() <= Date.now());
+  const lockedOnly      = ym[0]?.is_locked === true || row.is_locked === true || deadlineExpired;
 
-  // LEGACY (authoritative): any blocking source locks; deadline/auto → deadline msg.
-  const anyLock = ym[0]?.is_locked === true || row.is_locked === true || deadlineExpired;
+  const ARCHIVE_MSG = "This form is archived for the selected academic year — it is now view-only.";
+
+  // LEGACY (authoritative): archive wins, then lock/deadline.
   let legacy;
-  if (!anyLock) {
-    legacy = { locked: false, message: null };
-  } else {
+  if (isArchived) {
+    legacy = { locked: true, message: ARCHIVE_MSG };
+  } else if (lockedOnly) {
     legacy = {
       locked: true,
       message: (deadlineExpired || row.auto_locked)
         ? "This form's deadline has expired for your department — it is now view-only."
         : "This form is locked for your department. You can only view records.",
     };
+  } else {
+    legacy = { locked: false, message: null };
   }
 
   // CANDIDATE (shadow — shared resolver picks precedence; dept keeps its wording).
   const state = getEffectiveState({
-    locked: anyLock,
+    archived: isArchived,
+    locked: lockedOnly,
     autoLocked: !!row.auto_locked,
     deadlineAt: row.deadline ?? null,
   });
   const candidate = state === STATE.ACTIVE
     ? { locked: false, message: null }
-    : {
-        locked: true,
-        message: state === STATE.DEADLINE_EXPIRED
-          ? "This form's deadline has expired for your department — it is now view-only."
-          : "This form is locked for your department. You can only view records.",
-      };
+    : state === STATE.ARCHIVED
+      ? { locked: true, message: ARCHIVE_MSG }
+      : {
+          locked: true,
+          message: state === STATE.DEADLINE_EXPIRED
+            ? "This form's deadline has expired for your department — it is now view-only."
+            : "This form is locked for your department. You can only view records.",
+        };
 
   return assertEquivalent("departmentFormData.deptLockBlock", legacy, candidate);
 }
@@ -367,7 +390,22 @@ router.put("/:id/records/:recordId", async (req, res) => {
           let hidx = 1;
           const hiSet = [...fieldCols.map((c) => `${c} = $${hidx++}`), "updated_at = now()"];
           const hiVals = [...fieldCols.map((c) => hiData[c] ?? null), req.params.recordId];
-          await pool.query(`UPDATE ${table} SET ${hiSet.join(", ")} WHERE source_row_id = $${hidx}`, hiVals);
+          const upd = await pool.query(`UPDATE ${table} SET ${hiSet.join(", ")} WHERE source_row_id = $${hidx}`, hiVals);
+
+          /* Bug 12 — recovery: if no Hindi mirror exists (create-time translation
+             failed, or translation was enabled only after creation), create it now
+             from the updated English row so the EN↔HI pair is restored. */
+          if (upd.rowCount === 0) {
+            const enRow = rows[0];
+            const hiCols = ["form_name", "department_id", "institution_id", "academic_year", "role_name", "schema_id", "language", "created_by", "source_row_id", ...fieldCols];
+            const hiAllVals = [
+              enRow.form_name, enRow.department_id, enRow.institution_id, enRow.academic_year, enRow.role_name,
+              enRow.schema_id, "hi", enRow.created_by ?? req.user.userId ?? null, enRow.id,
+              ...fieldCols.map((c) => hiData[c] ?? null),
+            ];
+            const ph = hiAllVals.map((_, i) => `$${i + 1}`).join(", ");
+            await pool.query(`INSERT INTO ${table} (${hiCols.join(", ")}) VALUES (${ph})`, hiAllVals);
+          }
         } catch (e) {
           logger.error(`Dept Hindi row update failed for ${table}`, { stack: e.stack });
         }
@@ -399,10 +437,20 @@ router.delete("/:id/records/bulk-delete", async (req, res) => {
     if (lock.locked) return res.status(403).json({ success: false, message: lock.message });
 
     await ensureSourceRowIdColumn(pool, table);
-    const { rowCount } = await pool.query(
-      `DELETE FROM ${table} WHERE (id = ANY($1::uuid[]) OR source_row_id = ANY($1::uuid[])) AND department_id = $2`,
+    /* Bug 12 — resolve each selected id to its English source (a Hindi row → its
+       source_row_id), then delete the whole pair. So a Hindi row can never be
+       deleted on its own, and selecting either side removes both. */
+    const { rows: sel } = await pool.query(
+      `SELECT id, source_row_id FROM ${table} WHERE id = ANY($1::uuid[]) AND department_id = $2`,
       [ids, departmentId]
     );
+    const rootIds = [...new Set(sel.map((r) => r.source_row_id || r.id))];
+    const { rowCount } = rootIds.length
+      ? await pool.query(
+          `DELETE FROM ${table} WHERE (id = ANY($1::uuid[]) OR source_row_id = ANY($1::uuid[])) AND department_id = $2`,
+          [rootIds, departmentId]
+        )
+      : { rowCount: 0 };
     const deleted = rowCount ?? 0;
     return res.json({ success: true, deleted, failed: Math.max(0, ids.length - deleted), message: `${deleted} record(s) deleted.` });
   } catch (err) {
@@ -496,9 +544,17 @@ router.delete("/:id/records/:recordId", async (req, res) => {
     if (lock.locked) return res.status(403).json({ success: false, message: lock.message });
 
     await ensureSourceRowIdColumn(pool, table);
+    /* Bug 12 — delete the whole pair whichever side was targeted: resolve the
+       English source id first (a Hindi row → its source_row_id), so a Hindi row is
+       never deleted on its own (English orphan). */
+    const { rows: tgt } = await pool.query(
+      `SELECT source_row_id FROM ${table} WHERE id = $1 AND department_id = $2`,
+      [req.params.recordId, departmentId]
+    );
+    const rootId = tgt[0]?.source_row_id || req.params.recordId;
     const { rowCount } = await pool.query(
       `DELETE FROM ${table} WHERE (id = $1 OR source_row_id = $1) AND department_id = $2`,
-      [req.params.recordId, departmentId]
+      [rootId, departmentId]
     );
     if (!rowCount) return res.status(404).json({ success: false, message: "Record not found." });
     return res.json({ success: true, message: "Record deleted successfully." });
