@@ -708,6 +708,10 @@ export const ROLE_CONFIG = {
         group: "Forms",
         items: [
           { id: "c-form-data", label: "Forms & Data Entry", icon: "ClipboardList", permission: null, slug: "form-data", subRoutes: FORM_DATA_SUB },
+          // Department-owned forms the contributor may fill (same department +
+          // assigned role + selected academic year — enforced server-side by
+          // GET /api/department-forms/assigned). Reuses the existing fill page.
+          { id: "c-dept-forms", label: "Department Forms", icon: "FileStack", permission: null, slug: "form-management", subRoutes: FORM_FILL_SUB },
         ],
       },
       {
@@ -718,8 +722,9 @@ export const ROLE_CONFIG = {
       },
     ],
     pages: {
-      "c-form-data": <FormDataPage />,
-      "c-sections":  <MyAssignedSectionsPage />,
+      "c-form-data":  <FormDataPage />,
+      "c-dept-forms": <DepartmentFormFillPage />,
+      "c-sections":   <MyAssignedSectionsPage />,
     },
     defaultPage: "c-form-data",
     user: { name: "Contributor", initials: "CT", org: "PragatiMitra" },

@@ -100,7 +100,12 @@ async function autoFillHindiLabels(schema) {
   }));
 }
 
-/* Load a department form by id, scoped to the caller's department. */
+/* Load a department form by id, scoped to the caller's EFFECTIVE department, then
+   role-gated for non-managers. A department form is private to its department; a
+   contributor may only reach one that has no role restriction OR lists one of their
+   roles — identical to the records gate (departmentFormData.loadForm) and the
+   /assigned list, so schema/metadata access can't bypass the same boundary by
+   direct URL. Managers (department_admin / super_admin) always pass. */
 async function loadOwnedForm(pool, req, id) {
   const { departmentId } = await resolveDeptContext(pool, req);
   if (!departmentId) return { error: "No department is associated with your account." };
@@ -109,6 +114,18 @@ async function loadOwnedForm(pool, req, id) {
     [id, departmentId]
   );
   if (!rows.length) return { error: "Form not found in your department." };
+
+  const userRoles = req.user.roles || [];
+  const isManager = userRoles.includes("department_admin") || userRoles.includes("super_admin");
+  if (!isManager) {
+    const { rows: rr } = await pool.query(
+      "SELECT role_name FROM department_form_roles WHERE department_form_id = $1",
+      [id]
+    );
+    const allowed = rr.map((r) => r.role_name);
+    if (allowed.length > 0 && !userRoles.some((r) => allowed.includes(r)))
+      return { error: "You don't have access to this form." };
+  }
   return { form: rows[0], departmentId };
 }
 
