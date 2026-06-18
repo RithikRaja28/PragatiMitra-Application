@@ -1,9 +1,13 @@
 "use client";
 import { useEffect, useRef, useState, useCallback } from "react";
+import { Trash2 } from "lucide-react";
+import Modal from "../../ui/Modal";
+import Button from "../../ui/Button";
 import { useNavigate, useLocation, Navigate } from "react-router-dom";
 import { useAuth } from "../../store/AuthContext";
 import FormScreen from "../shared/FormScreen";
 import { S } from "../shared/formUtils";
+import { Select } from "../shared/ui";
 import { useLanguage } from "../../i18n/LanguageContext";
 import { t } from "../../i18n/translations";
 
@@ -174,6 +178,7 @@ function buildTableSVG(series, xLabels, lang = "en") {
 
 // ─── Reuse prompt — shown when selected table already has KPI configs ─────────
 function ReusePrompt({ existing, apiFetch, notify, onReused, onCreateNew }) {
+  const { lang } = useLanguage();
   const [reusingId, setReusingId] = useState(null);
   const [err,       setErr]       = useState("");
 
@@ -203,10 +208,10 @@ function ReusePrompt({ existing, apiFetch, notify, onReused, onCreateNew }) {
         <span style={{ fontSize:18, lineHeight:1 }}>⚠️</span>
         <div>
           <div style={{ fontSize:13, fontWeight:700, color:"#92400e" }}>
-            This table is used by {existing.length} existing KPI{existing.length>1?"s":""}
+            {t("This table is used by", lang)} {existing.length} {existing.length>1?t("existing KPIs", lang):t("existing KPI", lang)}
           </div>
           <div style={{ fontSize:11, color:"#b45309", marginTop:2 }}>
-            You can refresh an existing KPI with the latest data, or create a new independent KPI configuration.
+            {t("You can refresh an existing KPI with the latest data, or create a new independent KPI configuration.", lang)}
           </div>
         </div>
       </div>
@@ -225,8 +230,8 @@ function ReusePrompt({ existing, apiFetch, notify, onReused, onCreateNew }) {
                 {c.title}
               </div>
               <div style={{ fontSize:10, color:"#94a3b8", marginTop:2 }}>
-                {c.chart_type} · {(c.y_cols||[]).length} series
-                {c.svg_id ? " · Exported" : " · Draft"}
+                {c.chart_type} · {(c.y_cols||[]).length} {t("series", lang)}
+                {c.svg_id ? ` · ${t("Exported", lang)}` : ` · ${t("Draft", lang)}`}
               </div>
             </div>
             <button
@@ -245,9 +250,9 @@ function ReusePrompt({ existing, apiFetch, notify, onReused, onCreateNew }) {
               {reusingId===c.id ? (
                 <>
                   <span style={{ display:"inline-block", width:10, height:10, borderRadius:"50%", border:"2px solid #d1d5db", borderTopColor:"#6b7280", animation:"kpi-spin .6s linear infinite" }}/>
-                  Refreshing…
+                  {t("Refreshing…", lang)}
                 </>
-              ) : "Reuse & Refresh ↺"}
+              ) : t("Reuse & Refresh ↺", lang)}
             </button>
           </div>
         ))}
@@ -265,7 +270,7 @@ function ReusePrompt({ existing, apiFetch, notify, onReused, onCreateNew }) {
         display:"flex", alignItems:"center", justifyContent:"space-between",
       }}>
         <span style={{ fontSize:12, color:"#6b7280" }}>
-          Need a different chart type or different columns from the same table?
+          {t("Need a different chart type or different columns from the same table?", lang)}
         </span>
         <button
           type="button"
@@ -277,7 +282,7 @@ function ReusePrompt({ existing, apiFetch, notify, onReused, onCreateNew }) {
             whiteSpace:"nowrap", flexShrink:0,
           }}
         >
-          + Create New KPI
+          {t("+ Create New KPI", lang)}
         </button>
       </div>
     </div>
@@ -367,11 +372,11 @@ function KpiForm({ cfg, tables, tabStatus, existingConfigs, scope, onBack, onSav
 
   async function handleSubmit(e) {
     e.preventDefault();
-    if (!selTable)       { setSubmitError("Select a source table."); return; }
-    if (!xCol)           { setSubmitError("Select an X-axis column."); return; }
-    if (!yCols.length)   { setSubmitError("Select at least one Y-axis column."); return; }
+    if (!selTable)       { setSubmitError(t("Select a source table.", lang)); return; }
+    if (!xCol)           { setSubmitError(t("Select an X-axis column.", lang)); return; }
+    if (!yCols.length)   { setSubmitError(t("Select at least one Y-axis column.", lang)); return; }
     if (showOnDash && dispType==="group" && !groupName.trim())
-      { setSubmitError("Enter a group name for the dashboard card."); return; }
+      { setSubmitError(t("Enter a group name for the dashboard card.", lang)); return; }
 
     // Client-side aggregation compatibility check (mirrors backend validation for fast feedback)
     if (["sum","avg","min","max"].includes(aggregationType)) {
@@ -435,14 +440,14 @@ function KpiForm({ cfg, tables, tabStatus, existingConfigs, scope, onBack, onSav
       {/* ── Title ── */}
       <div>
         <label style={S.label}>{t("Chart Title", lang)}</label>
-        <input style={S.input(false)} placeholder="e.g. Hospital KPI 2024-25"
+        <input style={S.input(false)} placeholder={t("e.g. Student Attendance FY 2024-25", lang)}
           value={title} onChange={e=>setTitle(e.target.value)} disabled={submitting}/>
       </div>
 
       {/* ── Description ── */}
       <div>
         <label style={S.label}>{t("Description", lang)} <span style={{ fontWeight:400, textTransform:"none", letterSpacing:0 }}>{t("(optional)", lang)}</span></label>
-        <input style={S.input(false)} placeholder="Short caption for the report"
+        <input style={S.input(false)} placeholder={t("Short caption for the report", lang)}
           value={desc} onChange={e=>setDesc(e.target.value)} disabled={submitting}/>
       </div>
 
@@ -546,13 +551,13 @@ function KpiForm({ cfg, tables, tabStatus, existingConfigs, scope, onBack, onSav
                 </div>
                 {groupMode==="new" ? (
                   <input style={S.input(!groupName.trim()&&submitting)}
-                    placeholder="e.g. Student Performance, Placement…"
+                    placeholder={t("e.g. Student Performance, Placement…", lang)}
                     value={groupName} onChange={e=>setGroupName(e.target.value)} disabled={submitting}/>
                 ) : (
-                  <select style={S.select(false)} value={groupName} onChange={e=>setGroupName(e.target.value)}>
+                  <Select value={groupName} onChange={e=>setGroupName(e.target.value)}>
                     <option value="">{t("— Select group —", lang)}</option>
                     {existingGroups.map(g=><option key={g} value={g}>{g}</option>)}
-                  </select>
+                  </Select>
                 )}
                 <div style={{ fontSize:11, color:"#94a3b8", marginTop:4 }}>
                   {t("KPIs with the same group name appear together in one dashboard card.", lang)}
@@ -593,28 +598,25 @@ function KpiForm({ cfg, tables, tabStatus, existingConfigs, scope, onBack, onSav
 
         {tabStatus==="ok" && filteredTables.length===0 && (
           <div style={{ padding:"10px", fontSize:12, color:"#94a3b8", textAlign:"center" }}>
-            No tables found{tabSearch?` matching "${tabSearch}"`:" in database"}.
+            {tabSearch ? `${t("No tables found matching", lang)} "${tabSearch}"` : t("No tables found in database.", lang)}
           </div>
         )}
 
         {tabStatus==="ok" && (
           <div style={{ border:"1.5px solid #e2e8f0", borderRadius:9, maxHeight:200, overflowY:"auto" }}>
-            {filteredTables.map(t=>(
-              <div key={t.table_name} onClick={()=>setSelTable(t.table_name)} style={{
+            {filteredTables.map(tbl=>(
+              <div key={tbl.table_name} onClick={()=>setSelTable(tbl.table_name)} style={{
                 display:"flex", alignItems:"center", gap:10, padding:"9px 12px",
                 borderBottom:"1px solid #f1f5f9", cursor:"pointer",
-                background: selTable===t.table_name ? "#eff6ff" : "#fff",
+                background: selTable===tbl.table_name ? "#eff6ff" : "#fff",
               }}>
                 <div style={{
-                  width:15, height:15, borderRadius:"50%", border:`1.5px solid ${selTable===t.table_name?"#2563eb":"#e2e8f0"}`,
+                  width:15, height:15, borderRadius:"50%", border:`1.5px solid ${selTable===tbl.table_name?"#2563eb":"#e2e8f0"}`,
                   background:"#fff", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0,
                 }}>
-                  {selTable===t.table_name && <div style={{ width:7, height:7, borderRadius:"50%", background:"#2563eb" }}/>}
+                  {selTable===tbl.table_name && <div style={{ width:7, height:7, borderRadius:"50%", background:"#2563eb" }}/>}
                 </div>
-                <span style={{ fontSize:13, fontWeight:500, flex:1, color:"#1e293b" }}>{t.table_name}</span>
-                <span style={{ fontSize:11, color:"#94a3b8", background:"#f1f5f9", padding:"1px 7px", borderRadius:4 }}>
-                  {Number(t.row_count).toLocaleString()} rows
-                </span>
+                <span style={{ fontSize:13, fontWeight:500, flex:1, color:"#1e293b" }}>{tbl.table_name}</span>
               </div>
             ))}
           </div>
@@ -718,7 +720,7 @@ function KpiForm({ cfg, tables, tabStatus, existingConfigs, scope, onBack, onSav
                 })}
               </div>
             )}
-            <div style={{ fontSize:11, color:"#94a3b8", marginTop:4 }}>{yCols.length} column{yCols.length!==1?"s":""} selected</div>
+            <div style={{ fontSize:11, color:"#94a3b8", marginTop:4 }}>{yCols.length} {yCols.length!==1?t("columns selected", lang):t("column selected", lang)}</div>
             {/* Warn if aggregation is numeric-only but selected y-cols include non-numeric */}
             {["sum","avg","min","max"].includes(aggregationType) && yCols.length > 0 && (() => {
               const bad = yCols.filter(cn => {
@@ -840,7 +842,7 @@ function KpiCard({ cfg, idx, isActive, generating, onEdit, onPreview, onDelete }
           </div>
           <div>
             <div style={{ fontSize:14, fontWeight:700, color:"#1e293b" }}>{cfgTitle(cfg, lang)}</div>
-            <div style={{ fontSize:11, color:"#94a3b8", marginTop:2 }}>Since {fmtDate(cfg.created_at)}</div>
+            <div style={{ fontSize:11, color:"#94a3b8", marginTop:2 }}>{t("Since", lang)} {fmtDate(cfg.created_at)}</div>
           </div>
         </div>
         <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:4, flexShrink:0 }}>
@@ -853,7 +855,7 @@ function KpiCard({ cfg, idx, isActive, generating, onEdit, onPreview, onDelete }
           </span>
           {cfg.show_on_dashboard && (
             <span style={{ padding:"2px 8px", borderRadius:10, fontSize:10, fontWeight:600, background:"#eff6ff", color:"#1d4ed8", border:"1px solid #bfdbfe" }}>
-              {cfg.dashboard_display_type==="group" ? `Group: ${cfg.dashboard_group_name||"?"}` : t("Dashboard", lang)}
+              {cfg.dashboard_display_type==="group" ? `${t("Group:", lang)} ${cfg.dashboard_group_name||"?"}` : t("Dashboard", lang)}
             </span>
           )}
         </div>
@@ -903,7 +905,7 @@ function KpiCard({ cfg, idx, isActive, generating, onEdit, onPreview, onDelete }
         <button onClick={()=>onPreview(cfg)} disabled={generating} style={{ flex:1, padding:"8px 0", borderRadius:8, border:"1.5px solid #e2e8f0", background:"#fff", fontSize:12, fontWeight:600, color:"#059669", cursor:generating?"not-allowed":"pointer", opacity:generating?0.6:1 }}>
           {t("Preview", lang)}
         </button>
-        <button onClick={()=>onDelete(cfg.id)} style={{ flex:1, padding:"8px 0", borderRadius:8, border:"1.5px solid #fecaca", background:"#fef2f2", fontSize:12, fontWeight:600, color:"#dc2626", cursor:"pointer" }}>
+        <button onClick={()=>onDelete(cfg)} style={{ flex:1, padding:"8px 0", borderRadius:8, border:"1.5px solid #fecaca", background:"#fef2f2", fontSize:12, fontWeight:600, color:"#dc2626", cursor:"pointer" }}>
           {t("Delete", lang)}
         </button>
       </div>
@@ -911,12 +913,43 @@ function KpiCard({ cfg, idx, isActive, generating, onEdit, onPreview, onDelete }
   );
 }
 
+// ─── Delete confirm modal — built on the shared design-system Modal/Button so it
+//     matches every other module (squared corners, app font, danger accent) ─────
+function KpiDeleteModal({ cfg, deleting, onClose, onConfirm }) {
+  const { lang } = useLanguage();
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      danger
+      width={520}
+      closeOnBackdrop={!deleting}
+      icon={<Trash2 size={20} strokeWidth={1.9} />}
+      title={t("Delete KPI Chart?", lang)}
+      subtitle={cfg.table_name}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose} disabled={deleting}>{t("Cancel", lang)}</Button>
+          <Button variant="danger" onClick={onConfirm} loading={deleting}>
+            {deleting ? t("Deleting…", lang) : t("Yes, Delete", lang)}
+          </Button>
+        </>
+      }
+    >
+      <div style={{ fontSize:13.5, color:"#475569", lineHeight:1.6 }}>
+        <strong style={{ color:"#111827" }}>{cfg.title}</strong>{" "}
+        {t("will be permanently removed along with all saved exports. This cannot be undone.", lang)}
+      </div>
+    </Modal>
+  );
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 export default function KpiManagementPage({ scope = "institute" }) {
+  const { lang } = useLanguage();
   const navFn    = useNavigate();
   const location = useLocation();
   const { accessToken } = useAuth();
-  const { lang } = useLanguage();
   const apiFetch = useCallback(makeApiFetch(accessToken), [accessToken]); // eslint-disable-line
 
   // colLabels: column_name → { label_en, label_hi } — populated when KpiForm loads a table
@@ -924,6 +957,7 @@ export default function KpiManagementPage({ scope = "institute" }) {
   const onColsLoaded = useCallback(cols => {
     setColLabels(Object.fromEntries((cols || []).map(c => [c.column_name, c])));
   }, []);
+
 
   const scopeLabel = scope==="department" ? t("Department KPI", lang) : t("Institute KPI", lang);
   const scopeDesc  = scope==="department"
@@ -954,6 +988,10 @@ export default function KpiManagementPage({ scope = "institute" }) {
   const [generating, setGenerating] = useState(false);
   const [exporting,  setExporting]  = useState(false);
   const [statusFilter,setStatusFilter] = useState("all");
+
+  // ── Delete confirmation ──
+  const [deleteTarget, setDeleteTarget] = useState(null); // cfg pending deletion
+  const [deleting,     setDeleting]     = useState(false);
 
   // ── Toast ──
   const [toast,      setToast]      = useState({ msg:"", err:false });
@@ -1051,8 +1089,8 @@ export default function KpiManagementPage({ scope = "institute" }) {
   },[apiFetch,applyResult,notify,lang,colLabels]); // eslint-disable-line
 
   const exportSvg = useCallback(async()=>{
-    if (!chartSeries||!chartX||!chartInst.current) { notify("No chart to export.",true); return; }
-    if (!activeCfg?.id) { notify("Preview a chart first, then export.",true); return; }
+    if (!chartSeries||!chartX||!chartInst.current) { notify(t("No chart to export.", lang),true); return; }
+    if (!activeCfg?.id) { notify(t("Preview a chart first, then export.", lang),true); return; }
     setExporting(true);
     try {
       await new Promise(r=>setTimeout(r,50));
@@ -1082,15 +1120,22 @@ export default function KpiManagementPage({ scope = "institute" }) {
     finally { setExporting(false); }
   },[chartSeries,chartX,activeCfg,lang,apiFetch,loadConfigs,notify]);
 
-  const deleteConfig = useCallback(async id=>{
-    if (!window.confirm(`Delete config #${id} and all saved exports?`)) return;
+  // Open the confirmation modal; the actual delete runs in confirmDelete().
+  const requestDelete = useCallback(cfg=>setDeleteTarget(cfg),[]);
+
+  const confirmDelete = useCallback(async ()=>{
+    if (!deleteTarget) return;
+    const id = deleteTarget.id;
+    setDeleting(true);
     try {
       await apiFetch(`/configs/${id}`,{method:"DELETE"});
       setConfigs(p=>p.filter(c=>c.id!==id));
       if (activeCfg?.id===id) { setActiveCfg(null); setChartSeries(null); setChartX(null); }
+      setDeleteTarget(null);
       notify(`Config #${id} deleted`);
     } catch(e){ notify(e.message,true); }
-  },[activeCfg,apiFetch,notify]);
+    finally { setDeleting(false); }
+  },[deleteTarget,activeCfg,apiFetch,notify]);
 
   const handleSaved = (saved)=>{ loadConfigs(); navFn(listPath); regenerate(saved); };
 
@@ -1189,7 +1234,7 @@ export default function KpiManagementPage({ scope = "institute" }) {
               generating={generating}
               onEdit={c=>navFn(`${listPath}/edit`, { state: { entity: c } })}
               onPreview={c=>regenerate(c)}
-              onDelete={deleteConfig}
+              onDelete={requestDelete}
             />
           ))}
         </div>
@@ -1204,8 +1249,8 @@ export default function KpiManagementPage({ scope = "institute" }) {
             <div>
               <div style={{ fontSize:16, fontWeight:700, color:"#1e293b" }}>{cfgTitle(activeCfg, lang)}</div>
               <div style={{ fontSize:12, color:"#94a3b8", marginTop:2 }}>
-                {activeCfg.table_name} · {chartX.length} periods · {chartSeries.length} series
-                {rowCount!=null && <> · {rowCount} rows</>}
+                {activeCfg.table_name} · {chartX.length} {t("periods", lang)} · {chartSeries.length} {t("series", lang)}
+                {rowCount!=null && <> · {rowCount} {t("rows", lang)}</>}
                 {activeCfg.academic_year && <> · <span style={{ color:"#1d4ed8", fontWeight:600 }}>{activeCfg.academic_year}</span></>}
                 {activeCfg.aggregation_type && activeCfg.aggregation_type !== "none" && <> · <span style={{ color:"#7c3aed", fontWeight:600 }}>{activeCfg.aggregation_type.toUpperCase()}</span></>}
                 {fetchedAt && <> · {new Date(fetchedAt).toLocaleTimeString("en-IN")}</>}
@@ -1242,16 +1287,16 @@ export default function KpiManagementPage({ scope = "institute" }) {
 
           {/* Chart */}
           {!eReady
-            ? <div style={{ height:360, display:"flex", alignItems:"center", justifyContent:"center", color:"#94a3b8" }}>Loading chart library…</div>
+            ? <div style={{ height:360, display:"flex", alignItems:"center", justifyContent:"center", color:"#94a3b8" }}>{t("Loading chart library…", lang)}</div>
             : <div ref={chartRefCb} style={{ width:"100%", height:380, padding:"8px 0" }}/>
           }
 
           {/* SQL */}
           <div style={{ borderTop:"1px solid #f1f5f9", padding:"12px 24px" }}>
             <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:showSql?10:0 }}>
-              <span style={{ fontSize:11, fontWeight:600, textTransform:"uppercase", letterSpacing:".08em", color:"#94a3b8" }}>Stored Query</span>
+              <span style={{ fontSize:11, fontWeight:600, textTransform:"uppercase", letterSpacing:".08em", color:"#94a3b8" }}>{t("Stored Query", lang)}</span>
               <button onClick={()=>setShowSql(v=>!v)} style={{ padding:"4px 10px", borderRadius:6, border:"1.5px solid #e2e8f0", background:"#fff", fontSize:11, cursor:"pointer" }}>
-                {showSql?"Hide SQL":"Show SQL"}
+                {showSql?t("Hide SQL", lang):t("Show SQL", lang)}
               </button>
             </div>
             {showSql && (
@@ -1264,7 +1309,7 @@ export default function KpiManagementPage({ scope = "institute" }) {
           {/* Data table */}
           <div style={{ borderTop:"1px solid #f1f5f9", padding:"12px 24px" }}>
             <div style={{ fontSize:11, fontWeight:600, textTransform:"uppercase", letterSpacing:".08em", color:"#94a3b8", marginBottom:10 }}>
-              Data — {chartSeries.length} series × {chartX.length} periods
+              {t("Data", lang)} — {chartSeries.length} {t("series", lang)} × {chartX.length} {t("periods", lang)}
             </div>
             <div style={{ overflowX:"auto", border:"1px solid #f1f5f9", borderRadius:8 }}>
               <table style={{ width:"100%", borderCollapse:"collapse", fontSize:13, whiteSpace:"nowrap" }}>
@@ -1300,7 +1345,7 @@ export default function KpiManagementPage({ scope = "institute" }) {
           <div style={{ borderTop:"1px solid #f1f5f9", padding:"16px 24px", background:"#f9fafb", display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:12 }}>
             <div>
               <div style={{ fontSize:13.5, fontWeight:600, color:"#1e293b" }}>{t("Export to Annual Report", lang)}</div>
-              <div style={{ fontSize:12, color:"#94a3b8", marginTop:2 }}>Saves the rendered SVG permanently. Only export when data is finalised.</div>
+              <div style={{ fontSize:12, color:"#94a3b8", marginTop:2 }}>{t("Saves the rendered SVG permanently. Only export when data is finalised.", lang)}</div>
             </div>
             <div style={{ display:"flex", gap:8 }}>
               <button onClick={()=>regenerate(activeCfg)} disabled={generating} style={{ padding:"9px 16px", borderRadius:9, border:"1.5px solid #e2e8f0", background:"#fff", fontSize:13, fontWeight:600, color:"#475569", cursor:"pointer" }}>
@@ -1327,6 +1372,17 @@ export default function KpiManagementPage({ scope = "institute" }) {
           {toast.msg}
         </div>
       )}
+
+      {/* Delete confirmation */}
+      {deleteTarget && (
+        <KpiDeleteModal
+          cfg={deleteTarget}
+          deleting={deleting}
+          onClose={()=>{ if (!deleting) setDeleteTarget(null); }}
+          onConfirm={confirmDelete}
+        />
+      )}
     </div>
   );
 }
+

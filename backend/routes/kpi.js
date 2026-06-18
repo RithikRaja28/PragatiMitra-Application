@@ -641,12 +641,7 @@ router.get("/tables", async (req, res) => {
     // never do.
     const { rows } = await req.pool.query(
       `SELECT t.table_name,
-              t.table_schema AS schema_name,
-              GREATEST(0,
-                CASE WHEN s.n_live_tup > 0 THEN s.n_live_tup
-                     ELSE GREATEST(0, c.reltuples::bigint)
-                END
-              ) AS row_count
+              t.table_schema AS schema_name
        FROM   information_schema.tables t
        JOIN   table_list tl
               ON t.table_name = tl.form_name || '_records'

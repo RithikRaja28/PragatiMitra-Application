@@ -58,7 +58,6 @@ import ReviewQueuePage        from "../../pages/Roles/directorsoffice/ReviewQueu
 /* ── Department Admin page imports ───────────────────────────── */
 import DeptAdminDashboardPage from "../../pages/Roles/departmentadmin/DeptAdminDashboardPage";
 import DeptUsersPage          from "../../pages/Roles/departmentadmin/DeptUsersPage";
-import TaskOverviewPage       from "../../pages/Roles/departmentadmin/TaskOverviewPage";
 import FormDataPage           from "../../pages/Forms/FormDataPage";
 import DepartmentFormManagementPage from "../../pages/Forms/DepartmentFormManagementPage";
 
@@ -607,7 +606,6 @@ export const ROLE_CONFIG = {
     pages: {
       "da-dashboard":    <DeptAdminDashboardPage />,
       "da-users":        <DeptUsersPage />,
-      "da-tasks":        <TaskOverviewPage />,
       "da-kpi":          <DeptKpiPage />,
       "da-dept-forms":   <DepartmentFormManagementPage />,
       "da-form-data":    <FormDataPage />,
@@ -720,11 +718,24 @@ export const ROLE_CONFIG = {
           { id: "c-sections", label: "My Sections", icon: "FileEdit", permission: null, slug: "my-sections", subRoutes: MY_SECTIONS_SUB },
         ],
       },
+      {
+        group: "Forms",
+        items: [
+          { id: "c-dept-forms", label: "Department Forms", icon: "FileStack", permission: null },
+        ],
+      },
+      {
+        group: "Forms",
+        items: [
+          { id: "c-dept-forms", label: "Department Forms", icon: "FileStack", permission: null },
+        ],
+      },
     ],
     pages: {
       "c-form-data":  <FormDataPage />,
       "c-dept-forms": <DepartmentFormFillPage />,
       "c-sections":   <MyAssignedSectionsPage />,
+      "c-dept-forms": <DepartmentFormFillPage />,
     },
     defaultPage: "c-form-data",
     user: { name: "Contributor", initials: "CT", org: "PragatiMitra" },

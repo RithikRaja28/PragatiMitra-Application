@@ -37,8 +37,11 @@ export function AcademicYearProvider({ children }) {
   const [selectedYear, setSelected]     = useState(null); // integer start year
   const [loading, setLoading]           = useState(false);
 
-  /* Load the institution's academic years + current, then resolve the active
-     selection (session → DB current → latest → calendar year). */
+  /* Load the institution's academic years + current. The selected year is
+     resolved ONCE (session → DB current → most-recent → calendar year) and then
+     left alone: re-running load (navigation, token refresh, etc.) must NOT change
+     a year the user already has. It only re-resolves if there is no valid
+     selection yet, or the current selection is no longer valid. */
   const load = useCallback(async () => {
     if (!institutionId) { setYears([]); setSelected(null); return; }
     setLoading(true);
@@ -50,17 +53,26 @@ export function AcademicYearProvider({ children }) {
       const list = yRes?.success ? yRes.years : [];
       setYears(list);
 
-      const saved   = Number(sessionStorage.getItem(sessionKey(institutionId)));
-      const current = cRes?.success ? cRes.current : null;
       // Archived years are never selectable in the top bar.
-      const visible  = list.filter((y) => !y.is_archived);
-      const fallback = current?.start_year ?? visible[0]?.start_year ?? new Date().getFullYear();
-      const savedValid = visible.some((y) => y.start_year === saved);
-      const resolved = savedValid ? saved : fallback;
-      setSelected(resolved);
-      // Always persist the resolved year so every API request can carry it
-      // (the backend reads it to enforce academic-year locks).
-      if (resolved != null) sessionStorage.setItem(sessionKey(institutionId), String(resolved));
+      const visible = list.filter((y) => !y.is_archived);
+      // If we couldn't load a usable list (failed/racing request), leave the
+      // current selection untouched — never reset it to the calendar year.
+      if (visible.length === 0) return;
+
+      setSelected((prev) => {
+        // Keep the user's current selection if it is still valid.
+        if (prev != null && visible.some((y) => y.start_year === prev)) return prev;
+        // Otherwise resolve a default: session → DB current → most-recent year.
+        const saved      = Number(sessionStorage.getItem(sessionKey(institutionId)));
+        const savedValid = visible.some((y) => y.start_year === saved);
+        const current    = cRes?.success ? cRes.current : null;
+        const latest     = visible.reduce((m, y) => Math.max(m, y.start_year), -Infinity);
+        const fallback   = current?.start_year ?? (Number.isFinite(latest) ? latest : new Date().getFullYear());
+        const resolved   = savedValid ? saved : fallback;
+        // Persist so every API request can carry the year (backend enforces locks).
+        if (resolved != null) sessionStorage.setItem(sessionKey(institutionId), String(resolved));
+        return resolved;
+      });
     } finally {
       setLoading(false);
     }

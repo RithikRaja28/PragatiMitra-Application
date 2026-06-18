@@ -75,7 +75,10 @@ function ModalPortal({ children }) {
     return () => { document.body.removeChild(portal); };
   }, []);
   return ReactDOM.createPortal(
-    <div style={{ pointerEvents: "auto" }}>{children}</div>,
+    // The portal mounts on document.body, outside the RootLayout that sets the
+    // app font — so re-apply it here, otherwise modals fall back to the browser
+    // default serif and look different from the rest of the app.
+    <div style={{ pointerEvents: "auto", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>{children}</div>,
     el.current
   );
 }
@@ -352,7 +355,7 @@ function RecordEditPage({ fields, record, onSave, onBack, getToken, formName, fo
   const rightPane = editLang === "hi" ? editablePane  : referencePane;
 
   return (
-    <div className="pm-rec-edit" style={{ padding: "20px 28px 96px", fontFamily: "'Plus Jakarta Sans', sans-serif", minHeight: "100%", maxWidth: 1440 }}>
+    <div className="pm-rec-edit" style={{ padding: "20px 28px 28px", fontFamily: "'Plus Jakarta Sans', sans-serif", minHeight: "100%", maxWidth: 1440, display: "flex", flexDirection: "column" }}>
       <PageHeader
         breadcrumb={["Home", { label: "Forms & Data Entry", onClick: onBack }, formTitle, isEdit ? "Edit Record" : "Add Record"]}
         title={isEdit ? "Edit Record" : "Add Record"}
@@ -368,17 +371,21 @@ function RecordEditPage({ fields, record, onSave, onBack, getToken, formName, fo
         </div>
       )}
 
-      <form onSubmit={handleSubmit}>
-        <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 8, padding: 32, boxShadow: "0 1px 3px rgba(16,24,40,0.04)" }}>
-          {showReference ? <div className="pm-rec-grid">{leftPane}{rightPane}</div> : editablePane}
-        </div>
-        {error && (
-          <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, padding: "10px 14px", fontSize: 13, color: "#b91c1c", marginTop: 16 }}>{error}</div>
-        )}
-
-        {/* Sticky action footer (72px) — stays visible, never overlaps the shell. */}
-        <div style={{ position: "sticky", bottom: 0, marginTop: 24 }}>
-          <div style={{ height: 72, margin: "0 -28px", padding: "0 28px", background: "#fff", borderTop: "1px solid #e5e7eb", boxShadow: "0 -4px 16px rgba(16,24,40,0.06)", display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 12 }}>
+      {/* One cohesive card: header → scrolling fields → footer with the actions,
+          so the inputs and the Cancel/Save buttons read as a single unit. */}
+      <form onSubmit={handleSubmit} style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+        <div style={{ flex: 1, minHeight: 0, background: "#fff", border: "1px solid #e5e7eb", borderRadius: 12, boxShadow: "0 1px 3px rgba(16,24,40,0.04)", overflow: "hidden", display: "flex", flexDirection: "column" }}>
+          <div style={{ padding: "16px 28px", borderBottom: "1px solid #e5e7eb" }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: "#1e293b" }}>{formTitle}</div>
+            <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 2 }}>{isEdit ? "Edit this record" : "Enter the details for a new record"}</div>
+          </div>
+          <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 28 }}>
+            {showReference ? <div className="pm-rec-grid">{leftPane}{rightPane}</div> : editablePane}
+            {error && (
+              <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, padding: "10px 14px", fontSize: 13, color: "#b91c1c", marginTop: 16 }}>{error}</div>
+            )}
+          </div>
+          <div style={{ padding: "16px 28px", borderTop: "1px solid #e5e7eb", background: "#f8fafc", display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 12 }}>
             <Button type="button" variant="secondary" onClick={onBack} disabled={saving}>Cancel</Button>
             {!viewOnly && (
               <Button type="submit" variant="primary" loading={saving} disabled={saving}>
@@ -643,8 +650,8 @@ function FormImportWizard({ formName, onClose, onDone, apiFetch, getToken, selec
           <div style={{ overflowY: "auto", maxHeight: "calc(100vh - 260px)" }}>
             {step === 1 && (
               <div style={{ padding: "16px 20px" }}>
-                {isDeptAdmin && <div style={{ background: "#f0fdf4", border: "1px solid #86efac", borderRadius: 8, padding: "9px 14px", marginBottom: 14, fontSize: 12, color: "#15803d" }}>🏢 Importing as Department Admin — data will be saved to your department only.</div>}
-                {isInstAdmin && <div style={{ background: ACCENT + "0d", border: `1px solid ${ACCENT}25`, borderRadius: 8, padding: "9px 14px", marginBottom: 14, fontSize: 12, color: "#1d4ed8" }}>🏛️ Importing as Institute Admin — you can tag data to a specific department below.</div>}
+                {isDeptAdmin && <div style={{ background: "#f0fdf4", border: "1px solid #86efac", borderRadius: 8, padding: "9px 14px", marginBottom: 14, fontSize: 13, color: "#15803d" }}>🏢 Importing as Department Admin — data will be saved to your department only.</div>}
+                {isInstAdmin && <div style={{ background: ACCENT + "0d", border: `1px solid ${ACCENT}25`, borderRadius: 8, padding: "9px 14px", marginBottom: 14, fontSize: 13, color: "#1d4ed8" }}>🏛️ Importing as Institute Admin — you can tag data to a specific department below.</div>}
                 {isInstAdmin && (
                   <div style={{ marginBottom: 14 }}>
                     <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#475569", marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.5 }}>Department (optional)</label>
@@ -665,7 +672,7 @@ function FormImportWizard({ formName, onClose, onDone, apiFetch, getToken, selec
                     : <div><div style={{ fontSize: 13, color: "#64748b" }}><span style={{ color: ACCENT, fontWeight: 700 }}>Click to upload</span> or drag & drop</div><div style={{ fontSize: 11, color: "#94a3b8", marginTop: 3 }}>CSV, Excel (.xlsx, .xls) · max 50 MB · up to 10,500 rows</div></div>}
                 </div>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14, padding: "8px 12px", background: "#f8fafc", borderRadius: 8, border: "1px solid #e2e8f0" }}>
-                  <div style={{ fontSize: 12, color: "#475569" }}><span style={{ fontWeight: 600, color: "#1e293b" }}>Need a template?</span> Download a sample with the correct columns.</div>
+                  <div style={{ fontSize: 13, color: "#475569" }}><span style={{ fontWeight: 600, color: "#1e293b" }}>Need a template?</span> Download a sample with the correct columns.</div>
                   <div style={{ display: "flex", gap: 6, flexShrink: 0, marginLeft: 12 }}>
                     <button onClick={() => downloadSample("csv")} style={{ display: "inline-flex", alignItems: "center", gap: 5, background: "#fff", color: "#475569", border: "1px solid #e2e8f0", borderRadius: 6, padding: "4px 10px", fontSize: 11, fontWeight: 600, cursor: "pointer" }}><IcoDownload /> CSV</button>
                     <button onClick={() => downloadSample("xlsx")} style={{ display: "inline-flex", alignItems: "center", gap: 5, background: "#fff", color: "#475569", border: "1px solid #e2e8f0", borderRadius: 6, padding: "4px 10px", fontSize: 11, fontWeight: 600, cursor: "pointer" }}><IcoDownload /> Excel</button>
@@ -691,7 +698,7 @@ function FormImportWizard({ formName, onClose, onDone, apiFetch, getToken, selec
             )}
             {step === 2 && (
               <div style={{ padding: "16px 20px" }}>
-                <div style={{ background: ACCENT + "08", border: `1px solid ${ACCENT}20`, borderRadius: 8, padding: "9px 14px", marginBottom: 16, display: "flex", alignItems: "center", gap: 9, fontSize: 12 }}>
+                <div style={{ background: ACCENT + "08", border: `1px solid ${ACCENT}20`, borderRadius: 8, padding: "9px 14px", marginBottom: 16, display: "flex", alignItems: "center", gap: 9, fontSize: 13 }}>
                   <IcoFile />
                   <span style={{ color: "#475569" }}>
                     <strong style={{ color: "#1e293b" }}>{totalRows.toLocaleString()} rows</strong> detected ·{" "}
@@ -712,17 +719,17 @@ function FormImportWizard({ formName, onClose, onDone, apiFetch, getToken, selec
                         <div key={field.col} style={{ display: "grid", gridTemplateColumns: "1fr 24px 1fr", gap: "0 8px", padding: "9px 12px", alignItems: "center", borderBottom: idx < schemaFields.length - 1 ? "1px solid #f1f5f9" : "none", background: isDoc ? "#fafafa" : "#fff" }}>
                           <div>
                             <div style={{ fontSize: 13, fontWeight: 600, color: "#1e293b" }}>{field.label}{field.required && <span style={{ color: "#dc2626", marginLeft: 3 }}>*</span>}</div>
-                            <div style={{ fontSize: 10, color: "#94a3b8", fontFamily: "monospace", marginTop: 1 }}>{field.col}</div>
+                            <div style={{ fontSize: 11, color: "#94a3b8", fontFamily: "monospace", marginTop: 1 }}>{field.col}</div>
                           </div>
                           <div style={{ color: !isDoc && mapping[field.col] ? "#16a34a" : "#cbd5e1", textAlign: "center", fontSize: 16 }}>→</div>
                           {isDoc ? (
-                            <div style={{ fontSize: 11.5, color: "#94a3b8", fontStyle: "italic", padding: "6px 9px", border: "1.5px dashed #e2e8f0", borderRadius: 6, background: "#f8fafc" }}>
+                            <div style={{ fontSize: 12, color: "#94a3b8", fontStyle: "italic", padding: "6px 9px", border: "1.5px dashed #e2e8f0", borderRadius: 6, background: "#f8fafc" }}>
                               Saved as blank — upload file manually after import
                             </div>
                           ) : (
                             <div style={{ position: "relative" }}>
                               <select value={mapping[field.col] || ""} onChange={e => setMapping(prev => ({ ...prev, [field.col]: e.target.value }))} disabled={executing}
-                                style={{ width: "100%", padding: "6px 26px 6px 9px", fontSize: 12, border: `1.5px solid ${mapping[field.col] ? "#86efac" : "#e2e8f0"}`, borderRadius: 6, background: "#fff", color: "#1e293b", appearance: "none", cursor: executing ? "not-allowed" : "pointer", outline: "none" }}>
+                                style={{ width: "100%", padding: "6px 26px 6px 9px", fontSize: 13, border: `1.5px solid ${mapping[field.col] ? "#86efac" : "#e2e8f0"}`, borderRadius: 6, background: "#fff", color: "#1e293b", appearance: "none", cursor: executing ? "not-allowed" : "pointer", outline: "none" }}>
                                 <option value="">— skip —</option>
                                 {fileColumns.map(col => <option key={col} value={col}>{col}</option>)}
                               </select>
@@ -738,7 +745,7 @@ function FormImportWizard({ formName, onClose, onDone, apiFetch, getToken, selec
                   <div style={{ marginBottom: 14 }}>
                     <div style={{ fontSize: 11, fontWeight: 700, color: "#475569", marginBottom: 7, textTransform: "uppercase", letterSpacing: 0.5 }}>Preview (first {preview.length} rows)</div>
                     <div style={{ overflowX: "auto", borderRadius: 7, border: "1px solid #e2e8f0" }}>
-                      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+                      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
                         <thead><tr style={{ background: "#f8fafc" }}>{schemaFields.filter(f => mapping[f.col]).map(f => <th key={f.col} style={{ padding: "6px 10px", textAlign: "left", color: "#64748b", fontWeight: 700, borderBottom: "1px solid #e2e8f0", whiteSpace: "nowrap" }}>{f.label}</th>)}</tr></thead>
                         <tbody>{preview.map((row, i) => <tr key={i} style={{ borderBottom: i < preview.length-1 ? "1px solid #f1f5f9" : "none" }}>{schemaFields.filter(f => mapping[f.col]).map(f => <td key={f.col} style={{ padding: "6px 10px", color: "#1e293b", maxWidth: 130, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{String(row[mapping[f.col]] ?? "—")}</td>)}</tr>)}</tbody>
                       </table>
@@ -766,7 +773,7 @@ function FormImportWizard({ formName, onClose, onDone, apiFetch, getToken, selec
                   ].map(({ label, value, color, bg }) => (
                     <div key={label} style={{ background: bg, borderRadius: 10, padding: "14px 8px" }}>
                       <div style={{ fontSize: 26, fontWeight: 800, color, lineHeight: 1 }}>{value.toLocaleString()}</div>
-                      <div style={{ fontSize: 10, fontWeight: 700, color, marginTop: 5, textTransform: "uppercase", letterSpacing: 0.5 }}>{label}</div>
+                      <div style={{ fontSize: 11, fontWeight: 700, color, marginTop: 5, textTransform: "uppercase", letterSpacing: 0.5 }}>{label}</div>
                     </div>
                   ))}
                 </div>
@@ -1081,15 +1088,16 @@ export default function FormDataPage() {
   /* ── Lock status ── */
   const [lockInfo, setLockInfo] = useState({ is_locked: false, locked_by: null, locked_at: null });
 
-  /* ── Search (live + debounced) ── */
+  /* ── Search (explicit: commit on Enter or the search button) ── */
   const [searchInput, setSearchInput] = useState("");
   const [searchTerm, setSearchTerm]   = useState("");
-  useEffect(() => {
-    // Debounced search → also reset to page 1 so the server returns matches from
-    // the start (Issue 7: search is now server-side).
-    const t = setTimeout(() => { setSearchTerm(searchInput); setCurrentPage(1); }, 250);
-    return () => clearTimeout(t);
-  }, [searchInput]);
+  // Run the search only when the user asks for it (Enter / button click), not on
+  // every keystroke. Resets to page 1 so the server returns matches from the
+  // start (Issue 7: search is server-side).
+  const commitSearch = (value = searchInput) => {
+    setSearchTerm(value);
+    setCurrentPage(1);
+  };
 
   /* ── Modal state ── */
   const [modalOpen, setModalOpen]       = useState(false);
@@ -1122,8 +1130,13 @@ export default function FormDataPage() {
     setToast({ message, type }); setTimeout(() => setToast(null), 3500);
   };
 
+  const formsLoadedRef = useRef(false);
   const loadForms = useCallback(async () => {
-    setFormsLoading(true); setFormsError("");
+    // Skeleton/"Loading…" only on the FIRST load. On refreshes (e.g. the navbar
+    // year change) keep the current rows visible and swap them in place — no
+    // flicker, no layout expand/shrink.
+    if (!formsLoadedRef.current) setFormsLoading(true);
+    setFormsError("");
     try {
       const qs   = selectedYear != null ? `?year=${selectedYear}` : "";
       const res  = await apiFetch(`/api/forms/institution-forms${qs}`);
@@ -1136,7 +1149,7 @@ export default function FormDataPage() {
       }
       else setFormsError(data.message || "Failed to load forms.");
     } catch (err) { if (!isAuthError(err)) setFormsError("Failed to load forms."); }
-    finally { setFormsLoading(false); }
+    finally { setFormsLoading(false); formsLoadedRef.current = true; }
   }, [apiFetch, selectedYear, yearAware]);
 
   useEffect(() => { loadForms(); }, [loadForms]);
@@ -1274,8 +1287,12 @@ export default function FormDataPage() {
   const pagedRecords  = records;                                 // exactly the current page
   const pagedIds      = pagedRecords.map(r => r.id);
 
-  /* Virtualize the table only when a page is large; small pages render fully. */
-  const virtualize = viewMode === "table" && pagedRecords.length > VIRTUAL_THRESHOLD;
+  /* Virtualization is disabled: the records list now scrolls INSIDE the card
+     (fixed-height, internal scroll) rather than the window, so window-based
+     virtualization no longer applies. Page size is capped at 500 rows, which
+     renders directly without performance concerns and keeps the card a constant
+     height regardless of how many records are fetched (no size-driven flicker). */
+  const virtualize = false;
   const vTable = useWindowVirtual(pagedRecords.length, { enabled: virtualize });
   const allPageSelected = pagedIds.length > 0 && pagedIds.every(id => selectedIds.has(id));
   const somePageSelected = pagedIds.some(id => selectedIds.has(id));
@@ -1318,7 +1335,7 @@ export default function FormDataPage() {
     ];
 
     return (
-      <div style={{ padding: "20px 28px", fontFamily: "'Plus Jakarta Sans', sans-serif", minHeight: "100%", maxWidth: 1440 }}>
+      <div style={{ padding: "20px 28px", fontFamily: "'Plus Jakarta Sans', sans-serif", minHeight: "100%", maxWidth: 1440, display: "flex", flexDirection: "column" }}>
         {toast && <Toast message={toast.message} type={toast.type} />}
         {assignForm && (
           <AssignContributorsModal
@@ -1359,7 +1376,7 @@ export default function FormDataPage() {
         </div>
 
         {/* Available Forms table */}
-        <div style={tableCardStyle}>
+        <div style={{ ...tableCardStyle, flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
           <div style={{ padding: "12px 16px", borderBottom: "1px solid #eef2f6", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
             <div>
               <div style={{ fontSize: 13, fontWeight: 700, color: "#1e293b" }}>Available Forms</div>
@@ -1370,9 +1387,9 @@ export default function FormDataPage() {
           </div>
 
           {formsLoading ? (
-            <div style={{ padding: "48px 24px", textAlign: "center", color: "#94a3b8", fontSize: 13 }}>Loading forms…</div>
+            <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "#94a3b8", fontSize: 13 }}>Loading forms…</div>
           ) : forms.length === 0 ? (
-            <div style={{ textAlign: "center", padding: "48px 24px", color: "#94a3b8" }}>
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", color: "#94a3b8", padding: "24px" }}>
               <div style={{ width: 56, height: 56, borderRadius: 8, margin: "0 auto 16px", background: "#f1f5f9", border: "1px solid #e2e8f0", display: "flex", alignItems: "center", justifyContent: "center" }}>
                 <FileText size={26} strokeWidth={1.6} color="#94a3b8" />
               </div>
@@ -1380,7 +1397,7 @@ export default function FormDataPage() {
               <div style={{ fontSize: 12.5 }}>Your institution hasn't shared any forms with your department yet.</div>
             </div>
           ) : (
-            <div style={{ overflowX: "auto" }}>
+            <div style={{ overflow: "auto", flex: 1, minHeight: 0 }}>
               <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 820 }}>
                 <thead>
                   <tr style={{ background: "#f8fafc" }}>
@@ -1509,7 +1526,7 @@ export default function FormDataPage() {
      VIEW 2 — Records table for selected form
   ══════════════════════════════════════════════════════ */
   return (
-    <div style={{ padding: "20px 28px", fontFamily: "'Plus Jakarta Sans', sans-serif", minHeight: "100%", maxWidth: 1440 }}>
+    <div style={{ padding: "20px 28px", fontFamily: "'Plus Jakarta Sans', sans-serif", minHeight: "100%", maxWidth: 1440, display: "flex", flexDirection: "column" }}>
       {toast && <Toast message={toast.message} type={toast.type} />}
 
       {/* ── Modals ── */}
@@ -1555,29 +1572,8 @@ export default function FormDataPage() {
         </div>
       )}
 
-      {/* ── Locked banner ── */}
-      {lockInfo.is_locked && (() => {
-        const deadlineExpired =
-          lockInfo.auto_locked ||
-          (lockInfo.deadline_at && new Date(lockInfo.deadline_at).getTime() <= Date.now());
-        return (
-          <div style={{ display: "flex", alignItems: "center", gap: 12, background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 10, padding: "12px 18px", marginBottom: 20 }}>
-            {deadlineExpired
-              ? <Clock size={18} color="#b91c1c" strokeWidth={2} style={{ flexShrink: 0 }} />
-              : <Lock size={18} color="#b91c1c" strokeWidth={2} style={{ flexShrink: 0 }} />}
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: "#b91c1c" }}>
-                {deadlineExpired
-                  ? "This form deadline has expired for your institution. The form is automatically locked."
-                  : "This form is currently locked by the institution admin."}
-              </div>
-              <div style={{ fontSize: 12, color: "#dc2626", marginTop: 2 }}>
-                You can only view the records. Adding, editing, and deleting are disabled.
-              </div>
-            </div>
-          </div>
-        );
-      })()}
+      {/* Form-lock notice is conveyed by the "Locked" badge next to the title
+         (and the disabled Add/Import actions), so no separate banner is shown. */}
 
       {/* ── Page Header ── */}
       <PageHeader
@@ -1653,9 +1649,13 @@ export default function FormDataPage() {
       )}
 
       {/* ── Records card ── */}
-      <div style={tableCardStyle}>
-        {/* Toolbar: search + record count */}
-        {!recsLoading && (records.length > 0 || searchTerm) && (
+      {/* position:relative + minHeight so the card keeps a stable size: a loading
+          overlay sits on top of the previous rows (stale-while-revalidate) instead
+          of collapsing the card to a one-line "Loading…" message on every search. */}
+      <div style={{ ...tableCardStyle, position: "relative", flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+        {/* Toolbar: search + record count — stays mounted while loading so the
+            search box / view toggle don't flicker away mid-fetch. */}
+        {(records.length > 0 || searchTerm) && (
           <div style={{ padding: "12px 20px", borderBottom: "1px solid #f1f5f9", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: "#1e293b" }}>
               Records
@@ -1681,34 +1681,45 @@ export default function FormDataPage() {
                   );
                 })}
               </div>
-              <div style={{ position: "relative", width: 260 }}>
-                <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "#94a3b8", display: "flex" }}>
-                  <IcoSearch />
-                </span>
-                <input
-                  value={searchInput}
-                  onChange={(e) => setSearchInput(e.target.value)}
-                  placeholder="Search records..."
-                  style={{ width: "100%", padding: "7px 30px 7px 32px", fontSize: 13, color: "#1e293b", border: "1px solid #e2e8f0", borderRadius: 8, outline: "none", background: "#fff" }}
-                />
-                {searchInput && (
-                  <button
-                    onClick={() => setSearchInput("")}
-                    title="Clear"
-                    style={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", color: "#94a3b8", fontSize: 16, lineHeight: 1, cursor: "pointer", padding: "2px 6px" }}
-                  >
-                    ×
-                  </button>
-                )}
+              <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                <div style={{ position: "relative", width: 260 }}>
+                  <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "#94a3b8", display: "flex" }}>
+                    <IcoSearch />
+                  </span>
+                  <input
+                    value={searchInput}
+                    onChange={(e) => setSearchInput(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") commitSearch(); }}
+                    placeholder="Search records"
+                    style={{ width: "100%", padding: "7px 30px 7px 32px", fontSize: 13, color: "#1e293b", border: "1px solid #e2e8f0", borderRadius: 8, outline: "none", background: "#fff" }}
+                  />
+                  {searchInput && (
+                    <button
+                      onClick={() => { setSearchInput(""); commitSearch(""); }}
+                      title="Clear"
+                      style={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", color: "#94a3b8", fontSize: 16, lineHeight: 1, cursor: "pointer", padding: "2px 6px" }}
+                    >
+                      ×
+                    </button>
+                  )}
+                </div>
+                <button
+                  onClick={() => commitSearch()}
+                  title="Search"
+                  style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", height: 34, padding: "0 14px", border: "none", borderRadius: 8, background: ACCENT, color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}
+                >
+                  Search
+                </button>
               </div>
             </div>
           </div>
         )}
 
-        {recsLoading ? (
-          <div style={{ padding: "60px 24px", textAlign: "center", color: "#94a3b8", fontSize: 13 }}>Loading records…</div>
+        {recsLoading && records.length === 0 ? (
+          /* First load only — no previous rows to keep on screen. */
+          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "#94a3b8", fontSize: 13 }}>Loading records…</div>
         ) : (records.length === 0 && !searchTerm) ? (
-          <div style={{ textAlign: "center", padding: "56px 24px", color: "#94a3b8" }}>
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", padding: "24px", color: "#94a3b8" }}>
             <div style={{ width: 56, height: 56, borderRadius: 8, margin: "0 auto 16px", background: "#f1f5f9", border: "1px solid #e2e8f0", display: "flex", alignItems: "center", justifyContent: "center" }}>
               <FilePlus size={26} strokeWidth={1.6} color="#94a3b8" />
             </div>
@@ -1716,7 +1727,7 @@ export default function FormDataPage() {
             <div style={{ fontSize: 13 }}>Click "Add Record" to create the first entry, or Import from a file.</div>
           </div>
         ) : records.length === 0 ? (
-          <div style={{ textAlign: "center", padding: "56px 24px", color: "#94a3b8" }}>
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", padding: "24px", color: "#94a3b8" }}>
             <div style={{ width: 56, height: 56, borderRadius: 8, margin: "0 auto 16px", background: "#f1f5f9", border: "1px solid #e2e8f0", display: "flex", alignItems: "center", justifyContent: "center" }}>
               <SearchX size={26} strokeWidth={1.6} color="#94a3b8" />
             </div>
@@ -1725,7 +1736,7 @@ export default function FormDataPage() {
           </div>
         ) : viewMode === "cards" ? (
           /* ── Cards view — reuses the exact same edit/delete/select handlers ── */
-          <div style={{ padding: 16, display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 12 }}>
+          <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 16, display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 12, alignContent: "start" }}>
             {pagedRecords.map((rec, i) => (
               <RecordCard
                 key={rec.id}
@@ -1745,7 +1756,7 @@ export default function FormDataPage() {
             ))}
           </div>
         ) : (
-          <div ref={vTable.containerRef} style={{ overflowX: "auto" }}>
+          <div ref={vTable.containerRef} style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 600 }}>
               <thead>
                 <tr style={{ background: "#f8fafc" }}>
@@ -1860,10 +1871,20 @@ export default function FormDataPage() {
             </table>
           </div>
         )}
+
+        {/* Refresh overlay — dims the existing rows in place while a new search /
+            page / sort loads, so the card never collapses (stale-while-revalidate). */}
+        {recsLoading && records.length > 0 && (
+          <div style={{ position: "absolute", inset: 0, background: "rgba(255,255,255,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 2 }}>
+            <span style={{ fontSize: 13, fontWeight: 600, color: "#64748b", background: "#fff", padding: "8px 16px", borderRadius: 8, border: "1px solid #e2e8f0", boxShadow: "0 2px 8px rgba(16,24,40,0.08)" }}>
+              Searching…
+            </span>
+          </div>
+        )}
       </div>
 
-      {/* ── Pagination ── */}
-      {!recsLoading && totalCount > 0 && (
+      {/* ── Pagination — stays mounted while loading so it doesn't pop in/out ── */}
+      {totalCount > 0 && (
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 16, padding: "10px 4px", flexWrap: "wrap", gap: 10 }}>
           {/* Left: rows-per-page + record range */}
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -2005,7 +2026,7 @@ function RecordCard({ rec, serial, fields, lang, getToken, selected, onSelect, o
 
 const cellEllipsis = { display: "block", maxWidth: 280, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 13, color: "#1e293b" };
 
-const thStyle   = { padding: "10px 16px", textAlign: "left", fontSize: 11, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.6, borderBottom: "1px solid #f1f5f9", whiteSpace: "nowrap" };
+const thStyle   = { position: "sticky", top: 0, zIndex: 1, background: "#f8fafc", padding: "10px 16px", textAlign: "left", fontSize: 11, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.6, borderBottom: "1px solid #f1f5f9", whiteSpace: "nowrap" };
 const tdStyle   = { padding: "13px 16px", verticalAlign: "middle" };
 const actionBtn = { background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 7, width: 30, height: 30, display: "inline-flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "#475569" };
 const pageBtn   = { background: "#fff", border: "1.5px solid #e2e8f0", borderRadius: 8, padding: "6px 11px", fontSize: 13, display: "inline-flex", alignItems: "center", gap: 3, transition: "all .12s", color: "#475569" };

@@ -84,7 +84,6 @@ router.get("/languages", async (req, res) => {
       success: true,
       languages: [
         { code: "en", name: "English" },
-        { code: "ta", name: "Tamil" },
         { code: "hi", name: "Hindi" },
       ],
     });

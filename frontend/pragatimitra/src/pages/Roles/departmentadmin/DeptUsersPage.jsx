@@ -8,12 +8,12 @@ import { S, Toast } from "../../../components/shared/formUtils";
 import FormScreen from "../../../components/shared/FormScreen";
 import PageHeader from "../../../components/shared/PageHeader";
 import { ActionButton, ActionButtonGroup } from "../../../components/shared/ActionButtons";
-import { StatusBadge } from "../../../components/shared/ui";
+import { StatusBadge, Select } from "../../../components/shared/ui";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { t } from "../../../i18n/translations";
 
 /* ── Constants ──────────────────────────────────────────────────── */
-const STATUS_OPTIONS = ["ACTIVE", "INACTIVE", "SUSPENDED"];
+const STATUS_OPTIONS = ["ACTIVE", "INACTIVE"];
 
 const STATUS_STYLE = {
   ACTIVE:    { dot: "#10b981", label: "#059669" },
@@ -89,13 +89,13 @@ function Spinner() {
   );
 }
 
-function PasswordInput({ value, onChange, hasError }) {
+function PasswordInput({ value, onChange, hasError, lang }) {
   const [show, setShow] = useState(false);
   return (
     <div style={{ position: "relative" }}>
       <input
         type={show ? "text" : "password"}
-        placeholder="Min 8 characters"
+        placeholder={t("Min 8 characters", lang)}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         style={{ ...S.input(hasError), paddingRight: 44 }}
@@ -109,14 +109,14 @@ function PasswordInput({ value, onChange, hasError }) {
           color: "#94a3b8", fontSize: 12, fontWeight: 600, padding: "2px 4px",
         }}
       >
-        {show ? "Hide" : "Show"}
+        {show ? t("Hide", lang) : t("Show", lang)}
       </button>
     </div>
   );
 }
 
 /* ── Locked field chip (non-editable institution / department) ───── */
-function LockedField({ label, value, accentColor = ACCENT }) {
+function LockedField({ label, value, accentColor = ACCENT, lang }) {
   return (
     <div>
       <label style={S.label}>{label}</label>
@@ -132,7 +132,7 @@ function LockedField({ label, value, accentColor = ACCENT }) {
           marginLeft: "auto", fontSize: 10, fontWeight: 600,
           color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.5,
         }}>
-          Auto-assigned
+          {t("Auto-assigned", lang)}
         </span>
       </div>
     </div>
@@ -162,6 +162,7 @@ function UserForm({
   mode, entity, onCreated, onSaved, onBack, apiFetch,
   institutionId, institutionName, departmentId, departmentName,
 }) {
+  const { lang } = useLanguage();
   const isEdit = mode === "edit";
 
   const [form, setForm] = useState(
@@ -240,23 +241,23 @@ function UserForm({
 
   return (
     <FormScreen
-      pageTitle="User Management"
-      formTitle={isEdit ? "Edit User" : "New User"}
-      formSubtitle={isEdit ? entity.full_name : "Add a new user to your department"}
+      pageTitle={t("User Management", lang)}
+      formTitle={isEdit ? t("Edit User", lang) : t("New User", lang)}
+      formSubtitle={isEdit ? entity.full_name : t("Add a new user to your department", lang)}
       icon="👤"
       iconBg="#d1fae5"
       onBack={onBack}
       onSubmit={handleSubmit}
       submitting={saving}
-      submitLabel={isEdit ? "Save Changes" : "Create User"}
+      submitLabel={isEdit ? t("Save Changes", lang) : t("Create User", lang)}
       submitError={serverError}
     >
       {/* Full Name */}
       <div>
-        <label style={S.label}>Full Name *</label>
+        <label style={S.label}>{t("Full Name *", lang)}</label>
         <input
           style={S.input(!!fieldErrs.full_name)}
-          placeholder="e.g. Arun Kumar"
+          placeholder={t("e.g. Arun Kumar", lang)}
           value={form.full_name}
           onChange={(e) => set("full_name", e.target.value)}
         />
@@ -265,11 +266,11 @@ function UserForm({
 
       {/* Email */}
       <div>
-        <label style={S.label}>Email Address *</label>
+        <label style={S.label}>{t("Email Address *", lang)}</label>
         <input
           style={S.input(!!fieldErrs.email)}
           type="email"
-          placeholder="e.g. arun@aiia.edu.in"
+          placeholder={t("e.g. arun@aiia.edu.in", lang)}
           value={form.email}
           onChange={(e) => set("email", e.target.value)}
         />
@@ -279,57 +280,59 @@ function UserForm({
       {/* Password — create only */}
       {!isEdit && (
         <div>
-          <label style={S.label}>Temporary Password *</label>
+          <label style={S.label}>{t("Temporary Password *", lang)}</label>
           <PasswordInput
             value={form.password}
             onChange={(v) => set("password", v)}
             hasError={!!fieldErrs.password}
+            lang={lang}
           />
           {fieldErrs.password
             ? <span style={S.errorText}>{fieldErrs.password}</span>
             : <span style={{ fontSize: 11, color: "#94a3b8", marginTop: 4, display: "block" }}>
-                Min 8 characters. User will be prompted to change on first login.
+                {t("Min 8 characters. User will be prompted to change on first login.", lang)}
               </span>
           }
         </div>
       )}
 
       {/* Institution — locked */}
-      <LockedField label="Institution" value={institutionName} />
+      <LockedField label={t("Institution", lang)} value={institutionName} lang={lang} />
 
       {/* Department — locked */}
-      <LockedField label="Department" value={departmentName} />
+      <LockedField label={t("Department", lang)} value={departmentName} lang={lang} />
 
       {/* Role (create) or Account Status (edit) */}
       <div>
         {isEdit ? (
           <>
-            <label style={S.label}>Account Status</label>
-            <select
-              style={S.select(false)}
+            <label style={S.label}>{t("Account Status", lang)}</label>
+            <Select
               value={form.account_status}
               onChange={(e) => set("account_status", e.target.value)}
             >
               {STATUS_OPTIONS.map((s) => (
-                <option key={s} value={s}>{s.charAt(0) + s.slice(1).toLowerCase()}</option>
+                <option key={s} value={s}>{t(s.charAt(0) + s.slice(1).toLowerCase(), lang)}</option>
               ))}
-            </select>
+            </Select>
           </>
         ) : (
           <>
-            <label style={S.label}>Role *</label>
-            <select
-              style={S.select(!!fieldErrs.role_name)}
+            <label style={S.label}>{t("Role *", lang)}</label>
+            <Select
+              hasError={!!fieldErrs.role_name}
               value={form.role_name}
               onChange={(e) => set("role_name", e.target.value)}
             >
-              <option value="">— Select Role —</option>
+              <option value="">{t("— Select Role —", lang)}</option>
+              {/* Dept admins / nodal officers may only assign the Contributor
+                  role — every other role is intentionally hidden here. */}
               {roles
-                .filter((r) => !["super_admin", "institute_admin", "finance_officer", "directors_office", "publication_cell"].includes(r.name))
+                .filter((r) => r.name === "contributor")
                 .map((r) => (
                   <option key={r.id} value={r.name}>{r.display_name}</option>
                 ))}
-            </select>
+            </Select>
             {fieldErrs.role_name && <span style={S.errorText}>{fieldErrs.role_name}</span>}
           </>
         )}
@@ -340,6 +343,7 @@ function UserForm({
 
 /* ── User List ───────────────────────────────────────────────────── */
 function UserList({ apiFetch, onEdit }) {
+  const { lang } = useLanguage();
   const [users,        setUsers]        = useState([]);
   const [loading,      setLoading]      = useState(true);
   const [error,        setError]        = useState("");
@@ -421,12 +425,13 @@ function UserList({ apiFetch, onEdit }) {
     <>
       {/* Role filter row */}
       <div style={{ display: "flex", gap: 10, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
-        <select
+        <Select
+          fullWidth={false}
           value={filterRole}
           onChange={(e) => setFilterRole(e.target.value)}
-          style={{ ...S.select(false), width: "auto", minWidth: 180 }}
+          style={{ minWidth: 180 }}
         >
-        <option value="">All Roles</option>
+        <option value="">{t("All Roles", lang)}</option>
         {roles
           .filter(
             (r) =>
@@ -438,7 +443,7 @@ function UserList({ apiFetch, onEdit }) {
               {r.display_name}
             </option>
           ))}
-        </select>
+        </Select>
 
         {filterRole && (
           <button
@@ -458,21 +463,22 @@ function UserList({ apiFetch, onEdit }) {
       {/* Search + status filter */}
       <div style={{ display: "flex", gap: 10, marginBottom: 20, flexWrap: "wrap" }}>
         <input
-          placeholder="Search name or email…"
+          placeholder={t("Search name or email…", lang)}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           style={{ ...S.input(false), flex: 1, minWidth: 200 }}
         />
-        <select
+        <Select
+          fullWidth={false}
           value={filterStatus}
           onChange={(e) => setFilterStatus(e.target.value)}
-          style={{ ...S.select(false), width: "auto" }}
+          style={{ minWidth: 150 }}
         >
-          <option value="all">All Status</option>
+          <option value="all">{t("All Status", lang)}</option>
           {STATUS_OPTIONS.map((s) => (
-            <option key={s} value={s}>{s.charAt(0) + s.slice(1).toLowerCase()}</option>
+            <option key={s} value={s}>{t(s.charAt(0) + s.slice(1).toLowerCase(), lang)}</option>
           ))}
-        </select>
+        </Select>
       </div>
 
       {/* Table */}

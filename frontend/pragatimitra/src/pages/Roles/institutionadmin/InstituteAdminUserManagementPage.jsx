@@ -6,6 +6,7 @@ import { useAuth } from "../../../store/AuthContext";
 const SLUG = "user-management";
 import { S, Toast } from "../../../components/shared/formUtils";
 import FormScreen from "../../../components/shared/FormScreen";
+import { Select } from "../../../components/shared/ui";
 
 /* ── Constants & pure helpers ──────────────────────────────────── */
 const STATUS_OPTIONS = ["ACTIVE", "INACTIVE", "SUSPENDED"];
@@ -308,8 +309,7 @@ function UserForm({ mode, entity, onCreated, onSaved, onBack, apiFetch, institut
             Department{" "}
             <span style={{ color: "#94a3b8", fontWeight: 400, textTransform: "none" }}>(optional)</span>
           </label>
-          <select
-            style={S.select(false)}
+          <Select
             value={form.department_id}
             onChange={(e) => set("department_id", e.target.value)}
             disabled={loadingDepts}
@@ -320,27 +320,26 @@ function UserForm({ mode, entity, onCreated, onSaved, onBack, apiFetch, institut
             {departments.map((d) => (
               <option key={d.department_id} value={d.department_id}>{d.name}</option>
             ))}
-          </select>
+          </Select>
         </div>
 
         {isEdit ? (
           <div>
             <label style={S.label}>Account Status</label>
-            <select
-              style={S.select(false)}
+            <Select
               value={form.account_status}
               onChange={(e) => set("account_status", e.target.value)}
             >
               {STATUS_OPTIONS.map((s) => (
                 <option key={s} value={s}>{s.charAt(0) + s.slice(1).toLowerCase()}</option>
               ))}
-            </select>
+            </Select>
           </div>
         ) : (
           <div>
             <label style={S.label}>Role *</label>
-            <select
-              style={S.select(!!fieldErrs.role_name)}
+            <Select
+              hasError={!!fieldErrs.role_name}
               value={form.role_name}
               onChange={(e) => set("role_name", e.target.value)}
             >
@@ -352,7 +351,7 @@ function UserForm({ mode, entity, onCreated, onSaved, onBack, apiFetch, institut
                     {r.display_name}
                   </option>
                 ))}
-            </select>
+            </Select>
             {fieldErrs.role_name && <span style={S.errorText}>{fieldErrs.role_name}</span>}
           </div>
         )}
@@ -361,15 +360,14 @@ function UserForm({ mode, entity, onCreated, onSaved, onBack, apiFetch, institut
             Hospital/Finance route the user to an isolated dashboard + forms. */}
         <div>
           <label style={S.label}>Role Domain</label>
-          <select
-            style={S.select(false)}
+          <Select
             value={form.role_domain}
             onChange={(e) => set("role_domain", e.target.value)}
           >
             {ROLE_DOMAINS.map((d) => (
               <option key={d.value} value={d.value}>{d.label}</option>
             ))}
-          </select>
+          </Select>
         </div>
       </div>
     </FormScreen>
@@ -486,10 +484,11 @@ function UserList({ apiFetch, onEdit, institutionId }) {
     <>
       {/* ── Server-side filter row ── */}
       <div style={{ display: "flex", gap: 10, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
-        <select
+        <Select
+          fullWidth={false}
           value={filterRole}
           onChange={(e) => setFilterRole(e.target.value)}
-          style={{ ...S.select(false), width: "auto", minWidth: 160 }}
+          style={{ minWidth: 160 }}
         >
         <option value="">All Roles</option>
         {roles
@@ -499,18 +498,19 @@ function UserList({ apiFetch, onEdit, institutionId }) {
               {r.display_name}
             </option>
           ))}
-        </select>
+        </Select>
 
-        <select
+        <Select
+          fullWidth={false}
           value={filterDepartment}
           onChange={(e) => setFilterDepartment(e.target.value)}
-          style={{ ...S.select(false), width: "auto", minWidth: 190 }}
+          style={{ minWidth: 190 }}
         >
           <option value="">All Departments</option>
           {deptOptions.map((d) => (
             <option key={d.department_id} value={d.department_id}>{d.name}</option>
           ))}
-        </select>
+        </Select>
 
         {hasActiveFilters && (
           <button
@@ -535,16 +535,17 @@ function UserList({ apiFetch, onEdit, institutionId }) {
           onChange={(e) => setSearch(e.target.value)}
           style={{ ...S.input(false), flex: 1, minWidth: 200 }}
         />
-        <select
+        <Select
+          fullWidth={false}
           value={filterStatus}
           onChange={(e) => setFilterStatus(e.target.value)}
-          style={{ ...S.select(false), width: "auto" }}
+          style={{ minWidth: 150 }}
         >
           <option value="all">All Status</option>
           {STATUS_OPTIONS.map((s) => (
             <option key={s} value={s}>{s.charAt(0) + s.slice(1).toLowerCase()}</option>
           ))}
-        </select>
+        </Select>
       </div>
 
       {/* Table */}

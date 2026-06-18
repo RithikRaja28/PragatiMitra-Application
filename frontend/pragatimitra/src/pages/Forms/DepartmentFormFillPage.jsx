@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate, useLocation, Navigate } from "react-router-dom";
-import { FilePlus, Search, RefreshCw, Lock, CalendarClock, ArrowRight, Languages } from "lucide-react";
+import { FilePlus, Search, RefreshCw, Lock, CalendarClock, ArrowRight } from "lucide-react";
 
 const SLUG = "form-management";
 import { useApi } from "../../hooks/useApi";
@@ -78,7 +78,6 @@ export default function DepartmentFormFillPage() {
         </div>
       ),
     },
-    { key: "translation", header: "Translation", width: 130, render: (form) => form.translate_enabled ? <Badge tone="info" icon={<Languages size={12} strokeWidth={STROKE} />}>EN + हिंदी</Badge> : <Badge tone="neutral">English only</Badge> },
     {
       key: "deadline", header: "Deadline", width: 150,
       render: (form) => { const d = deadlineInfo(form); return (<div style={{ display: "flex", flexDirection: "column", gap: 4 }}><span style={{ fontSize: 13, color: color.text, fontWeight: 600 }}>{d.dateText}</span>{d.label && <Badge tone={d.tone}>{d.label}</Badge>}</div>); },

@@ -14,10 +14,9 @@ const express = require("express");
 const { verifyToken, requireRole } = require("../middleware/auth");
 const { writeAuditLog } = require("../utils/audit");
 const logger = require("../utils/logger");
-const { translateSentence } = require("../services/translationService");
 const {
   resolveDeptContext, ensureDeptYearRow, pgType, slugify,
-  deptRecordsTable, collectColumnNames, buildDeptRecordsTableDDL,
+  deptRecordsTable, collectColumnNames, buildDeptRecordsTableDDL, quoteIdent,
 } = require("../services/departmentFormService");
 const { resolveActiveAcademicYear } = require("../services/academicYearService");
 const { assertEquivalent } = require("../services/equivalenceGuard");
@@ -71,7 +70,15 @@ router.use(async (req, _res, next) => {
   next();
 });
 
-const WRITE_ROLES = ["department_admin"];
+// Form CONFIGURATION (create/edit schema, deadline, lock, archive, carry-forward)
+// is done by Department Admins and Department Nodal Officers. Contributors never
+// configure forms — they only enter data (see routes/departmentFormData.js).
+const WRITE_ROLES = ["department_admin", "nodal_officer"];
+
+/* Department forms are ALWAYS restricted to this fixed set of roles. The per-form
+   "Roles with access" picker was removed — every form is accessible only to
+   Contributors, Department Nodal Officers, and Department Admins. */
+const FIXED_FORM_ROLES = ["department_admin", "nodal_officer", "contributor"];
 
 /* Selected academic-year (start year int): ?year → X-Academic-Year header →
    body.year → institution's active year (inherited) → current calendar year.
@@ -395,11 +402,11 @@ router.get("/:id/roles", async (req, res) => {
    Create a department form: register in department_table_list, create the
    shared dept_form_<slug> table, seed the year mapping (active for the
    selected year), lock config, and role access.
-   Body: { form_name, form_description?, schema, translate_enabled?, roles?, year? }
+   Body: { form_name, form_description?, schema, year?, deadline? }
 ───────────────────────────────────────────────────────────────────── */
 router.post("/", requireRole(WRITE_ROLES), requireActiveDepartment, async (req, res) => {
   const pool = req.app.locals.pool;
-  const { form_name, form_description = null, schema, translate_enabled, roles = [], deadline } = req.body;
+  const { form_name, form_description = null, schema, deadline } = req.body;
 
   if (!form_name || !String(form_name).trim())
     return res.status(400).json({ success: false, message: "form_name is required." });
@@ -418,7 +425,8 @@ router.post("/", requireRole(WRITE_ROLES), requireActiveDepartment, async (req, 
     if (!isNaN(d.getTime())) createDeadline = d.toISOString();
   }
 
-  const translateEnabled = translate_enabled === false ? false : true;
+  // Department forms are single-language — translation is not supported.
+  const translateEnabled = false;
   const year = resolveYear(req);
   let table; // set after department is resolved (table is namespaced per department)
 
@@ -429,7 +437,6 @@ router.post("/", requireRole(WRITE_ROLES), requireActiveDepartment, async (req, 
 
     table = deptRecordsTable(departmentId, slug);
 
-    if (translateEnabled) await autoFillHindiLabels(schema);
     const usedColNames = collectColumnNames(schema.fields);
 
     const client = await pool.connect();
@@ -472,8 +479,8 @@ router.post("/", requireRole(WRITE_ROLES), requireActiveDepartment, async (req, 
         );
       }
 
-      for (const rn of Array.isArray(roles) ? roles : []) {
-        if (!rn || typeof rn !== "string") continue;
+      // Access is fixed (no per-form role selection): always grant the standard set.
+      for (const rn of FIXED_FORM_ROLES) {
         await client.query(
           `INSERT INTO department_form_roles (department_form_id, role_name, institution_id, department_id, academic_year)
            VALUES ($1, $2, $3, $4, $5) ON CONFLICT (department_form_id, role_name) DO NOTHING`,
@@ -486,7 +493,7 @@ router.post("/", requireRole(WRITE_ROLES), requireActiveDepartment, async (req, 
       for (const field of (schema.fields || [])) {
         const col = field.column_name.trim().toLowerCase().replace(/\s+/g, "_");
         if (/^[a-z][a-z0-9_]*$/.test(col)) {
-          await client.query(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS ${col} ${pgType(field.type)}`);
+          await client.query(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS ${quoteIdent(col)} ${pgType(field.type)}`);
         }
       }
 
@@ -581,19 +588,16 @@ router.post("/", requireRole(WRITE_ROLES), requireActiveDepartment, async (req, 
 
 /* ─────────────────────────────────────────────────────────────────────
    PUT /api/department-forms/:id/schema   — update schema (edit)
-   Body: { schema, translate_enabled? }
+   Body: { schema }
 ───────────────────────────────────────────────────────────────────── */
 router.put("/:id/schema", requireRole(WRITE_ROLES), requireActiveDepartment, async (req, res) => {
   const pool = req.app.locals.pool;
-  const { schema, translate_enabled } = req.body;
+  const { schema } = req.body;
   if (!schema) return res.status(400).json({ success: false, message: "schema is required." });
 
   try {
     const { form, error } = await loadOwnedForm(pool, req, req.params.id);
     if (error) return res.status(404).json({ success: false, message: error });
-
-    const effectiveTranslate = typeof translate_enabled === "boolean" ? translate_enabled : form.translate_enabled;
-    if (effectiveTranslate) await autoFillHindiLabels(schema);
 
     const table = deptRecordsTable(form.department_id, form.form_name);
     const currentNames = new Set((form.schema?.fields || []).map((f) => f.column_name));
@@ -633,10 +637,10 @@ router.put("/:id/schema", requireRole(WRITE_ROLES), requireActiveDepartment, asy
       await client.query("BEGIN");
       await client.query(
         `UPDATE department_table_list
-           SET schema = $1::jsonb, used_column_names = $2, translate_enabled = $3,
-               updated_by = $4, updated_at = now()
-         WHERE id = $5`,
-        [JSON.stringify(schema), mergedUsed, effectiveTranslate, req.user.userId, form.id]
+           SET schema = $1::jsonb, used_column_names = $2,
+               updated_by = $3, updated_at = now()
+         WHERE id = $4`,
+        [JSON.stringify(schema), mergedUsed, req.user.userId, form.id]
       );
 
       const excluded = new Set(schema.excluded_fixed_columns || []);
@@ -644,7 +648,7 @@ router.put("/:id/schema", requireRole(WRITE_ROLES), requireActiveDepartment, asy
         if (excluded.has(field.column_name) || currentNames.has(field.column_name)) continue;
         const col = field.column_name.trim().toLowerCase().replace(/\s+/g, "_");
         if (/^[a-z][a-z0-9_]*$/.test(col)) {
-          await client.query(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS ${col} ${pgType(field.type)}`);
+          await client.query(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS ${quoteIdent(col)} ${pgType(field.type)}`);
         }
       }
       await client.query("COMMIT");

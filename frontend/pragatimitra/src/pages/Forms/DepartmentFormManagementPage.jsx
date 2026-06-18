@@ -1,19 +1,39 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useNavigate, useLocation, Navigate } from "react-router-dom";
 import {
-  FilePlus, Search, Plus, RefreshCw, Lock, Unlock, Eye, Settings2,
-  CalendarClock, MoreHorizontal, Archive, ArchiveRestore, Languages, CalendarCog, Check,
+  FilePlus, Search, Plus, Lock, Unlock, Eye, Settings2,
+  CalendarClock, MoreHorizontal, Archive, ArchiveRestore,
+  Download, FileText as FileCsv, FileSpreadsheet,
 } from "lucide-react";
 
 const SLUG = "form-management";
 import { useApi } from "../../hooks/useApi";
+import { useAuth } from "../../store/AuthContext";
 import { useAcademicYear } from "../../store/AcademicYearContext";
 import { Toast, isAuthError } from "../../components/shared/formUtils";
 import DepartmentFormBuilderPage from "./DepartmentFormBuilderPage";
 import DepartmentFormRecordsPage from "./DepartmentFormRecordsPage";
+import { DateField, TimeField } from "./DateTimePicker";
 import { color, Button, PageHeader, Badge, EmptyState, Modal, Dropdown, MenuItem, MenuLabel, DataTable } from "../../ui";
+import { useLanguage } from "../../i18n/LanguageContext";
+import { t } from "../../i18n/translations";
 
 const STROKE = 1.75;
+
+/* Download a department form's records (CSV/Excel) for the selected year —
+   mirrors the institution dynamic-form export so the experience is consistent. */
+async function downloadDeptExport(formId, format, accessToken, year) {
+  const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
+  const yq = year != null ? `&year=${year}` : "";
+  const res = await fetch(`${API_BASE}/api/department-form-data/${formId}/export?format=${format}${yq}`,
+    { headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {} });
+  if (!res.ok) return;
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = `export.${format}`; a.click();
+  URL.revokeObjectURL(url);
+}
 
 function titleOf(s) { return String(s).replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()); }
 function deadlineInfo(form) {
@@ -34,6 +54,7 @@ const LOCAL_TZ = (() => { try { return Intl.DateTimeFormat().resolvedOptions().t
    selected year). The deadline applies only to the selected year. */
 function DeadlineModal({ form, year, onClose, onSaved, showToast }) {
   const { apiFetch } = useApi();
+  const { lang } = useLanguage();
   const [saving, setSaving] = useState(false);
   const [dateVal, setDateVal] = useState(form.deadline_at ? new Date(form.deadline_at).toISOString().slice(0, 10) : "");
   const [timeVal, setTimeVal] = useState(form.deadline_at
@@ -53,44 +74,43 @@ function DeadlineModal({ form, year, onClose, onSaved, showToast }) {
         method: "PUT", body: JSON.stringify({ deadline, year }),
       });
       const data = await res.json();
-      if (data.success) { showToast(remove ? "Deadline removed." : "Deadline saved."); onSaved(); onClose(); }
-      else showToast(data.message || "Failed to save deadline.", "error");
-    } catch { showToast("Failed to save deadline.", "error"); }
+      if (data.success) { showToast(remove ? t("Deadline removed.", lang) : t("Deadline saved.", lang)); onSaved(); onClose(); }
+      else showToast(data.message || t("Failed to save deadline.", lang), "error");
+    } catch { showToast(t("Failed to save deadline.", lang), "error"); }
     finally { setSaving(false); }
   }
 
-  const fieldStyle = { width: "100%", height: 44, padding: "0 12px", border: `1px solid ${color.borderStrong}`, borderRadius: 10, fontSize: 13, color: color.text, outline: "none", boxSizing: "border-box" };
 
   return (
     <Modal open onClose={onClose} width={520} icon={<CalendarClock size={18} strokeWidth={STROKE} />}
-      title="Manage Deadline" subtitle={`${titleOf(form.form_name)} · your department · ${yearLabel}`}
+      title={t("Manage Deadline", lang)} subtitle={`${titleOf(form.form_name)} · ${t("your department", lang)} · ${yearLabel}`}
       footer={
         <>
-          <Button variant="outlineDanger" style={{ marginRight: "auto" }} disabled={saving || !hasDeadline} onClick={() => save(true)}>Remove Deadline</Button>
-          <Button variant="secondary" disabled={saving} onClick={onClose}>Cancel</Button>
-          <Button variant="primary" loading={saving} disabled={saving || !dateVal} onClick={() => save(false)}>{hasDeadline ? "Update" : "Save"}</Button>
+          <Button variant="outlineDanger" style={{ marginRight: "auto" }} disabled={saving || !hasDeadline} onClick={() => save(true)}>{t("Remove Deadline", lang)}</Button>
+          <Button variant="secondary" disabled={saving} onClick={onClose}>{t("Cancel", lang)}</Button>
+          <Button variant="primary" loading={saving} disabled={saving || !dateVal} onClick={() => save(false)}>{hasDeadline ? t("Update", lang) : t("Save", lang)}</Button>
         </>
       }>
       <div style={{ background: hasDeadline ? (expired ? "#FEF2F2" : color.primarySoft) : color.hover, border: `1px solid ${hasDeadline ? (expired ? "#FECACA" : "#BFDBFE") : color.border}`, borderRadius: 10, padding: "12px 16px", marginBottom: 18 }}>
-        <div style={{ fontSize: 11, fontWeight: 700, color: color.muted, textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 4 }}>Current Status · {yearLabel}</div>
+        <div style={{ fontSize: 11, fontWeight: 700, color: color.muted, textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 4 }}>{t("Current Status", lang)} · {yearLabel}</div>
         <div style={{ fontSize: 14, fontWeight: 700, color: hasDeadline ? (expired ? "#B91C1C" : "#1D4ED8") : color.muted }}>
-          {hasDeadline ? `Deadline: ${new Date(form.deadline_at).toLocaleString("en-GB", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" })}${expired ? " · Expired" : ""}` : "No deadline set"}
+          {hasDeadline ? `${t("Deadline:", lang)} ${new Date(form.deadline_at).toLocaleString("en-GB", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" })}${expired ? ` · ${t("Expired", lang)}` : ""}` : t("No deadline set", lang)}
         </div>
       </div>
-      <div style={{ display: "flex", gap: 12 }}>
+      <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
         <div style={{ flex: 1.4 }}>
-          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: color.muted, textTransform: "uppercase", letterSpacing: 0.7, marginBottom: 6 }}>Date</label>
-          <input type="date" value={dateVal} min={todayStr} onChange={(e) => setDateVal(e.target.value)} style={fieldStyle} />
+          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: color.muted, textTransform: "uppercase", letterSpacing: 0.7, marginBottom: 6 }}>{t("Date", lang)}</label>
+          <DateField value={dateVal} min={todayStr} onChange={setDateVal} />
         </div>
         <div style={{ flex: 1 }}>
-          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: color.muted, textTransform: "uppercase", letterSpacing: 0.7, marginBottom: 6 }}>Time</label>
-          <input type="time" value={timeVal} onChange={(e) => setTimeVal(e.target.value)} style={fieldStyle} />
+          <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: color.muted, textTransform: "uppercase", letterSpacing: 0.7, marginBottom: 6 }}>{t("Time", lang)}</label>
+          <TimeField value={timeVal} onChange={setTimeVal} />
         </div>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, color: color.muted, marginTop: 8 }}>
-        <span style={{ fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5 }}>Timezone:</span> {LOCAL_TZ}
+        <span style={{ fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5 }}>{t("Timezone:", lang)}</span> {LOCAL_TZ}
       </div>
-      <div style={{ fontSize: 11.5, color: color.muted, marginTop: 8 }}>The form auto-locks for your department after this date &amp; time, for {yearLabel} only. Members can still view and export records.</div>
+      <div style={{ fontSize: 11.5, color: color.muted, marginTop: 8 }}>{t("The form auto-locks for your department after this date & time, for", lang)} {yearLabel} {t("only. Members can still view and export records.", lang)}</div>
     </Modal>
   );
 }
@@ -99,6 +119,7 @@ export default function DepartmentFormManagementPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { apiFetch } = useApi();
+  const { accessToken } = useAuth();
   const { selectedYear, academicYear } = useAcademicYear() || {};
 
   const isCreate  = location.pathname.endsWith("/create");
@@ -113,14 +134,18 @@ export default function DepartmentFormManagementPage() {
   const [toast, setToast] = useState(null);
   const [busyId, setBusyId] = useState(null);
   const [deadlineForm, setDeadlineForm] = useState(null);
-  const [carryOpen, setCarryOpen] = useState(false);
   const [tab, setTab] = useState("active");
   const [search, setSearch] = useState("");
 
   const showToast = (message, type = "success") => { setToast({ message, type }); setTimeout(() => setToast(null), 3500); };
 
+  // Show the loading skeleton only on the FIRST load. On refreshes (e.g. the
+  // navbar year change), keep the current rows visible and swap them in place
+  // once the new data arrives — no skeleton flash, no layout expand/shrink.
+  const hasLoadedRef = useRef(false);
   const load = useCallback(async () => {
-    setLoading(true); setError("");
+    if (!hasLoadedRef.current) setLoading(true);
+    setError("");
     try {
       const qs = selectedYear != null ? `?year=${selectedYear}` : "";
       const res = await apiFetch(`/api/department-forms${qs}`);
@@ -128,7 +153,7 @@ export default function DepartmentFormManagementPage() {
       if (data.success) setForms(data.forms || []);
       else setError(data.message || "Failed to load forms.");
     } catch (err) { if (!isAuthError(err)) setError("Failed to load forms."); }
-    finally { setLoading(false); }
+    finally { setLoading(false); hasLoadedRef.current = true; }
   }, [apiFetch, selectedYear]);
 
   useEffect(() => { load(); }, [load]);
@@ -180,17 +205,22 @@ export default function DepartmentFormManagementPage() {
   function renderActions(form) {
     return (
       <div style={{ display: "inline-flex", alignItems: "center", gap: 6, justifyContent: "flex-end" }}>
-        <Button variant="secondary" iconOnly title="View records" icon={<Eye size={18} strokeWidth={STROKE} />} onClick={() => navigate(`${listPath}/records`, { state: { entity: form } })} />
-        <Button variant="secondary" iconOnly title="Manage deadline" icon={<CalendarClock size={18} strokeWidth={STROKE} />} onClick={() => setDeadlineForm(form)} />
-        <Button variant="secondary" iconOnly title="Manage form" icon={<Settings2 size={18} strokeWidth={STROKE} />} onClick={() => navigate(`${listPath}/edit`, { state: { entity: form } })} />
-        <Dropdown align="right" width={210} button={({ toggle }) => (<Button variant="secondary" iconOnly title="More actions" icon={<MoreHorizontal size={18} strokeWidth={STROKE} />} onClick={toggle} />)}>
-          <MenuLabel>Manage</MenuLabel>
+        <Button variant="secondary" iconOnly title={t("View records", lang)} icon={<Eye size={18} strokeWidth={STROKE} />} onClick={() => openRecords(form)} />
+        <Button variant="secondary" iconOnly title={t("Manage deadline", lang)} icon={<CalendarClock size={18} strokeWidth={STROKE} />} onClick={() => setDeadlineForm(form)} />
+        <Button variant="secondary" iconOnly title={t("Manage form", lang)} icon={<Settings2 size={18} strokeWidth={STROKE} />} onClick={() => openManage(form)} />
+        <Dropdown align="right" width={200} button={({ toggle }) => (<Button variant="secondary" iconOnly title={t("Export", lang)} icon={<Download size={18} strokeWidth={STROKE} />} onClick={toggle} />)}>
+          <MenuLabel>{t("Export", lang)}</MenuLabel>
+          <MenuItem icon={<FileCsv size={16} strokeWidth={STROKE} />} onClick={() => downloadDeptExport(form.id, "csv", accessToken, selectedYear)}>{t("Download CSV", lang)}</MenuItem>
+          <MenuItem icon={<FileSpreadsheet size={16} strokeWidth={STROKE} />} onClick={() => downloadDeptExport(form.id, "xlsx", accessToken, selectedYear)}>{t("Download Excel", lang)}</MenuItem>
+        </Dropdown>
+        <Dropdown align="right" width={210} button={({ toggle }) => (<Button variant="secondary" iconOnly title={t("More actions", lang)} icon={<MoreHorizontal size={18} strokeWidth={STROKE} />} onClick={toggle} />)}>
+          <MenuLabel>{t("Manage", lang)}</MenuLabel>
           {form.is_archived
-            ? <MenuItem icon={<ArchiveRestore size={16} strokeWidth={STROKE} />} disabled={busyId === form.id} onClick={() => setArchive(form, false)}>Activate for {academicYear || selectedYear}</MenuItem>
-            : <MenuItem icon={<Archive size={16} strokeWidth={STROKE} />} disabled={busyId === form.id} onClick={() => setArchive(form, true)}>Archive for {academicYear || selectedYear}</MenuItem>}
+            ? <MenuItem icon={<ArchiveRestore size={16} strokeWidth={STROKE} />} disabled={busyId === form.id} onClick={() => setArchive(form, false)}>{t("Activate for", lang)} {academicYear || selectedYear}</MenuItem>
+            : <MenuItem icon={<Archive size={16} strokeWidth={STROKE} />} disabled={busyId === form.id} onClick={() => setArchive(form, true)}>{t("Archive for", lang)} {academicYear || selectedYear}</MenuItem>}
           {form.is_locked
-            ? <MenuItem icon={<Unlock size={16} strokeWidth={STROKE} />} disabled={busyId === form.id} onClick={() => toggleLock(form)}>Unlock form</MenuItem>
-            : <MenuItem icon={<Lock size={16} strokeWidth={STROKE} />} disabled={busyId === form.id} onClick={() => toggleLock(form)}>Lock form</MenuItem>}
+            ? <MenuItem icon={<Unlock size={16} strokeWidth={STROKE} />} disabled={busyId === form.id} onClick={() => toggleLock(form)}>{t("Unlock form", lang)}</MenuItem>
+            : <MenuItem icon={<Lock size={16} strokeWidth={STROKE} />} disabled={busyId === form.id} onClick={() => toggleLock(form)}>{t("Lock form", lang)}</MenuItem>}
         </Dropdown>
       </div>
     );
@@ -198,7 +228,11 @@ export default function DepartmentFormManagementPage() {
 
   const columns = [
     {
-      key: "form", header: "Form Name", width: 340,
+      key: "_sno", header: "#", width: 56, align: "left",
+      render: (_form, i) => <span style={{ fontSize: 13, fontWeight: 600, color: color.muted }}>{i + 1}</span>,
+    },
+    {
+      key: "form", header: t("Form Name", lang), width: 340,
       render: (form) => (
         <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
           <div style={{ width: 34, height: 34, borderRadius: 9, flexShrink: 0, background: color.primarySoft, color: color.primary, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 800 }}>{form.form_name.slice(0, 2).toUpperCase()}</div>
@@ -210,34 +244,22 @@ export default function DepartmentFormManagementPage() {
       ),
     },
     {
-      key: "visibility", header: "Translation", width: 130,
-      render: (form) => form.translate_enabled
-        ? <Badge tone="info" icon={<Languages size={12} strokeWidth={STROKE} />}>EN + हिंदी</Badge>
-        : <Badge tone="neutral">English only</Badge>,
-    },
-    {
-      key: "roles", header: "Roles", width: 180, ellipsis: true,
-      render: (form) => (form.roles && form.roles.length)
-        ? <span style={{ fontSize: 12.5, color: color.text }} title={form.roles.map(titleOf).join(", ")}>{form.roles.map(titleOf).join(" • ")}</span>
-        : <span style={{ fontSize: 12.5, color: color.muted }}>All department</span>,
-    },
-    {
-      key: "deadline", header: "Deadline", width: 150,
+      key: "deadline", header: t("Deadline", lang), width: 150,
       render: (form) => {
         const d = deadlineInfo(form);
         return (
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <span style={{ fontSize: 13, color: color.text, fontWeight: 600 }}>{d.dateText}</span>
-            {d.label && <Badge tone={d.tone}>{d.label}</Badge>}
+            <span style={{ fontSize: 13, color: color.text, fontWeight: 600 }}>{form.deadline_at ? d.dateText : t("No Deadline", lang)}</span>
+            {d.label && <Badge tone={d.tone}>{t(d.label, lang)}</Badge>}
           </div>
         );
       },
     },
     {
-      key: "access", header: "Access", width: 110,
+      key: "access", header: t("Access", lang), width: 110,
       render: (form) => form.is_locked
-        ? <Badge tone="danger" icon={<Lock size={11} strokeWidth={STROKE} />}>Locked</Badge>
-        : <Badge tone="success">Open</Badge>,
+        ? <Badge tone="danger" icon={<Lock size={11} strokeWidth={STROKE} />}>{t("Locked", lang)}</Badge>
+        : <Badge tone="success">{t("Open", lang)}</Badge>,
     },
     { key: "actions", header: "", align: "right", width: 192, render: renderActions },
   ];
@@ -247,20 +269,20 @@ export default function DepartmentFormManagementPage() {
     return (
       <button key={key} onClick={() => setTab(key)} className="ui-focusable"
         style={{ border: "none", borderRadius: 8, padding: "7px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer", background: on ? color.surface : "transparent", color: on ? color.text : color.muted, boxShadow: on ? "0 1px 2px rgba(16,24,40,0.08)" : "none" }}>
-        {label}
+        {t(label, lang)}
       </button>
     );
   };
 
   return (
-    <div style={{ padding: "24px 32px", fontFamily: "'Plus Jakarta Sans', sans-serif", minHeight: "100%", maxWidth: 1600, margin: "0 auto" }}>
+    <div style={{ padding: "24px 32px", fontFamily: "'Plus Jakarta Sans', sans-serif", minHeight: "100%", maxWidth: 1600, margin: "0 auto", display: "flex", flexDirection: "column" }}>
       {toast && <Toast message={toast.message} type={toast.type} />}
       {deadlineForm && <DeadlineModal form={deadlineForm} year={selectedYear} onClose={() => setDeadlineForm(null)} onSaved={load} showToast={showToast} />}
 
       <PageHeader
-        breadcrumb={["Home", "Department", "Department Forms"]}
-        title="Department Forms"
-        description="Create and manage your department's own forms — deadlines, lifecycle, lock and translation — for the selected academic year."
+        breadcrumb={[t("Home", lang), t("Department", lang), t("Department Forms", lang)]}
+        title={t("Department Forms", lang)}
+        description={t("Create and manage your department's own forms — deadlines, lifecycle and lock — for the selected academic year.", lang)}
         actions={
           <>
             <Button variant="secondary" icon={<RefreshCw size={18} strokeWidth={STROKE} />} onClick={load}>Refresh</Button>
@@ -283,6 +305,7 @@ export default function DepartmentFormManagementPage() {
       {error && <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 12, padding: "12px 16px", fontSize: 13, color: "#B91C1C", marginBottom: 20 }}>{error}</div>}
 
       <DataTable
+        fill
         columns={columns}
         rows={visibleForms}
         rowKey={(f) => f.id}
@@ -292,7 +315,7 @@ export default function DepartmentFormManagementPage() {
           <>
             <div style={{ position: "relative", flex: "0 1 280px", maxWidth: 280 }}>
               <Search size={16} strokeWidth={STROKE} style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", color: color.muted }} />
-              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search forms…"
+              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t("Search forms…", lang)}
                 style={{ width: "100%", height: 40, padding: "0 12px 0 34px", border: `1px solid ${color.border}`, borderRadius: 10, fontSize: 13, color: color.text, outline: "none", boxSizing: "border-box", background: color.surface }} />
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
@@ -309,100 +332,12 @@ export default function DepartmentFormManagementPage() {
         empty={
           <EmptyState
             icon={searching ? <Search size={26} strokeWidth={1.5} /> : tab === "archived" ? <Archive size={26} strokeWidth={1.5} /> : <FilePlus size={26} strokeWidth={1.5} />}
-            title={searching ? "No forms match your search" : tab === "archived" ? "No archived forms" : "No department forms yet"}
-            description={searching ? "Try a different name or clear the search." : tab === "archived" ? "Forms archived for this academic year will appear here." : "Create your department's first form for this academic year."}
-            action={!searching && tab === "active" ? <Button variant="primary" icon={<Plus size={18} strokeWidth={STROKE} />} onClick={() => navigate(`${listPath}/create`)}>Create Form</Button> : undefined}
+            title={searching ? t("No forms match your search", lang) : tab === "archived" ? t("No archived forms", lang) : t("No department forms yet", lang)}
+            description={searching ? t("Try a different name or clear the search.", lang) : tab === "archived" ? t("Forms archived for this academic year will appear here.", lang) : t("Create your department's first form for this academic year.", lang)}
+            action={!searching && tab === "active" ? <Button variant="primary" icon={<Plus size={18} strokeWidth={STROKE} />} onClick={openCreate}>{t("Create Form", lang)}</Button> : undefined}
           />
         }
       />
     </div>
-  );
-}
-
-/* ── Academic-year cycle: carry-forward setup for the selected year ── */
-function CarryForwardModal({ year, yearLabel, onClose, onDone, showToast }) {
-  const { apiFetch } = useApi();
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [forms, setForms] = useState([]);
-  const [checked, setChecked] = useState(() => new Set());
-  const [prevYear, setPrevYear] = useState(year != null ? year - 1 : null);
-
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        const qs = year != null ? `?year=${year}` : "";
-        const res = await apiFetch(`/api/department-forms/year-preview${qs}`);
-        const d = await res.json();
-        if (!alive) return;
-        if (d.success) {
-          setForms(d.forms || []);
-          setPrevYear(d.previousYear);
-          // Pre-select forms that already exist for this year (current_active) or
-          // were active in the previous year (carry forward).
-          setChecked(new Set((d.forms || []).filter((f) => f.current_active || f.prev_active).map((f) => String(f.id))));
-        }
-      } catch { /* ignore */ }
-      finally { if (alive) setLoading(false); }
-    })();
-    return () => { alive = false; };
-  }, [apiFetch, year]);
-
-  const toggle = (id) => setChecked((prev) => { const n = new Set(prev); n.has(String(id)) ? n.delete(String(id)) : n.add(String(id)); return n; });
-  const activeCount = checked.size;
-
-  async function apply() {
-    setSaving(true);
-    try {
-      const res = await apiFetch("/api/department-forms/carry-forward", {
-        method: "POST", body: JSON.stringify({ year, activeFormIds: Array.from(checked) }),
-      });
-      const d = await res.json();
-      if (d.success) onDone(d.message || "Academic year set up.");
-      else { showToast(d.message || "Failed to set up year.", "error"); setSaving(false); }
-    } catch { showToast("Network error.", "error"); setSaving(false); }
-  }
-
-  return (
-    <Modal open onClose={onClose} width={560} icon={<CalendarCog size={18} strokeWidth={STROKE} />}
-      title={`Set Up ${yearLabel || "Academic Year"}`}
-      subtitle="Choose which of your department's forms are active this year. Unchecked forms are archived (you can activate them anytime)."
-      footer={<>
-        <Button variant="secondary" disabled={saving} onClick={onClose}>Cancel</Button>
-        <Button variant="primary" loading={saving} disabled={saving} onClick={apply}>Apply ({activeCount} active)</Button>
-      </>}>
-      {loading ? (
-        <div style={{ textAlign: "center", padding: 24, color: color.muted, fontSize: 13 }}>Loading forms…</div>
-      ) : forms.length === 0 ? (
-        <div style={{ textAlign: "center", padding: 24, color: color.muted, fontSize: 13 }}>No forms in your department yet. Create a form first.</div>
-      ) : (
-        <>
-          <div style={{ display: "flex", gap: 10, marginBottom: 14 }}>
-            <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 12, background: "#f0fdf4", border: "1px solid #16a34a22", borderRadius: 10, padding: "10px 14px" }}>
-              <div style={{ fontSize: 22, fontWeight: 800, color: "#16a34a" }}>{activeCount}</div>
-              <div style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Active</div>
-            </div>
-            <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 12, background: "#f1f5f9", border: `1px solid ${color.border}`, borderRadius: 10, padding: "10px 14px" }}>
-              <div style={{ fontSize: 22, fontWeight: 800, color: color.muted }}>{forms.length - activeCount}</div>
-              <div style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Archived</div>
-            </div>
-          </div>
-          {prevYear != null && <div style={{ fontSize: 12, color: color.muted, marginBottom: 8 }}>Pre-selected from forms active in {prevYear}–{prevYear + 1}.</div>}
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            {forms.map((f) => {
-              const on = checked.has(String(f.id));
-              return (
-                <label key={f.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", borderRadius: 9, border: `1.5px solid ${on ? color.primary : color.border}`, background: on ? color.primarySoft : "#fff", cursor: "pointer" }}>
-                  <input type="checkbox" checked={on} onChange={() => toggle(f.id)} style={{ width: 16, height: 16, accentColor: color.primary, cursor: "pointer" }} />
-                  <span style={{ fontSize: 13, fontWeight: 600, color: color.text }}>{titleOf(f.form_name)}</span>
-                  {on && <Check size={14} color={color.primary} style={{ marginLeft: "auto" }} />}
-                </label>
-              );
-            })}
-          </div>
-        </>
-      )}
-    </Modal>
   );
 }
