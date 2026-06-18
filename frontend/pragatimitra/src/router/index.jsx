@@ -1,16 +1,20 @@
 import { createBrowserRouter, Navigate, useNavigate } from "react-router-dom";
 import { useEffect, lazy } from "react";
 
-import RootLayout     from "../layouts/RootLayout";
 import AuthLayout     from "../layouts/AuthLayout/Authlayout";
+import RootLayout     from "../layouts/RootLayout";
 import ProtectedRoute from "../components/ProtectedRoute";
 import { useAuth, ROLE_ROUTES } from "../store/AuthContext";
+import {
+  ROLE_CONFIG,
+  getRoleConfig,
+  getRoleDefaultSlug,
+} from "../components/Dashboard/roleConfig";
+import { flatSettingsItems, SettingsEmptyPage } from "../components/Dashboard/SettingsSidebar";
 
 /* ─────────────────────────────────────────────────────────────
    RootRedirect
    Reads the user's role → looks up ROLE_ROUTES → navigates.
-   RootLayout itself renders the correct nav via getRoleConfig,
-   so we only need to land on the right path.
 ───────────────────────────────────────────────────────────── */
 function RootRedirect() {
   const { user } = useAuth();
@@ -21,8 +25,7 @@ function RootRedirect() {
     const role  = user?.roles?.[0]?.name || "";
     const route = user.mustChangePassword
       ? "/change-password"
-      : (ROLE_ROUTES[role] || "/dashboard/super-admin");
-    console.log("[RootRedirect] role:", role, "→ route:", route);
+      : (ROLE_ROUTES[role] || ROLE_ROUTES.super_admin);
     navigate(route, { replace: true });
   }, [user, navigate]);
 
@@ -35,6 +38,81 @@ function RootRedirect() {
       Redirecting…
     </div>
   );
+}
+
+/* ─────────────────────────────────────────────────────────────
+   SlugRoute
+   Given the URL path (leading "/" stripped), decides — based on
+   the current effective role — whether the role can see that path
+   and what to render. Redirects to the role's default slug if the
+   path is not accessible.
+───────────────────────────────────────────────────────────── */
+function SlugRoute({ path }) {
+  const { user, noaSelectedRole } = useAuth();
+  const effectiveRole = noaSelectedRole || user?.roles?.[0]?.name;
+  const config        = getRoleConfig(effectiveRole);
+  const permissions   = user?.roles?.[0]?.permissions ?? {};
+  const hasAll        = permissions["all"] === true;
+  const defaultSlug   = getRoleDefaultSlug(effectiveRole);
+
+  /* ── Settings routes ─────────────────────────────────────── */
+  if (path === "settings" || path.startsWith("settings/")) {
+    const items = flatSettingsItems(effectiveRole);
+
+    if (path === "settings") {
+      return items.length
+        ? <Navigate to={`/settings/${items[0].id}`} replace />
+        : <SettingsEmptyPage />;
+    }
+
+    const id   = path.slice("settings/".length);
+    const item = items.find((i) => i.id === id);
+    if (!item) return <Navigate to={`/${defaultSlug}`} replace />;
+    return <div style={{ padding: "32px 36px" }}>{item.renderPage()}</div>;
+  }
+
+  /* ── Dashboard / module routes ───────────────────────────── */
+  const slug     = path.split("/")[0];
+  const allItems = config.navItems.flatMap((group) => group.items);
+  const item     = allItems.find((i) => i.slug === slug);
+  const visible  = item && (item.permission == null || hasAll || permissions[item.permission] === true);
+
+  if (!visible) return <Navigate to={`/${defaultSlug}`} replace />;
+
+  if (path === slug) return config.pages[item.id];
+
+  const sub = (item.subRoutes || []).find((sr) => sr.path === path);
+  if (!sub) return <Navigate to={`/${slug}`} replace />;
+  return sub.element;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   collectRouteSlugs
+   Walks every role's config and returns a de-duplicated array of
+   all URL paths used across the app (nav slugs, sub-route paths,
+   settings/<id> paths, and the bare "settings" index).
+───────────────────────────────────────────────────────────── */
+function collectRouteSlugs() {
+  const slugs = new Set(["settings"]);
+
+  for (const [roleKey, config] of Object.entries(ROLE_CONFIG)) {
+    if (roleKey === "__fallback__") continue;
+
+    for (const group of config.navItems) {
+      for (const item of group.items) {
+        slugs.add(item.slug);
+        for (const sub of item.subRoutes || []) {
+          slugs.add(sub.path);
+        }
+      }
+    }
+
+    for (const item of flatSettingsItems(roleKey)) {
+      slugs.add(`settings/${item.id}`);
+    }
+  }
+
+  return [...slugs];
 }
 
 /* ── Lazy page imports ── */
@@ -67,37 +145,22 @@ const router = createBrowserRouter([
         children: [{ path: "change-password", element: <ChangePassword /> }],
       },
 
-      // ── All dashboard routes share RootLayout ───────────────
-      // RootLayout reads the role from useAuth() and calls
-      // getRoleConfig() itself — no per-route element needed.
-      // Every path here just needs to match what ROLE_ROUTES
-      // points to so the browser URL is correct.
+      // "/" inside protected tree → redirect to role dashboard
+      { index: true, element: <RootRedirect /> },
+
+      // ✅ /dashboard → also redirect (removes the old generic catch)
+      { path: "dashboard", element: <RootRedirect /> },
+
+      // ── Flat, role-agnostic dashboard route tree ─────────────
+      // One <RootLayout/> with one child per slug across all roles.
+      // <SlugRoute> dispatches to the correct component at render
+      // time based on the current effective role.
       {
         element: <RootLayout />,
-        children: [
-          // "/" inside protected tree → redirect to role dashboard
-          { index: true, element: <RootRedirect /> },
-
-          // ✅ /dashboard → also redirect (removes the old generic catch)
-          { path: "dashboard", element: <RootRedirect /> },
-
-          // Role-specific paths — element is intentionally null/empty
-          // because RootLayout renders the page content via roleConfig pages map.
-          { path: "dashboard/super-admin",      element: null },
-          { path: "dashboard/institute-admin",  element: null },
-          { path: "dashboard/publication-cell", element: null },
-          { path: "dashboard/department-admin", element: null },
-          { path: "dashboard/head-of-department", element: null },
-          { path: "dashboard/nodal-officer",    element: null },
-          { path: "dashboard/contributor",      element: null },
-          { path: "dashboard/reviewer",         element: null },
-          { path: "dashboard/finance-officer",  element: null },
-          { path: "dashboard/directors-office", element: null },
-          { path: "dashboard/hospital-admin",   element: null },
-          { path: "dashboard/finance-admin",    element: null },
-
-          { path: "reports", element: null },
-        ],
+        children: collectRouteSlugs().map((path) => ({
+          path,
+          element: <SlugRoute path={path} />,
+        })),
       },
     ],
   },

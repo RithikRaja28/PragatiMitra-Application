@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
+import { useNavigate, useLocation, Navigate } from "react-router-dom";
 import {
   Building, Pencil, MoreHorizontal, Power, PowerOff,
   Plus, Upload, Download, FileSpreadsheet, FileText,
@@ -436,9 +437,13 @@ function Pagination({ page, pageSize, total, onPage, onPageSize }) {
 }
 
 /* ─── Main page ──────────────────────────────────────────────── */
+const SLUG = "department-management";
+
 export default function DepartmentManagementPage() {
   const { lang } = useLanguage();
   const { apiFetch } = useApi();
+  const navigate = useNavigate();
+  const location = useLocation();
 
   const [institutions, setInstitutions] = useState([]);
   const [selectedInstitutionId, setSelectedInstitutionId] = useState(null);
@@ -449,10 +454,18 @@ export default function DepartmentManagementPage() {
   const [loadingDepts, setLoadingDepts] = useState(false);
   const [institutionsError, setInstitutionsError] = useState(null);
 
-  /* formView: null = list, { mode: 'create'|'edit', entity } = form screen */
-  const [formView, setFormView] = useState(null);
-  const [showImport, setShowImport] = useState(false);
   const [togglingId, setTogglingId] = useState(null);
+
+  const isCreate = location.pathname.endsWith("/create");
+  const isImport = location.pathname.endsWith("/import");
+  const isEdit   = location.pathname.endsWith("/edit");
+
+  const listPath = `/${SLUG}`;
+
+  // Edit mode reads the record passed via navigation state from the list's
+  // row menu — no id in the URL. Refresh/deep-link with no state bounces
+  // back to the list (see render guard below).
+  const entityForForm = isEdit ? (location.state?.entity ?? null) : null;
 
   /* Pagination */
   const [page, setPage]         = useState(1);
@@ -568,7 +581,7 @@ export default function DepartmentManagementPage() {
 
   /* ── Callbacks from DepartmentForm ── */
   function handleCreated(institutionId, message) {
-    setFormView(null);
+    navigate(listPath);
     showToast(message, "success");
     if (institutionId === selectedInstitutionId) {
       fetchDepartments(institutionId);
@@ -578,28 +591,33 @@ export default function DepartmentManagementPage() {
   }
 
   function handleSaved(message) {
-    setFormView(null);
+    navigate(listPath);
     showToast(message, "success");
     fetchDepartments(selectedInstitutionId);
   }
 
-  /* ── Render form screen when formView is set ── */
-  if (formView) {
+  /* ── Render form screen for create/edit ── */
+  if (isCreate || isEdit) {
+    if (isEdit && !entityForForm) return <Navigate to={listPath} replace />;
     return (
-      <DepartmentForm
-        mode={formView.mode}
-        entity={formView.entity}
-        institutions={institutions}
-        defaultInstitutionId={selectedInstitutionId}
-        onCreated={handleCreated}
-        onSaved={handleSaved}
-        onBack={() => setFormView(null)}
-      />
+      <>
+        {toast && <Toast message={toast.message} type={toast.type} />}
+        <DepartmentForm
+          key={isEdit ? "edit" : "create"}
+          mode={isEdit ? "edit" : "create"}
+          entity={entityForForm}
+          institutions={institutions}
+          defaultInstitutionId={selectedInstitutionId}
+          onCreated={handleCreated}
+          onSaved={handleSaved}
+          onBack={() => navigate(listPath)}
+        />
+      </>
     );
   }
 
   /* ── Render import wizard ── */
-  if (showImport) {
+  if (isImport) {
     const selectedInstitutionName =
       institutions.find((i) => i.institution_id === selectedInstitutionId)?.institution_name || "";
 
@@ -610,9 +628,9 @@ export default function DepartmentManagementPage() {
           apiPath="/api/departments"
           entityLabel="Departments"
           entityIcon={<Building size={22} strokeWidth={1.8} color="#2563eb" />}
-          onBack={() => setShowImport(false)}
+          onBack={() => navigate(listPath)}
           onSuccess={(result) => {
-            setShowImport(false);
+            navigate(listPath);
             fetchDepartments(selectedInstitutionId);
             showToast(
               `Import complete: ${result.imported} department${result.imported !== 1 ? "s" : ""} added${result.updated ? `, ${result.updated} updated` : ""}.`,
@@ -692,10 +710,10 @@ export default function DepartmentManagementPage() {
             {!loadingInstitutions && !institutionsError && institutions.length > 0 && (
               <>
                 <ExportMenu selectedInstitutionId={selectedInstitutionId} />
-                <Button variant="secondary" icon={<Upload size={17} strokeWidth={1.9} />} onClick={() => setShowImport(true)}>
+                <Button variant="secondary" icon={<Upload size={17} strokeWidth={1.9} />} onClick={() => navigate(`${listPath}/import`)}>
                   {t("Import", lang)}
                 </Button>
-                <Button variant="primary" icon={<Plus size={17} strokeWidth={2} />} onClick={() => setFormView({ mode: "create", entity: null })}>
+                <Button variant="primary" icon={<Plus size={17} strokeWidth={2} />} onClick={() => navigate(`${listPath}/create`)}>
                   {t("New Department", lang)}
                 </Button>
               </>
@@ -808,7 +826,7 @@ export default function DepartmentManagementPage() {
                     <Button variant="ghost" iconOnly icon={<MoreHorizontal size={18} strokeWidth={2} />} onClick={toggle} aria-label="Row actions" />
                   )}
                 >
-                  <MenuItem icon={<Pencil size={16} strokeWidth={1.9} />} onClick={() => setFormView({ mode: "edit", entity: dept })}>
+                  <MenuItem icon={<Pencil size={16} strokeWidth={1.9} />} onClick={() => navigate(`${listPath}/edit`, { state: { entity: dept } })}>
                     {t("Edit", lang)}
                   </MenuItem>
                   {isActive ? (

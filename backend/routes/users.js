@@ -593,6 +593,8 @@ router.post(
              VALUES ${rt.join(",")} ON CONFLICT DO NOTHING`,
             rv
           );
+          /* Role changes take effect immediately via the per-request role refresh
+             in verifyToken (Bug 5) — no session kill / forced re-login needed. */
         }
 
         done += chunk.length;
@@ -1018,6 +1020,57 @@ router.get("/", verifyToken, requireRole(["super_admin", "institute_admin", "dep
 });
 
 /* ─────────────────────────────────────────────────────────────────────────────
+   GET /api/users/:id
+   Single-user fetch for the edit page — required so /user-management/:userId/edit
+   can load its data directly (refresh / deep link), not just via in-app state.
+───────────────────────────────────────────────────────────────────────────── */
+router.get("/:id", verifyToken, requireRole(["super_admin", "institute_admin", "department_admin"]), async (req, res) => {
+  const pool = req.app.locals.pool;
+  const { id } = req.params;
+
+  try {
+    const conditions = ["u.id = $1", "u.account_status != 'DELETED'"];
+    const params = [id];
+
+    if (isDeptAdmin(req)) {
+      params.push(req.user.institutionId, req.user.departmentId);
+      conditions.push(`u.institution_id = $${params.length - 1}`);
+      conditions.push(`u.department_id  = $${params.length}`);
+    } else if (isOnlyInstAdmin(req)) {
+      params.push(req.user.institutionId);
+      conditions.push(`u.institution_id = $${params.length}`);
+    }
+
+    const { rows } = await pool.query(`
+      SELECT
+        u.id, u.full_name, u.email, u.account_status,
+        u.last_login_at, u.created_at, u.institution_id, u.department_id,
+        COALESCE(u.role_domain, 'academic') AS role_domain,
+        i.institution_name, d.name AS department_name,
+        COALESCE(
+          (SELECT json_agg(json_build_object('name', r.name, 'display_name', r.display_name))
+           FROM user_roles ur JOIN roles r ON r.id = ur.role_id
+           WHERE ur.user_id = u.id AND ur.revoked_at IS NULL
+             AND (ur.expires_at IS NULL OR ur.expires_at > now())
+          ), '[]'::json
+        ) AS roles
+      FROM users u
+      LEFT JOIN institutions i ON i.institution_id = u.institution_id
+      LEFT JOIN departments  d ON d.department_id  = u.department_id
+      WHERE ${conditions.join(" AND ")}
+    `, params);
+
+    if (!rows.length)
+      return res.status(404).json({ success: false, message: "User not found." });
+
+    return res.json({ success: true, user: rows[0] });
+  } catch (err) {
+    logger.error("GET /api/users/:id failed", { ...getLogContext(req), stack: err.stack });
+    return res.status(500).json({ success: false, message: "Internal server error." });
+  }
+});
+
+/* ─────────────────────────────────────────────────────────────────────────────
    PUT /api/users/:id
    Explicit email-uniqueness pre-check (excludes self) before doing any work.
 ───────────────────────────────────────────────────────────────────────────── */
@@ -1102,6 +1155,14 @@ router.put("/:id", verifyToken, requireRole(["super_admin", "institute_admin", "
       return res.status(404).json({ success: false, message: "User not found." });
 
     const updated = rows[0];
+
+    /* Account lifecycle: when a user is disabled / suspended / deleted, kill all
+       their active sessions immediately so the refresh-token flow can no longer
+       mint new access tokens (the per-request middleware already rejects the
+       short-lived access token). Best-effort — never block the update response. */
+    if (updated.account_status && updated.account_status !== "ACTIVE") {
+      await pool.query("DELETE FROM sessions WHERE user_id = $1", [updated.id]).catch(() => {});
+    }
 
     const changedFields = ["full_name", "email", "account_status", "institution_id", "department_id"]
       .filter((f) => String(existing[f] ?? "") !== String(updated[f] ?? ""));

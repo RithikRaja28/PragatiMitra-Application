@@ -72,9 +72,10 @@ router.get("/", async (req, res) => {
     if (templates.length > 0) {
       const ids = templates.map(t => t.id);
       const { rows: allSteps } = await pool.query(
-        `SELECT ws.*, u.full_name AS approver_name
+        `SELECT ws.*, u.full_name AS approver_name, d.name AS approver_department_name
          FROM public.workflow_steps ws
          LEFT JOIN public.users u ON u.id = ws.approver_user_id
+         LEFT JOIN public.departments d ON d.department_id = ws.approver_department_id
          WHERE ws.template_id = ANY($1::uuid[])
          ORDER BY ws.template_id, ws.step_order`,
         [ids]
@@ -120,10 +121,11 @@ router.post("/", requireRole(["super_admin", "institute_admin"]), async (req, re
         if (!s.step_name?.trim()) continue;
         await client.query(
           `INSERT INTO public.workflow_steps
-             (template_id, step_order, step_name, approver_role, approver_user_id)
-           VALUES ($1,$2,$3,$4,$5)`,
+             (template_id, step_order, step_name, approver_role, approver_user_id, approver_department_id)
+           VALUES ($1,$2,$3,$4,$5,$6)`,
           [template.id, i + 1, s.step_name.trim(), s.approver_role || null,
-           isUUID(s.approver_user_id) ? s.approver_user_id : null]
+           isUUID(s.approver_user_id) ? s.approver_user_id : null,
+           isUUID(s.approver_department_id) ? s.approver_department_id : null]
         );
       }
 
@@ -157,9 +159,10 @@ router.get("/:id", async (req, res) => {
     const [tmplRes, stepsRes] = await Promise.all([
       pool.query(`SELECT * FROM public.workflow_templates WHERE id = $1`, [id]),
       pool.query(
-        `SELECT ws.*, u.full_name AS approver_name
+        `SELECT ws.*, u.full_name AS approver_name, d.name AS approver_department_name
          FROM public.workflow_steps ws
          LEFT JOIN public.users u ON u.id = ws.approver_user_id
+         LEFT JOIN public.departments d ON d.department_id = ws.approver_department_id
          WHERE ws.template_id = $1 ORDER BY ws.step_order`, [id]
       ),
     ]);
@@ -236,11 +239,14 @@ router.post("/:id/steps", requireRole(["super_admin", "institute_admin"]), async
       `SELECT COALESCE(MAX(step_order), 0) + 1 AS next FROM public.workflow_steps WHERE template_id = $1`, [id]
     );
 
+    const { approver_department_id } = req.body;
     const { rows } = await pool.query(
-      `INSERT INTO public.workflow_steps (template_id, step_order, step_name, approver_role, approver_user_id)
-       VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+      `INSERT INTO public.workflow_steps
+         (template_id, step_order, step_name, approver_role, approver_user_id, approver_department_id)
+       VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
       [id, maxRes[0].next, step_name.trim(), approver_role || null,
-       isUUID(approver_user_id) ? approver_user_id : null]
+       isUUID(approver_user_id) ? approver_user_id : null,
+       isUUID(approver_department_id) ? approver_department_id : null]
     );
 
     return res.status(201).json({ success: true, data: rows[0] });
@@ -257,16 +263,19 @@ router.put("/:id/steps/:stepId", requireRole(["super_admin", "institute_admin"])
     const { id, stepId } = req.params;
     if (!isUUID(id) || !isUUID(stepId)) return res.status(400).json({ success: false, message: "Invalid id" });
 
-    const { step_name, step_order, approver_role, approver_user_id } = req.body;
+    const { step_name, step_order, approver_role, approver_user_id, approver_department_id } = req.body;
     const { rows } = await pool.query(
       `UPDATE public.workflow_steps
-       SET step_name        = COALESCE($1, step_name),
-           step_order       = COALESCE($2, step_order),
-           approver_role    = COALESCE($3, approver_role),
-           approver_user_id = $4
-       WHERE id = $5 AND template_id = $6 RETURNING *`,
+       SET step_name              = COALESCE($1, step_name),
+           step_order             = COALESCE($2, step_order),
+           approver_role          = COALESCE($3, approver_role),
+           approver_user_id       = $4,
+           approver_department_id = $5
+       WHERE id = $6 AND template_id = $7 RETURNING *`,
       [step_name?.trim() || null, step_order != null ? Number(step_order) : null,
-       approver_role || null, isUUID(approver_user_id) ? approver_user_id : null,
+       approver_role || null,
+       isUUID(approver_user_id) ? approver_user_id : null,
+       isUUID(approver_department_id) ? approver_department_id : null,
        stepId, id]
     );
     if (!rows.length) return res.status(404).json({ success: false, message: "Step not found" });

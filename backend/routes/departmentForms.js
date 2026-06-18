@@ -20,9 +20,28 @@ const {
 } = require("../services/departmentFormService");
 const { resolveActiveAcademicYear } = require("../services/academicYearService");
 const { assertEquivalent } = require("../services/equivalenceGuard");
+const { getDepartmentState, DEPARTMENT_INACTIVE_MESSAGE } = require("../services/departmentContext");
+const { ensureRecordsIndexes } = require("../services/recordsIndexService");
 
 const router = express.Router();
 router.use(verifyToken);
+
+/* Bug 11 — department lifecycle gate for WRITE routes. An inactive department is
+   view-only: form create / schema edit / role / deadline / lock / archive / carry-
+   forward are all blocked while existing data + GET listings stay available.
+   Restore re-enables everything (no children were mutated). */
+async function requireActiveDepartment(req, res, next) {
+  try {
+    const pool = req.app.locals.pool;
+    const { departmentId } = await resolveDeptContext(pool, req);
+    const { active } = await getDepartmentState(pool, departmentId);
+    if (!active) return res.status(403).json({ success: false, message: DEPARTMENT_INACTIVE_MESSAGE });
+    return next();
+  } catch (err) {
+    logger.error("requireActiveDepartment failed", { stack: err.stack });
+    return res.status(500).json({ success: false, message: "Failed to resolve department state." });
+  }
+}
 
 /* OWNERSHIP: the INSTITUTION owns the academic year; a department only INHERITS
    it. Departments never create / delete / lock academic years here (no route in
@@ -32,10 +51,10 @@ router.use(verifyToken);
    institution's active year so the fallback inherits it instead of guessing the
    calendar year. It does the lookup ONLY on the no-year path, so normal flows
    (which always send ?year) pay nothing. */
+// A year counts as explicit only when positive (body.year may be null → 0).
+const validYear = (v) => Number.isInteger(Number(v)) && Number(v) > 0;
 function hasExplicitYear(req) {
-  return Number.isInteger(Number(req.query.year))
-    || Number.isInteger(Number(req.get("X-Academic-Year")))
-    || Number.isInteger(Number(req.body?.year));
+  return validYear(req.query.year) || validYear(req.get("X-Academic-Year")) || validYear(req.body?.year);
 }
 router.use(async (req, _res, next) => {
   try {
@@ -64,17 +83,13 @@ const FIXED_FORM_ROLES = ["department_admin", "nodal_officer", "contributor"];
    body.year → institution's active year (inherited) → current calendar year.
    Mirrors how the institution side reads the top-bar year. */
 function resolveYear(req) {
-  const fromQuery = Number(req.query.year);
-  if (Number.isInteger(fromQuery)) return fromQuery;
-  const fromHeader = Number(req.get("X-Academic-Year"));
-  if (Number.isInteger(fromHeader)) return fromHeader;
-  const fromBody = Number(req.body?.year);
-  if (Number.isInteger(fromBody)) return fromBody;
-  // Phase-1 shadow: legacy fallback (calendar year) is authoritative; the
-  // institution-active year is the candidate — logged if it would differ, never used.
-  const legacy = new Date().getFullYear();
-  const candidate = Number.isInteger(req.institutionAcademicYear) ? req.institutionAcademicYear : legacy;
-  return assertEquivalent("departmentForms.resolveYear.fallback", legacy, candidate);
+  if (validYear(req.query.year)) return Number(req.query.year);
+  if (validYear(req.get("X-Academic-Year"))) return Number(req.get("X-Academic-Year"));
+  if (validYear(req.body?.year)) return Number(req.body?.year);
+  // Bug 16 — inherit the institution's ACTIVE academic year (computed by the
+  // middleware above) before falling back to the calendar year as a LAST resort.
+  if (Number.isInteger(req.institutionAcademicYear)) return req.institutionAcademicYear;
+  return new Date().getFullYear();
 }
 
 /* Load a department form by id, scoped to the caller's department. */
@@ -157,6 +172,101 @@ router.get("/", requireRole(WRITE_ROLES), async (req, res) => {
   } catch (err) {
     logger.error("GET /api/department-forms", { stack: err.stack });
     return res.status(500).json({ success: false, message: "Failed to fetch department forms." });
+  }
+});
+
+/* ─────────────────────────────────────────────────────────────────────
+   Academic-year cycle (department-scoped, independent of institution).
+   GET /api/department-forms/year-preview?year=YYYY
+     Lists the department's forms with their status in the previous year, so
+     the UI can pre-select which forms carry forward into the target year.
+───────────────────────────────────────────────────────────────────── */
+router.get("/year-preview", requireRole(WRITE_ROLES), async (req, res) => {
+  const pool = req.app.locals.pool;
+  try {
+    const { departmentId } = await resolveDeptContext(pool, req);
+    if (!departmentId) return res.json({ success: true, forms: [], year: resolveYear(req) });
+    const year = resolveYear(req);
+    const prevYear = year - 1;
+
+    const { rows } = await pool.query(
+      `SELECT dtl.id, dtl.form_name, dtl.academic_year,
+              cur.status      AS cur_status,  COALESCE(cur.is_archived, false) AS cur_archived,
+              prev.status     AS prev_status, COALESCE(prev.is_active, false)  AS prev_active, prev.is_archived AS prev_archived
+         FROM department_table_list dtl
+         LEFT JOIN department_form_year_mapping cur  ON cur.department_form_id  = dtl.id AND cur.academic_year  = $2
+         LEFT JOIN department_form_year_mapping prev ON prev.department_form_id = dtl.id AND prev.academic_year = $3
+        WHERE dtl.department_id = $1
+        ORDER BY dtl.form_name`,
+      [departmentId, year, prevYear]
+    );
+
+    const forms = rows.map((f) => {
+      const prevHas = f.prev_status != null;
+      const prevActive = prevHas ? (f.prev_archived !== true) : (f.academic_year === prevYear);
+      const curHas = f.cur_status != null;
+      const curActive = curHas ? (f.cur_archived !== true) : (f.academic_year === year);
+      return { id: f.id, form_name: f.form_name, academic_year: f.academic_year, prev_active: prevActive, current_active: curActive };
+    });
+    return res.json({ success: true, forms, year, previousYear: prevYear });
+  } catch (err) {
+    logger.error("GET /api/department-forms/year-preview", { stack: err.stack });
+    return res.status(500).json({ success: false, message: "Failed to build year preview." });
+  }
+});
+
+/* POST /api/department-forms/carry-forward   { year, activeFormIds: string[] }
+   Bulk-sets the department's per-year lifecycle for `year`: the listed forms
+   become Active, all others become Archived. One step instead of toggling each
+   form. Independent of the institution academic year. */
+router.post("/carry-forward", requireRole(WRITE_ROLES), requireActiveDepartment, async (req, res) => {
+  const pool = req.app.locals.pool;
+  const year = Number(req.body?.year) || resolveYear(req);
+  const activeSet = new Set((Array.isArray(req.body?.activeFormIds) ? req.body.activeFormIds : []).map(String));
+  try {
+    const { departmentId } = await resolveDeptContext(pool, req);
+    if (!departmentId) return res.status(400).json({ success: false, message: "No department is associated with your account." });
+
+    const { rows: formRows } = await pool.query(
+      "SELECT id FROM department_table_list WHERE department_id = $1",
+      [departmentId]
+    );
+
+    const client = await pool.connect();
+    let activated = 0;
+    try {
+      await client.query("BEGIN");
+      for (const { id } of formRows) {
+        const active = activeSet.has(String(id));
+        if (active) activated += 1;
+        await client.query(
+          `INSERT INTO department_form_year_mapping
+             (department_form_id, academic_year, status, is_active, is_archived, is_locked)
+           VALUES ($1, $2, $3, $4, $5, false)
+           ON CONFLICT (department_form_id, academic_year) DO UPDATE
+             SET status = $3, is_active = $4, is_archived = $5`,
+          [id, year, active ? "active" : "archived", active, !active]
+        );
+      }
+      await client.query("COMMIT");
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
+
+    await writeAuditLog(req, {
+      actionType: "DEPARTMENT_YEAR_CARRY_FORWARD",
+      entityType: "department_form_year",
+      entityId: null,
+      newValue: { academic_year: year, activated, total: formRows.length },
+    }).catch(() => {});
+
+    return res.json({ success: true, message: `Set up ${year}–${year + 1}: ${activated} active, ${formRows.length - activated} archived.`, activated, total: formRows.length });
+  } catch (err) {
+    logger.error("POST /api/department-forms/carry-forward", { stack: err.stack });
+    return res.status(500).json({ success: false, message: "Failed to set up the academic year." });
   }
 });
 
@@ -261,7 +371,7 @@ router.get("/:id/roles", async (req, res) => {
    selected year), lock config, and role access.
    Body: { form_name, form_description?, schema, year?, deadline? }
 ───────────────────────────────────────────────────────────────────── */
-router.post("/", requireRole(WRITE_ROLES), async (req, res) => {
+router.post("/", requireRole(WRITE_ROLES), requireActiveDepartment, async (req, res) => {
   const pool = req.app.locals.pool;
   const { form_name, form_description = null, schema, deadline } = req.body;
 
@@ -354,6 +464,9 @@ router.post("/", requireRole(WRITE_ROLES), async (req, res) => {
         }
       }
 
+      // Bug 14 — index the fresh department-records table (empty → instant).
+      await ensureRecordsIndexes(client, table);
+
       await client.query("COMMIT");
 
       await writeAuditLog(req, {
@@ -380,7 +493,7 @@ router.post("/", requireRole(WRITE_ROLES), async (req, res) => {
    PUT /api/department-forms/:id/schema   — update schema (edit)
    Body: { schema }
 ───────────────────────────────────────────────────────────────────── */
-router.put("/:id/schema", requireRole(WRITE_ROLES), async (req, res) => {
+router.put("/:id/schema", requireRole(WRITE_ROLES), requireActiveDepartment, async (req, res) => {
   const pool = req.app.locals.pool;
   const { schema } = req.body;
   if (!schema) return res.status(400).json({ success: false, message: "schema is required." });
@@ -391,6 +504,35 @@ router.put("/:id/schema", requireRole(WRITE_ROLES), async (req, res) => {
 
     const table = deptRecordsTable(form.department_id, form.form_name);
     const currentNames = new Set((form.schema?.fields || []).map((f) => f.column_name));
+
+    // Bug 8 — a previously-used (now deleted) column name must not be reintroduced:
+    // the underlying table column still holds the old data (ADD COLUMN IF NOT EXISTS
+    // is a no-op), so a new field reusing that name would silently expose orphaned
+    // values. Reject it — mirrors the institution PUT /schema guard. Renames are a
+    // label-only change (column_name is locked in the builder), so this never fires
+    // for a genuine rename.
+    const usedColumnNames = new Set(form.used_column_names || []);
+    const excludedIncoming = new Set(schema.excluded_fixed_columns || []);
+    const reused = (schema.fields || [])
+      .filter((f) => !excludedIncoming.has(f.column_name))
+      .map((f) => f.column_name?.trim().toLowerCase().replace(/\s+/g, "_"))
+      .filter((col) => col && usedColumnNames.has(col) && !currentNames.has(col));
+    if (reused.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Column name(s) were previously used and cannot be reused: ${reused.join(", ")}. Choose a different name to avoid exposing old data.`,
+      });
+    }
+
+    // Bug 9 — an existing field's TYPE is immutable: its records-table column was
+    // created with that type and is never ALTERed, so a changed type would corrupt
+    // stored data. Force already-saved fields back to their stored type (the builder
+    // locks this in the UI; this is the defense-in-depth backstop).
+    const existingTypeByCol = new Map((form.schema?.fields || []).map((f) => [f.column_name, f.type]));
+    for (const f of (schema.fields || [])) {
+      if (existingTypeByCol.has(f.column_name)) f.type = existingTypeByCol.get(f.column_name);
+    }
+
     const mergedUsed = Array.from(new Set([...(form.used_column_names || []), ...collectColumnNames(schema.fields)]));
 
     const client = await pool.connect();
@@ -430,7 +572,7 @@ router.put("/:id/schema", requireRole(WRITE_ROLES), async (req, res) => {
    PUT /api/department-forms/:id/roles   — replace role access list
    Body: { roles: string[] }
 ───────────────────────────────────────────────────────────────────── */
-router.put("/:id/roles", requireRole(WRITE_ROLES), async (req, res) => {
+router.put("/:id/roles", requireRole(WRITE_ROLES), requireActiveDepartment, async (req, res) => {
   const pool = req.app.locals.pool;
   const roles = Array.isArray(req.body?.roles) ? req.body.roles : [];
   try {
@@ -467,7 +609,7 @@ router.put("/:id/roles", requireRole(WRITE_ROLES), async (req, res) => {
    Body: { deadline }  (ISO string to set; null/"" to clear). Mirrors the
    institution deadline upsert: clearing a future deadline lifts auto-locks.
 ───────────────────────────────────────────────────────────────────── */
-router.put("/:id/deadline", requireRole(WRITE_ROLES), async (req, res) => {
+router.put("/:id/deadline", requireRole(WRITE_ROLES), requireActiveDepartment, async (req, res) => {
   const pool = req.app.locals.pool;
   const { deadline } = req.body;
   let newDeadline = null;
@@ -522,10 +664,10 @@ async function client_safe_audit(req, form, newDeadline, academicYear) {
    POST /api/department-forms/:id/lock   — lock the SELECTED academic year
    POST /api/department-forms/:id/unlock
 ───────────────────────────────────────────────────────────────────── */
-router.post("/:id/lock", requireRole(WRITE_ROLES), async (req, res) => {
+router.post("/:id/lock", requireRole(WRITE_ROLES), requireActiveDepartment, async (req, res) => {
   return setYearLock(req, res, true);
 });
-router.post("/:id/unlock", requireRole(WRITE_ROLES), async (req, res) => {
+router.post("/:id/unlock", requireRole(WRITE_ROLES), requireActiveDepartment, async (req, res) => {
   return setYearLock(req, res, false);
 });
 
@@ -571,7 +713,7 @@ async function setYearLock(req, res, locked) {
    PATCH /api/department-forms/:id/archive   — archive / restore for the year
    Body: { archived: boolean }
 ───────────────────────────────────────────────────────────────────── */
-router.patch("/:id/archive", requireRole(WRITE_ROLES), async (req, res) => {
+router.patch("/:id/archive", requireRole(WRITE_ROLES), requireActiveDepartment, async (req, res) => {
   const pool = req.app.locals.pool;
   const archived = req.body?.archived === true;
   try {

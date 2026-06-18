@@ -1,9 +1,12 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useNavigate, useLocation, Navigate } from "react-router-dom";
 import {
   FilePlus, Search, Plus, Lock, Unlock, Eye, Settings2,
   CalendarClock, MoreHorizontal, Archive, ArchiveRestore,
   Download, FileText as FileCsv, FileSpreadsheet,
 } from "lucide-react";
+
+const SLUG = "form-management";
 import { useApi } from "../../hooks/useApi";
 import { useAuth } from "../../store/AuthContext";
 import { useAcademicYear } from "../../store/AcademicYearContext";
@@ -113,14 +116,17 @@ function DeadlineModal({ form, year, onClose, onSaved, showToast }) {
 }
 
 export default function DepartmentFormManagementPage() {
+  const navigate = useNavigate();
+  const location = useLocation();
   const { apiFetch } = useApi();
   const { accessToken } = useAuth();
   const { selectedYear, academicYear } = useAcademicYear() || {};
-  const { lang } = useLanguage();
 
-  const [view, setView] = useState("list");
-  const [builderMode, setBuilderMode] = useState(null);
-  const [selectedForm, setSelectedForm] = useState(null);
+  const isCreate  = location.pathname.endsWith("/create");
+  const isEdit    = location.pathname.endsWith("/edit");
+  const isRecords = location.pathname.endsWith("/records");
+  const listPath  = `/${SLUG}`;
+  const entity    = (isEdit || isRecords) ? (location.state?.entity ?? null) : null;
 
   const [forms, setForms] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -182,16 +188,16 @@ export default function DepartmentFormManagementPage() {
     finally { setBusyId(null); }
   }
 
-  function openCreate() { setSelectedForm(null); setBuilderMode("create"); setView("builder"); }
-  function openManage(f) { setSelectedForm(f); setBuilderMode("edit"); setView("builder"); }
-  function openRecords(f) { setSelectedForm(f); setView("records"); }
-  function onBuilderDone(message) { setView("list"); showToast(message); load(); }
-
-  if (view === "builder") {
-    return <DepartmentFormBuilderPage mode={builderMode} initialData={selectedForm} onDone={onBuilderDone} onBack={() => setView("list")} />;
+  if (isCreate) {
+    return <DepartmentFormBuilderPage mode="create" initialData={null} onDone={() => navigate(listPath)} onBack={() => navigate(listPath)} />;
   }
-  if (view === "records" && selectedForm) {
-    return <DepartmentFormRecordsPage form={selectedForm} year={selectedYear} onBack={() => { setView("list"); load(); }} />;
+  if (isEdit) {
+    if (!entity) return <Navigate to={listPath} replace />;
+    return <DepartmentFormBuilderPage mode="edit" initialData={entity} onDone={() => navigate(listPath)} onBack={() => navigate(listPath)} />;
+  }
+  if (isRecords) {
+    if (!entity) return <Navigate to={listPath} replace />;
+    return <DepartmentFormRecordsPage form={entity} year={selectedYear} onBack={() => navigate(listPath)} />;
   }
 
   const searching = search.trim().length > 0;
@@ -278,11 +284,25 @@ export default function DepartmentFormManagementPage() {
         title={t("Department Forms", lang)}
         description={t("Create and manage your department's own forms — deadlines, lifecycle and lock — for the selected academic year.", lang)}
         actions={
-          <Button variant="primary" icon={<Plus size={18} strokeWidth={STROKE} />} onClick={openCreate}>{t("Create Form", lang)}</Button>
+          <>
+            <Button variant="secondary" icon={<RefreshCw size={18} strokeWidth={STROKE} />} onClick={load}>Refresh</Button>
+            <Button variant="secondary" icon={<CalendarCog size={18} strokeWidth={STROKE} />} onClick={() => setCarryOpen(true)}>Set Up Year</Button>
+            <Button variant="primary" icon={<Plus size={18} strokeWidth={STROKE} />} onClick={() => navigate(`${listPath}/create`)}>Create Form</Button>
+          </>
         }
       />
 
-      {error &&<div style={{ background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 12, padding: "12px 16px", fontSize: 13, color: "#B91C1C", marginBottom: 20 }}>{error}</div>}
+      {carryOpen && (
+        <CarryForwardModal
+          year={selectedYear}
+          yearLabel={academicYear || (selectedYear != null ? `${selectedYear}–${selectedYear + 1}` : "")}
+          onClose={() => setCarryOpen(false)}
+          onDone={(msg) => { setCarryOpen(false); showToast(msg); load(); }}
+          showToast={showToast}
+        />
+      )}
+
+      {error && <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 12, padding: "12px 16px", fontSize: 13, color: "#B91C1C", marginBottom: 20 }}>{error}</div>}
 
       <DataTable
         fill

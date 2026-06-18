@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
+import { useNavigate, useLocation, Navigate } from "react-router-dom";
 import {
   FilePlus, Search, Plus, RefreshCw, Lock, Unlock, Eye, Settings2,
   CalendarClock, MoreHorizontal, Share2, ShieldCheck, Archive, ArchiveRestore,
@@ -11,6 +12,8 @@ import { useLanguage } from "../../i18n/LanguageContext";
 import { Toast, isAuthError } from "../../components/shared/formUtils";
 import FormBuilderPage from "./FormBuilderPage";
 import InstituteFormRecordsPage from "./InstituteFormRecordsPage";
+
+const SLUG = "form-management";
 import {
   color, Button, PageHeader, Badge, EmptyState, Modal, Dropdown, MenuItem, MenuLabel, DataTable,
 } from "../../ui";
@@ -174,6 +177,8 @@ function DeadlineModal({ form, onClose, onSaved, showToast }) {
    InstituteFormManagementPage  (logic unchanged; UI on the design system)
 ═══════════════════════════════════════════════════════════════════ */
 export default function InstituteFormManagementPage() {
+  const navigate  = useNavigate();
+  const location  = useLocation();
   const { apiFetch }    = useApi();
   const { accessToken } = useAuth();
   const { lang }        = useLanguage();
@@ -181,9 +186,11 @@ export default function InstituteFormManagementPage() {
   const yearAware = (years?.length || 0) > 0;
   const ayLocked  = !!selectedYearLocked;
 
-  const [view, setView]               = useState("list");
-  const [builderMode, setBuilderMode] = useState(null);
-  const [selectedForm, setSelectedForm] = useState(null);
+  const isCreate  = location.pathname.endsWith("/create");
+  const isEdit    = location.pathname.endsWith("/edit");
+  const isRecords = location.pathname.endsWith("/records");
+  const listPath  = `/${SLUG}`;
+  const entity    = (isEdit || isRecords) ? (location.state?.entity ?? null) : null;
 
   const [forms, setForms]     = useState([]);
   const [loading, setLoading] = useState(true);
@@ -273,20 +280,26 @@ export default function InstituteFormManagementPage() {
     finally { setLockTogglingForm(null); }
   }
 
-  function openCreate()  { setSelectedForm(null); setBuilderMode("create"); setView("builder"); }
-  function openManage(f) { setSelectedForm(f);    setBuilderMode("edit");   setView("builder"); }
-  function openRecords(f){ setSelectedForm(f);    setView("records"); }
-  function backToList()  { setView("list"); setSelectedForm(null); load(); }
-  function onBuilderDone(message) { setView("list"); showToast(message || "Form saved successfully."); load(); }
-  function onBuilderBack() { setView("list"); }
-
-  if (view === "builder") {
+  if (isCreate) {
     return (
-      <FormBuilderPage mode={builderMode} initialData={selectedForm} isSuperAdmin={false} onDone={onBuilderDone} onBack={onBuilderBack} />
+      <FormBuilderPage
+        mode="create" initialData={null} isSuperAdmin={false}
+        onDone={() => navigate(listPath)} onBack={() => navigate(listPath)}
+      />
     );
   }
-  if (view === "records" && selectedForm) {
-    return <InstituteFormRecordsPage form={selectedForm} onBack={backToList} />;
+  if (isEdit) {
+    if (!entity) return <Navigate to={listPath} replace />;
+    return (
+      <FormBuilderPage
+        mode="edit" initialData={entity} isSuperAdmin={false}
+        onDone={() => navigate(listPath)} onBack={() => navigate(listPath)}
+      />
+    );
+  }
+  if (isRecords) {
+    if (!entity) return <Navigate to={listPath} replace />;
+    return <InstituteFormRecordsPage form={entity} onBack={() => navigate(listPath)} />;
   }
 
   const searching = search.trim().length > 0;
@@ -296,8 +309,8 @@ export default function InstituteFormManagementPage() {
     const isActive = (form.lifecycle_status ?? "active") === "active";
     return (
       <div style={{ display: "inline-flex", alignItems: "center", gap: 6, justifyContent: "flex-end" }}>
-        <Button variant="secondary" iconOnly title="View records" icon={<Eye size={18} strokeWidth={STROKE} />} onClick={() => openRecords(form)} />
-        <Button variant="secondary" iconOnly title={ayLocked ? "Academic year is locked" : "Manage form"} disabled={ayLocked} icon={<Settings2 size={18} strokeWidth={STROKE} />} onClick={() => openManage(form)} />
+        <Button variant="secondary" iconOnly title="View records" icon={<Eye size={18} strokeWidth={STROKE} />} onClick={() => navigate(`${listPath}/records`, { state: { entity: form } })} />
+        <Button variant="secondary" iconOnly title={ayLocked ? "Academic year is locked" : "Manage form"} disabled={ayLocked} icon={<Settings2 size={18} strokeWidth={STROKE} />} onClick={() => navigate(`${listPath}/edit`, { state: { entity: form } })} />
         <Dropdown
           align="right" width={210}
           button={({ toggle }) => (
@@ -400,7 +413,7 @@ export default function InstituteFormManagementPage() {
             <Button
               variant="primary" icon={<Plus size={18} strokeWidth={STROKE} />} disabled={ayLocked}
               title={ayLocked ? "Academic year is locked" : "Create a new form"}
-              onClick={() => { if (ayLocked) { showToast("This academic year is locked. You can only view records.", "error"); return; } openCreate(); }}
+              onClick={() => { if (ayLocked) { showToast("This academic year is locked. You can only view records.", "error"); return; } navigate(`${listPath}/create`); }}
             >
               Create New Form
             </Button>
@@ -450,7 +463,7 @@ export default function InstituteFormManagementPage() {
                 : "Create a new form, or contact your super admin to share one with your institution."
             }
             action={!searching && tab === "active" && !ayLocked
-              ? <Button variant="primary" icon={<Plus size={18} strokeWidth={STROKE} />} onClick={openCreate}>Create New Form</Button>
+              ? <Button variant="primary" icon={<Plus size={18} strokeWidth={STROKE} />} onClick={() => navigate(`${listPath}/create`)}>Create New Form</Button>
               : undefined}
           />
         }

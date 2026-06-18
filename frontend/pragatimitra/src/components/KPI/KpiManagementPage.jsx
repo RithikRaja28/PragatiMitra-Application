@@ -3,12 +3,15 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { Trash2 } from "lucide-react";
 import Modal from "../../ui/Modal";
 import Button from "../../ui/Button";
+import { useNavigate, useLocation, Navigate } from "react-router-dom";
 import { useAuth } from "../../store/AuthContext";
 import FormScreen from "../shared/FormScreen";
 import { S } from "../shared/formUtils";
 import { Select } from "../shared/ui";
 import { useLanguage } from "../../i18n/LanguageContext";
 import { t } from "../../i18n/translations";
+
+const SLUG = "kpi-management";
 
 // ─── API ──────────────────────────────────────────────────────────────────────
 const API = "http://localhost:5000/api/kpi";
@@ -700,6 +703,8 @@ function KpiDeleteModal({ cfg, deleting, onClose, onConfirm }) {
 // ─── Main component ───────────────────────────────────────────────────────────
 export default function KpiManagementPage({ scope = "institute" }) {
   const { lang } = useLanguage();
+  const navFn    = useNavigate();
+  const location = useLocation();
   const { accessToken } = useAuth();
   const apiFetch = useCallback(makeApiFetch(accessToken), [accessToken]); // eslint-disable-line
 
@@ -708,9 +713,10 @@ export default function KpiManagementPage({ scope = "institute" }) {
     ? t("Configure and export KPI charts for your department's annual report.", lang)
     : t("Configure and export KPI charts for the institute's annual report.", lang);
 
-  // ── View state ──
-  const [view,       setView]       = useState("list"); // "list" | "create" | "edit"
-  const [editCfg,    setEditCfg]    = useState(null);
+  const listPath = `/${SLUG}`;
+  const isCreate = location.pathname.endsWith("/create");
+  const isEdit   = location.pathname.endsWith("/edit");
+  const editCfg  = isEdit ? (location.state?.entity ?? null) : null;
 
   // ── Data state ──
   const [configs,    setConfigs]    = useState([]);
@@ -848,7 +854,7 @@ export default function KpiManagementPage({ scope = "institute" }) {
     finally { setDeleting(false); }
   },[deleteTarget,activeCfg,apiFetch,notify]);
 
-  const handleSaved = (saved)=>{ loadConfigs(); setView("list"); regenerate(saved); };
+  const handleSaved = (saved)=>{ loadConfigs(); navFn(listPath); regenerate(saved); };
 
   const filtered = configs.filter(c=>{
     if (statusFilter==="exported") return !!c.svg_id;
@@ -857,15 +863,16 @@ export default function KpiManagementPage({ scope = "institute" }) {
   });
 
   // ── Form views ──────────────────────────────────────────────────────────────
-  if (view==="create"||view==="edit") {
+  if (isCreate || isEdit) {
+    if (isEdit && !editCfg) return <Navigate to={listPath} replace />;
     return (
       <KpiForm
-        cfg={view==="edit" ? editCfg : null}
+        cfg={isEdit ? editCfg : null}
         tables={tables}
         tabStatus={tabStatus}
         existingConfigs={configs}
         scope={scope}
-        onBack={()=>setView("list")}
+        onBack={()=>navFn(listPath)}
         onSaved={handleSaved}
         notify={notify}
         apiFetch={apiFetch}
@@ -874,15 +881,74 @@ export default function KpiManagementPage({ scope = "institute" }) {
     );
   }
 
-  // ── Preview view (dedicated page) ───────────────────────────────────────────
-  if (view==="preview" && chartSeries && chartX && yRange && activeCfg) {
-    return (
-      <div style={{ padding:"32px 36px", fontFamily:"'Plus Jakarta Sans',sans-serif", minHeight:"100%" }}>
-        {/* Back to list */}
-        <button onClick={()=>setView("list")} style={{ display:"inline-flex", alignItems:"center", gap:4, background:"none", border:"none", cursor:"pointer", fontSize:13, fontWeight:600, color:"#64748b", marginBottom:16, padding:0 }}>
-          {t("← Back to", lang)} {t("KPI Charts", lang)}
-        </button>
+  // ── List view ────────────────────────────────────────────────────────────────
+  return (
+    <div style={{ padding:"32px 36px", fontFamily:"'Plus Jakarta Sans',sans-serif", minHeight:"100%" }}>
 
+      {/* Header */}
+      <div style={{ marginBottom:28 }}>
+        <div style={{ display:"inline-flex", alignItems:"center", gap:8, background:"#ecfdf3", borderRadius:8, padding:"4px 12px", marginBottom:12 }}>
+          <span style={{ width:7, height:7, borderRadius:"50%", background:"#027a48" }}/>
+          <span style={{ fontSize:11, fontWeight:600, color:"#027a48", textTransform:"uppercase", letterSpacing:1 }}>{scopeLabel}</span>
+        </div>
+        <h1 style={{ fontSize:24, fontWeight:700, color:"#1e293b", letterSpacing:"-0.4px", marginBottom:6 }}>KPI Charts</h1>
+        <p style={{ color:"#94a3b8", fontSize:14 }}>{scopeDesc}</p>
+      </div>
+
+      {/* Action row */}
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:12, marginBottom:20 }}>
+        <div style={{ display:"flex", gap:6 }}>
+          {[
+            { val:"all",      label:`All (${configs.length})` },
+            { val:"draft",    label:"Draft" },
+            { val:"exported", label:"Exported" },
+          ].map(f=>(
+            <button key={f.val} onClick={()=>setStatusFilter(f.val)} style={{
+              padding:"7px 14px", borderRadius:8, fontSize:12.5, fontWeight:600, cursor:"pointer",
+              border:`1.5px solid ${statusFilter===f.val?"#2563eb":"#e2e8f0"}`,
+              background: statusFilter===f.val?"#eff6ff":"#fff",
+              color: statusFilter===f.val?"#2563eb":"#64748b",
+            }}>
+              {f.label}
+            </button>
+          ))}
+        </div>
+        <div style={{ display:"flex", gap:10 }}>
+          <button onClick={loadConfigs} style={{ display:"inline-flex", alignItems:"center", gap:6, padding:"9px 16px", borderRadius:10, border:"1.5px solid #e2e8f0", background:"#fff", fontSize:13, fontWeight:600, color:"#475569", cursor:"pointer" }}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.95"/></svg>
+            Refresh
+          </button>
+          <button onClick={()=>navFn(`${listPath}/create`)} style={{ display:"inline-flex", alignItems:"center", gap:6, padding:"9px 18px", borderRadius:10, border:"none", background:"#2563eb", color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer", boxShadow:"0 2px 8px rgba(37,99,235,.3)" }}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            New KPI Chart
+          </button>
+        </div>
+      </div>
+
+      {/* Card grid */}
+      {cfgsLoading ? (
+        <div style={{ textAlign:"center", padding:"48px", color:"#94a3b8", fontSize:14 }}>Loading configurations…</div>
+      ) : filtered.length===0 ? (
+        <div style={{ textAlign:"center", padding:"64px 24px", color:"#94a3b8" }}>
+          <div style={{ fontSize:14, fontWeight:600, color:"#64748b", marginBottom:4 }}>No KPI charts yet</div>
+          <div style={{ fontSize:13 }}>Click "New KPI Chart" to create your first chart.</div>
+        </div>
+      ) : (
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))", gap:20, marginBottom:24 }}>
+          {filtered.map((cfg,idx)=>(
+            <KpiCard key={cfg.id} cfg={cfg} idx={idx}
+              isActive={activeCfg?.id===cfg.id}
+              generating={generating}
+              onEdit={c=>navFn(`${listPath}/edit`, { state: { entity: c } })}
+              onPreview={c=>regenerate(c)}
+              onDelete={deleteConfig}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Preview chart (shown inline when a card is previewed) */}
+      {chartSeries && chartX && yRange && activeCfg && (
         <div style={{ background:"#fff", border:"1px solid #e2e8f0", borderRadius:14, overflow:"hidden", boxShadow:"0 1px 4px rgba(0,0,0,.06)" }}>
 
           {/* Chart header */}

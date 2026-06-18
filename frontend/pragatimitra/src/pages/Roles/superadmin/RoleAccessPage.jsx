@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useNavigate, useLocation, Navigate } from "react-router-dom";
 import { Users, FileText, BarChart3, Wallet, ShieldCheck, Plus } from "lucide-react";
 import { useApi } from "../../../hooks/useApi";
 import PageHeader from "../../../components/shared/PageHeader";
@@ -1483,20 +1484,54 @@ function RoleList({ roles, onEdit, onDelete, onCreate, deleting }) {
   );
 }
 
+/* ── Toast banner ─────────────────────────────────────────────── */
+function ToastBanner({ toast }) {
+  if (!toast) return null;
+  return (
+    <div
+      style={{
+        position: "fixed",
+        top: 20,
+        right: 24,
+        zIndex: 9999,
+        padding: "12px 20px",
+        borderRadius: 10,
+        fontSize: 13,
+        fontWeight: 600,
+        background: toast.type === "error" ? "#fee2e2" : "#dcfce7",
+        color: toast.type === "error" ? "#b91c1c" : "#15803d",
+        boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+      }}
+    >
+      {toast.type === "error" ? "✕" : "✓"} {toast.msg}
+    </div>
+  );
+}
+
 /* ══════════════════════════════════════════════════════════════
    ROOT
 ══════════════════════════════════════════════════════════════════ */
+const SLUG = "role-access";
+
 export default function RoleAccessPage() {
   const { lang } = useLanguage();
   const { apiFetch } = useApi();
+  const navigate = useNavigate();
+  const location = useLocation();
   const [roles, setRoles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [view, setView] = useState("list");
-  const [editing, setEditing] = useState(null);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(null);
   const [toast, setToast] = useState(null);
+
+  const isCreate = location.pathname.endsWith("/create");
+  const isEdit   = location.pathname.endsWith("/edit");
+  const listPath = `/${SLUG}`;
+  const entityForForm = isEdit ? (location.state?.entity ?? null) : null;
 
   function showToast(msg, type = "success") {
     setToast({ msg, type });
@@ -1525,18 +1560,16 @@ export default function RoleAccessPage() {
   async function handleSave(payload) {
     setSaving(true);
     try {
-      const isNew = view === "create";
       const res = await apiFetch(
-        isNew ? "/api/roles" : `/api/roles/${editing.id}`,
-        { method: isNew ? "POST" : "PUT", body: JSON.stringify(payload) },
+        isCreate ? "/api/roles" : `/api/roles/${entityForForm.id}`,
+        { method: isCreate ? "POST" : "PUT", body: JSON.stringify(payload) },
       );
       const data = await res.json();
       if (!data.success) throw new Error(data.message);
       await loadRoles();
-      setView("list");
-      setEditing(null);
+      navigate(listPath);
       showToast(
-        isNew ? "Role created successfully." : "Role updated successfully.",
+        isCreate ? "Role created successfully." : "Role updated successfully.",
       );
     } catch (e) {
       showToast(e.message, "error");
@@ -1566,6 +1599,23 @@ export default function RoleAccessPage() {
     }
   }
 
+  /* ── Render editor screen for create/edit ── */
+  if (isCreate || isEdit) {
+    if (isEdit && !entityForForm) return <Navigate to={listPath} replace />;
+    return (
+      <div style={{ padding: "32px 36px", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+        <ToastBanner toast={toast} />
+        <RoleEditor
+          key={isEdit ? "edit" : "create"}
+          role={entityForForm}
+          onSave={handleSave}
+          onCancel={() => navigate(listPath)}
+          saving={saving}
+        />
+      </div>
+    );
+  }
+
   return (
     <div
       style={{
@@ -1573,28 +1623,7 @@ export default function RoleAccessPage() {
         fontFamily: "'Plus Jakarta Sans', sans-serif",
       }}
     >
-      {toast && (
-        <div
-          style={{
-            position: "fixed",
-            top: 20,
-            right: 24,
-            zIndex: 9999,
-            padding: "12px 20px",
-            borderRadius: 10,
-            fontSize: 13,
-            fontWeight: 600,
-            background: toast.type === "error" ? "#fee2e2" : "#dcfce7",
-            color: toast.type === "error" ? "#b91c1c" : "#15803d",
-            boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-          }}
-        >
-          {toast.type === "error" ? "✕" : "✓"} {toast.msg}
-        </div>
-      )}
+      <ToastBanner toast={toast} />
       {loading && (
         <div
           style={{
@@ -1650,30 +1679,13 @@ export default function RoleAccessPage() {
           </button>
         </div>
       )}
-      {!loading && !error && view === "list" && (
+      {!loading && !error && (
         <RoleList
           roles={roles}
-          onEdit={(r) => {
-            setEditing(r);
-            setView("edit");
-          }}
+          onEdit={(r) => navigate(`${listPath}/edit`, { state: { entity: r } })}
           onDelete={handleDelete}
-          onCreate={() => {
-            setEditing(null);
-            setView("create");
-          }}
+          onCreate={() => navigate(`${listPath}/create`)}
           deleting={deleting}
-        />
-      )}
-      {!loading && !error && (view === "edit" || view === "create") && (
-        <RoleEditor
-          role={view === "edit" ? editing : null}
-          onSave={handleSave}
-          onCancel={() => {
-            setView("list");
-            setEditing(null);
-          }}
-          saving={saving}
         />
       )}
     </div>

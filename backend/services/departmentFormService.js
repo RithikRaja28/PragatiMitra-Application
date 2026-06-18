@@ -19,6 +19,7 @@
  * ───────────────────────────────────────────────────────────────────────── */
 
 const logger = require("../utils/logger");
+const { resolveEffectiveDepartment } = require("./departmentContext");
 
 /* Safely quote a SQL identifier (column name). Field column names are
    user-defined and may collide with PostgreSQL reserved words (e.g. "column",
@@ -225,7 +226,7 @@ async function backfillFixedFormRoles(pool) {
 /* Resolve the institution + department for the requesting user.
    Department Admins always have a department_id on their users row. */
 async function resolveDeptContext(pool, req) {
-  const { rows } = await pool.query(
+ const { rows } = await pool.query(
     "SELECT institution_id, department_id FROM users WHERE id = $1",
     [req.user.userId]
   );

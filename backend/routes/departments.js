@@ -817,6 +817,46 @@ router.post(
   }
 );
 
+/* ── GET /api/departments/:id ───────────────────────────────────
+   Single-department fetch for the edit page — required so
+   /department-management/:deptId/edit can load its data directly
+   (refresh / deep link), not just via in-app navigation state.
+──────────────────────────────────────────────────────────────── */
+router.get(
+  "/:id",
+  requireRole(["super_admin", "institute_admin"]),
+  async (req, res) => {
+    const pool = req.app.locals.pool;
+    const departmentId = req.params.id;
+
+    if (!isUUID(departmentId)) {
+      return res.status(400).json({ success: false, message: "Invalid department ID." });
+    }
+
+    try {
+      const { rows } = await pool.query(
+        `SELECT department_id, name, name_hi, code, status, institution_id, created_at
+         FROM   departments
+         WHERE  department_id = $1`,
+        [departmentId]
+      );
+      if (!rows.length) {
+        return res.status(404).json({ success: false, message: "Department not found." });
+      }
+      const dept = rows[0];
+
+      if (isOnlyInstAdmin(req) && dept.institution_id !== req.user.institutionId) {
+        return res.status(403).json({ success: false, message: "You can only view departments in your own institution." });
+      }
+
+      return res.json({ success: true, data: dept });
+    } catch (err) {
+      logger.error("GET /api/departments/:id failed", { ...getLogContext(req), stack: err.stack });
+      return res.status(500).json({ success: false, message: "Failed to fetch department." });
+    }
+  }
+);
+
 /* ── PUT /api/departments/:id ───────────────────────────────────
    Super admin  → can update any department (unchanged).
    Inst. admin  → 403 if the department belongs to another institution.
@@ -998,21 +1038,11 @@ router.patch(
         return res.status(409).json({ success: false, message: "Department is already inactive." });
       }
 
-      const { rows: [{ active_count }] } = await pool.query(
-        `SELECT COUNT(*) AS active_count
-         FROM   users
-         WHERE  department_id  = $1
-           AND  institution_id = $2
-           AND  account_status = 'ACTIVE'`,
-        [departmentId, institution_id]
-      );
-
-      if (Number(active_count) > 0) {
-        return res.status(409).json({
-          success: false,
-          message: `Cannot deactivate "${dept.name}": ${active_count} user(s) are still active. Deactivate all members first.`,
-        });
-      }
+      /* Bug 11 — deactivation no longer requires emptying the department first.
+         Department state is now the single source of truth: an inactive department
+         suspends its users / assignments / forms / records via the gate (read-only),
+         and a restore resumes everything with no data loss. So we deactivate even
+         with active members rather than forcing them to be deactivated one by one. */
 
       await pool.query(
         `UPDATE departments

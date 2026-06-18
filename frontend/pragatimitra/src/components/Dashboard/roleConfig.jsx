@@ -3,14 +3,22 @@
  * ─────────────────────────────────────────────────────────────
  * Central config that maps each role → { navItems, pages }
  *
+ * Every nav item carries a `slug` — the role-agnostic, top-level
+ * URL path (e.g. /user-management, /overview) used by SlugRoute
+ * (see src/router/SlugRoute.jsx) and collectRouteSlugs() in
+ * src/router/dashboardRoutes.jsx. The same slug can be shared by
+ * multiple roles; `id` is the per-role internal key used to look up
+ * the page element in `pages` and for permission checks.
+ *
  * HOW TO ADD A NEW ROLE (when backend sends a new role string):
  *   1. Create page component in pages/<role>/YourPage.jsx
  *   2. Import it below
  *   3. Add a new key to ROLE_CONFIG — key MUST exactly match
  *      user?.roles?.[0]?.name from the backend.
- *   4. Add the route path to ROLE_ROUTES in AuthContext.jsx
- *   5. Add a { path: "dashboard/your-role", element: null }
- *      entry in router.jsx under the RootLayout children.
+ *   4. Add a unique `slug` to every nav item — dashboardRoutes.jsx
+ *      generates the route tree automatically from this config, and
+ *      AuthContext's ROLE_ROUTES derives the role's default path via
+ *      getRoleDefaultSlug().
  *   Done — RootLayout picks it up automatically.
  * ─────────────────────────────────────────────────────────────
  */
@@ -19,8 +27,9 @@ import React from "react";
 import PlaceholderPage from "../shared/PlaceholderPage";
 
 /* ── Collaborative Report Builder ──────────────────────────── */
-import ReportBuilderListPage  from "../../pages/Roles/shared/builder/ReportBuilderListPage";
-import MyAssignedSectionsPage from "../../pages/Roles/shared/builder/MyAssignedSectionsPage";
+import ReportBuilderListPage        from "../../pages/Roles/shared/builder/ReportBuilderListPage";
+import MyAssignedSectionsPage       from "../../pages/Roles/shared/builder/MyAssignedSectionsPage";
+import TemplateListPage              from "../../pages/Roles/shared/builder/TemplateListPage";
 
 /* ── Super Admin page imports ───────────────────────────────── */
 import SuperAdminOverviewPage    from "../../pages/Roles/superadmin/SuperAdminOverviewPage";
@@ -37,6 +46,8 @@ import ReportSetupPage                  from "../../pages/Roles/institutionadmin
 import InstituteAdminUserManagementPage from "../../pages/Roles/institutionadmin/InstituteAdminUserManagementPage";
 import InstituteAdminDepartmentPage     from "../../pages/Roles/institutionadmin/InstituteAdminDepartmentPage";
 import InstituteKpiPage                  from "../../pages/Roles/institutionadmin/InstituteKpiPage";
+import ReportCyclePage                  from "../../pages/Roles/institutionadmin/ReportCyclePage";
+import WorkflowTemplatePage             from "../../pages/Roles/institutionadmin/WorkflowTemplatePage";
 import InstituteFormManagementPage      from "../../pages/Forms/InstituteFormManagementPage";
 import DeptKpiPage                       from "../../pages/Roles/departmentadmin/DeptKpiPage";
 
@@ -75,6 +86,59 @@ const TaskWorkflowPage   = () => <PlaceholderPage title="Task Workflow"   subtit
 const VersionControlPage = () => <PlaceholderPage title="Version Control" subtitle="Manage document versions and change history"    color="#2563eb" />;
 const SystemPage         = () => <PlaceholderPage title="System"          subtitle="Institution system settings and configurations" color="#2563eb" />;
 
+/* ── Shared subRoute arrays (de-duplicated by collectRouteSlugs) ── */
+const REPORT_BUILDER_SUB = [
+  { path: "report-builder/create",    element: <ReportBuilderListPage /> },
+  { path: "report-builder/structure", element: <ReportBuilderListPage /> },
+  { path: "report-builder/editor",    element: <ReportBuilderListPage /> },
+  { path: "report-builder/assign",    element: <ReportBuilderListPage /> },
+  { path: "report-builder/compile",   element: <ReportBuilderListPage /> },
+  { path: "report-builder/dashboard", element: <ReportBuilderListPage /> },
+  { path: "report-builder/review",    element: <ReportBuilderListPage /> },
+];
+
+const MY_SECTIONS_SUB = [
+  { path: "my-sections/edit", element: <MyAssignedSectionsPage /> },
+];
+
+const ASSIGNED_SECTIONS_SUB = [
+  { path: "assigned-sections/edit", element: <MyAssignedSectionsPage /> },
+];
+
+const REVIEW_QUEUE_SUB = [
+  { path: "review-queue/review", element: <ReviewQueuePage /> },
+];
+
+const FORM_MGMT_INSTITUTE_SUB = [
+  { path: "form-management/create",  element: <InstituteFormManagementPage /> },
+  { path: "form-management/edit",    element: <InstituteFormManagementPage /> },
+  { path: "form-management/records", element: <InstituteFormManagementPage /> },
+];
+
+const FORM_MGMT_DEPT_SUB = [
+  { path: "form-management/create",  element: <DepartmentFormManagementPage /> },
+  { path: "form-management/edit",    element: <DepartmentFormManagementPage /> },
+  { path: "form-management/records", element: <DepartmentFormManagementPage /> },
+];
+
+const FORM_FILL_SUB = [
+  { path: "form-management/records", element: <DepartmentFormFillPage /> },
+];
+
+const FORM_DATA_SUB = [
+  { path: "form-data/records", element: <FormDataPage /> },
+];
+
+const KPI_INSTITUTE_SUB = [
+  { path: "kpi-management/create", element: <InstituteKpiPage /> },
+  { path: "kpi-management/edit",   element: <InstituteKpiPage /> },
+];
+
+const KPI_DEPT_SUB = [
+  { path: "kpi-management/create", element: <DeptKpiPage /> },
+  { path: "kpi-management/edit",   element: <DeptKpiPage /> },
+];
+
 /* ══════════════════════════════════════════════════════════════
    ROLE CONFIG MAP
    ⚠️  Key must EXACTLY match user?.roles?.[0]?.name (backend value)
@@ -91,6 +155,7 @@ export const ROLE_CONFIG = {
             label: "Dashboard",
             icon: "LayoutDashboard",
             permission: null,
+            slug: "overview",
           },
         ],
       },
@@ -102,6 +167,12 @@ export const ROLE_CONFIG = {
             label: "Users",
             icon: "Users",
             permission: "manage_dept_users",
+            slug: "user-management",
+            subRoutes: [
+              { path: "user-management/create", element: <UserManagementPage /> },
+              { path: "user-management/edit",   element: <UserManagementPage /> },
+              { path: "user-management/import", element: <UserManagementPage /> },
+            ],
           },
         ],
       },
@@ -113,6 +184,12 @@ export const ROLE_CONFIG = {
             label: "Departments",
             icon: "Building2",
             permission: "manage_departments",
+            slug: "department-management",
+            subRoutes: [
+              { path: "department-management/create", element: <DepartmentManagementPage /> },
+              { path: "department-management/edit",   element: <DepartmentManagementPage /> },
+              { path: "department-management/import", element: <DepartmentManagementPage /> },
+            ],
           },
         ],
       },
@@ -124,12 +201,24 @@ export const ROLE_CONFIG = {
             label: "Institutions",
             icon: "University",
             permission: "manage_institutions",
+            slug: "institute-management",
+            subRoutes: [
+              { path: "institute-management/create", element: <InstitutionManagementPage /> },
+              { path: "institute-management/edit",   element: <InstitutionManagementPage /> },
+              { path: "institute-management/import", element: <InstitutionManagementPage /> },
+            ],
           },
         ],
       },
       {
         group: "Committee Management",
-        items: [{ id: "committees", label: "Committees", icon: "Users2" }],
+        items: [{
+          id: "committees", label: "Committees", icon: "Users2", slug: "committee-management",
+          subRoutes: [
+            { path: "committee-management/create", element: <CommitteeManagementPage /> },
+            { path: "committee-management/edit",   element: <CommitteeManagementPage /> },
+          ],
+        }],
       },
 
       {
@@ -140,12 +229,18 @@ export const ROLE_CONFIG = {
             label: "Role & Access Control",
             icon: "ShieldCheck",
             permission: null,
+            slug: "role-access",
+            subRoutes: [
+              { path: "role-access/create", element: <RoleAccessPage /> },
+              { path: "role-access/edit",   element: <RoleAccessPage /> },
+            ],
           },
           {
             id: "master-data",
             label: "Master Data",
             icon: "Database",
             permission: "master_data",
+            slug: "master-data",
           },
         ],
       },
@@ -157,14 +252,15 @@ export const ROLE_CONFIG = {
             label: "Logs",
             icon: "ScrollText",
             permission: "audit_logs",
+            slug: "audit-logs",
           },
         ],
       },
       {
         group: "Reports",
         items: [
-          { id: "report-builder", label: "Report Builder", icon: "BookOpen",  permission: null },
-          { id: "sa-my-sections", label: "My Sections",    icon: "FileEdit",  permission: null },
+          { id: "report-builder", label: "Report Builder", icon: "BookOpen",  permission: null, slug: "report-builder", subRoutes: REPORT_BUILDER_SUB },
+          { id: "sa-my-sections", label: "My Sections",    icon: "FileEdit",  permission: null, slug: "my-sections",    subRoutes: MY_SECTIONS_SUB },
         ],
       },
     ],
@@ -196,6 +292,7 @@ export const ROLE_CONFIG = {
             label: "Dashboard",
             icon: "LayoutDashboard",
             permission: null,
+            slug: "overview",
           },
         ],
       },
@@ -205,7 +302,12 @@ export const ROLE_CONFIG = {
           // Gated on the real permission key. Institute Admin has
           // manage_dept_users=false in the DB, so this stays hidden —
           // it must NOT leak the Super-Admin-style "User Management" menu.
-          { id: "ia-users",        label: "Users",       icon: "Users",     permission: "manage_dept_users" },
+          { id: "ia-users", label: "Users", icon: "Users", permission: "manage_dept_users", slug: "user-management",
+            subRoutes: [
+              { path: "user-management/create", element: <InstituteAdminUserManagementPage /> },
+              { path: "user-management/edit",   element: <InstituteAdminUserManagementPage /> },
+            ],
+          },
         ],
       },
       {
@@ -213,23 +315,24 @@ export const ROLE_CONFIG = {
         items: [
           // Gated on the real permission key. Institute Admin has
           // manage_departments=false in the DB, so this stays hidden.
-          { id: "ia-departments",  label: "Departments", icon: "Building2", permission: "manage_departments" },
+          { id: "ia-departments",  label: "Departments", icon: "Building2", permission: "manage_departments", slug: "department-management" },
         ],
       },
       {
         group: "Forms",
         items: [
-          { id: "ia-form-management", label: "Form Management", icon: "ClipboardList", permission: null },
+          { id: "ia-form-management", label: "Form Management", icon: "ClipboardList", permission: null, slug: "form-management", subRoutes: FORM_MGMT_INSTITUTE_SUB },
         ],
       },
       {
         group: "Reports",
         items: [
-          { id: "ia-report-setup",    label: "Report Setup",    icon: "FileText",      permission: null },
-          { id: "ia-kpi",             label: "KPI Charts",      icon: "BarChart2",     permission: null },
-          { id: "ia-report-builder",  label: "Report Builder",  icon: "BookOpen",      permission: null },
-          { id: "ia-my-sections",     label: "My Sections",     icon: "FileEdit",      permission: null },
-          { id: "ia-review-queue",    label: "Review Queue",    icon: "ClipboardList", permission: null },
+          { id: "ia-report-cycles",   label: "Report Cycles",   icon: "CalendarDays",  permission: null, slug: "report-cycles" },
+          { id: "ia-report-setup",    label: "Report Setup",    icon: "FileText",      permission: null, slug: "report-management" },
+          { id: "ia-kpi",             label: "KPI Charts",      icon: "BarChart2",     permission: null, slug: "kpi-management",  subRoutes: KPI_INSTITUTE_SUB },
+          { id: "ia-report-builder",  label: "Report Builder",  icon: "BookOpen",      permission: null, slug: "report-builder",  subRoutes: REPORT_BUILDER_SUB },
+          { id: "ia-my-sections",     label: "My Sections",     icon: "FileEdit",      permission: null, slug: "my-sections",     subRoutes: MY_SECTIONS_SUB },
+          { id: "ia-review-queue",    label: "Review Queue",    icon: "ClipboardList", permission: null, slug: "review-queue",    subRoutes: REVIEW_QUEUE_SUB },
         ],
       },
       {
@@ -240,6 +343,7 @@ export const ROLE_CONFIG = {
             label: "Sections",
             icon: "Layers",
             permission: null,
+            slug: "sections",
           },
         ],
       },
@@ -247,16 +351,25 @@ export const ROLE_CONFIG = {
         group: "Workflow",
         items: [
           {
-            id: "ia-workflow",
-            label: "Workflow",
+            id: "ia-workflow-templates",
+            label: "Workflow Templates",
             icon: "GitBranch",
             permission: null,
+            slug: "workflow-templates",
+          },
+          {
+            id: "ia-workflow",
+            label: "Workflow",
+            icon: "Network",
+            permission: null,
+            slug: "workflow",
           },
           {
             id: "ia-task-workflow",
             label: "Task Workflow",
             icon: "ListTodo",
             permission: null,
+            slug: "task-workflow",
           },
         ],
       },
@@ -268,12 +381,14 @@ export const ROLE_CONFIG = {
             label: "Version Control",
             icon: "History",
             permission: null,
+            slug: "version-control",
           },
           {
             id: "ia-system",
             label: "System",
             icon: "Settings2",
             permission: null,
+            slug: "system",
           },
         ],
       },
@@ -283,13 +398,15 @@ export const ROLE_CONFIG = {
       "ia-users":             <InstituteAdminUserManagementPage />,
       "ia-departments":       <InstituteAdminDepartmentPage />,
       "ia-form-management":   <InstituteFormManagementPage />,
+      "ia-report-cycles":     <ReportCyclePage />,
       "ia-report-setup":      <ReportSetupPage />,
       "ia-kpi":               <InstituteKpiPage />,
       "ia-report-builder":    <ReportBuilderListPage />,
       "ia-my-sections":       <MyAssignedSectionsPage />,
       "ia-review-queue":      <ReviewQueuePage />,
-      "ia-sections":          <SectionsPage />,
-      "ia-workflow":          <WorkflowPage />,
+      "ia-sections":              <SectionsPage />,
+      "ia-workflow-templates":    <WorkflowTemplatePage />,
+      "ia-workflow":              <WorkflowPage />,
       "ia-task-workflow":     <TaskWorkflowPage />,
       "ia-version-control": <VersionControlPage />,
       "ia-system": <SystemPage />,
@@ -310,6 +427,7 @@ export const ROLE_CONFIG = {
             label: "Dashboard",
             icon: "LayoutDashboard",
             permission: null,
+            slug: "overview",
           },
         ],
       },
@@ -321,19 +439,29 @@ export const ROLE_CONFIG = {
             label: "Estimates",
             icon: "FileSpreadsheet",
             permission: null,
+            slug: "estimates",
+            subRoutes: [
+              { path: "estimates/new",  element: <EstimatesPage /> },
+              { path: "estimates/edit", element: <EstimatesPage /> },
+            ],
           },
           {
             id: "fo-balance-sheet",
             label: "Balance Sheet",
             icon: "Scale",
             permission: null,
+            slug: "balance-sheet",
+            subRoutes: [
+              { path: "balance-sheet/new",    element: <BalanceSheetPage /> },
+              { path: "balance-sheet/detail", element: <BalanceSheetPage /> },
+            ],
           },
         ],
       },
       {
         group: "Report Sections",
         items: [
-          { id: "fo-my-sections", label: "My Sections", icon: "FileEdit", permission: null },
+          { id: "fo-my-sections", label: "My Sections", icon: "FileEdit", permission: null, slug: "my-sections", subRoutes: MY_SECTIONS_SUB },
         ],
       },
     ],
@@ -359,14 +487,15 @@ export const ROLE_CONFIG = {
             label: "Dashboard",
             icon: "LayoutDashboard",
             permission: null,
+            slug: "overview",
           },
         ],
       },
       {
         group: "Review",
         items: [
-          { id: "do-review-queue", label: "Review Queue", icon: "ClipboardList", permission: null },
-          { id: "do-my-sections",  label: "My Sections",  icon: "FileEdit",      permission: null },
+          { id: "do-review-queue", label: "Review Queue", icon: "ClipboardList", permission: null, slug: "review-queue", subRoutes: REVIEW_QUEUE_SUB },
+          { id: "do-my-sections",  label: "My Sections",  icon: "FileEdit",      permission: null, slug: "my-sections",  subRoutes: MY_SECTIONS_SUB },
         ],
       },
     ],
@@ -395,6 +524,7 @@ export const ROLE_CONFIG = {
             label: "Dashboard",
             icon: "LayoutDashboard",
             permission: null,
+            slug: "overview",
           },
         ],
       },
@@ -406,6 +536,23 @@ export const ROLE_CONFIG = {
             label: "Department Users",
             icon: "Users",
             permission: null,
+            slug: "user-management",
+            subRoutes: [
+              { path: "user-management/create", element: <DeptUsersPage /> },
+              { path: "user-management/edit",   element: <DeptUsersPage /> },
+            ],
+          },
+        ],
+      },
+      {
+        group: "Tasks",
+        items: [
+          {
+            id: "da-tasks",
+            label: "Task Overview",
+            icon: "ListChecks",
+            permission: null,
+            slug: "task-overview",
           },
         ],
       },
@@ -417,6 +564,8 @@ export const ROLE_CONFIG = {
             label: "KPI Charts",
             icon: "BarChart2",
             permission: null,
+            slug: "kpi-management",
+            subRoutes: KPI_DEPT_SUB,
           },
         ],
       },
@@ -428,6 +577,8 @@ export const ROLE_CONFIG = {
             label: "Department Forms",
             icon: "FileStack",
             permission: null,
+            slug: "form-management",
+            subRoutes: FORM_MGMT_DEPT_SUB,
           },
         ],
       },
@@ -439,14 +590,16 @@ export const ROLE_CONFIG = {
             label: "Form Data",
             icon: "ClipboardList",
             permission: null,
+            slug: "form-data",
+            subRoutes: FORM_DATA_SUB,
           },
         ],
       },
       {
         group: "Report Sections",
         items: [
-          { id: "da-my-sections",  label: "My Sections",  icon: "FileEdit",      permission: null },
-          { id: "da-review-queue", label: "Review Queue", icon: "ClipboardList", permission: null },
+          { id: "da-my-sections",  label: "My Sections",  icon: "FileEdit",      permission: null, slug: "my-sections",  subRoutes: MY_SECTIONS_SUB },
+          { id: "da-review-queue", label: "Review Queue", icon: "ClipboardList", permission: null, slug: "review-queue", subRoutes: REVIEW_QUEUE_SUB },
         ],
       },
     ],
@@ -479,6 +632,7 @@ export const ROLE_CONFIG = {
             label: "Dashboard",
             icon: "LayoutDashboard",
             permission: null,
+            slug: "overview",
           },
         ],
       },
@@ -490,6 +644,8 @@ export const ROLE_CONFIG = {
             label: "Assigned Sections",
             icon: "FileEdit",
             permission: null,
+            slug: "assigned-sections",
+            subRoutes: ASSIGNED_SECTIONS_SUB,
           },
         ],
       },
@@ -501,6 +657,7 @@ export const ROLE_CONFIG = {
             label: "Submissions",
             icon: "Send",
             permission: null,
+            slug: "submissions",
           },
         ],
       },
@@ -512,6 +669,18 @@ export const ROLE_CONFIG = {
             label: "Department Forms",
             icon: "FileStack",
             permission: null,
+            slug: "form-management",
+            subRoutes: FORM_FILL_SUB,
+          },
+          // Institution "Forms & Data Entry" — where a Nodal Officer assigns
+          // accessible forms to contributors (and enters records).
+          {
+            id: "dno-form-data",
+            label: "Forms & Data Entry",
+            icon: "ClipboardList",
+            permission: null,
+            slug: "form-data",
+            subRoutes: FORM_DATA_SUB,
           },
         ],
       },
@@ -520,19 +689,35 @@ export const ROLE_CONFIG = {
       "dno-dashboard":   <NodalDashboardPage />,
       "dno-sections":    <MyAssignedSectionsPage />,
       "dno-submissions": <SubmissionsPage />,
-      "dno-dept-forms":  <DepartmentFormManagementPage />,
+      "dno-dept-forms":  <DepartmentFormFillPage />,
+      "dno-form-data":   <FormDataPage />,
     },
     defaultPage: "dno-dashboard",
     user: { name: "Nodal Officer", initials: "NO", org: "Samhita Siddhanta" },
   },
 
-  /* ── CONTRIBUTOR ─────────────────────────────────────────────── */
+  /* ── CONTRIBUTOR ─────────────────────────────────────────────────
+     Consumer role. Reuses the existing FormDataPage (one engine) — the backend
+     filters it to forms ASSIGNED to this contributor for the selected academic
+     year. No Form Management / Assign / lifecycle controls are exposed. */
   contributor: {
     navItems: [
       {
+        group: "Forms",
+        items: [
+          { id: "c-form-data", label: "Forms & Data Entry", icon: "ClipboardList", permission: null, slug: "form-data", subRoutes: FORM_DATA_SUB },
+        ],
+      },
+      {
         group: "My Work",
         items: [
-          { id: "c-sections", label: "My Sections", icon: "FileEdit", permission: null },
+          { id: "c-sections", label: "My Sections", icon: "FileEdit", permission: null, slug: "my-sections", subRoutes: MY_SECTIONS_SUB },
+        ],
+      },
+      {
+        group: "Forms",
+        items: [
+          { id: "c-dept-forms", label: "Department Forms", icon: "FileStack", permission: null },
         ],
       },
       {
@@ -543,10 +728,11 @@ export const ROLE_CONFIG = {
       },
     ],
     pages: {
-      "c-sections": <MyAssignedSectionsPage />,
+      "c-form-data": <FormDataPage />,
+      "c-sections":  <MyAssignedSectionsPage />,
       "c-dept-forms": <DepartmentFormFillPage />,
     },
-    defaultPage: "c-sections",
+    defaultPage: "c-form-data",
     user: { name: "Contributor", initials: "CT", org: "PragatiMitra" },
   },
 
@@ -556,8 +742,8 @@ export const ROLE_CONFIG = {
       {
         group: "My Work",
         items: [
-          { id: "rv-sections",     label: "My Sections",  icon: "FileEdit",      permission: null },
-          { id: "rv-review-queue", label: "Review Queue", icon: "ClipboardList", permission: null },
+          { id: "rv-sections",     label: "My Sections",  icon: "FileEdit",      permission: null, slug: "my-sections",  subRoutes: MY_SECTIONS_SUB },
+          { id: "rv-review-queue", label: "Review Queue", icon: "ClipboardList", permission: null, slug: "review-queue", subRoutes: REVIEW_QUEUE_SUB },
         ],
       },
     ],
@@ -575,8 +761,8 @@ export const ROLE_CONFIG = {
       {
         group: "My Work",
         items: [
-          { id: "hod-sections",     label: "My Sections",  icon: "FileEdit",      permission: null },
-          { id: "hod-review-queue", label: "Review Queue", icon: "ClipboardList", permission: null },
+          { id: "hod-sections",     label: "My Sections",  icon: "FileEdit",      permission: null, slug: "my-sections",  subRoutes: MY_SECTIONS_SUB },
+          { id: "hod-review-queue", label: "Review Queue", icon: "ClipboardList", permission: null, slug: "review-queue", subRoutes: REVIEW_QUEUE_SUB },
         ],
       },
     ],
@@ -594,12 +780,19 @@ export const ROLE_CONFIG = {
       {
         group: "My Work",
         items: [
-          { id: "pc-sections", label: "My Sections", icon: "FileEdit", permission: null },
+          { id: "pc-sections", label: "My Sections", icon: "FileEdit", permission: null, slug: "my-sections", subRoutes: MY_SECTIONS_SUB },
+        ],
+      },
+      {
+        group: "Templates",
+        items: [
+          { id: "pc-templates", label: "Templates", icon: "LayoutList", permission: null, slug: "templates" },
         ],
       },
     ],
     pages: {
-      "pc-sections": <MyAssignedSectionsPage />,
+      "pc-sections":        <MyAssignedSectionsPage />,
+      "pc-templates": <TemplateListPage />,
     },
     defaultPage: "pc-sections",
     user: { name: "Publication Cell", initials: "PC", org: "PragatiMitra" },
@@ -612,9 +805,9 @@ export const ROLE_CONFIG = {
      only. Backend filters everything to form_domain = 'hospital'. */
   hospital_admin: {
     navItems: [
-      { group: "", items: [{ id: "ha-overview", label: "Dashboard", icon: "LayoutDashboard", permission: null }] },
-      { group: "Forms", items: [{ id: "ha-form-data", label: "Forms & Data Entry", icon: "ClipboardList", permission: null }] },
-      { group: "Reports", items: [{ id: "ha-report-setup", label: "Reports", icon: "FileText", permission: null }] },
+      { group: "", items: [{ id: "ha-overview", label: "Dashboard", icon: "LayoutDashboard", permission: null, slug: "overview" }] },
+      { group: "Forms", items: [{ id: "ha-form-data", label: "Forms & Data Entry", icon: "ClipboardList", permission: null, slug: "form-data", subRoutes: FORM_DATA_SUB }] },
+      { group: "Reports", items: [{ id: "ha-report-setup", label: "Reports", icon: "FileText", permission: null, slug: "report-management" }] },
     ],
     pages: {
       "ha-overview":     <InstitutionAdminOverviewPage />,
@@ -630,9 +823,9 @@ export const ROLE_CONFIG = {
      form_domain = 'finance'. Form Management is intentionally omitted. */
   finance_admin: {
     navItems: [
-      { group: "", items: [{ id: "fa-overview", label: "Dashboard", icon: "LayoutDashboard", permission: null }] },
-      { group: "Forms", items: [{ id: "fa-form-data", label: "Forms & Data Entry", icon: "ClipboardList", permission: null }] },
-      { group: "Reports", items: [{ id: "fa-report-setup", label: "Reports", icon: "FileText", permission: null }] },
+      { group: "", items: [{ id: "fa-overview", label: "Dashboard", icon: "LayoutDashboard", permission: null, slug: "overview" }] },
+      { group: "Forms", items: [{ id: "fa-form-data", label: "Forms & Data Entry", icon: "ClipboardList", permission: null, slug: "form-data", subRoutes: FORM_DATA_SUB }] },
+      { group: "Reports", items: [{ id: "fa-report-setup", label: "Reports", icon: "FileText", permission: null, slug: "report-management" }] },
     ],
     pages: {
       "fa-overview":     <InstitutionAdminOverviewPage />,
@@ -651,7 +844,7 @@ export const ROLE_CONFIG = {
     navItems: [
       {
         group: "My Work",
-        items: [{ id: "fb-sections", label: "My Sections", icon: "FileEdit" }],
+        items: [{ id: "fb-sections", label: "My Sections", icon: "FileEdit", slug: "my-sections", subRoutes: MY_SECTIONS_SUB }],
       },
     ],
     pages: {
@@ -675,4 +868,17 @@ export function getRoleConfig(role) {
     );
   }
   return ROLE_CONFIG[role] ?? ROLE_CONFIG["__fallback__"];
+}
+
+/**
+ * getRoleDefaultSlug(role)
+ * The URL slug a role lands on by default (e.g. "overview", "my-sections") —
+ * used for the root redirect and as the fallback target for the permission
+ * guard in SlugRoute.
+ */
+export function getRoleDefaultSlug(role) {
+  const config = getRoleConfig(role);
+  const allItems = config.navItems.flatMap((group) => group.items);
+  const item = allItems.find((i) => i.id === config.defaultPage) || allItems[0];
+  return item?.slug ?? "my-sections";
 }

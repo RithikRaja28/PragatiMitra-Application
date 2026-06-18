@@ -1,4 +1,12 @@
 import { useState, useRef, useCallback } from "react";
+import { useNavigate, useLocation, Navigate } from "react-router-dom";
+
+const SLUG = "balance-sheet";
+
+/* Ephemeral module-level store: persists across route transitions (client-side only, no API) */
+let _bs_savedEntries = [];
+let _bs_reportMeta   = null;
+let _bs_nextId       = 2;
 
 const SCHEDULES = [
   { num: "1",   name: "Corpus / Capital Fund" },
@@ -751,12 +759,34 @@ function ReportMeta({ meta }) {
    MAIN PAGE COMPONENT
 ════════════════════════════════════════════ */
 export default function BalanceSheetPage() {
-  const [view, setView] = useState("form");         // "form" | "cards" | "detail"
-  const [rows, setRows] = useState([makeRow(1)]);
-  const [nextId, setNextId] = useState(2);
-  const [savedEntries, setSavedEntries] = useState([]);
-  const [detailEntry, setDetailEntry] = useState(null);
-  const [reportMeta, setReportMeta] = useState(null);
+  const navigate = useNavigate();
+  const location = useLocation();
+  const isNew    = location.pathname.endsWith("/new");
+  const isDetail = location.pathname.endsWith("/detail");
+  const listPath = `/${SLUG}`;
+
+  const [rows, setRows] = useState(() =>
+    isNew && location.state?.editEntry
+      ? [{ ...location.state.editEntry, status: undefined, savedAt: undefined }]
+      : [makeRow(1)]
+  );
+  const [nextId,       _setNextId]       = useState(_bs_nextId);
+  const [savedEntries, _setSavedEntries] = useState(_bs_savedEntries);
+  const [reportMeta,   _setReportMeta]   = useState(_bs_reportMeta);
+
+  const setSavedEntries = useCallback((fn) => {
+    const next = typeof fn === "function" ? fn(_bs_savedEntries) : fn;
+    _bs_savedEntries = next;
+    _setSavedEntries(next);
+  }, [_setSavedEntries]);
+  const setReportMeta = useCallback((v) => { _bs_reportMeta = v; _setReportMeta(v); }, [_setReportMeta]);
+  const setNextId = useCallback((fn) => {
+    const next = typeof fn === "function" ? fn(_bs_nextId) : fn;
+    _bs_nextId = next;
+    _setNextId(next);
+  }, [_setNextId]);
+
+  const entity = isDetail ? (location.state?.entity ?? null) : null;
 
   /* ── Row helpers ── */
   const updateRow = useCallback((id, key, val) => {
@@ -828,7 +858,7 @@ export default function BalanceSheetPage() {
     setReportMeta({ savedAt: new Date().toISOString() });
     setRows([makeRow(nextId)]);
     setNextId((n) => n + 1);
-    setView("cards");
+    navigate(listPath);
   };
 
   const handleSubmit = () => {
@@ -837,12 +867,11 @@ export default function BalanceSheetPage() {
     setReportMeta({ savedAt: now, submittedAt: now });
     setRows([makeRow(nextId)]);
     setNextId((n) => n + 1);
-    setView("cards");
+    navigate(listPath);
   };
 
   const handleEdit = (entry) => {
-    setRows([{ ...entry, status: undefined, savedAt: undefined }]);
-    setView("form");
+    navigate(`${listPath}/new`, { state: { editEntry: entry } });
   };
 
   /* ── Views ── */
@@ -853,20 +882,21 @@ export default function BalanceSheetPage() {
   };
 
   /* Detail view */
-  if (view === "detail" && detailEntry) {
+  if (isDetail) {
+    if (!entity) return <Navigate to={listPath} replace />;
     return (
       <div style={pageStyle}>
         <DetailView
-          entry={detailEntry}
-          onBack={() => setView("cards")}
-          onEdit={() => handleEdit(detailEntry)}
+          entry={entity}
+          onBack={() => navigate(listPath)}
+          onEdit={() => handleEdit(entity)}
         />
       </div>
     );
   }
 
-  /* Cards view */
-  if (view === "cards") {
+  /* Cards view (default at /balance-sheet) */
+  if (!isNew) {
     return (
       <div style={pageStyle}>
         {/* Page header */}
@@ -888,7 +918,7 @@ export default function BalanceSheetPage() {
               {savedEntries.length} schedule{savedEntries.length !== 1 ? "s" : ""} saved
             </p>
           </div>
-          <button style={S.btnPrimary} onClick={() => setView("form")}>+ New entry</button>
+          <button style={S.btnPrimary} onClick={() => navigate(`${listPath}/new`)}>+ New entry</button>
         </div>
 
         {/* Report metadata */}
@@ -913,7 +943,7 @@ export default function BalanceSheetPage() {
               <ScheduleCard
                 key={entry.id}
                 entry={entry}
-                onClick={() => { setDetailEntry(entry); setView("detail"); }}
+                onClick={() => navigate(`${listPath}/detail`, { state: { entity: entry } })}
               />
             ))}
           </div>
@@ -922,7 +952,7 @@ export default function BalanceSheetPage() {
     );
   }
 
-  /* Form view (default) */
+  /* Form view (/new) */
   return (
     <div style={pageStyle}>
       {/* Page header */}
@@ -945,7 +975,7 @@ export default function BalanceSheetPage() {
           </p>
         </div>
         {savedEntries.length > 0 && (
-          <button style={S.btnOutline} onClick={() => setView("cards")}>
+          <button style={S.btnOutline} onClick={() => navigate(listPath)}>
             View saved ({savedEntries.length})
           </button>
         )}

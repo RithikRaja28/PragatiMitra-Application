@@ -1,5 +1,8 @@
 import React, { useState, useEffect, useCallback } from "react";
+import { useNavigate, useLocation, Navigate } from "react-router-dom";
 import { FilePlus, Search, RefreshCw, Lock, CalendarClock, ArrowRight } from "lucide-react";
+
+const SLUG = "form-management";
 import { useApi } from "../../hooks/useApi";
 import { useAcademicYear } from "../../store/AcademicYearContext";
 import { Toast, isAuthError } from "../../components/shared/formUtils";
@@ -22,11 +25,15 @@ function deadlineInfo(form) {
    current user's role (active for the selected year), and opens the shared
    records page to fill/view. No create / manage / lifecycle controls. */
 export default function DepartmentFormFillPage() {
+  const navigate = useNavigate();
+  const location = useLocation();
   const { apiFetch } = useApi();
   const { selectedYear, academicYear } = useAcademicYear() || {};
 
-  const [view, setView] = useState("list");
-  const [selectedForm, setSelectedForm] = useState(null);
+  const isRecords = location.pathname.endsWith("/records");
+  const listPath  = `/${SLUG}`;
+  const entity    = isRecords ? (location.state?.entity ?? null) : null;
+
   const [forms, setForms] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -49,8 +56,9 @@ export default function DepartmentFormFillPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  if (view === "records" && selectedForm) {
-    return <DepartmentFormRecordsPage form={selectedForm} year={selectedYear} onBack={() => { setView("list"); load(); }} />;
+  if (isRecords) {
+    if (!entity) return <Navigate to={listPath} replace />;
+    return <DepartmentFormRecordsPage form={entity} year={selectedYear} onBack={() => navigate(listPath)} />;
   }
 
   const q = search.trim().toLowerCase();
@@ -78,7 +86,7 @@ export default function DepartmentFormFillPage() {
     {
       key: "actions", header: "", align: "right", width: 130,
       render: (form) => (
-        <Button variant="primary" icon={<ArrowRight size={16} strokeWidth={STROKE} />} onClick={() => { setSelectedForm(form); setView("records"); }}>
+        <Button variant="primary" icon={<ArrowRight size={16} strokeWidth={STROKE} />} onClick={() => navigate(`${listPath}/records`, { state: { entity: form } })}>
           {form.is_locked ? "View" : "Open"}
         </Button>
       ),

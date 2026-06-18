@@ -11,6 +11,7 @@
  * Endpoints:
  *   GET    /api/committees/meta
  *   GET    /api/committees?institute_id=&finance_year=&committee_type=&status=&search=
+ *   GET    /api/committees/:id
  *   POST   /api/committees
  *   PUT    /api/committees/:id
  *   PATCH  /api/committees/:id/status
@@ -270,6 +271,48 @@ router.post("/", async (req, res) => {
   } catch (err) {
     logger.error("POST /api/committees failed", { ...getLogContext(req), stack: err.stack });
     return res.status(500).json({ success: false, message: "Failed to create committee.", detail: err.message });
+  }
+});
+
+/* ═══════════════════════════════════════════════════════════════
+   GET /api/committees/:id
+   Single-committee fetch for the edit page — required so
+   /committee-management/:committeeId/edit can load its data directly
+   (refresh / deep link), not just via in-app navigation state.
+═══════════════════════════════════════════════════════════════ */
+router.get("/:id", async (req, res) => {
+  const pool = req.app.locals.pool;
+  const id   = Number(req.params.id);
+
+  if (!Number.isInteger(id) || id <= 0) {
+    return res.status(400).json({ success: false, message: "Invalid committee ID." });
+  }
+
+  try {
+    const { rows } = await pool.query(
+      `SELECT
+         mc.id,
+         mc.institute_id,
+         mc.finance_year,
+         mc.committee_type,
+         mc.members,
+         mc.position,
+         mc.contact,
+         mc.status,
+         mc.created_at,
+         mc.updated_at,
+         jsonb_array_length(mc.members) AS member_count
+       FROM   management_committees mc
+       WHERE  mc.id = $1`,
+      [id]
+    );
+    if (!rows.length) {
+      return res.status(404).json({ success: false, message: "Committee not found." });
+    }
+    return res.json({ success: true, data: rows[0] });
+  } catch (err) {
+    logger.error("GET /api/committees/:id failed", { ...getLogContext(req), stack: err.stack });
+    return res.status(500).json({ success: false, message: "Failed to fetch committee." });
   }
 });
 

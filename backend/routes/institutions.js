@@ -18,6 +18,18 @@ router.use(verifyToken);
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const isUUID  = (v) => typeof v === "string" && UUID_RE.test(v);
 
+/* Bug 10 — institution lifecycle. `status` (ACTIVE | ARCHIVED | DELETED) + a
+   soft-delete timestamp. Enforcement is at the gate (login / refresh / me /
+   verifyToken): a non-ACTIVE or deleted institution disables every user under it,
+   so children are never physically mutated and restore is automatically lossless.
+   The column is ensured idempotently (it predates this feature in most envs). */
+let lifecycleColsEnsured = false;
+async function ensureLifecycleColumns(pool) {
+  if (lifecycleColsEnsured) return;
+  await pool.query(`ALTER TABLE institutions ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ`);
+  lifecycleColsEnsured = true;
+}
+
 /* ─── India states list ──────────────────────────────────────────── */
 const INDIA_STATES = [
   "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh",
@@ -576,6 +588,7 @@ router.get("/export/sample", requireRole(["super_admin"]), async (req, res) => {
 router.get("/", async (req, res) => {
   const pool = req.app.locals.pool;
   try {
+    await ensureLifecycleColumns(pool);
     const { rows } = await pool.query(
       `SELECT
          i.institution_id,
@@ -589,6 +602,7 @@ router.get("/", async (req, res) => {
          i.country,
          i.pincode,
          i.status,
+         i.deleted_at,
          i.created_at,
          (
            SELECT COUNT(*)
@@ -603,6 +617,7 @@ router.get("/", async (req, res) => {
              AND u.account_status = 'ACTIVE'
          ) AS user_count
        FROM institutions i
+       WHERE i.deleted_at IS NULL
        ORDER BY i.institution_name ASC`
     );
     return res.json({ success: true, data: rows });
@@ -718,6 +733,60 @@ router.post("/", async (req, res) => {
   }
 });
 
+/* ── GET /api/institutions/:id ──────────────────────────────────
+   Single-institution fetch for the edit page — required so
+   /institute-management/:institutionId/edit can load its data directly
+   (refresh / deep link), not just via in-app navigation state.
+──────────────────────────────────────────────────────────────── */
+router.get("/:id", async (req, res) => {
+  const pool = req.app.locals.pool;
+  const institutionId = req.params.id;
+
+  if (!isUUID(institutionId)) {
+    return res.status(400).json({ success: false, message: "Invalid institution ID." });
+  }
+
+  try {
+    const { rows } = await pool.query(
+      `SELECT
+         i.institution_id,
+         i.institution_name,
+         i.code,
+         i.email_domain,
+         i.address_line1,
+         i.address_line2,
+         i.city,
+         i.state,
+         i.country,
+         i.pincode,
+         i.status,
+         i.created_at,
+         (
+           SELECT COUNT(*)
+           FROM departments d
+           WHERE d.institution_id = i.institution_id
+             AND d.status = 'ACTIVE'
+         ) AS department_count,
+         (
+           SELECT COUNT(*)
+           FROM users u
+           WHERE u.institution_id = i.institution_id
+             AND u.account_status = 'ACTIVE'
+         ) AS user_count
+       FROM institutions i
+       WHERE i.institution_id = $1`,
+      [institutionId]
+    );
+    if (!rows.length) {
+      return res.status(404).json({ success: false, message: "Institution not found." });
+    }
+    return res.json({ success: true, data: rows[0] });
+  } catch (err) {
+    logger.error("GET /api/institutions/:id failed", { ...getLogContext(req), stack: err.stack });
+    return res.status(500).json({ success: false, message: "Failed to fetch institution." });
+  }
+});
+
 /* ── PUT /api/institutions/:id ── */
 router.put("/:id", async (req, res) => {
   const pool        = req.app.locals.pool;
@@ -812,5 +881,63 @@ router.put("/:id", async (req, res) => {
     return res.status(500).json({ success: false, message: "Failed to update institution." });
   }
 });
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Institution lifecycle — Bug 10. Archive / restore / soft-delete. Super-admin
+   only. No active-user block (the whole point of archiving is to disable the
+   users via the gate); no cascade writes to children (they are gated by the
+   parent's status, so restore resumes everything with zero data loss).
+───────────────────────────────────────────────────────────────────────────── */
+async function setLifecycleState(req, res, { targetStatus, deletedAt, okMessage, action }) {
+  const pool = req.app.locals.pool;
+  const institutionId = req.params.id;
+  if (!isUUID(institutionId)) return res.status(400).json({ success: false, message: "Invalid institution ID." });
+
+  try {
+    await ensureLifecycleColumns(pool);
+    const { rows: existingRows } = await pool.query(
+      `SELECT institution_id, institution_name, status, deleted_at FROM institutions WHERE institution_id = $1`,
+      [institutionId]
+    );
+    if (!existingRows.length) return res.status(404).json({ success: false, message: "Institution not found." });
+    const existing = existingRows[0];
+
+    const { rows: [updated] } = await pool.query(
+      `UPDATE institutions
+          SET status = $1, deleted_at = $2, updated_at = now(), updated_by = $3
+        WHERE institution_id = $4
+        RETURNING institution_id, institution_name, status, deleted_at`,
+      [targetStatus, deletedAt, req.user?.userId || null, institutionId]
+    );
+
+    await writeAuditLog(req, {
+      actionType: action,
+      entityType: "INSTITUTION",
+      entityId:   updated.institution_id,
+      oldValue:   { status: existing.status, deleted_at: existing.deleted_at },
+      newValue:   { status: updated.status,  deleted_at: updated.deleted_at },
+      status:     "SUCCESS",
+      message:    `Institution "${updated.institution_name}" ${okMessage}`,
+    });
+
+    return res.json({ success: true, message: `Institution "${updated.institution_name}" ${okMessage}.`, data: updated });
+  } catch (err) {
+    logger.error(`${action} /api/institutions/:id failed`, { ...getLogContext(req), stack: err.stack });
+    return res.status(500).json({ success: false, message: "Failed to update institution lifecycle state." });
+  }
+}
+
+/* Archive — institution + all its users/forms/data become inactive via the gate. */
+router.post("/:id/archive", requireRole(["super_admin"]), (req, res) =>
+  setLifecycleState(req, res, { targetStatus: "ARCHIVED", deletedAt: null, okMessage: "archived", action: "INST_ARCHIVED" }));
+
+/* Restore — back to ACTIVE and clear any soft-delete; everything resumes. */
+router.post("/:id/restore", requireRole(["super_admin"]), (req, res) =>
+  setLifecycleState(req, res, { targetStatus: "ACTIVE", deletedAt: null, okMessage: "restored", action: "INST_RESTORED" }));
+
+/* Soft delete — status DELETED + deleted_at. NEVER a physical delete, so no row
+   that children reference is ever removed → no orphan IDs. */
+router.delete("/:id", requireRole(["super_admin"]), (req, res) =>
+  setLifecycleState(req, res, { targetStatus: "DELETED", deletedAt: new Date(), okMessage: "deleted", action: "INST_DELETED" }));
 
 module.exports = router;

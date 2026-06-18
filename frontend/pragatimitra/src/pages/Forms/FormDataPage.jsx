@@ -1,7 +1,11 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo, useLayoutEffect } from "react";
+import { useNavigate, useLocation, Navigate } from "react-router-dom";
 import ReactDOM from "react-dom";
 import { createPortal } from "react-dom";
-import { Trash2, FileText, FilePlus, Lock, Globe, SearchX, Table2, LayoutGrid } from "lucide-react";
+
+const SLUG = "form-data";
+import { Trash2, FileText, FilePlus, Lock, Clock, Globe, SearchX, Table2, LayoutGrid, UserPlus } from "lucide-react";
+import AssignContributorsModal from "./AssignContributorsModal";
 import { useApi } from "../../hooks/useApi";
 import { useAuth } from "../../store/AuthContext";
 import { useAcademicYear } from "../../store/AcademicYearContext";
@@ -310,12 +314,19 @@ function RecordEditPage({ fields, record, onSave, onBack, getToken, formName, fo
     if (viewOnly) return;
     setSaving(true); setError("");
     const res = await onSave(formData);
-    setSaving(false);
     if (res?.success) {
-      // Stay on the page; refresh the Hindi preview once the server-side
-      // translation has had a moment to run (it's async on the backend).
+      if (!isEdit) {
+        // New record added → return to the list. Prevents a second click from
+        // re-submitting the still-populated form (duplicate record).
+        onBack();
+        return;
+      }
+      // Edit: stay on the page and refresh the Hindi preview once the
+      // server-side translation has had a moment to run (async on the backend).
+      setSaving(false);
       if (showReference) setTimeout(refetchCounterpart, 1200);
     } else {
+      setSaving(false);
       setError(res?.message || "Failed to save record.");
     }
   }
@@ -472,7 +483,7 @@ function ImportProgressPanel({ total, processed, remaining, percent, chunksDone,
 /* ════════════════════════════════════════════════════════════════════
    FormImportWizard — with dept selection, rendered via ModalPortal
 ════════════════════════════════════════════════════════════════════ */
-function FormImportWizard({ formName, onClose, onDone, apiFetch, getToken }) {
+function FormImportWizard({ formName, onClose, onDone, apiFetch, getToken, selectedYear = null }) {
   const [step, setStep] = useState(1);
   const fileRef = useRef(null);
 
@@ -521,11 +532,17 @@ function FormImportWizard({ formName, onClose, onDone, apiFetch, getToken }) {
     setParsing(true); setParseError("");
     try {
       const fd = new FormData(); fd.append("file", file);
+      if (selectedYear != null) fd.append("year", selectedYear);
       const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
       const token = getToken();
+      // Bug 7 — send the selected academic year (header + form field) so the backend
+      // year-scoped assignment guard blocks parsing an import for an unassigned year.
       const res = await fetch(`${API_BASE}/api/form-data/${formName}/import/parse`, {
         method: "POST", body: fd,
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...(selectedYear != null ? { "X-Academic-Year": String(selectedYear) } : {}),
+        },
       });
       const data = await res.json();
       if (!data.success) { setParseError(data.message || "Parse failed."); return; }
@@ -574,7 +591,15 @@ function FormImportWizard({ formName, onClose, onDone, apiFetch, getToken }) {
     try {
       const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
       const token = getToken();
-      const res = await fetch(`${API_BASE}/api/form-data/${formName}/export/sample?format=${format}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+      const res = await fetch(`${API_BASE}/api/form-data/${formName}/export/sample?format=${format}`, {
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          // Bug 7 — carry the selected academic year so the year-scoped assignment
+          // guard authorizes the contributor for THIS year (else it falls back to the
+          // calendar year and would wrongly block the sample for their assigned year).
+          ...(selectedYear != null ? { "X-Academic-Year": String(selectedYear) } : {}),
+        },
+      });
       if (!res.ok) return;
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
@@ -794,7 +819,7 @@ function useDropDirection(open, estimatedHeight = 240) {
 }
 
 /* ── Export dropdown with progress bar ── */
-function ExportDropdown({ formName, accessToken, language = "en" }) {
+function ExportDropdown({ formName, accessToken, language = "en", selectedYear = null }) {
   const [open, setOpen]                   = useState(false);
   const [exporting, setExporting]         = useState(null);
   const [exportPercent, setExportPercent] = useState(0);
@@ -818,9 +843,12 @@ function ExportDropdown({ formName, accessToken, language = "en" }) {
   }
 
   const langTag = language !== "en" ? `_${language}` : "";
+  // Bug 7 — carry the selected academic year so the backend can enforce the
+  // year-scoped assignment (export of an unassigned year is blocked server-side).
+  const yearQ = selectedYear != null ? `&year=${selectedYear}` : "";
   const options = [
-    { key: "csv",  label: "Export as CSV",  action: () => download(`/api/form-data/${formName}/export?format=csv&language=${language}`,  `${formName}${langTag}_export.csv`,  "csv")  },
-    { key: "xlsx", label: "Export as Excel", action: () => download(`/api/form-data/${formName}/export?format=xlsx&language=${language}`, `${formName}${langTag}_export.xlsx`, "xlsx") },
+    { key: "csv",  label: "Export as CSV",  action: () => download(`/api/form-data/${formName}/export?format=csv&language=${language}${yearQ}`,  `${formName}${langTag}_export.csv`,  "csv")  },
+    { key: "xlsx", label: "Export as Excel", action: () => download(`/api/form-data/${formName}/export?format=xlsx&language=${language}${yearQ}`, `${formName}${langTag}_export.xlsx`, "xlsx") },
   ];
 
   const [wrapRef, openUp] = useDropDirection(open && !exporting, 130);
@@ -1018,9 +1046,26 @@ function BulkActionBar({ selectedCount, totalOnPage, onSelectAll, onDeselectAll,
    FormDataPage — Main Component
 ════════════════════════════════════════════════════════════════════ */
 export default function FormDataPage() {
+  const navigate = useNavigate();
+  const location = useLocation();
   const { apiFetch }    = useApi();
-  const { accessToken } = useAuth();
+  const { accessToken, user } = useAuth();
   const { lang }        = useLanguage();
+
+  // Who may assign forms to contributors:
+  //   • a real Department Admin, OR
+  //   • a Contributor who holds Nodal Officer capability — detected via the
+  //     existing NOA signal (user.noaActiveYears, set by the backend's
+  //     nodal_officer_assignments resolver). We do NOT hardcode a nodal role:
+  //     the frontend user.roles stays "contributor"; noaActiveYears is the flag.
+  const canAssign =
+    (user?.roles || []).some((r) => r.name === "department_admin" || r.name === "institute_admin") ||
+    (user?.noaActiveYears?.length || 0) > 0;
+  const [assignForm, setAssignForm] = useState(null);
+
+  const isRecords = location.pathname.endsWith("/records");
+  const listPath  = `/${SLUG}`;
+  const formEntity = isRecords ? (location.state?.entity ?? null) : null;
   const { selectedYear, years, selectedYearLocked } = useAcademicYear() || {};
   // Year-aware filtering only kicks in once the institution has created academic
   // years (opted into the lifecycle). Otherwise behave exactly as before.
@@ -1028,8 +1073,6 @@ export default function FormDataPage() {
   const ayLocked        = !!selectedYearLocked; // academic year locked → view-only
   const getToken        = useCallback(() => accessToken, [accessToken]);
 
-  const [view, setView]                 = useState("forms");
-  const [selectedForm, setSelectedForm] = useState(null);
   const [importOpen, setImportOpen]     = useState(false);
 
   const [forms, setForms]               = useState([]);
@@ -1140,29 +1183,21 @@ export default function FormDataPage() {
     finally { setRecsLoading(false); }
   }, [apiFetch, lang, currentPage, pageSize, searchTerm, sortField, sortDir]);
 
-  /* Re-fetch when form opens or language changes while viewing records */
+  /* Re-fetch when the records route loads (formEntity comes from nav state) */
   useEffect(() => {
-    if (view === "records" && selectedForm) loadRecords(selectedForm);
-  }, [view, selectedForm, loadRecords]);
+    if (isRecords && formEntity) loadRecords(formEntity);
+  }, [isRecords, formEntity, loadRecords]);
 
   function openForm(form) {
-    setSelectedForm(form);
-    setView("records");
-    setCurrentPage(1);
-    setSortField("created_at");
-    setSortDir("desc");
-    setSearchInput("");
-    setSearchTerm("");
-    // The records effect (keyed on selectedForm + the paging/search/sort state)
-    // performs the fetch, so we don't call loadRecords here — that would fire with
-    // a stale closure before the resets above have applied.
+    navigate(`${listPath}/records`, { state: { entity: form } });
   }
 
   function backToForms() {
-    setView("forms"); setSelectedForm(null); setSchema(null); setRecords([]);
+    setSchema(null); setRecords([]);
     setRecsError(""); setCurrentPage(1); setSelectedIds(new Set());
     setSearchInput(""); setSearchTerm("");
     setLockInfo({ is_locked: false, locked_by: null, locked_at: null });
+    navigate(listPath);
   }
 
   /* Save from the dedicated edit page. Returns { success, message } and does NOT
@@ -1172,12 +1207,12 @@ export default function FormDataPage() {
     const editing = editTarget && editTarget !== "new" ? editTarget : null;
     try {
       const res = editing
-        ? await apiFetch(`/api/form-data/${selectedForm.form_name}/records/${editing.id}`, { method: "PUT",  body: JSON.stringify({ data: formData }) })
-        : await apiFetch(`/api/form-data/${selectedForm.form_name}/records`,                { method: "POST", body: JSON.stringify({ data: formData }) });
+        ? await apiFetch(`/api/form-data/${formEntity.form_name}/records/${editing.id}`, { method: "PUT",  body: JSON.stringify({ data: formData }) })
+        : await apiFetch(`/api/form-data/${formEntity.form_name}/records`,                { method: "POST", body: JSON.stringify({ data: formData }) });
       const data = await res.json();
       if (data.success) {
         showToast(data.message);
-        loadRecords(selectedForm);
+        loadRecords(formEntity);
         return { success: true, message: data.message };
       }
       return { success: false, message: data.message || "Failed to save record." };
@@ -1191,10 +1226,10 @@ export default function FormDataPage() {
     if (!deleteTarget) return;
     setDeleting(true);
     try {
-      const res  = await apiFetch(`/api/form-data/${selectedForm.form_name}/records/${deleteTarget}`, { method: "DELETE" });
+      const res  = await apiFetch(`/api/form-data/${formEntity.form_name}/records/${deleteTarget}`, { method: "DELETE" });
       const data = await res.json();
       if (data.success) {
-        setDeleteTarget(null); showToast(data.message); loadRecords(selectedForm);
+        setDeleteTarget(null); showToast(data.message); loadRecords(formEntity);
       } else { showToast(data.message || "Failed to delete.", "error"); setDeleteTarget(null); }
     } catch (err) { if (!isAuthError(err)) showToast("Network error.", "error"); setDeleteTarget(null); }
     finally { setDeleting(false); }
@@ -1205,7 +1240,7 @@ export default function FormDataPage() {
     const ids = Array.from(selectedIds);
     try {
       const res  = await apiFetch(
-        `/api/form-data/${selectedForm.form_name}/records/bulk-delete`,
+        `/api/form-data/${formEntity.form_name}/records/bulk-delete`,
         { method: "DELETE", body: JSON.stringify({ ids }) }
       );
       const data = await res.json();
@@ -1218,7 +1253,7 @@ export default function FormDataPage() {
       } else {
         showToast(data.message || "Bulk delete failed.", "error");
       }
-      loadRecords(selectedForm);
+      loadRecords(formEntity);
     } catch (err) {
       if (!isAuthError(err)) showToast("Network error during bulk delete.", "error");
     } finally { setDeleting(false); }
@@ -1280,7 +1315,7 @@ export default function FormDataPage() {
   /* ══════════════════════════════════════════════════════
      VIEW 1 — Form selection grid
   ══════════════════════════════════════════════════════ */
-  if (view === "forms") {
+  if (!isRecords) {
     const now = Date.now();
     const isExpired = (f) => f.deadline_at && new Date(f.deadline_at).getTime() <= now;
     const totalForms   = forms.length;
@@ -1302,6 +1337,16 @@ export default function FormDataPage() {
     return (
       <div style={{ padding: "20px 28px", fontFamily: "'Plus Jakarta Sans', sans-serif", minHeight: "100%", maxWidth: 1440, display: "flex", flexDirection: "column" }}>
         {toast && <Toast message={toast.message} type={toast.type} />}
+        {assignForm && (
+          <AssignContributorsModal
+            form={assignForm}
+            year={selectedYear}
+            departmentName={user?.departmentName}
+            onClose={() => setAssignForm(null)}
+            onAssigned={loadForms}
+            showToast={showToast}
+          />
+        )}
 
         <PageHeader
           breadcrumb={["Home", "Department", "Forms & Data Entry"]}
@@ -1417,14 +1462,27 @@ export default function FormDataPage() {
                           </span>
                         </td>
                         <td style={{ padding: "6px 14px", textAlign: "right" }}>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); openForm(form); }}
-                            style={{ display: "inline-flex", alignItems: "center", gap: 5, background: "#fff", color: ACCENT, border: `1px solid ${ACCENT}40`, borderRadius: 7, padding: "0 12px", height: 30, fontSize: 11.5, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap", transition: "background .15s, border-color .15s" }}
-                            onMouseEnter={(e) => { e.currentTarget.style.background = ACCENT + "12"; e.currentTarget.style.borderColor = ACCENT; }}
-                            onMouseLeave={(e) => { e.currentTarget.style.background = "#fff"; e.currentTarget.style.borderColor = ACCENT + "40"; }}
-                          >
-                            Open <span style={{ fontSize: 12 }}>→</span>
-                          </button>
+                          <div style={{ display: "inline-flex", alignItems: "center", gap: 6, justifyContent: "flex-end" }}>
+                            {canAssign && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); setAssignForm(form); }}
+                                title="Assign contributors" aria-label="Assign contributors"
+                                style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 30, height: 30, background: "#fff", color: ACCENT, border: `1px solid ${ACCENT}40`, borderRadius: 7, cursor: "pointer", transition: "background .15s, border-color .15s" }}
+                                onMouseEnter={(e) => { e.currentTarget.style.background = ACCENT + "12"; e.currentTarget.style.borderColor = ACCENT; }}
+                                onMouseLeave={(e) => { e.currentTarget.style.background = "#fff"; e.currentTarget.style.borderColor = ACCENT + "40"; }}
+                              >
+                                <UserPlus size={15} strokeWidth={1.9} />
+                              </button>
+                            )}
+                            <button
+                              onClick={(e) => { e.stopPropagation(); openForm(form); }}
+                              style={{ display: "inline-flex", alignItems: "center", gap: 5, background: "#fff", color: ACCENT, border: `1px solid ${ACCENT}40`, borderRadius: 7, padding: "0 12px", height: 30, fontSize: 11.5, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap", transition: "background .15s, border-color .15s" }}
+                              onMouseEnter={(e) => { e.currentTarget.style.background = ACCENT + "12"; e.currentTarget.style.borderColor = ACCENT; }}
+                              onMouseLeave={(e) => { e.currentTarget.style.background = "#fff"; e.currentTarget.style.borderColor = ACCENT + "40"; }}
+                            >
+                              Open <span style={{ fontSize: 12 }}>→</span>
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -1441,21 +1499,24 @@ export default function FormDataPage() {
   /* ══════════════════════════════════════════════════════
      VIEW 2b — Dedicated record edit/add page (in-shell, no overlay)
   ══════════════════════════════════════════════════════ */
-  if (editTarget && selectedForm) {
+  /* Guard: /form-data/records with no navigation state → redirect to form list */
+  if (isRecords && !formEntity) return <Navigate to={listPath} replace />;
+
+  if (editTarget && formEntity) {
     return (
       <>
         {toast && <Toast message={toast.message} type={toast.type} />}
         <RecordEditPage
           fields={schemaFields}
           record={editTarget === "new" ? null : editTarget}
-          formName={selectedForm.form_name}
-          formTitle={selectedForm.form_name.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
+          formName={formEntity.form_name}
+          formTitle={formEntity.form_name.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
           apiFetch={apiFetch}
           getToken={getToken}
-          translationEnabled={selectedForm.translate_to_hindi !== false}
+          translationEnabled={formEntity.translate_to_hindi !== false}
           viewOnly={readOnly && editTarget !== "new"}
           onSave={saveRecord}
-          onBack={() => { setEditTarget(null); loadRecords(selectedForm); }}
+          onBack={() => { setEditTarget(null); loadRecords(formEntity); }}
         />
       </>
     );
@@ -1487,11 +1548,12 @@ export default function FormDataPage() {
       )}
       {importOpen && (
         <FormImportWizard
-          formName={selectedForm.form_name}
+          formName={formEntity.form_name}
           apiFetch={apiFetch}
           getToken={getToken}
+          selectedYear={selectedYear}
           onClose={() => setImportOpen(false)}
-          onDone={() => { setImportOpen(false); showToast("Import complete!"); loadRecords(selectedForm); }}
+          onDone={() => { setImportOpen(false); showToast("Import complete!"); loadRecords(formEntity); }}
         />
       )}
 
@@ -1519,11 +1581,11 @@ export default function FormDataPage() {
           "Home",
           "Department",
           { label: "Forms & Data Entry", onClick: backToForms },
-          selectedForm?.form_name.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+          formEntity?.form_name.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
         ]}
         title={
           <>
-            {selectedForm?.form_name.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
+            {formEntity?.form_name.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
             {lockInfo.is_locked && (
               <span style={{ marginLeft: 10, fontSize: 13, fontWeight: 600, color: "#dc2626", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 6, padding: "2px 8px", verticalAlign: "middle", display: "inline-flex", alignItems: "center", gap: 5 }}>
                 <Lock size={13} strokeWidth={2.2} /> Locked
@@ -1547,7 +1609,7 @@ export default function FormDataPage() {
               sortDir={sortDir}
               onSort={(dir) => { setSortDir(dir); setSortField("created_at"); setCurrentPage(1); setSelectedIds(new Set()); }}
             />
-            <ExportDropdown formName={selectedForm?.form_name} accessToken={accessToken} language={lang} />
+            <ExportDropdown formName={formEntity?.form_name} accessToken={accessToken} language={lang} selectedYear={selectedYear} />
             <button
               onClick={() => { if (!readOnly) setImportOpen(true); }}
               disabled={readOnly}

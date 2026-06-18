@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect, useRef, useCallback } from "react";
+import { getRoleDefaultSlug } from "../components/Dashboard/roleConfig";
 
 const API_BASE         = import.meta.env.VITE_API_URL || "http://localhost:5000";
 const IDLE_TIMEOUT     = 60 * 60 * 1000;
@@ -6,21 +7,16 @@ const REFRESH_INTERVAL = 14 * 60 * 1000;
 
 const AuthContext = createContext(null);
 
-// ✅ ALL keys are snake_case to match backend exactly
-export const ROLE_ROUTES = {
-  super_admin:                "/dashboard/super-admin",
-  institute_admin:            "/dashboard/institute-admin",
-  publication_cell:           "/dashboard/publication-cell",
-  department_admin:           "/dashboard/department-admin",
-  head_of_department:         "/dashboard/head-of-department",
-  nodal_officer:   "/dashboard/nodal-officer",
-  contributor:                "/dashboard/contributor",
-  reviewer:                   "/dashboard/reviewer",
-  finance_officer:            "/dashboard/finance-officer",
-  directors_office:           "/dashboard/directors-office",
-  hospital_admin:             "/dashboard/hospital-admin",
-  finance_admin:              "/dashboard/finance-admin",
-};
+// ✅ ALL keys are snake_case to match backend exactly.
+// Values are flat, role-agnostic URLs — the role's default slug from
+// roleConfig.jsx (e.g. "/overview", "/my-sections").
+export const ROLE_ROUTES = Object.fromEntries(
+  [
+    "super_admin", "institute_admin", "publication_cell", "department_admin",
+    "head_of_department", "nodal_officer", "contributor", "reviewer",
+    "finance_officer", "directors_office", "hospital_admin", "finance_admin",
+  ].map((role) => [role, `/${getRoleDefaultSlug(role)}`])
+);
 
 export function redirectByRole(user, navigate) {
   if (user.mustChangePassword) {

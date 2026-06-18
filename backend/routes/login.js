@@ -137,6 +137,8 @@ async function fetchUser(pool, whereClause, params) {
        u.institution_id, u.department_id, u.profile_image_url,
        COALESCE(u.role_domain, 'academic') AS role_domain,
        i.institution_name,
+       i.status     AS institution_status,
+       i.deleted_at AS institution_deleted_at,
        d.name AS department_name,
        COALESCE(
          (SELECT json_agg(json_build_object(
@@ -159,6 +161,17 @@ async function fetchUser(pool, whereClause, params) {
     params
   );
   return rows[0] || null;
+}
+
+/* Bug 10 — institution lifecycle gate. A non-super-admin whose institution is
+   archived (status != ACTIVE) or soft-deleted (deleted_at set) cannot sign in or
+   restore a session — the institution is the parent owner, so its state cascades
+   to every user under it. Super admins (system-level) and users with no
+   institution are exempt. Mirrors the per-request gate in middleware/auth.js. */
+function institutionGateBlocked(user) {
+  const isSuperAdmin = (user.roles || []).some((r) => (r?.name || r) === "super_admin");
+  if (isSuperAdmin || !user.institution_id) return false;
+  return user.institution_status !== "ACTIVE" || !!user.institution_deleted_at;
 }
 
 function buildAccessPayload(user, sessionId) {
@@ -280,6 +293,20 @@ router.post("/login", loginLimiter, async (req, res) => {
       return res.status(401).json({ success: false, message: "Invalid email or password." });
     }
 
+    // ── Bug 10: institution archived / deleted → block login ──────────
+    if (institutionGateBlocked(user)) {
+      await writeAuditLog(req, {
+        actionType:     "LOGIN_FAILED",
+        entityType:     "SESSION",
+        entityId:       user.id,
+        overrideUserId: user.id,
+        status:         "FAILURE",
+        message:        `Login blocked for ${user.email} — institution ${user.institution_deleted_at ? "deleted" : user.institution_status}`,
+        metadata:       { reason: "institution_not_active", institution_status: user.institution_status },
+      });
+      return res.status(403).json({ success: false, message: "Your institution is no longer active. Please contact your administrator." });
+    }
+
     // Single session: wipe all previous sessions for this user
     await pool.query("DELETE FROM sessions WHERE user_id = $1", [user.id]);
 
@@ -398,6 +425,13 @@ router.post("/refresh", refreshLimiter, async (req, res) => {
     const user = await fetchUser(pool, "WHERE u.id = $1", [session.user_id]);
     await enrichWithNodalOfficerRole(pool, user);
 
+    // ── Bug 10: institution archived / deleted → kill session, force re-login ──
+    if (institutionGateBlocked(user)) {
+      await pool.query("DELETE FROM sessions WHERE id = $1", [session.id]);
+      res.clearCookie("pm_refresh", { path: "/api/auth" });
+      return res.status(401).json({ success: false, disabled: true, message: "Your institution is no longer active. Please contact your administrator." });
+    }
+
     res.cookie("pm_refresh", newRawToken, cookieOptions());
 
     // Return user alongside the new token so AuthContext can update noaActiveYears
@@ -456,6 +490,13 @@ router.get("/me", refreshLimiter, async (req, res) => {
     }
 
     await enrichWithNodalOfficerRole(pool, user);
+
+    // ── Bug 10: institution archived / deleted → session no longer valid ──
+    if (institutionGateBlocked(user)) {
+      await pool.query("DELETE FROM sessions WHERE id = $1", [session.id]);
+      res.clearCookie("pm_refresh", { path: "/api/auth" });
+      return res.status(401).json({ success: false, disabled: true, message: "Your institution is no longer active. Please contact your administrator." });
+    }
 
     return res.status(200).json({
       success:     true,

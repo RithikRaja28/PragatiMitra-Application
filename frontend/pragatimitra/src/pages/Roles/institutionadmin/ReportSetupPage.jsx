@@ -1,8 +1,10 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Save, FolderTree } from "lucide-react";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { t } from "../../../i18n/translations";
 import PageHeader from "../../../components/shared/PageHeader";
+import { useApi }  from "../../../hooks/useApi";
+import { useShell } from "../../../components/Dashboard/shellContext";
 
 let _id = 0;
 const uid = () => `id_${++_id}`;
@@ -29,9 +31,8 @@ const SEED = [
   },
 ];
 
-const YEARS     = Array.from({ length: 11 }, (_, i) => 2020 + i);
-const DATA_SRC  = ["Manual", "API", "Excel Import", "Database"];
-const WORKFLOWS = ["Standard Review", "Fast Track", "Committee Review", "Director Approval"];
+const YEARS    = Array.from({ length: 11 }, (_, i) => 2020 + i);
+const DATA_SRC = ["Manual", "API", "Excel Import", "Database"];
 
 /* ── Design tokens ── */
 const C = {
@@ -245,7 +246,10 @@ function SectionItem({ section, selected, onSelect, onUpdate, onDelete, onSelect
 }
 
 export default function ReportSetupPage() {
-  const { lang } = useLanguage();
+  const { lang }         = useLanguage();
+  const { apiFetch }     = useApi();
+  const shell            = useShell();
+
   const [sections, setSections]     = useState(SEED);
   const [selected, setSelected]     = useState(SEED[0]);
   const [selectedSub, setSelectedSub] = useState(null);
@@ -259,7 +263,31 @@ export default function ReportSetupPage() {
   const [submissionDL, setSubmissionDL] = useState("2026-11-30");
   const [reviewStart,  setReviewStart]  = useState("2026-12-01");
   const [reviewEnd,    setReviewEnd]    = useState("2026-12-15");
-  const [workflow,     setWorkflow]     = useState(WORKFLOWS[0]);
+  const [workflow,     setWorkflow]     = useState("");
+
+  /* ── Workflow templates (live) ── */
+  const [wfTemplates,   setWfTemplates]   = useState([]);
+  const [wfLoading,     setWfLoading]     = useState(true);
+
+  const fetchWorkflows = useCallback(async () => {
+    setWfLoading(true);
+    try {
+      const res  = await apiFetch("/api/builder/workflows");
+      const data = await res.json();
+      if (data.success) {
+        const list = data.data || [];
+        setWfTemplates(list);
+        // Auto-select the default template if nothing chosen yet
+        if (!workflow) {
+          const def = list.find(t => t.is_default) || list[0];
+          if (def) setWorkflow(def.id);
+        }
+      }
+    } catch { /* silently ignore — static UI still functional */ }
+    finally { setWfLoading(false); }
+  }, [apiFetch]);   // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => { fetchWorkflows(); }, [fetchWorkflows]);
 
   const [secName,    setSecName]    = useState(selected?.name || "");
   const [secType,    setSecType]    = useState("Section");
@@ -422,11 +450,70 @@ export default function ReportSetupPage() {
               </div>
             </Field>
 
-            <Field label={t("Workflow", lang)}>
-              <select value={workflow} onChange={e => setWorkflow(e.target.value)}
-                style={{ ...inputSt, cursor: "pointer" }}>
-                {WORKFLOWS.map(w => <option key={w}>{w}</option>)}
+            <Field label={t("Workflow Template", lang)}>
+              <select
+                value={workflow}
+                onChange={e => setWorkflow(e.target.value)}
+                disabled={wfLoading}
+                style={{ ...inputSt, cursor: "pointer" }}
+              >
+                {wfLoading
+                  ? <option value="">Loading…</option>
+                  : wfTemplates.length === 0
+                    ? <option value="">No templates yet</option>
+                    : <>
+                        <option value="">— Select a workflow —</option>
+                        {wfTemplates.map(w => (
+                          <option key={w.id} value={w.id}>
+                            {w.name}
+                            {w.is_default ? " ★" : ""}
+                            {" "}({w.step_count} step{Number(w.step_count) !== 1 ? "s" : ""})
+                          </option>
+                        ))}
+                      </>
+                }
               </select>
+
+              {/* Selected template step summary */}
+              {workflow && wfTemplates.length > 0 && (() => {
+                const tpl = wfTemplates.find(w => w.id === workflow);
+                if (!tpl || !tpl.steps?.length) return null;
+                return (
+                  <div style={{
+                    marginTop: 7, padding: "7px 10px",
+                    background: "rgba(37,99,235,0.06)", borderRadius: 7,
+                    fontSize: 10, color: C.textMid, lineHeight: 1.7,
+                  }}>
+                    {tpl.steps.map((s, i) => (
+                      <span key={s.id}>
+                        {i > 0 && <span style={{ color: "#94a3b8", margin: "0 4px" }}>→</span>}
+                        <strong>{s.step_order || i + 1}.</strong> {s.step_name}
+                        {s.approver_role && (
+                          <span style={{ color: "#94a3b8" }}>
+                            {" "}[{s.approver_role.replace(/_/g, " ")}
+                            {s.approver_department_name ? ` @ ${s.approver_department_name}` : ""}]
+                          </span>
+                        )}
+                        {s.approver_name && <span style={{ color: "#94a3b8" }}> [👤 {s.approver_name}]</span>}
+                      </span>
+                    ))}
+                  </div>
+                );
+              })()}
+
+              {/* Create new template link */}
+              <button
+                type="button"
+                onClick={() => shell?.setActiveId("ia-workflow-templates")}
+                style={{
+                  marginTop: 7, display: "flex", alignItems: "center", gap: 5,
+                  background: "none", border: "none", padding: 0,
+                  fontSize: 11, fontWeight: 600, color: C.primary, cursor: "pointer",
+                  textDecoration: "underline", textUnderlineOffset: 2,
+                }}
+              >
+                ＋ Create a new workflow template
+              </button>
             </Field>
 
             {/* Timeline visual */}

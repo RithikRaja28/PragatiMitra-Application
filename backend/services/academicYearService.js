@@ -168,6 +168,70 @@ async function getAcademicYearLockBlockForReq(pool, req, institutionId, fallback
   return getAcademicYearLockBlock(pool, institutionId, year);
 }
 
+/* Per-FORM lifecycle status for (institution, year): 'active' | 'archived' |
+   'disabled'. Mirrors the classification used by GET /api/forms/institution-forms
+   so the write path and the list agree. A form is write-blocked when archived or
+   disabled. Returns 'active' (no enforcement) when the institution hasn't opted
+   into academic years, or on any lookup failure — fully backward compatible. */
+async function getFormLifecycleStatus(pool, institutionId, formName, year) {
+  if (!institutionId || !formName || year == null) return "active";
+  try {
+    // Only enforce lifecycle once the institution has created academic years
+    // (matches the frontend's "yearAware" gate). Otherwise behave as before.
+    const startYears = await getInstitutionStartYears(pool, institutionId);
+    if (startYears.length === 0) return "active";
+
+    const academicYear = formatAcademicYear(year);
+    const { rows: tl } = await pool.query("SELECT id FROM table_list WHERE form_name = $1", [formName]);
+    if (!tl.length) return "active";
+    const id = String(tl[0].id);
+
+    const { rows: cfgRows } = await pool.query(
+      `SELECT active_forms_json, archived_forms_json, disabled
+         FROM academic_year_form_config
+        WHERE institution_id = $1 AND academic_year = $2`,
+      [institutionId, academicYear]
+    );
+    const has = (j) => Array.isArray(j) && j.map(String).includes(id);
+
+    // Fallback signal: the form has an active schema for this exact year.
+    const { rows: sch } = await pool.query(
+      `SELECT 1 FROM custom_field_schemas
+        WHERE institution_id = $1 AND form_name = $2 AND year = $3 AND is_active = true LIMIT 1`,
+      [institutionId, formName, Number(year)]
+    );
+    const hasSchemaThisYear = sch.length > 0;
+
+    const cfg = cfgRows[0];
+    if (cfg) {
+      if (has(cfg.disabled))            return "disabled";
+      if (has(cfg.active_forms_json))   return "active";
+      if (has(cfg.archived_forms_json)) return "archived";
+    }
+    return hasSchemaThisYear ? "active" : "archived";
+  } catch {
+    return "active"; // never block a write because the lookup failed
+  }
+}
+
+/* { blocked, message } — write protection for an ARCHIVED (or disabled) form in
+   the given (institution, year). Archive = view-only (records preserved). */
+async function getFormArchiveBlock(pool, institutionId, formName, year) {
+  const status = await getFormLifecycleStatus(pool, institutionId, formName, year);
+  if (status === "archived" || status === "disabled") {
+    return { blocked: true, message: "This form is archived for the selected academic year and is available in view-only mode." };
+  }
+  return { blocked: false, message: null };
+}
+
+/* Resolve the SELECTED year (X-Academic-Year header → fallback) then return the
+   archive write-block. Mirrors getAcademicYearLockBlockForReq. */
+async function getFormArchiveBlockForReq(pool, req, institutionId, formName, fallbackYear) {
+  const headerYear = Number(req?.headers?.["x-academic-year"]);
+  const year = Number.isInteger(headerYear) ? headerYear : fallbackYear;
+  return getFormArchiveBlock(pool, institutionId, formName, year);
+}
+
 /* The institution's CURRENTLY ACTIVE academic year (start-year int), or null if
    the institution hasn't created any years yet. The institution OWNS the
    academic year; departments INHERIT it. This is the value a department request
@@ -291,5 +355,8 @@ module.exports = {
   getInstitutionStartYears,
   getAcademicYearLockBlock,
   getAcademicYearLockBlockForReq,
+  getFormLifecycleStatus,
+  getFormArchiveBlock,
+  getFormArchiveBlockForReq,
   resolveActiveAcademicYear,
 };

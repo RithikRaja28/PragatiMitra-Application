@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
+import { useNavigate, useLocation, Navigate } from "react-router-dom";
 import { Landmark, Pencil, Trash2, MoreHorizontal, Power, PowerOff, Plus } from "lucide-react";
 import { useApi } from "../../../hooks/useApi";
 import FormScreen from "../../../components/shared/FormScreen";
@@ -428,9 +429,13 @@ function FilterSelect({ value, onChange, children, minWidth = 160 }) {
 /* ═══════════════════════════════════════════════════════════════
    MAIN PAGE
 ═══════════════════════════════════════════════════════════════ */
+const SLUG = "committee-management";
+
 export default function CommitteeManagementPage() {
   const { lang } = useLanguage();
   const { apiFetch } = useApi();
+  const navigate = useNavigate();
+  const location = useLocation();
 
   const [committeeTypes, setCommitteeTypes] = useState([]);
   const [positions,      setPositions]      = useState([]);
@@ -451,8 +456,6 @@ export default function CommitteeManagementPage() {
   const [loadingCommittees,   setLoadingCommittees]   = useState(false);
   const [institutionsError,   setInstitutionsError]   = useState(null);
 
-  /* formView: null = list, { mode: 'create'|'edit', entity } = form screen */
-  const [formView,      setFormView]      = useState(null);
   const [deletingItem,  setDeletingItem]  = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [isDeleting,    setIsDeleting]    = useState(false);
@@ -460,6 +463,11 @@ export default function CommitteeManagementPage() {
 
   const [toast, setToast] = useState(null);
   const toastTimer = useRef(null);
+
+  const isCreate = location.pathname.endsWith("/create");
+  const isEdit   = location.pathname.endsWith("/edit");
+  const listPath = `/${SLUG}`;
+  const entityForForm = isEdit ? (location.state?.entity ?? null) : null;
 
   const showToast = useCallback((message, type = "success") => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -614,7 +622,7 @@ export default function CommitteeManagementPage() {
 
   /* ── Callbacks from CommitteeForm ── */
   function handleCreated(targetId, message) {
-    setFormView(null);
+    navigate(listPath);
     showToast(message, "success");
     if (String(targetId) === String(selectedInstituteId)) {
       fetchCommittees(selectedInstituteId);
@@ -624,26 +632,31 @@ export default function CommitteeManagementPage() {
   }
 
   function handleSaved(message) {
-    setFormView(null);
+    navigate(listPath);
     showToast(message, "success");
     fetchCommittees(selectedInstituteId);
   }
 
-  /* ── Render form screen when formView is set ── */
-  if (formView) {
+  /* ── Render form screen for create/edit ── */
+  if (isCreate || isEdit) {
+    if (isEdit && !entityForForm) return <Navigate to={listPath} replace />;
     return (
-      <CommitteeForm
-        mode={formView.mode}
-        entity={formView.entity}
-        institutions={institutions}
-        defaultInstituteId={selectedInstituteId}
-        committeeTypes={committeeTypes}
-        positions={positions}
-        financeYears={financeYears}
-        onCreated={handleCreated}
-        onSaved={handleSaved}
-        onBack={() => setFormView(null)}
-      />
+      <>
+        {toast && <Toast message={toast.message} type={toast.type} />}
+        <CommitteeForm
+          key={isEdit ? "edit" : "create"}
+          mode={isEdit ? "edit" : "create"}
+          entity={entityForForm}
+          institutions={institutions}
+          defaultInstituteId={selectedInstituteId}
+          committeeTypes={committeeTypes}
+          positions={positions}
+          financeYears={financeYears}
+          onCreated={handleCreated}
+          onSaved={handleSaved}
+          onBack={() => navigate(listPath)}
+        />
+      </>
     );
   }
 
@@ -738,7 +751,7 @@ export default function CommitteeManagementPage() {
               <Button
                 variant="primary"
                 icon={<Plus size={17} strokeWidth={2} />}
-                onClick={() => setFormView({ mode: "create", entity: null })}
+                onClick={() => navigate(`${listPath}/create`)}
                 style={{ alignSelf: "flex-end" }}
               >
                 {t("New Committee", lang)}
@@ -880,7 +893,7 @@ export default function CommitteeManagementPage() {
                     <Button variant="ghost" iconOnly icon={<MoreHorizontal size={18} strokeWidth={2} />} onClick={toggle} aria-label="Row actions" />
                   )}
                 >
-                  <MenuItem icon={<Pencil size={16} strokeWidth={1.9} />} onClick={() => setFormView({ mode: "edit", entity: c })}>{t("Edit", lang)}</MenuItem>
+                  <MenuItem icon={<Pencil size={16} strokeWidth={1.9} />} onClick={() => navigate(`${listPath}/edit`, { state: { entity: c } })}>{t("Edit", lang)}</MenuItem>
                   {isActive ? (
                     <MenuItem icon={<PowerOff size={16} strokeWidth={1.9} />} disabled={busy} onClick={() => handleToggleStatus(c)}>{busy ? "…" : t("Deactivate", lang)}</MenuItem>
                   ) : (

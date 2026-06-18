@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
+import { useNavigate, useLocation, Navigate } from "react-router-dom";
 import {
   Building2, Pencil, Landmark, MoreHorizontal, Power, PowerOff,
-  Plus, Upload, Download, FileText, FileSpreadsheet,
+  Plus, Upload, Download, FileText, FileSpreadsheet, Archive, ArchiveRestore, Trash2,
 } from "lucide-react";
 import { useApi } from "../../../hooks/useApi";
 import FormScreen from "../../../components/shared/FormScreen";
@@ -480,23 +481,35 @@ function StyledSelect({ value, onChange, children, minWidth = 180 }) {
 }
 
 /* ─── Main Page ──────────────────────────────────────────────── */
+const SLUG = "institute-management";
+
 export default function InstitutionManagementPage() {
   const { lang } = useLanguage();
   const { apiFetch } = useApi();
+  const navigate = useNavigate();
+  const location = useLocation();
   const [institutions, setInstitutions] = useState([]);
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  /* formView: null = list, { mode: 'create'|'edit', entity } = form screen */
-  const [formView, setFormView] = useState(null);
   const [togglingId,      setTogglingId]      = useState(null);
   const [toast,           setToast]           = useState(null);
-  const [showImport,      setShowImport]      = useState(false);
   const [exportingFormat, setExportingFormat] = useState(null);
   const [page,            setPage]            = useState(1);
   const [pageSize,        setPageSize]        = useState(25);
   const toastTimer = useRef(null);
+
+  const isCreate = location.pathname.endsWith("/create");
+  const isImport = location.pathname.endsWith("/import");
+  const isEdit   = location.pathname.endsWith("/edit");
+
+  const listPath = `/${SLUG}`;
+
+  // Edit mode reads the record passed via navigation state from the list's
+  // row menu — no id in the URL. Refresh/deep-link with no state bounces
+  // back to the list (see render guard below).
+  const entityForForm = isEdit ? (location.state?.entity ?? null) : null;
 
   const showToast = useCallback((message, type = "success") => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -569,33 +582,64 @@ export default function InstitutionManagementPage() {
     }
   }
 
+  /* Bug 10 — institution lifecycle: archive / restore / soft-delete. Archiving
+     (or deleting) disables every user under the institution via the gate; restore
+     resumes everything with no data loss. */
+  async function handleLifecycle(inst, kind) {
+    if (kind === "delete" && !window.confirm(
+      `Delete "${inst.institution_name}"? It will be soft-deleted (hidden, users disabled) and can be restored — no data is removed.`
+    )) return;
+
+    const path = kind === "archive" ? `/api/institutions/${inst.institution_id}/archive`
+               : kind === "restore" ? `/api/institutions/${inst.institution_id}/restore`
+               : `/api/institutions/${inst.institution_id}`;
+    const method = kind === "delete" ? "DELETE" : "POST";
+
+    setTogglingId(inst.institution_id);
+    try {
+      const res  = await apiFetch(path, { method });
+      const data = await res.json();
+      if (data.success) { showToast(data.message, "success"); fetchInstitutions(); }
+      else showToast(data.message || "Action failed.", "error");
+    } catch (err) {
+      if (!isAuthError(err)) showToast("Failed to update institution lifecycle.", "error");
+    } finally {
+      setTogglingId(null);
+    }
+  }
+
   /* ── Callbacks from InstitutionForm ── */
   function handleCreated(message) {
-    setFormView(null);
+    navigate(listPath);
     showToast(message, "success");
     fetchInstitutions();
   }
 
   function handleSaved(message) {
-    setFormView(null);
+    navigate(listPath);
     showToast(message, "success");
     fetchInstitutions();
   }
 
-  /* ── Render form screen when formView is set ── */
-  if (formView) {
+  /* ── Render form screen for create/edit ── */
+  if (isCreate || isEdit) {
+    if (isEdit && !entityForForm) return <Navigate to={listPath} replace />;
     return (
-      <InstitutionForm
-        mode={formView.mode}
-        entity={formView.entity}
-        onCreated={handleCreated}
-        onSaved={handleSaved}
-        onBack={() => setFormView(null)}
-      />
+      <>
+        {toast && <Toast message={toast.message} type={toast.type} />}
+        <InstitutionForm
+          key={isEdit ? "edit" : "create"}
+          mode={isEdit ? "edit" : "create"}
+          entity={entityForForm}
+          onCreated={handleCreated}
+          onSaved={handleSaved}
+          onBack={() => navigate(listPath)}
+        />
+      </>
     );
   }
 
-  if (showImport) {
+  if (isImport) {
     return (
       <>
         {toast && <Toast message={toast.message} type={toast.type} />}
@@ -603,9 +647,9 @@ export default function InstitutionManagementPage() {
           apiPath="/api/institutions"
           entityLabel="Institutions"
           entityIcon={<Landmark size={22} strokeWidth={1.8} color="#2563eb" />}
-          onBack={() => setShowImport(false)}
+          onBack={() => navigate(listPath)}
           onSuccess={(result) => {
-            setShowImport(false);
+            navigate(listPath);
             fetchInstitutions();
             showToast(
               `Import complete: ${result.imported} institution${result.imported !== 1 ? "s" : ""} imported.`,
@@ -640,10 +684,10 @@ export default function InstitutionManagementPage() {
         actions={
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <ExportMenu loading={exportingFormat} onExport={handleExport} />
-            <Button variant="secondary" icon={<Upload size={17} strokeWidth={1.9} />} onClick={() => setShowImport(true)}>
+            <Button variant="secondary" icon={<Upload size={17} strokeWidth={1.9} />} onClick={() => navigate(`${listPath}/import`)}>
               {t("Import", lang)}
             </Button>
-            <Button variant="primary" icon={<Plus size={17} strokeWidth={2} />} onClick={() => setFormView({ mode: "create", entity: null })}>
+            <Button variant="primary" icon={<Plus size={17} strokeWidth={2} />} onClick={() => navigate(`${listPath}/create`)}>
               {t("New Institution", lang)}
             </Button>
           </div>
@@ -689,6 +733,7 @@ export default function InstitutionManagementPage() {
               <StyledSelect value={statusFilter} onChange={setStatusFilter} minWidth={150}>
                 <option value="ALL">{t("All Statuses", lang)}</option>
                 <option value="ACTIVE">{t("Active", lang)}</option>
+                <option value="ARCHIVED">{t("Archived", lang)}</option>
                 <option value="INACTIVE">{t("Inactive", lang)}</option>
               </StyledSelect>
             </>
@@ -731,11 +776,14 @@ export default function InstitutionManagementPage() {
             },
             {
               key: "status", header: t("Status", lang), width: 120,
-              render: (inst) => (
-                <Badge tone={inst.status === "ACTIVE" ? "success" : "neutral"}>
-                  {inst.status === "ACTIVE" ? t("Active", lang) : t("Inactive", lang)}
-                </Badge>
-              ),
+              render: (inst) => {
+                const tone = inst.status === "ACTIVE" ? "success"
+                           : inst.status === "ARCHIVED" ? "warning" : "neutral";
+                const label = inst.status === "ACTIVE" ? t("Active", lang)
+                            : inst.status === "ARCHIVED" ? t("Archived", lang)
+                            : t("Inactive", lang);
+                return <Badge tone={tone}>{label}</Badge>;
+              },
             },
             {
               key: "actions", header: t("Actions", lang), align: "right", width: 90,
@@ -750,18 +798,26 @@ export default function InstitutionManagementPage() {
                       <Button variant="ghost" iconOnly icon={<MoreHorizontal size={18} strokeWidth={2} />} onClick={toggle} aria-label="Row actions" />
                     )}
                   >
-                    <MenuItem icon={<Pencil size={16} strokeWidth={1.9} />} onClick={() => setFormView({ mode: "edit", entity: inst })}>
+                    <MenuItem icon={<Pencil size={16} strokeWidth={1.9} />} onClick={() => navigate(`${listPath}/edit`, { state: { entity: inst } })}>
                       {t("Edit", lang)}
                     </MenuItem>
                     {isActive ? (
-                      <MenuItem icon={<PowerOff size={16} strokeWidth={1.9} />} danger disabled={busy} onClick={() => handleToggleStatus(inst)}>
-                        {busy ? "…" : t("Deactivate", lang)}
-                      </MenuItem>
+                      <>
+                        <MenuItem icon={<PowerOff size={16} strokeWidth={1.9} />} disabled={busy} onClick={() => handleToggleStatus(inst)}>
+                          {busy ? "…" : t("Deactivate", lang)}
+                        </MenuItem>
+                        <MenuItem icon={<Archive size={16} strokeWidth={1.9} />} disabled={busy} onClick={() => handleLifecycle(inst, "archive")}>
+                          {busy ? "…" : t("Archive", lang)}
+                        </MenuItem>
+                      </>
                     ) : (
-                      <MenuItem icon={<Power size={16} strokeWidth={1.9} />} disabled={busy} onClick={() => handleToggleStatus(inst)}>
-                        {busy ? "…" : t("Activate", lang)}
+                      <MenuItem icon={<ArchiveRestore size={16} strokeWidth={1.9} />} disabled={busy} onClick={() => handleLifecycle(inst, "restore")}>
+                        {busy ? "…" : t("Restore", lang)}
                       </MenuItem>
                     )}
+                    <MenuItem icon={<Trash2 size={16} strokeWidth={1.9} />} danger disabled={busy} onClick={() => handleLifecycle(inst, "delete")}>
+                      {busy ? "…" : t("Delete", lang)}
+                    </MenuItem>
                   </Dropdown>
                 );
               },

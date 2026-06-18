@@ -32,7 +32,7 @@ const FIXED_ACCESS_ROLES = ["Contributor", "Department Nodal Officer", "Departme
 let _k = 0;
 const nextKey = () => `dfk_${++_k}`;
 const toIdentifier = (s) => String(s).toLowerCase().replace(/[^a-z0-9\s]/g, "").trim().replace(/\s+/g, "_");
-const blankField = () => ({ _key: nextKey(), column_name: "", label: {}, type: "text", required: false });
+const blankField = () => ({ _key: nextKey(), column_name: "", label: {}, type: "text", required: false, isNew: true });
 
 const inputStyle = (err) => ({
   width: "100%", height: 44, padding: "0 14px", border: `1px solid ${err ? "#f87171" : color.borderStrong}`,
@@ -84,10 +84,17 @@ function CardHeader({ icon, title, subtitle }) {
   );
 }
 
-function FieldRow({ field, index, total, onChange, onRemove, onMove }) {
+function FieldRow({ field, index, total, onChange, onRemove, onMove, isEdit }) {
   const { lang } = useLanguage();
   const [open, setOpen] = useState(true);
-  const typeLabel = FIELD_TYPES.find((ft) => ft.value === field.type)?.label || field.type;
+  const typeLabel = FIELD_TYPES.find((t) => t.value === field.type)?.label || field.type;
+
+  // Bug 8 — the DB column key is IMMUTABLE once a field has been saved. A "rename"
+  // must change only the human label, never the column_name: the schema PUT only
+  // ADDs columns (it never renames the underlying table column), so editing the
+  // name of an already-saved field would orphan its data into a new empty column.
+  // Lock the column name for existing fields in edit mode; new fields stay editable.
+  const lockColumnName = isEdit && !field.isNew;
   return (
     <div style={{ border: `1px solid ${color.border}`, borderRadius: 8, marginBottom: 10, overflow: "hidden", background: "#fff" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", cursor: "pointer" }} onClick={() => setOpen((o) => !o)}>
@@ -107,13 +114,27 @@ function FieldRow({ field, index, total, onChange, onRemove, onMove }) {
           <div>
             <label style={labelStyle}>{t("Column Name *", lang)}</label>
             <input style={inputStyle(false)} value={field.column_name} placeholder={t("e.g. Student Name", lang)}
+              readOnly={lockColumnName}
               onChange={(e) => onChange(index, "column_name", e.target.value.replace(/[^a-zA-Z0-9\s_]/g, ""))} />
+            {lockColumnName && (
+              <div style={{ fontSize: 11.5, color: color.muted, marginTop: 6, lineHeight: 1.4 }}>
+                The column name is locked after creation to preserve existing data. Edit the label below to rename this field.
+              </div>
+            )}
           </div>
           <div>
             <label style={labelStyle}>{t("Field Type", lang)}</label>
-            <select style={inputStyle(false)} value={field.type} onChange={(e) => onChange(index, "type", e.target.value)}>
+            {/* Locked once saved (Bug 9): the records column is created with this
+                type and never ALTERed, so a change would corrupt stored data. */}
+            <select style={inputStyle(false)} value={field.type} disabled={lockColumnName}
+              onChange={(e) => onChange(index, "type", e.target.value)}>
               {FIELD_TYPES.map((ft) => <option key={ft.value} value={ft.value}>{t(ft.label, lang)}</option>)}
             </select>
+            {lockColumnName && (
+              <div style={{ fontSize: 11.5, color: color.muted, marginTop: 6, lineHeight: 1.4 }}>
+                The field type is locked after creation to keep existing records readable.
+              </div>
+            )}
           </div>
           <div>
             <label style={labelStyle}>{t("Label", lang)}</label>
@@ -284,7 +305,7 @@ export default function DepartmentFormBuilderPage({ mode, initialData, onDone, o
                   </div>
                 )}
                 {fields.map((f, i) => (
-                  <FieldRow key={f._key} field={f} index={i} total={fields.length} onChange={updateField} onRemove={removeField} onMove={moveField} />
+                  <FieldRow key={f._key} field={f} index={i} total={fields.length} languages={languages} onChange={updateField} onRemove={removeField} onMove={moveField} isEdit={isEdit} />
                 ))}
                 <Button variant="secondary" icon={<Plus size={16} />} fullWidth onClick={() => setFields((p) => [...p, blankField()])}>{t("Add Field", lang)}</Button>
                 {error && <div style={{ marginTop: 14, background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 8, padding: "10px 14px", fontSize: 13, color: "#B91C1C" }}>{error}</div>}

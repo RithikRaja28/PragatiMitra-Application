@@ -308,6 +308,8 @@ router.post(
                 `INSERT INTO user_roles (user_id, role_id, assigned_by) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING`,
                 [existingId, user.role_id, req.user.userId]
               );
+              /* Role changes take effect immediately via the per-request role
+                 refresh in verifyToken (Bug 5) — no forced re-login needed. */
             }
             success++;
             continue;

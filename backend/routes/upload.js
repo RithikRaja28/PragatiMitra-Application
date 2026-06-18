@@ -55,12 +55,14 @@ router.post("/presign", verifyToken, async (req, res) => {
   const ext     = fileName.split(".").pop().toLowerCase();
   const fileKey = `${folder}/${uuidv4()}.${ext}`;
 
-  const uploadUrl = await getUploadUrl(fileKey, fileType);
-
-  // Permanent public URL — works when the S3 bucket has public-read ACL on the prefix
-  const publicUrl = `https://${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${fileKey}`;
-
-  res.json({ uploadUrl, fileKey, publicUrl });
+  try {
+    const uploadUrl = await getUploadUrl(fileKey, fileType);
+    const publicUrl = `https://${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${fileKey}`;
+    res.json({ uploadUrl, fileKey, publicUrl });
+  } catch (err) {
+    logger.error("[upload/presign] Failed to generate presigned URL", { message: err.message, code: err?.Code || err?.code });
+    res.status(500).json({ error: "Failed to generate upload URL. Check S3 configuration." });
+  }
 });
 
 /**
@@ -78,8 +80,13 @@ router.post("/read-url", verifyToken, async (req, res) => {
     return res.status(400).json({ error: "fileKey is required." });
   }
 
-  const readUrl = await getReadUrl(fileKey, Number(expiresIn));
-  res.json({ readUrl });
+  try {
+    const readUrl = await getReadUrl(fileKey, Number(expiresIn));
+    res.json({ readUrl });
+  } catch (err) {
+    logger.error("[upload/read-url] Failed to generate read URL", { message: err.message, code: err?.Code || err?.code });
+    res.status(500).json({ error: "Failed to generate read URL. Check S3 configuration." });
+  }
 });
 
 /**

@@ -1,8 +1,10 @@
 /**
  * RootLayout.jsx
  *
- * Settings mode: swaps AppShell's navItems + pages (no CSS injection, no
- * separate layout). A "← Back" nav item at the top exits settings mode.
+ * Route-driven shell for every "/dashboard/<role>/*" tree. The actual page
+ * content comes from the matched child route via AppShell's <Outlet/>; this
+ * layout only supplies the nav lists (dashboard vs settings — derived from
+ * the URL), the permission guard, and role/year bookkeeping.
  *
  * Nodal Officer role selection:
  *   - user.noaActiveYears comes from the login response (years for which the
@@ -17,12 +19,13 @@
  */
 
 import { Suspense, useState, useEffect, useRef } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import AppShell from "../../components/Dashboard/Appshell";
-import { flatSettingsItems, buildSettingsNav } from "../../components/Dashboard/SettingsSidebar";
+import { buildSettingsNav } from "../../components/Dashboard/SettingsSidebar";
 import "./RootLayout.css";
 import { useAuth } from "../../store/AuthContext";
 import { useAcademicYear } from "../../store/AcademicYearContext";
-import { getRoleConfig } from "../../components/Dashboard/roleConfig";
+import { getRoleConfig, getRoleDefaultSlug } from "../../components/Dashboard/roleConfig";
 
 const SETTINGS_BACK_ID = "__settings_back__";
 
@@ -70,15 +73,20 @@ function PageLoader() {
 export default function RootLayout() {
   const { user, loading, noaSelectedRole } = useAuth();
   const ay = useAcademicYear();
+  const location = useLocation();
+  const navigate = useNavigate();
 
-  const [showSettings,      setShowSettings]      = useState(false);
-  const [lastDashboardPage, setLastDashboardPage] = useState(null);
-  const [isCollapsed,       setIsCollapsed]       = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(false);
 
   // ── Effective role ────────────────────────────────────────────────────────
   const baseRole      = user?.roles?.[0]?.name;
   // noaSelectedRole is chosen at login and never auto-reverted by year changes.
   const effectiveRole = noaSelectedRole || baseRole;
+  const defaultPath   = `/${getRoleDefaultSlug(effectiveRole)}`;
+
+  // Settings mode is derived from the URL — true for /settings and any
+  // /settings/<slug> sub-page.
+  const showSettings = location.pathname.startsWith("/settings");
 
   // ── Year restriction ──────────────────────────────────────────────────────
   // When the user is in NOA mode and switches to a year they are not assigned
@@ -101,7 +109,7 @@ export default function RootLayout() {
   const permissions = user?.roles?.[0]?.permissions ?? {};
   const hasAll      = permissions["all"] === true;
 
-  // ── Role-based nav/pages ──────────────────────────────────────────────────
+  // ── Role-based nav ─────────────────────────────────────────────────────────
   const filteredNavItems = config.navItems
     .map((group) => ({
       ...group,
@@ -112,33 +120,28 @@ export default function RootLayout() {
     .filter((group) => group.items.length > 0);
 
   const visibleIds = new Set(filteredNavItems.flatMap((g) => g.items.map((i) => i.id)));
-  const filteredPages = Object.fromEntries(
-    Object.entries(config.pages).filter(([id]) => visibleIds.has(id))
-  );
 
   const roleDefaultPage = visibleIds.has(config.defaultPage)
     ? config.defaultPage
     : filteredNavItems[0]?.items[0]?.id ?? "home";
 
-  // ── Settings nav/pages ────────────────────────────────────────────────────
+  // ── Settings nav ───────────────────────────────────────────────────────────
   const settingsGroups = buildSettingsNav(effectiveRole);
 
   const settingsNavItems = [
-    // "Back" as a regular nav item at the very top
+    // "Back" as a regular nav item at the very top — has no `slug`, so
+    // AppShell won't auto-navigate; handleNavigate below does it manually.
     {
       group: "",
       items: [{ id: SETTINGS_BACK_ID, label: "Back to Dashboard", icon: "ArrowLeft" }],
     },
     // All settings groups (Communication, Security, Preferences, Administration…)
-    ...settingsGroups,
+    // — routed at /settings/<id>.
+    ...settingsGroups.map((group) => ({
+      ...group,
+      items: group.items.map((item) => ({ ...item, slug: `settings/${item.id}` })),
+    })),
   ];
-
-  const settingsPages = Object.fromEntries(
-    flatSettingsItems(effectiveRole).map((item) => [
-      item.id,
-      <div key={item.id} style={{ padding: "32px 36px" }}>{item.renderPage()}</div>,
-    ])
-  );
 
   // ── Year restriction: revert to assigned year ────────────────────────────
   // The visual warning is shown by AcademicYearPicker in Appshell (contextual,
@@ -158,24 +161,32 @@ export default function RootLayout() {
     }
   }, [isYearRestricted]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Remember the last dashboard (non-settings) path ──────────────────────
+  // Used by the settings "Back to Dashboard" item, so it works even when
+  // settings was reached via a direct deep link with no prior history entry.
+  const lastDashboardPathRef = useRef(defaultPath);
+  useEffect(() => {
+    if (!showSettings) lastDashboardPathRef.current = location.pathname;
+  }, [location.pathname, showSettings]);
+
+  if (loading) return <ShellSkeleton />;
+
+  // Permission gating for dashboard/module routes is handled by
+  // <SlugRoute/> (src/router/SlugRoute.jsx), which redirects to the role's
+  // default slug before this layout's children even render.
+
   // ── What AppShell receives ────────────────────────────────────────────────
   const activeNavItems = showSettings ? settingsNavItems : filteredNavItems;
-  const activePages = showSettings ? settingsPages : filteredPages;
-  // Use lastDashboardPage only when it exists in the current role's page map,
-  // so stale ids from a previous session don't cause "No page registered".
-  const activeDefault = showSettings
-    ? (settingsGroups[0]?.items[0]?.id ?? "notifications")
-    : ((lastDashboardPage && visibleIds.has(lastDashboardPage))
-        ? lastDashboardPage
-        : roleDefaultPage);
+  const activeDefault  = showSettings
+    ? (settingsGroups[0]?.items[0]?.id ?? null)
+    : roleDefaultPage;
 
   // ── Navigation handler ────────────────────────────────────────────────────
   const handleNavigate = (id) => {
     if (id === SETTINGS_BACK_ID) {
-      setShowSettings(false);
+      navigate(lastDashboardPathRef.current || defaultPath);
       return false;
     }
-    if (!showSettings) setLastDashboardPage(id);
   };
 
   const shellUser = {
@@ -185,24 +196,21 @@ export default function RootLayout() {
       ?.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase(),
   };
 
-  if (loading) return <ShellSkeleton />;
-
   return (
     <Suspense fallback={<PageLoader />}>
       {/* Key includes effectiveRole so AppShell remounts cleanly on role change.
           Collapse state is lifted so it survives the remount. */}
       <AppShell
-        key={showSettings ? `settings-${effectiveRole}` : `dashboard-${effectiveRole}`}
+        key={effectiveRole}
         appName="PragatiMitra"
         navItems={activeNavItems}
-        pages={activePages}
         defaultPage={activeDefault}
         defaultCollapsed={isCollapsed}
         onCollapseChange={setIsCollapsed}
         user={shellUser}
         notificationCount={2}
         onNavigate={handleNavigate}
-        onSettingsClick={() => setShowSettings(true)}
+        onSettingsClick={() => navigate("/settings")}
       />
     </Suspense>
   );

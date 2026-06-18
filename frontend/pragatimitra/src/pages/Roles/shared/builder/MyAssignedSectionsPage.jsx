@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
+import { useNavigate, useLocation, Navigate } from "react-router-dom";
 import { useApi }  from "../../../../hooks/useApi";
 import SectionEditorPage from "./SectionEditorPage";
 
@@ -110,13 +111,20 @@ function SectionCard({ section, onEdit }) {
 }
 
 export default function MyAssignedSectionsPage() {
+  const navigate = useNavigate();
+  const location = useLocation();
   const { apiFetch } = useApi();
 
   const [sections,     setSections]     = useState([]);
   const [loading,      setLoading]      = useState(true);
   const [err,          setErr]          = useState("");
-  const [editing,      setEditing]      = useState(null);
   const [filterStatus, setFilterStatus] = useState("");
+
+  /* Derive slug from current path: supports both "my-sections" and "assigned-sections" */
+  const slug     = location.pathname.replace(/^\//, "").split("/")[0];
+  const isEdit   = location.pathname.endsWith("/edit");
+  const listPath = `/${slug}`;
+  const entity   = isEdit ? (location.state?.entity ?? null) : null;
 
   const load = useCallback(async () => {
     setLoading(true); setErr("");
@@ -134,12 +142,13 @@ export default function MyAssignedSectionsPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  if (editing) {
+  if (isEdit) {
+    if (!entity) return <Navigate to={listPath} replace />;
     return (
       <SectionEditorPage
-        sectionId={editing.id}
-        reportTitle={editing.report_title}
-        onBack={() => { setEditing(null); load(); }}
+        sectionId={entity.id}
+        reportTitle={entity.report_title}
+        onBack={() => navigate(listPath)}
       />
     );
   }
@@ -270,7 +279,7 @@ export default function MyAssignedSectionsPage() {
 
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {group.sections.map(s => (
-              <SectionCard key={s.id} section={s} onEdit={setEditing} />
+              <SectionCard key={s.id} section={s} onEdit={(s) => navigate(`${listPath}/edit`, { state: { entity: s } })} />
             ))}
           </div>
         </div>

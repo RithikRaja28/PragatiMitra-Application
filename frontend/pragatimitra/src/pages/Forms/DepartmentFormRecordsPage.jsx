@@ -73,17 +73,33 @@ function RecordEditView({ form, fields, record, year, viewOnly = false, onBack, 
 
   async function save(e) {
     e.preventDefault();
-    if (viewOnly) return;
+    if (viewOnly || saving) return;   // guard double-submit
     setSaving(true); setError("");
     try {
       const res = isEdit
         ? await apiFetch(`/api/department-form-data/${form.id}/records/${record.id}${yq}`, { method: "PUT", body: JSON.stringify({ data, year }) })
         : await apiFetch(`/api/department-form-data/${form.id}/records${yq}`, { method: "POST", body: JSON.stringify({ data, year }) });
       const d = await res.json();
-      if (d.success) { showToast(d.message || t("Saved.", lang)); onReload(); }
-      else setError(d.message || t("Failed to save record.", lang));
-    } catch (e2) { if (!isAuthError(e2)) setError(t("Network error. Please try again.", lang)); }
-    finally { setSaving(false); }
+      if (d.success) {
+        showToast(d.message || "Saved.");
+        if (!isEdit) {
+          // New record added → return to the list (onBack refreshes it). Keeps
+          // the button disabled through navigation so it can't be re-submitted.
+          onBack();
+          return;
+        }
+        // Edit: stay and refresh the Hindi preview after the async translation.
+        onReload();
+        if (showReference) setTimeout(refetch, 1200);
+        setSaving(false);
+      } else {
+        setError(d.message || "Failed to save record.");
+        setSaving(false);
+      }
+    } catch (e2) {
+      if (!isAuthError(e2)) setError("Network error. Please try again.");
+      setSaving(false);
+    }
   }
 
   function renderInput(f) {

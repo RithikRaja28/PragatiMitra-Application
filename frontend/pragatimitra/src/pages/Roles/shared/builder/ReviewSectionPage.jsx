@@ -173,13 +173,15 @@ export default function ReviewSectionPage({ sectionId, onBack }) {
   const { apiFetch } = useApi();
   const { user }     = useAuth();
 
-  const [section,  setSection]  = useState(null);
-  const [blocks,   setBlocks]   = useState([]);
-  const [pipeline, setPipeline] = useState(null);
-  const [history,  setHistory]  = useState([]);
-  const [loading,  setLoading]  = useState(true);
-  const [toast,    setToast]    = useState(null);
-  const [busy,     setBusy]     = useState(false);
+  const [section,       setSection]       = useState(null);
+  const [blocks,        setBlocks]        = useState([]);
+  const [pipeline,      setPipeline]      = useState(null);
+  const [history,       setHistory]       = useState([]);
+  const [loading,       setLoading]       = useState(true);
+  const [toast,         setToast]         = useState(null);
+  const [busy,          setBusy]          = useState(false);
+  const [blockComments, setBlockComments] = useState({});
+  const [resolvingId,   setResolvingId]   = useState(null);
 
   /* review form */
   const [decision,    setDecision]    = useState("APPROVED");
@@ -199,6 +201,11 @@ export default function ReviewSectionPage({ sectionId, onBack }) {
       setBlocks(blockRes.data || []);
       setPipeline(pipeRes.data);
       setHistory(histRes.data || []);
+      try {
+        const res  = await apiFetch(`/api/builder/comments/section/${sectionId}`);
+        const json = await res.json();
+        if (json.success) setBlockComments(json.blocks || {});
+      } catch {}
     } catch {
       setToast({ type: "error", message: "Failed to load section" });
     } finally {
@@ -230,6 +237,24 @@ export default function ReviewSectionPage({ sectionId, onBack }) {
     } finally {
       setBusy(false);
     }
+  };
+
+  const handleResolveBlockComment = async (id) => {
+    setResolvingId(id);
+    try {
+      const res  = await apiFetch(`/api/builder/comments/${id}/resolve`, { method: "PATCH" });
+      const json = await res.json();
+      if (json.success) {
+        setBlockComments(prev => {
+          const next = { ...prev };
+          for (const bid of Object.keys(next)) {
+            const updated = next[bid].comments.map(c => c.id === id ? { ...c, is_resolved: true } : c);
+            next[bid] = { ...next[bid], comments: updated, unresolved: updated.filter(c => !c.is_resolved).length };
+          }
+          return next;
+        });
+      }
+    } catch {} finally { setResolvingId(null); }
   };
 
   /* only show Review button if user is designated approver AND section is reviewable */
@@ -560,6 +585,82 @@ export default function ReviewSectionPage({ sectionId, onBack }) {
                     </div>
                   </div>
                 ))}
+              </div>
+            </div>
+          )}
+
+          {/* ── Unresolved Block Comments ── */}
+          {Object.values(blockComments).some(bg => bg.unresolved > 0) && (
+            <div style={{ background: C.surface, border: `1px solid ${C.border}`,
+              borderRadius: 10, overflow: "hidden" }}>
+              <div style={{ padding: "12px 16px", borderBottom: `1px solid ${C.border}`,
+                background: "#fffbeb", display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 14 }}>💬</span>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "#92400e" }}>
+                    Unresolved Block Comments
+                  </div>
+                  <div style={{ fontSize: 10, color: "#a16207" }}>
+                    {Object.values(blockComments).reduce((a, bg) => a + bg.unresolved, 0)} unresolved across {Object.values(blockComments).filter(bg => bg.unresolved > 0).length} block{Object.values(blockComments).filter(bg => bg.unresolved > 0).length !== 1 ? "s" : ""}
+                  </div>
+                </div>
+              </div>
+              <div style={{ padding: "4px 0" }}>
+                {blocks.map((block, blockIdx) => {
+                  const bg = blockComments[block.id];
+                  if (!bg || bg.unresolved === 0) return null;
+                  const unresThreads = bg.comments.filter(c => !c.is_resolved);
+                  return (
+                    <div key={block.id} style={{ borderBottom: `1px solid ${C.border}`, padding: "10px 16px" }}>
+                      <div style={{
+                        fontSize: 9, fontWeight: 800, color: "#818cf8",
+                        background: "#eef2ff", padding: "2px 7px", borderRadius: 4,
+                        display: "inline-block", textTransform: "uppercase",
+                        letterSpacing: 0.5, marginBottom: 8,
+                      }}>
+                        Block {blockIdx + 1} · {block.block_type}
+                      </div>
+                      {unresThreads.map(thread => (
+                        <div key={thread.id} style={{ marginBottom: 8 }}>
+                          <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+                            <div style={{
+                              width: 24, height: 24, borderRadius: "50%", flexShrink: 0,
+                              background: "#dbeafe", color: "#1d4ed8",
+                              fontSize: 9, fontWeight: 700,
+                              display: "flex", alignItems: "center", justifyContent: "center",
+                            }}>
+                              {(thread.author_name || "?")[0].toUpperCase()}
+                            </div>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: 11, fontWeight: 700, color: C.text, marginBottom: 2 }}>
+                                {thread.author_name || "User"}
+                              </div>
+                              <div style={{ fontSize: 11, color: C.textSub, lineHeight: 1.5, wordBreak: "break-word" }}>
+                                {thread.body}
+                              </div>
+                              {thread.replies?.length > 0 && (
+                                <div style={{ fontSize: 9, color: C.textSub, marginTop: 3 }}>
+                                  {thread.replies.length} {thread.replies.length === 1 ? "reply" : "replies"}
+                                </div>
+                              )}
+                            </div>
+                            <button
+                              onClick={() => handleResolveBlockComment(thread.id)}
+                              disabled={resolvingId === thread.id}
+                              style={{
+                                padding: "3px 9px", background: "#f0fdf4",
+                                border: "1px solid #bbf7d0", borderRadius: 5,
+                                cursor: resolvingId === thread.id ? "not-allowed" : "pointer",
+                                fontSize: 10, color: "#15803d", flexShrink: 0,
+                                fontFamily: "inherit", opacity: resolvingId === thread.id ? 0.6 : 1,
+                              }}
+                            >{resolvingId === thread.id ? "…" : "✓"}</button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
