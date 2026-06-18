@@ -60,7 +60,7 @@ function ReadOnlyVal({ label, value, type }) {
    RecordEditView — dedicated in-shell edit/add page for a department record.
    Single-language (English); department forms do not support translation.
 ════════════════════════════════════════════════════════════════════ */
-function RecordEditView({ form, fields, record, year, viewOnly = false, onBack, onReload, showToast }) {
+function RecordEditView({ form, fields, record, year, viewOnly = false, onBack, showToast }) {
   const { apiFetch } = useApi();
   const { lang } = useLanguage();
   const isEdit = !!record;
@@ -82,16 +82,10 @@ function RecordEditView({ form, fields, record, year, viewOnly = false, onBack, 
       const d = await res.json();
       if (d.success) {
         showToast(d.message || "Saved.");
-        if (!isEdit) {
-          // New record added → return to the list (onBack refreshes it). Keeps
-          // the button disabled through navigation so it can't be re-submitted.
-          onBack();
-          return;
-        }
-        // Edit: stay and refresh the Hindi preview after the async translation.
-        onReload();
-        if (showReference) setTimeout(refetch, 1200);
-        setSaving(false);
+        // Both add and edit → return to the records list (onBack refreshes it).
+        // Keeps the button disabled through navigation so it can't be re-submitted.
+        onBack();
+        return;
       } else {
         setError(d.message || "Failed to save record.");
         setSaving(false);
@@ -272,7 +266,6 @@ export default function DepartmentFormRecordsPage({ form, year = null, onBack })
           year={year}
           viewOnly={editTarget !== "new" && lock.is_locked}
           onBack={() => { setEditTarget(null); load(); }}
-          onReload={load}
           showToast={showToast}
         />
       </>

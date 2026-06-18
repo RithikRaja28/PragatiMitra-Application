@@ -714,9 +714,11 @@ export default function KpiManagementPage({ scope = "institute" }) {
     : t("Configure and export KPI charts for the institute's annual report.", lang);
 
   const listPath = `/${SLUG}`;
-  const isCreate = location.pathname.endsWith("/create");
-  const isEdit   = location.pathname.endsWith("/edit");
-  const editCfg  = isEdit ? (location.state?.entity ?? null) : null;
+  const isCreate  = location.pathname.endsWith("/create");
+  const isEdit    = location.pathname.endsWith("/edit");
+  const isPreview = location.pathname.endsWith("/preview");
+  const editCfg    = isEdit    ? (location.state?.entity ?? null) : null;
+  const previewCfg = isPreview ? (location.state?.entity ?? null) : null;
 
   // ── Data state ──
   const [configs,    setConfigs]    = useState([]);
@@ -760,6 +762,16 @@ export default function KpiManagementPage({ scope = "institute" }) {
     sc.src=ECHARTS_CDN; sc.onload=()=>setEReady(true);
     document.head.appendChild(sc);
   },[]); // eslint-disable-line
+
+  // Spinner keyframes (injected once) for the preview loading state.
+  useEffect(()=>{
+    const id="pm-kpi-spin-css";
+    if (document.getElementById(id)) return;
+    const el=document.createElement("style");
+    el.id=id;
+    el.textContent="@keyframes pm-kpi-spin{to{transform:rotate(360deg)}}";
+    document.head.appendChild(el);
+  },[]);
 
   const loadTables = useCallback(()=>{
     setTabStatus("loading");
@@ -809,7 +821,6 @@ export default function KpiManagementPage({ scope = "institute" }) {
     try {
       const r=await apiFetch(`/configs/${cfg.id}/regenerate`,{method:"POST"});
       setActiveCfg(r.data.config||cfg); applyResult(r.data);
-      setView("preview");          // show the chart on its own dedicated page
       notify(`Loaded "${(r.data.config||cfg).title}" · ${r.data.row_count} rows`);
     } catch(e){ notify(e.message,true); }
     finally { setGenerating(false); }
@@ -847,14 +858,20 @@ export default function KpiManagementPage({ scope = "institute" }) {
     try {
       await apiFetch(`/configs/${id}`,{method:"DELETE"});
       setConfigs(p=>p.filter(c=>c.id!==id));
-      if (activeCfg?.id===id) { setActiveCfg(null); setChartSeries(null); setChartX(null); setView("list"); }
+      if (activeCfg?.id===id) { setActiveCfg(null); setChartSeries(null); setChartX(null); if (isPreview) navFn(listPath); }
       setDeleteTarget(null);
       notify(`Config #${id} deleted`);
     } catch(e){ notify(e.message,true); }
     finally { setDeleting(false); }
-  },[deleteTarget,activeCfg,apiFetch,notify]);
+  },[deleteTarget,activeCfg,apiFetch,notify,isPreview,navFn,listPath]);
 
   const handleSaved = (saved)=>{ loadConfigs(); navFn(listPath); regenerate(saved); };
+
+  // When the dedicated preview page opens (with a cfg in route state), load its
+  // chart once. Re-runs harmlessly become no-ops after activeCfg matches.
+  useEffect(()=>{
+    if (isPreview && previewCfg && activeCfg?.id !== previewCfg.id) regenerate(previewCfg);
+  },[isPreview, previewCfg, activeCfg, regenerate]);
 
   const filtered = configs.filter(c=>{
     if (statusFilter==="exported") return !!c.svg_id;
@@ -881,182 +898,141 @@ export default function KpiManagementPage({ scope = "institute" }) {
     );
   }
 
-  // ── List view ────────────────────────────────────────────────────────────────
-  return (
-    <div style={{ padding:"32px 36px", fontFamily:"'Plus Jakarta Sans',sans-serif", minHeight:"100%" }}>
+  // ── Preview view (dedicated page for a single KPI chart) ──────────────────────
+  if (isPreview) {
+    if (!previewCfg) return <Navigate to={listPath} replace />;
+    const ready = chartSeries && chartX && yRange && activeCfg && activeCfg.id === previewCfg.id;
+    return (
+      <div style={{ padding:"32px 36px", fontFamily:"'Plus Jakarta Sans',sans-serif", minHeight:"100%" }}>
 
-      {/* Header */}
-      <div style={{ marginBottom:28 }}>
-        <div style={{ display:"inline-flex", alignItems:"center", gap:8, background:"#ecfdf3", borderRadius:8, padding:"4px 12px", marginBottom:12 }}>
-          <span style={{ width:7, height:7, borderRadius:"50%", background:"#027a48" }}/>
-          <span style={{ fontSize:11, fontWeight:600, color:"#027a48", textTransform:"uppercase", letterSpacing:1 }}>{scopeLabel}</span>
-        </div>
-        <h1 style={{ fontSize:24, fontWeight:700, color:"#1e293b", letterSpacing:"-0.4px", marginBottom:6 }}>KPI Charts</h1>
-        <p style={{ color:"#94a3b8", fontSize:14 }}>{scopeDesc}</p>
-      </div>
-
-      {/* Action row */}
-      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:12, marginBottom:20 }}>
-        <div style={{ display:"flex", gap:6 }}>
-          {[
-            { val:"all",      label:`All (${configs.length})` },
-            { val:"draft",    label:"Draft" },
-            { val:"exported", label:"Exported" },
-          ].map(f=>(
-            <button key={f.val} onClick={()=>setStatusFilter(f.val)} style={{
-              padding:"7px 14px", borderRadius:8, fontSize:12.5, fontWeight:600, cursor:"pointer",
-              border:`1.5px solid ${statusFilter===f.val?"#2563eb":"#e2e8f0"}`,
-              background: statusFilter===f.val?"#eff6ff":"#fff",
-              color: statusFilter===f.val?"#2563eb":"#64748b",
-            }}>
-              {f.label}
-            </button>
-          ))}
-        </div>
-        <div style={{ display:"flex", gap:10 }}>
-          <button onClick={loadConfigs} style={{ display:"inline-flex", alignItems:"center", gap:6, padding:"9px 16px", borderRadius:10, border:"1.5px solid #e2e8f0", background:"#fff", fontSize:13, fontWeight:600, color:"#475569", cursor:"pointer" }}>
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.95"/></svg>
-            Refresh
+        {/* Header */}
+        <div style={{ display:"flex", alignItems:"center", gap:14, marginBottom:22 }}>
+          <button onClick={()=>navFn(listPath)} style={{ display:"inline-flex", alignItems:"center", gap:6, padding:"8px 14px", borderRadius:10, border:"1.5px solid #e2e8f0", background:"#fff", fontSize:13, fontWeight:600, color:"#475569", cursor:"pointer" }}>
+            ← {t("Back", lang)}
           </button>
-          <button onClick={()=>navFn(`${listPath}/create`)} style={{ display:"inline-flex", alignItems:"center", gap:6, padding:"9px 18px", borderRadius:10, border:"none", background:"#2563eb", color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer", boxShadow:"0 2px 8px rgba(37,99,235,.3)" }}>
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            New KPI Chart
-          </button>
+          <div>
+            <h1 style={{ fontSize:22, fontWeight:700, color:"#1e293b", letterSpacing:"-0.4px", margin:0 }}>{previewCfg.title}</h1>
+            <p style={{ color:"#94a3b8", fontSize:13, margin:"2px 0 0" }}>{previewCfg.table_name}</p>
+          </div>
         </div>
-      </div>
 
-      {/* Card grid */}
-      {cfgsLoading ? (
-        <div style={{ textAlign:"center", padding:"48px", color:"#94a3b8", fontSize:14 }}>Loading configurations…</div>
-      ) : filtered.length===0 ? (
-        <div style={{ textAlign:"center", padding:"64px 24px", color:"#94a3b8" }}>
-          <div style={{ fontSize:14, fontWeight:600, color:"#64748b", marginBottom:4 }}>No KPI charts yet</div>
-          <div style={{ fontSize:13 }}>Click "New KPI Chart" to create your first chart.</div>
-        </div>
-      ) : (
-        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))", gap:20, marginBottom:24 }}>
-          {filtered.map((cfg,idx)=>(
-            <KpiCard key={cfg.id} cfg={cfg} idx={idx}
-              isActive={activeCfg?.id===cfg.id}
-              generating={generating}
-              onEdit={c=>navFn(`${listPath}/edit`, { state: { entity: c } })}
-              onPreview={c=>regenerate(c)}
-              onDelete={deleteConfig}
-            />
-          ))}
-        </div>
-      )}
+        {!ready ? (
+          /* Reserve the full chart-card height up front so the page doesn't jump
+             (flicker) when the data finishes loading and the chart appears. */
+          <div style={{ minHeight:560, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:12, color:"#94a3b8", fontSize:14, background:"#fff", border:"1px solid #e2e8f0", borderRadius:14 }}>
+            <div style={{ width:28, height:28, border:"3px solid #e2e8f0", borderTopColor:"#2563eb", borderRadius:"50%", animation:"pm-kpi-spin 0.7s linear infinite" }} />
+            {t("Loading chart…", lang)}
+          </div>
+        ) : (
+          <div style={{ background:"#fff", border:"1px solid #e2e8f0", borderRadius:14, overflow:"hidden", boxShadow:"0 1px 4px rgba(0,0,0,.06)" }}>
 
-      {/* Preview chart (shown inline when a card is previewed) */}
-      {chartSeries && chartX && yRange && activeCfg && (
-        <div style={{ background:"#fff", border:"1px solid #e2e8f0", borderRadius:14, overflow:"hidden", boxShadow:"0 1px 4px rgba(0,0,0,.06)" }}>
-
-          {/* Chart header */}
-          <div style={{ padding:"16px 24px", borderBottom:"1px solid #f1f5f9", display:"flex", alignItems:"flex-start", justifyContent:"space-between", flexWrap:"wrap", gap:12 }}>
-            <div>
-              <div style={{ fontSize:16, fontWeight:700, color:"#1e293b" }}>{activeCfg.title}</div>
-              <div style={{ fontSize:12, color:"#94a3b8", marginTop:2 }}>
-                {activeCfg.table_name} · {chartX.length} {t("periods", lang)} · {chartSeries.length} {t("series", lang)}
-                {rowCount!=null && <> · {rowCount} {t("rows", lang)}</>}
-                {fetchedAt && <> · {new Date(fetchedAt).toLocaleTimeString("en-IN")}</>}
+            {/* Chart header */}
+            <div style={{ padding:"16px 24px", borderBottom:"1px solid #f1f5f9", display:"flex", alignItems:"flex-start", justifyContent:"space-between", flexWrap:"wrap", gap:12 }}>
+              <div>
+                <div style={{ fontSize:16, fontWeight:700, color:"#1e293b" }}>{activeCfg.title}</div>
+                <div style={{ fontSize:12, color:"#94a3b8", marginTop:2 }}>
+                  {activeCfg.table_name} · {chartX.length} {t("periods", lang)} · {chartSeries.length} {t("series", lang)}
+                  {rowCount!=null && <> · {rowCount} {t("rows", lang)}</>}
+                  {fetchedAt && <> · {new Date(fetchedAt).toLocaleTimeString("en-IN")}</>}
+                </div>
+              </div>
+              <div style={{ display:"flex", flexWrap:"wrap", gap:5 }}>
+                {CHART_TYPES.map(ct=>(
+                  <button key={ct.value} onClick={()=>setChartType(ct.value)} style={{
+                    padding:"5px 12px", borderRadius:6, border:`1.5px solid ${chartType===ct.value?"#2563eb":"#e2e8f0"}`,
+                    background: chartType===ct.value?"#2563eb":"#fff",
+                    color: chartType===ct.value?"#fff":"#64748b",
+                    fontSize:12, fontWeight:500, cursor:"pointer",
+                  }}>
+                    {t(ct.label, lang)}
+                  </button>
+                ))}
               </div>
             </div>
-            <div style={{ display:"flex", flexWrap:"wrap", gap:5 }}>
-              {CHART_TYPES.map(ct=>(
-                <button key={ct.value} onClick={()=>setChartType(ct.value)} style={{
-                  padding:"5px 12px", borderRadius:6, border:`1.5px solid ${chartType===ct.value?"#2563eb":"#e2e8f0"}`,
-                  background: chartType===ct.value?"#2563eb":"#fff",
-                  color: chartType===ct.value?"#fff":"#64748b",
-                  fontSize:12, fontWeight:500, cursor:"pointer",
-                }}>
-                  {t(ct.label, lang)}
-                </button>
+
+            {/* Legend */}
+            <div style={{ padding:"10px 24px 0", display:"flex", flexWrap:"wrap", gap:12 }}>
+              {chartSeries.map(s=>(
+                <span key={s.name} style={{ display:"flex", alignItems:"center", gap:5, fontSize:12, color:"#64748b" }}>
+                  <span style={{ width:10, height:10, borderRadius:3, background:s.color, flexShrink:0 }}/>
+                  {s.name}
+                </span>
               ))}
             </div>
-          </div>
 
-          {/* Legend */}
-          <div style={{ padding:"10px 24px 0", display:"flex", flexWrap:"wrap", gap:12 }}>
-            {chartSeries.map(s=>(
-              <span key={s.name} style={{ display:"flex", alignItems:"center", gap:5, fontSize:12, color:"#64748b" }}>
-                <span style={{ width:10, height:10, borderRadius:3, background:s.color, flexShrink:0 }}/>
-                {s.name}
-              </span>
-            ))}
-          </div>
+            {/* Chart */}
+            {!eReady
+              ? <div style={{ height:360, display:"flex", alignItems:"center", justifyContent:"center", color:"#94a3b8" }}>{t("Loading chart library…", lang)}</div>
+              : <div ref={chartRefCb} style={{ width:"100%", height:380, padding:"8px 0" }}/>
+            }
 
-          {/* Chart */}
-          {!eReady
-            ? <div style={{ height:360, display:"flex", alignItems:"center", justifyContent:"center", color:"#94a3b8" }}>{t("Loading chart library…", lang)}</div>
-            : <div ref={chartRefCb} style={{ width:"100%", height:380, padding:"8px 0" }}/>
-          }
-
-          {/* SQL */}
-          <div style={{ borderTop:"1px solid #f1f5f9", padding:"12px 24px" }}>
-            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:showSql?10:0 }}>
-              <span style={{ fontSize:11, fontWeight:600, textTransform:"uppercase", letterSpacing:".08em", color:"#94a3b8" }}>{t("Stored Query", lang)}</span>
-              <button onClick={()=>setShowSql(v=>!v)} style={{ padding:"4px 10px", borderRadius:6, border:"1.5px solid #e2e8f0", background:"#fff", fontSize:11, cursor:"pointer" }}>
-                {showSql?t("Hide SQL", lang):t("Show SQL", lang)}
-              </button>
-            </div>
-            {showSql && (
-              <div style={{ background:"#0d1117", borderRadius:8, padding:"12px 14px", fontFamily:"'JetBrains Mono',monospace", fontSize:12, color:"#c9d1d9", overflowX:"auto", whiteSpace:"pre", lineHeight:1.7 }}>
-                {displaySql}
+            {/* SQL */}
+            <div style={{ borderTop:"1px solid #f1f5f9", padding:"12px 24px" }}>
+              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:showSql?10:0 }}>
+                <span style={{ fontSize:11, fontWeight:600, textTransform:"uppercase", letterSpacing:".08em", color:"#94a3b8" }}>{t("Stored Query", lang)}</span>
+                <button onClick={()=>setShowSql(v=>!v)} style={{ padding:"4px 10px", borderRadius:6, border:"1.5px solid #e2e8f0", background:"#fff", fontSize:11, cursor:"pointer" }}>
+                  {showSql?t("Hide SQL", lang):t("Show SQL", lang)}
+                </button>
               </div>
-            )}
-          </div>
-
-          {/* Data table */}
-          <div style={{ borderTop:"1px solid #f1f5f9", padding:"12px 24px" }}>
-            <div style={{ fontSize:11, fontWeight:600, textTransform:"uppercase", letterSpacing:".08em", color:"#94a3b8", marginBottom:10 }}>
-              {t("Data", lang)} — {chartSeries.length} {t("series", lang)} × {chartX.length} {t("periods", lang)}
+              {showSql && (
+                <div style={{ background:"#0d1117", borderRadius:8, padding:"12px 14px", fontFamily:"'JetBrains Mono',monospace", fontSize:12, color:"#c9d1d9", overflowX:"auto", whiteSpace:"pre", lineHeight:1.7 }}>
+                  {displaySql}
+                </div>
+              )}
             </div>
-            <div style={{ overflowX:"auto", border:"1px solid #f1f5f9", borderRadius:8 }}>
-              <table style={{ width:"100%", borderCollapse:"collapse", fontSize:13, whiteSpace:"nowrap" }}>
-                <thead>
-                  <tr>
-                    <th style={{ padding:"9px 14px", textAlign:"left", fontSize:11, fontWeight:600, textTransform:"uppercase", letterSpacing:".06em", color:"#94a3b8", background:"#f9fafb", borderBottom:"1px solid #f1f5f9" }}>{t("Series", lang)}</th>
-                    {chartX.map(l=><th key={l} style={{ padding:"9px 14px", textAlign:"center", fontSize:11, fontWeight:600, textTransform:"uppercase", letterSpacing:".06em", color:"#94a3b8", background:"#f9fafb", borderBottom:"1px solid #f1f5f9" }}>{l}</th>)}
-                  </tr>
-                </thead>
-                <tbody>
-                  {chartSeries.map((s,si)=>(
-                    <tr key={s.name}>
-                      <td style={{ padding:"8px 14px", borderBottom:"1px solid #f9fafb", fontWeight:500, display:"flex", alignItems:"center", gap:6 }}>
-                        <span style={{ width:9, height:9, borderRadius:2, background:s.color, flexShrink:0 }}/>{s.name}
-                      </td>
-                      {s.data.map((v,ci)=><td key={ci} style={{ padding:"8px 14px", borderBottom:"1px solid #f9fafb", textAlign:"center", color:"#1e293b" }}>{fmtNum(v)}</td>)}
+
+            {/* Data table */}
+            <div style={{ borderTop:"1px solid #f1f5f9", padding:"12px 24px" }}>
+              <div style={{ fontSize:11, fontWeight:600, textTransform:"uppercase", letterSpacing:".08em", color:"#94a3b8", marginBottom:10 }}>
+                {t("Data", lang)} — {chartSeries.length} {t("series", lang)} × {chartX.length} {t("periods", lang)}
+              </div>
+              <div style={{ overflowX:"auto", border:"1px solid #f1f5f9", borderRadius:8 }}>
+                <table style={{ width:"100%", borderCollapse:"collapse", fontSize:13, whiteSpace:"nowrap" }}>
+                  <thead>
+                    <tr>
+                      <th style={{ padding:"9px 14px", textAlign:"left", fontSize:11, fontWeight:600, textTransform:"uppercase", letterSpacing:".06em", color:"#94a3b8", background:"#f9fafb", borderBottom:"1px solid #f1f5f9" }}>{t("Series", lang)}</th>
+                      {chartX.map(l=><th key={l} style={{ padding:"9px 14px", textAlign:"center", fontSize:11, fontWeight:600, textTransform:"uppercase", letterSpacing:".06em", color:"#94a3b8", background:"#f9fafb", borderBottom:"1px solid #f1f5f9" }}>{l}</th>)}
                     </tr>
-                  ))}
-                  <tr style={{ background:"#eff6ff" }}>
-                    <td style={{ padding:"8px 14px", fontWeight:700, color:"#1e40af" }}>{t("Total", lang)}</td>
-                    {chartX.map((_,ci)=>(
-                      <td key={ci} style={{ padding:"8px 14px", textAlign:"center", fontWeight:700, color:"#1e40af" }}>
-                        {fmtNum(chartSeries.reduce((a,s)=>a+(Number(s.data[ci])||0),0))}
-                      </td>
+                  </thead>
+                  <tbody>
+                    {chartSeries.map((s,si)=>(
+                      <tr key={s.name}>
+                        <td style={{ padding:"8px 14px", borderBottom:"1px solid #f9fafb", fontWeight:500, display:"flex", alignItems:"center", gap:6 }}>
+                          <span style={{ width:9, height:9, borderRadius:2, background:s.color, flexShrink:0 }}/>{s.name}
+                        </td>
+                        {s.data.map((v,ci)=><td key={ci} style={{ padding:"8px 14px", borderBottom:"1px solid #f9fafb", textAlign:"center", color:"#1e293b" }}>{fmtNum(v)}</td>)}
+                      </tr>
                     ))}
-                  </tr>
-                </tbody>
-              </table>
+                    <tr style={{ background:"#eff6ff" }}>
+                      <td style={{ padding:"8px 14px", fontWeight:700, color:"#1e40af" }}>{t("Total", lang)}</td>
+                      {chartX.map((_,ci)=>(
+                        <td key={ci} style={{ padding:"8px 14px", textAlign:"center", fontWeight:700, color:"#1e40af" }}>
+                          {fmtNum(chartSeries.reduce((a,s)=>a+(Number(s.data[ci])||0),0))}
+                        </td>
+                      ))}
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
             </div>
-          </div>
 
-          {/* Export footer */}
-          <div style={{ borderTop:"1px solid #f1f5f9", padding:"16px 24px", background:"#f9fafb", display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:12 }}>
-            <div>
-              <div style={{ fontSize:13.5, fontWeight:600, color:"#1e293b" }}>{t("Export to Annual Report", lang)}</div>
-              <div style={{ fontSize:12, color:"#94a3b8", marginTop:2 }}>{t("Saves the rendered SVG permanently. Only export when data is finalised.", lang)}</div>
-            </div>
-            <div style={{ display:"flex", gap:8 }}>
-              <button onClick={()=>regenerate(activeCfg)} disabled={generating} style={{ padding:"9px 16px", borderRadius:9, border:"1.5px solid #e2e8f0", background:"#fff", fontSize:13, fontWeight:600, color:"#475569", cursor:"pointer" }}>
-                {generating?t("Refreshing…", lang):t("Refresh Data", lang)}
-              </button>
-              <button onClick={exportSvg} disabled={exporting||!eReady} style={{ padding:"9px 18px", borderRadius:9, border:"none", background:"#059669", color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer", boxShadow:"0 2px 8px rgba(5,150,105,.28)" }}>
-                {exporting?t("Exporting…", lang):t("Export SVG", lang)}
-              </button>
+            {/* Export footer */}
+            <div style={{ borderTop:"1px solid #f1f5f9", padding:"16px 24px", background:"#f9fafb", display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:12 }}>
+              <div>
+                <div style={{ fontSize:13.5, fontWeight:600, color:"#1e293b" }}>{t("Export to Annual Report", lang)}</div>
+                <div style={{ fontSize:12, color:"#94a3b8", marginTop:2 }}>{t("Saves the rendered SVG permanently. Only export when data is finalised.", lang)}</div>
+              </div>
+              <div style={{ display:"flex", gap:8 }}>
+                <button onClick={()=>regenerate(activeCfg)} disabled={generating} style={{ padding:"9px 16px", borderRadius:9, border:"1.5px solid #e2e8f0", background:"#fff", fontSize:13, fontWeight:600, color:"#475569", cursor:"pointer" }}>
+                  {generating?t("Refreshing…", lang):t("Refresh Data", lang)}
+                </button>
+                <button onClick={exportSvg} disabled={exporting||!eReady} style={{ padding:"9px 18px", borderRadius:9, border:"none", background:"#059669", color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer", boxShadow:"0 2px 8px rgba(5,150,105,.28)" }}>
+                  {exporting?t("Exporting…", lang):t("Export SVG", lang)}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* Toast */}
         {toast.msg && (
@@ -1074,6 +1050,7 @@ export default function KpiManagementPage({ scope = "institute" }) {
       </div>
     );
   }
+
 
   // ── List view ────────────────────────────────────────────────────────────────
   return (
@@ -1108,7 +1085,7 @@ export default function KpiManagementPage({ scope = "institute" }) {
           ))}
         </div>
         <div style={{ display:"flex", gap:10 }}>
-          <button onClick={()=>setView("create")} style={{ display:"inline-flex", alignItems:"center", gap:6, padding:"9px 18px", borderRadius:10, border:"none", background:"#2563eb", color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer", boxShadow:"0 2px 8px rgba(37,99,235,.3)" }}>
+          <button onClick={()=>navFn(`${listPath}/create`)} style={{ display:"inline-flex", alignItems:"center", gap:6, padding:"9px 18px", borderRadius:10, border:"none", background:"#2563eb", color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer", boxShadow:"0 2px 8px rgba(37,99,235,.3)" }}>
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             {t("New KPI Chart", lang)}
           </button>
@@ -1129,8 +1106,8 @@ export default function KpiManagementPage({ scope = "institute" }) {
             <KpiCard key={cfg.id} cfg={cfg} idx={idx}
               isActive={activeCfg?.id===cfg.id}
               generating={generating}
-              onEdit={c=>{ setEditCfg(c); setView("edit"); }}
-              onPreview={c=>regenerate(c)}
+              onEdit={c=>navFn(`${listPath}/edit`, { state:{ entity:c } })}
+              onPreview={c=>navFn(`${listPath}/preview`, { state:{ entity:c } })}
               onDelete={requestDelete}
             />
           ))}

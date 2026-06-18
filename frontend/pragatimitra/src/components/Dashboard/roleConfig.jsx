@@ -130,13 +130,15 @@ const FORM_DATA_SUB = [
 ];
 
 const KPI_INSTITUTE_SUB = [
-  { path: "kpi-management/create", element: <InstituteKpiPage /> },
-  { path: "kpi-management/edit",   element: <InstituteKpiPage /> },
+  { path: "kpi-management/create",  element: <InstituteKpiPage /> },
+  { path: "kpi-management/edit",    element: <InstituteKpiPage /> },
+  { path: "kpi-management/preview", element: <InstituteKpiPage /> },
 ];
 
 const KPI_DEPT_SUB = [
-  { path: "kpi-management/create", element: <DeptKpiPage /> },
-  { path: "kpi-management/edit",   element: <DeptKpiPage /> },
+  { path: "kpi-management/create",  element: <DeptKpiPage /> },
+  { path: "kpi-management/edit",    element: <DeptKpiPage /> },
+  { path: "kpi-management/preview", element: <DeptKpiPage /> },
 ];
 
 /* ══════════════════════════════════════════════════════════════
@@ -541,18 +543,6 @@ export const ROLE_CONFIG = {
               { path: "user-management/create", element: <DeptUsersPage /> },
               { path: "user-management/edit",   element: <DeptUsersPage /> },
             ],
-          },
-        ],
-      },
-      {
-        group: "Tasks",
-        items: [
-          {
-            id: "da-tasks",
-            label: "Task Overview",
-            icon: "ListChecks",
-            permission: null,
-            slug: "task-overview",
           },
         ],
       },
