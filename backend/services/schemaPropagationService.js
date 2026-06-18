@@ -234,6 +234,39 @@ async function propagateAllSharedSchemas(pool) {
   }
 }
 
+/* ISSUE 19 — deterministic shared-form onboarding for ONE institution. The single
+   source of truth, so late onboarding always produces the SAME result whether it
+   runs from institution create or restore:
+     1. attach the institution to every shared form's institute_access,
+     2. give it a lock-config row per shared form (deadline mgmt works day one),
+     3. materialize its consumer schema rows — a clone of the immutable publish
+        snapshot, classified ARCHIVED for every academic year (never auto-activated;
+        the institution admin activates manually).
+   Idempotent and never throws — safe to call repeatedly. */
+async function resolveInstitutionSharedForms(pool, institutionId) {
+  if (!institutionId) return 0;
+  try {
+    await pool.query(
+      `UPDATE table_list
+          SET institute_access = array_append(COALESCE(institute_access,'{}'), $1::uuid),
+              updated_at = now()
+        WHERE share_table = true
+          AND NOT ($1::uuid = ANY(COALESCE(institute_access, '{}'::uuid[])))`,
+      [institutionId]
+    );
+    await pool.query(
+      `INSERT INTO form_lock_config (form_name, institution_id, is_locked, deadline_at, auto_locked)
+       SELECT form_name, $1, false, NULL, false FROM table_list WHERE share_table = true
+       ON CONFLICT (form_name, institution_id) DO NOTHING`,
+      [institutionId]
+    );
+    return await propagateAllSharedSchemas(pool);
+  } catch (e) {
+    logger.error(`resolveInstitutionSharedForms failed for ${institutionId}`, { stack: e.stack });
+    return 0;
+  }
+}
+
 module.exports = {
   ensureSchemaPropagationLog,
   ensureSchemaProvenanceColumns,
@@ -242,4 +275,5 @@ module.exports = {
   getOriginalSnapshot,
   ensureSchemaExists,
   propagateAllSharedSchemas,
+  resolveInstitutionSharedForms,
 };

@@ -438,6 +438,19 @@ router.get("/:formName/records", async (req, res) => {
       lock.message   = archiveView.message;
     }
 
+    /* Issue 18 — surface the ACADEMIC-YEAR (master) lock/archive in the banner too,
+       using the SAME helper the write handlers enforce (getAcademicYearLockBlockForReq).
+       Without this the year could be locked — blocking POST/PUT/DELETE — while the UI
+       still showed the form as editable (list state ≠ save state). Now the view-only
+       banner matches exactly what a save would do. */
+    const ayView = await getAcademicYearLockBlockForReq(
+      pool, req, ctx.institutionId, schema?.year ?? (year != null ? Number(year) : null)
+    );
+    if (ayView.locked) {
+      lock.is_locked = true;
+      lock.message   = lock.message || ayView.message;
+    }
+
     /* Bug 11 — an inactive department makes ALL its records view-only (highest
        precedence: Department inactive > Archive > Lock > Deadline). Surface it so
        the client hides Save/Delete/Import; writes are independently blocked above.

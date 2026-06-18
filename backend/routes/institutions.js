@@ -9,7 +9,7 @@ const { writeAuditLog } = require("../utils/audit");
 
 const logger            = require("../utils/logger");
 const { getLogContext } = logger;
-const { propagateAllSharedSchemas } = require("../services/schemaPropagationService");
+const { propagateAllSharedSchemas, resolveInstitutionSharedForms } = require("../services/schemaPropagationService");
 
 const router = express.Router();
 
@@ -689,29 +689,11 @@ router.post("/", async (req, res) => {
        rawCity, rawState, rawCountry, rawPincode, createdBy]
     );
 
-    // Shared forms are immediately visible to all institutions.
-    // Add the new institution to every shared form's institute_access and
-    // ensure a lock-config row exists so deadline management works from day one.
-    await pool.query(
-      `UPDATE table_list
-       SET institute_access = array_append(COALESCE(institute_access,'{}'), $1::uuid),
-           updated_at = now()
-       WHERE share_table = true
-         AND NOT ($1::uuid = ANY(COALESCE(institute_access, '{}'::uuid[])))`,
-      [newInst.institution_id]
-    );
-    await pool.query(
-      `INSERT INTO form_lock_config (form_name, institution_id, is_locked, deadline_at, auto_locked)
-       SELECT form_name, $1, false, NULL, false FROM table_list WHERE share_table = true
-       ON CONFLICT (form_name, institution_id) DO NOTHING`,
-      [newInst.institution_id]
-    );
-
-    // The new institution was just added to every shared form's institute_access.
-    // INSERT-ONLY backfill its missing schema rows (clone of the shared template)
-    // so those forms open immediately — keeps the fix fully dynamic on new
-    // institution creation. Never throws (errors are swallowed + logged inside).
-    await propagateAllSharedSchemas(pool);
+    // ISSUE 19 — deterministic shared-form onboarding (single resolver, same
+    // result every time): attach to every shared form (institute_access), ensure
+    // a lock-config row, and materialize this institution's ARCHIVED consumer
+    // schema rows. The institution admin activates them manually later.
+    await resolveInstitutionSharedForms(pool, newInst.institution_id);
 
     await writeAuditLog(req, {
       actionType: "INST_CREATED",
@@ -909,6 +891,14 @@ async function setLifecycleState(req, res, { targetStatus, deletedAt, okMessage,
         RETURNING institution_id, institution_name, status, deleted_at`,
       [targetStatus, deletedAt, req.user?.userId || null, institutionId]
     );
+
+    // ISSUE 19 — on RESTORE, re-run the same deterministic shared-form resolver so
+    // any shared forms created while this institution was archived/deleted are
+    // attached (as ARCHIVED) — onboarding stays identical to a fresh create. No-op
+    // when nothing changed; never throws.
+    if (targetStatus === "ACTIVE") {
+      await resolveInstitutionSharedForms(pool, institutionId);
+    }
 
     await writeAuditLog(req, {
       actionType: action,
