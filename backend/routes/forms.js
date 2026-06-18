@@ -9,6 +9,7 @@ const { formatAcademicYear, ensureYearRows, setFormStatusForYear, ensureFormArch
 const { ensureSchemaExists, publishSchemaSnapshot } = require("../services/schemaPropagationService");
 const { resolveUserDomain, resolveListFilterDomain, assertFormDomainAccess, normalizeDomain } = require("../services/domainService");
 const { resolveEffectiveDepartment } = require("../services/departmentContext");
+const { ensureRecordsIndexes } = require("../services/recordsIndexService");
 const { getAssignedFormIds, isContributorOnly } = require("./formAssignments");
 
 /* Academic-year lock guard for form-management writes. Checks the SELECTED year
@@ -614,6 +615,10 @@ router.post(
             );
           }
         }
+
+        // Bug 14 — index the fresh records table immediately (empty → instant) so
+        // list/search/pagination/export stay fast as it grows. Idempotent.
+        await ensureRecordsIndexes(client, recordsTable);
 
         // 5. Academic-year lifecycle (Snapshot ownership model):
         //    • CREATOR  → ACTIVE for the creation year (its own choice).

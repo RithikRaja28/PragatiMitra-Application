@@ -391,7 +391,22 @@ router.put("/:id/records/:recordId", async (req, res) => {
           let hidx = 1;
           const hiSet = [...fieldCols.map((c) => `${c} = $${hidx++}`), "updated_at = now()"];
           const hiVals = [...fieldCols.map((c) => hiData[c] ?? null), req.params.recordId];
-          await pool.query(`UPDATE ${table} SET ${hiSet.join(", ")} WHERE source_row_id = $${hidx}`, hiVals);
+          const upd = await pool.query(`UPDATE ${table} SET ${hiSet.join(", ")} WHERE source_row_id = $${hidx}`, hiVals);
+
+          /* Bug 12 — recovery: if no Hindi mirror exists (create-time translation
+             failed, or translation was enabled only after creation), create it now
+             from the updated English row so the EN↔HI pair is restored. */
+          if (upd.rowCount === 0) {
+            const enRow = rows[0];
+            const hiCols = ["form_name", "department_id", "institution_id", "academic_year", "role_name", "schema_id", "language", "created_by", "source_row_id", ...fieldCols];
+            const hiAllVals = [
+              enRow.form_name, enRow.department_id, enRow.institution_id, enRow.academic_year, enRow.role_name,
+              enRow.schema_id, "hi", enRow.created_by ?? req.user.userId ?? null, enRow.id,
+              ...fieldCols.map((c) => hiData[c] ?? null),
+            ];
+            const ph = hiAllVals.map((_, i) => `$${i + 1}`).join(", ");
+            await pool.query(`INSERT INTO ${table} (${hiCols.join(", ")}) VALUES (${ph})`, hiAllVals);
+          }
         } catch (e) {
           logger.error(`Dept Hindi row update failed for ${table}`, { stack: e.stack });
         }
@@ -423,10 +438,20 @@ router.delete("/:id/records/bulk-delete", async (req, res) => {
     if (lock.locked) return res.status(403).json({ success: false, message: lock.message });
 
     await ensureSourceRowIdColumn(pool, table);
-    const { rowCount } = await pool.query(
-      `DELETE FROM ${table} WHERE (id = ANY($1::uuid[]) OR source_row_id = ANY($1::uuid[])) AND department_id = $2`,
+    /* Bug 12 — resolve each selected id to its English source (a Hindi row → its
+       source_row_id), then delete the whole pair. So a Hindi row can never be
+       deleted on its own, and selecting either side removes both. */
+    const { rows: sel } = await pool.query(
+      `SELECT id, source_row_id FROM ${table} WHERE id = ANY($1::uuid[]) AND department_id = $2`,
       [ids, departmentId]
     );
+    const rootIds = [...new Set(sel.map((r) => r.source_row_id || r.id))];
+    const { rowCount } = rootIds.length
+      ? await pool.query(
+          `DELETE FROM ${table} WHERE (id = ANY($1::uuid[]) OR source_row_id = ANY($1::uuid[])) AND department_id = $2`,
+          [rootIds, departmentId]
+        )
+      : { rowCount: 0 };
     const deleted = rowCount ?? 0;
     return res.json({ success: true, deleted, failed: Math.max(0, ids.length - deleted), message: `${deleted} record(s) deleted.` });
   } catch (err) {
@@ -520,9 +545,17 @@ router.delete("/:id/records/:recordId", async (req, res) => {
     if (lock.locked) return res.status(403).json({ success: false, message: lock.message });
 
     await ensureSourceRowIdColumn(pool, table);
+    /* Bug 12 — delete the whole pair whichever side was targeted: resolve the
+       English source id first (a Hindi row → its source_row_id), so a Hindi row is
+       never deleted on its own (English orphan). */
+    const { rows: tgt } = await pool.query(
+      `SELECT source_row_id FROM ${table} WHERE id = $1 AND department_id = $2`,
+      [req.params.recordId, departmentId]
+    );
+    const rootId = tgt[0]?.source_row_id || req.params.recordId;
     const { rowCount } = await pool.query(
       `DELETE FROM ${table} WHERE (id = $1 OR source_row_id = $1) AND department_id = $2`,
-      [req.params.recordId, departmentId]
+      [rootId, departmentId]
     );
     if (!rowCount) return res.status(404).json({ success: false, message: "Record not found." });
     return res.json({ success: true, message: "Record deleted successfully." });

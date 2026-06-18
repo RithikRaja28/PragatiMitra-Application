@@ -16,7 +16,8 @@
 const express = require("express");
 const { verifyToken, requireRole } = require("../middleware/auth");
 const { writeAuditLog } = require("../utils/audit");
-const { getFormArchiveBlockForReq } = require("../services/academicYearService");
+const { getFormLifecycleStatus } = require("../services/academicYearService");
+const { assertFormDomainAccess } = require("../services/domainService");
 const { resolveEffectiveDepartment, getDepartmentWriteBlock } = require("../services/departmentContext");
 const logger = require("../utils/logger");
 
@@ -203,19 +204,46 @@ router.post("/", requireRole(ASSIGN_ROLES), async (req, res) => {
     if (deptBlock.blocked)
       return res.status(403).json({ success: false, message: deptBlock.message });
 
-    // Archive write policy — an archived form is view-only, so assignment changes
-    // are blocked for it (the selected year). Resolve the form name from id when
-    // the body doesn't include it.
-    let fname = form_name;
-    if (!fname) {
-      const { rows: tl } = await pool.query("SELECT form_name FROM table_list WHERE id = $1", [form_id]);
-      fname = tl[0]?.form_name || null;
-    }
-    if (fname) {
-      const archiveBlock = await getFormArchiveBlockForReq(pool, req, institutionId, fname, year);
-      if (archiveBlock.blocked)
-        return res.status(403).json({ success: false, message: archiveBlock.message });
-    }
+    /* ── Bug 15 — validate the FORM ITSELF before creating any assignment ──────
+       The assigner may only assign a form they genuinely own/control. Every check
+       runs server-side (the UI/route cannot be trusted — TC-12 direct API). If ANY
+       check fails, NO assignment row is created and no success is logged. */
+    const { rows: tlRows } = await pool.query(
+      `SELECT form_name,
+              COALESCE(form_domain, 'academic')        AS form_domain,
+              COALESCE(institute_access, '{}'::uuid[]) AS institute_access
+         FROM table_list WHERE id = $1`,
+      [form_id]
+    );
+    if (!tlRows.length)
+      return res.status(404).json({ success: false, message: "Form not found." });
+    const fname = tlRows[0].form_name;   // authoritative — never trust the client's form_name
+
+    // (1) Institution ownership/access — the form must be accessible to the
+    //     assigner's institution (TC-03 other institution, TC-04 shared-not-adopted).
+    if (!tlRows[0].institute_access.map(String).includes(String(institutionId)))
+      return res.status(403).json({ success: false, message: "This form is not available for your institution." });
+
+    // (2) Domain — the form's business domain must match the assigner's domain
+    //     (TC-05 hospital→academic, TC-06 academic→hospital). super/institute admin
+    //     are cross-domain inside assertFormDomainAccess.
+    const domainCheck = await assertFormDomainAccess(pool, req, fname);
+    if (!domainCheck.allowed)
+      return res.status(domainCheck.status || 403).json({ success: false, message: domainCheck.message });
+
+    // (3) Active for the SELECTED academic year — not archived / disabled, and not a
+    //     year the form isn't active in (TC-07 wrong year, TC-08 archived).
+    const lifecycle = await getFormLifecycleStatus(pool, institutionId, fname, year);
+    if (lifecycle !== "active")
+      return res.status(403).json({ success: false, message: "This form is not active for the selected academic year and cannot be assigned." });
+
+    // (4) Locked — a locked form cannot be (re)assigned (TC-09).
+    const { rows: lockRows } = await pool.query(
+      `SELECT is_locked FROM form_lock_config WHERE form_name = $1 AND institution_id = $2`,
+      [fname, institutionId]
+    );
+    if (lockRows[0]?.is_locked)
+      return res.status(403).json({ success: false, message: "This form is locked. Assignment is disabled." });
 
     // Only same-institution, same-department, active contributors are assignable —
     // and never the assigner themselves, nor a nodal-capable contributor.
@@ -244,7 +272,7 @@ router.post("/", requireRole(ASSIGN_ROLES), async (req, res) => {
          VALUES ($1,$2,$3,$4,$5,$6,$7,'contributor',true)
          ON CONFLICT (form_id, assigned_to, academic_year)
            DO UPDATE SET is_active = true, assigned_by = $6, updated_at = now()`,
-        [form_id, form_name || null, institutionId, departmentId, year, req.user.userId, cid]
+        [form_id, fname, institutionId, departmentId, year, req.user.userId, cid]
       );
       created += 1;
     }
@@ -253,8 +281,8 @@ router.post("/", requireRole(ASSIGN_ROLES), async (req, res) => {
       actionType: "FORM_ASSIGNED",
       entityType: "form_assignment",
       entityId: form_id,
-      newValue: { form_id, form_name, academic_year: year, department_id: departmentId, count: created },
-      message: `Form assigned to ${created} contributor(s) — "${form_name || form_id}"`,
+      newValue: { form_id, form_name: fname, academic_year: year, department_id: departmentId, count: created },
+      message: `Form assigned to ${created} contributor(s) — "${fname}"`,
     }).catch(() => {});
 
     return res.json({ success: true, message: `Assigned to ${created} contributor(s).`, assigned: created });

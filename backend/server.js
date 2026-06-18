@@ -255,6 +255,13 @@ const { ensureFormAssignmentsTable } = require("./routes/formAssignments");
 ensureFormAssignmentsTable(pool)
   .catch((e) => logger.error("Failed to ensure form_assignments table", { stack: e.stack }));
 
+/* ── Bug 14 (scale): backfill indexes on every existing record table so
+   list/search/pagination/export/pair-cascade stay fast at 100k+ rows. Async +
+   idempotent — never blocks startup; new tables are indexed at creation. ── */
+const { ensureAllRecordsIndexes } = require("./services/recordsIndexService");
+ensureAllRecordsIndexes(pool)
+  .catch((e) => logger.error("Failed to ensure records indexes", { stack: e.stack }));
+
 /* ── Shared-form schema repair: INSERT-ONLY backfill of missing schema rows for
    institutions that can access a shared form but never got their own schema
    (fixes "No active schema found"). Idempotent, non-destructive. ── */

@@ -704,11 +704,31 @@ router.put("/:formName/records/:id", async (req, res) => {
         hiSetClauses.push(`updated_at = now()`);
         const hiVals = [...fieldCols.map((col) => hiData[col] ?? null), id];
 
-        await pool.query(
+        const upd = await pool.query(
           `UPDATE ${tableName} SET ${hiSetClauses.join(", ")}
            WHERE source_row_id = $${hidx}`,
           hiVals
         );
+
+        /* Bug 12 — translation-failure / toggle-on recovery: if NO Hindi mirror
+           exists (the create-time translation failed, or "Translate to Hindi" was
+           enabled only after this record was created), editing the English row must
+           CREATE the missing Hindi row, not silently no-op. Re-pair from the updated
+           English row so English↔Hindi counts stay equal. */
+        if (upd.rowCount === 0) {
+          const enRow = rows[0];
+          const hiCols = ["form_name", "institution_id", "department_id", "year", "schema_id", "language", "created_by", "source_row_id", ...fieldCols];
+          const hiAllVals = [
+            formName, enRow.institution_id, enRow.department_id, enRow.year, enRow.schema_id,
+            "hi", enRow.created_by ?? req.user.userId ?? null, enRow.id,
+            ...fieldCols.map((col) => hiData[col] ?? null),
+          ];
+          const ph = hiAllVals.map((_, i) => `$${i + 1}`).join(", ");
+          await pool.query(
+            `INSERT INTO ${tableName} (${hiCols.join(", ")}) VALUES (${ph})`,
+            hiAllVals
+          );
+        }
       } catch (err) {
         logger.error(`Hindi row update failed for ${formName}/${id}`, { stack: err.stack });
       }
@@ -785,16 +805,26 @@ router.delete("/:formName/records/bulk-delete", async (req, res) => {
     }
 
     const { rows: deletedRows, rowCount } = await pool.query(
-      `DELETE FROM ${formName}_records WHERE ${whereClause} RETURNING id`,
+      `DELETE FROM ${formName}_records WHERE ${whereClause} RETURNING id, source_row_id, language`,
       queryParams
     );
 
+    /* Bug 12 — keep every language pair consistent regardless of which side was in
+       the selection. Cascade to BOTH directions: the Hindi mirrors of any deleted
+       English rows (source_row_id = deletedEnglishId) AND the English sources of any
+       deleted Hindi rows (id = deletedHindiRow.source_row_id). */
     if (deletedRows.length > 0) {
-      await pool.query(
-        `DELETE FROM ${formName}_records
-         WHERE source_row_id = ANY($1::uuid[]) AND institution_id = $2`,
-        [deletedRows.map((r) => r.id), ctx.institutionId]
-      );
+      const cascadeIds = [...new Set([
+        ...deletedRows.filter((r) => r.language !== "hi").map((r) => r.id),
+        ...deletedRows.filter((r) => r.language === "hi" && r.source_row_id).map((r) => r.source_row_id),
+      ])];
+      if (cascadeIds.length) {
+        await pool.query(
+          `DELETE FROM ${formName}_records
+           WHERE (source_row_id = ANY($1::uuid[]) OR id = ANY($1::uuid[])) AND institution_id = $2`,
+          [cascadeIds, ctx.institutionId]
+        );
+      }
     }
 
     const deleted = rowCount ?? 0;
@@ -868,8 +898,19 @@ router.delete("/:formName/records/:id", async (req, res) => {
 
     await ensureSourceRowIdColumn(pool, `${formName}_records`);
 
+    /* Bug 12 — delete the WHOLE language pair, whichever side was targeted.
+       Resolve the English source id first: a Hindi row points at its source via
+       source_row_id; an English row is its own root. Then deleting
+       (id = root OR source_row_id = root) removes both, so a Hindi row can never be
+       deleted on its own (English orphan) and vice-versa. */
+    const { rows: tgtRows } = await pool.query(
+      `SELECT source_row_id FROM ${formName}_records WHERE id = $1 AND institution_id = $2`,
+      [id, ctx.institutionId]
+    );
+    const rootId = tgtRows[0]?.source_row_id || id;
+
     let whereClause = "(id = $1 OR source_row_id = $1) AND institution_id = $2";
-    const whereVals = [id, ctx.institutionId];
+    const whereVals = [rootId, ctx.institutionId];
 
     if (ctx.role === "department_admin" && ctx.departmentId) {
       whereClause += ` AND (department_id = $3 OR department_id IS NULL)`;

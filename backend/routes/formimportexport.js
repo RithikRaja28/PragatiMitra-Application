@@ -470,8 +470,11 @@ router.post("/:formName/import/execute-chunk", async (req, res) => {
       ? ctx.departmentId
       : (departmentId || null);
 
-    /* Lock check — only on the first chunk to avoid repeated DB hits */
-    if (chunkIndex === 0) {
+    /* Bug 13 — re-check the manual form lock on EVERY chunk (not just chunk 0) so
+       locking the form mid-import stops the remaining chunks immediately. Chunks
+       already committed are preserved (no rollback). The few extra lightweight
+       reads per chunk are the cost of making the lock take effect continuously. */
+    {
       const { rows: lockRows } = await pool.query(
         `SELECT is_locked FROM form_lock_config WHERE form_name = $1 AND institution_id = $2`,
         [formName, ctx.institutionId]
@@ -487,8 +490,10 @@ router.post("/:formName/import/execute-chunk", async (req, res) => {
     const { schemaRow, fields } = result;
     const formYear = Number(year) || schemaRow.year;
 
-    /* Academic-year lock — checks the SELECTED year (header), blocks import. */
-    if (chunkIndex === 0) {
+    /* Academic-year lock — checks the SELECTED year (header), blocks import.
+       Bug 13 — re-evaluated on EVERY chunk (was chunk 0 only) so a year lock /
+       archive / deadline that lands mid-import stops the remaining chunks at once. */
+    {
       const ayLock = await getAcademicYearLockBlockForReq(pool, req, ctx.institutionId, formYear);
       if (ayLock.locked)
         return res.status(403).json({ success: false, message: ayLock.message });
@@ -554,48 +559,83 @@ router.post("/:formName/import/execute-chunk", async (req, res) => {
         `ALTER TABLE ${recordsTable} ADD COLUMN IF NOT EXISTS source_row_id UUID`
       );
 
-      for (const rowData of prepared) {
-        if (duplicateHandling !== "new") {
-          const requiredCols = fields.filter((f) => f.required).map((f) => dbCol(f.column_name));
-          if (requiredCols.length > 0) {
-            const whereClause = requiredCols.map((col, idx) => `${col} = $${idx + 3}`).join(" AND ");
-            const deptClause  = resolvedDeptId
-              ? `AND department_id = $2`
-              : `AND (department_id IS NULL OR department_id = $2)`;
-            const checkVals = [ctx.institutionId, resolvedDeptId, ...requiredCols.map((col) => rowData[col])];
-            const { rows: existing } = await client.query(
-              `SELECT id FROM ${recordsTable} WHERE institution_id = $1 ${deptClause} AND ${whereClause} LIMIT 1`,
-              checkVals
-            );
+      /* Bug 14 — batched duplicate detection. The previous code ran ONE SELECT per
+         row (10k rows → 10k sequential scans, the dominant import cost). Instead we
+         pre-resolve every existing match for this chunk in a SINGLE query, then
+         decide skip/overwrite/insert in memory.
 
-            if (existing.length > 0) {
-              if (duplicateHandling === "skip") { skipped++; continue; }
-              if (duplicateHandling === "overwrite") {
-                let idx = 1;
-                const setClauses = [...fieldCols.map((col) => `${col} = $${idx++}`), `updated_at = now()`];
-                const updateVals = [...fieldCols.map((col) => rowData[col] ?? null), ctx.institutionId, existing[0].id];
-                await client.query(
-                  `UPDATE ${recordsTable} SET ${setClauses.join(", ")} WHERE institution_id = $${idx++} AND id = $${idx}`,
-                  updateVals
-                );
-                success++; continue;
-              }
+         Correctness: the match runs in SQL via an ordinal-tagged VALUES join with
+         each key column CAST to its real column type, so it is byte-identical to the
+         old per-row `col = $n` coercion (no JS-side comparison of DB values, which
+         would risk numeric/date/boolean type drift). Intra-chunk duplicates — a key
+         first seen within this same chunk — are tracked in `seenInChunk` using the
+         freshly cast row values (both sides come from processRow, so same JS types),
+         exactly reproducing the old "an earlier row in this transaction is found by a
+         later row" behavior. Skip/overwrite/insert outcomes are unchanged. */
+      const PG_TYPE = { text: "TEXT", textarea: "TEXT", description: "TEXT", email: "TEXT", phone: "TEXT", document: "TEXT", number: "NUMERIC", date: "DATE", boolean: "BOOLEAN" };
+      const requiredFields = fields.filter((f) => f.required);
+      const requiredCols   = requiredFields.map((f) => dbCol(f.column_name));
+      const requiredTypes  = requiredFields.map((f) => PG_TYPE[f.type] || "TEXT");
+      const dedupActive    = duplicateHandling !== "new" && requiredCols.length > 0;
+      const keyOf = (rd) => JSON.stringify(requiredCols.map((c) => rd[c] ?? null));
+
+      const preloadMap = new Map();   // prepared-row ordinal → existing row id
+      if (dedupActive && prepared.length > 0) {
+        const params = [ctx.institutionId, resolvedDeptId];
+        let p = 3;
+        const valuesRows = prepared.map((rowData, ord) => {
+          const ks = requiredCols.map((col, j) => { params.push(rowData[col] ?? null); return `$${p++}::${requiredTypes[j]}`; });
+          return `(${ord}, ${ks.join(", ")})`;
+        });
+        const vCols     = requiredCols.map((_, j) => `k${j}`).join(", ");
+        const joinOn    = requiredCols.map((col, j) => `r.${col} = v.k${j}`).join(" AND ");
+        const deptMatch = resolvedDeptId ? `r.department_id = $2` : `(r.department_id IS NULL OR r.department_id = $2)`;
+        const { rows: matches } = await client.query(
+          `SELECT DISTINCT ON (v.ord) v.ord, r.id
+             FROM (VALUES ${valuesRows.join(", ")}) AS v(ord, ${vCols})
+             JOIN ${recordsTable} r
+               ON r.institution_id = $1 AND ${deptMatch} AND ${joinOn}
+            ORDER BY v.ord, r.id`,
+          params
+        );
+        for (const m of matches) if (!preloadMap.has(m.ord)) preloadMap.set(m.ord, m.id);
+      }
+
+      const seenInChunk = new Map();  // intra-chunk key → inserted id
+      const stdCols = ["form_name", "institution_id", "department_id", "year", "schema_id", "language"];
+      const stdVals = [formName, ctx.institutionId, resolvedDeptId, formYear, schemaRow.id, language];
+      const allCols = [...stdCols, ...fieldCols];
+
+      for (let ord = 0; ord < prepared.length; ord++) {
+        const rowData = prepared[ord];
+
+        if (dedupActive) {
+          let existingId = preloadMap.get(ord);
+          if (existingId === undefined) existingId = seenInChunk.get(keyOf(rowData));
+          if (existingId !== undefined) {
+            if (duplicateHandling === "skip") { skipped++; continue; }
+            if (duplicateHandling === "overwrite") {
+              let idx = 1;
+              const setClauses = [...fieldCols.map((col) => `${col} = $${idx++}`), `updated_at = now()`];
+              const updateVals = [...fieldCols.map((col) => rowData[col] ?? null), ctx.institutionId, existingId];
+              await client.query(
+                `UPDATE ${recordsTable} SET ${setClauses.join(", ")} WHERE institution_id = $${idx++} AND id = $${idx}`,
+                updateVals
+              );
+              success++; continue;
             }
           }
         }
 
         /* INSERT — capture the new row's id for Hindi linking */
-        const stdCols = ["form_name", "institution_id", "department_id", "year", "schema_id", "language"];
-        const stdVals = [formName, ctx.institutionId, resolvedDeptId, formYear, schemaRow.id, language];
-        const allCols = [...stdCols, ...fieldCols];
         const allVals = [...stdVals, ...fieldCols.map((col) => rowData[col] ?? null)];
         const placeholders = allVals.map((_, i) => `$${i + 1}`).join(", ");
-
         const { rows: [inserted] } = await client.query(
           `INSERT INTO ${recordsTable} (${allCols.join(", ")}) VALUES (${placeholders}) RETURNING id`,
           allVals
         );
         insertedRows.push({ id: inserted.id, rowData });
+        if (dedupActive) seenInChunk.set(keyOf(rowData), inserted.id);
         success++;
       }
 

@@ -22,6 +22,7 @@ const {
 const { resolveActiveAcademicYear } = require("../services/academicYearService");
 const { assertEquivalent } = require("../services/equivalenceGuard");
 const { getDepartmentState, DEPARTMENT_INACTIVE_MESSAGE } = require("../services/departmentContext");
+const { ensureRecordsIndexes } = require("../services/recordsIndexService");
 
 const router = express.Router();
 router.use(verifyToken);
@@ -474,6 +475,9 @@ router.post("/", requireRole(WRITE_ROLES), requireActiveDepartment, async (req, 
           await client.query(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS ${col} ${pgType(field.type)}`);
         }
       }
+
+      // Bug 14 — index the fresh department-records table (empty → instant).
+      await ensureRecordsIndexes(client, table);
 
       await client.query("COMMIT");
 
