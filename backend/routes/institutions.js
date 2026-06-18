@@ -10,6 +10,7 @@ const { writeAuditLog } = require("../utils/audit");
 const logger            = require("../utils/logger");
 const { getLogContext } = logger;
 const { propagateAllSharedSchemas } = require("../services/schemaPropagationService");
+const { enqueueEmail }              = require("../services/mailService");
 
 const router = express.Router();
 
@@ -707,6 +708,34 @@ router.post("/", async (req, res) => {
       message:    `Institution "${newInst.institution_name}" created`,
     });
 
+    // Notify the Super Admin who created the institution (fire-and-forget).
+    setImmediate(async () => {
+      try {
+        const { rows: userRows } = await pool.query(
+          `SELECT full_name, email FROM users WHERE id = $1`,
+          [createdBy]
+        );
+        if (!userRows.length) return;
+
+        await enqueueEmail(pool, {
+          eventId:         "institution_created",
+          recipientEmail:  userRows[0].email,
+          recipientUserId: createdBy,
+          payload: {
+            full_name:        userRows[0].full_name,
+            institution_name: newInst.institution_name,
+            institution_code: newInst.code,
+            email_domain:     newInst.email_domain,
+            city:             newInst.city,
+            state:            newInst.state,
+          },
+        });
+        logger.info(`Enqueued institution_created email to ${userRows[0].email}`);
+      } catch (err) {
+        logger.error("Failed to enqueue institution_created email", { stack: err.stack });
+      }
+    });
+
     return res.status(201).json({
       success: true,
       message: `Institution "${newInst.institution_name}" created successfully.`,
@@ -859,6 +888,35 @@ router.put("/:id", async (req, res) => {
       status:        "SUCCESS",
       message:       `Institution "${updated.institution_name}" updated`,
     });
+
+    // Notify the acting Super Admin if the institution status changed.
+    if (changedFields.includes("status")) {
+      const instEventId = updated.status === "ACTIVE" ? "institution_activated" : "institution_deactivated";
+      setImmediate(async () => {
+        try {
+          const { rows: userRows } = await pool.query(
+            `SELECT full_name, email FROM users WHERE id = $1`, [updatedBy]
+          );
+          if (!userRows.length) return;
+
+          await enqueueEmail(pool, {
+            eventId:         instEventId,
+            recipientEmail:  userRows[0].email,
+            recipientUserId: updatedBy,
+            payload: {
+              full_name:        userRows[0].full_name,
+              institution_name: updated.institution_name,
+              institution_code: updated.code,
+              city:             updated.city,
+              state:            updated.state,
+            },
+          });
+          logger.info(`Enqueued ${instEventId} email to ${userRows[0].email} for "${updated.institution_name}"`);
+        } catch (err) {
+          logger.error(`Failed to enqueue ${instEventId} email`, { stack: err.stack });
+        }
+      });
+    }
 
     return res.json({ success: true, message: `Institution "${updated.institution_name}" updated successfully.`, data: updated });
   } catch (err) {

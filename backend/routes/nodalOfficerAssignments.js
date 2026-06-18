@@ -2,6 +2,7 @@
 
 const express = require("express");
 const { verifyToken, requireRole } = require("../middleware/auth");
+const { enqueueEmail } = require("../services/mailService");
 const logger = require("../utils/logger");
 const { getLogContext } = logger;
 
@@ -149,10 +150,54 @@ router.post("/", verifyToken, requireRole(ALLOWED_ROLES), async (req, res) => {
       [institutionId, insertDeptId, user_id, reporting_year, userId]
     );
 
+    const assignment = rows[0];
+
+    // Enqueue assignment notification to the assigned officer (fire-and-forget).
+    setImmediate(async () => {
+      try {
+        const { rows: userRows } = await pool.query(
+          `SELECT full_name, email FROM users WHERE id = $1`,
+          [user_id]
+        );
+        if (!userRows.length) return;
+
+        const { rows: instRows } = await pool.query(
+          `SELECT institution_name FROM institutions WHERE institution_id = $1`,
+          [institutionId]
+        );
+        const institutionName = instRows[0]?.institution_name || "Your Institution";
+
+        let scope = "Institution Level";
+        if (assignment.department_id) {
+          const { rows: deptRows } = await pool.query(
+            `SELECT name FROM departments WHERE department_id = $1`,
+            [assignment.department_id]
+          );
+          if (deptRows.length) scope = `Department: ${deptRows[0].name}`;
+        }
+
+        await enqueueEmail(pool, {
+          eventId:         "nodal_officer_assigned",
+          recipientEmail:  userRows[0].email,
+          recipientUserId: user_id,
+          payload: {
+            full_name:        userRows[0].full_name,
+            reporting_year:   reporting_year,
+            institution_name: institutionName,
+            scope,
+            login_url: process.env.APP_LOGIN_URL || "http://localhost:5173/login",
+          },
+        });
+        logger.info(`Enqueued nodal_officer_assigned email to ${userRows[0].email} for ${reporting_year}`);
+      } catch (err) {
+        logger.error("Failed to enqueue nodal_officer_assigned email", { stack: err.stack });
+      }
+    });
+
     return res.status(201).json({
       success:    true,
       message:    "Nodal Officer assigned successfully.",
-      assignment: rows[0],
+      assignment,
     });
   } catch (err) {
     logger.error("POST /api/nodal-officer-assignments failed", { ...getLogContext(req), stack: err.stack });
@@ -218,6 +263,73 @@ router.put("/:id", verifyToken, requireRole(ALLOWED_ROLES), async (req, res) => 
       vals
     );
 
+    // Enqueue activation notification when a previously inactive assignment is re-enabled.
+    if (is_active === true && assignment.is_active === false) {
+      setImmediate(async () => {
+        try {
+          const { rows: userRows } = await pool.query(
+            `SELECT full_name, email FROM users WHERE id = $1`, [assignment.user_id]
+          );
+          if (!userRows.length) return;
+
+          const { rows: instRows } = await pool.query(
+            `SELECT institution_name FROM institutions WHERE institution_id = $1`, [assignment.institution_id]
+          );
+          const institutionName = instRows[0]?.institution_name || "Your Institution";
+
+          let scope = "Institution Level";
+          if (assignment.department_id) {
+            const { rows: deptRows } = await pool.query(
+              `SELECT name FROM departments WHERE department_id = $1`, [assignment.department_id]
+            );
+            if (deptRows.length) scope = `Department: ${deptRows[0].name}`;
+          }
+
+          await enqueueEmail(pool, {
+            eventId:         "nodal_officer_activated",
+            recipientEmail:  userRows[0].email,
+            recipientUserId: assignment.user_id,
+            payload: {
+              full_name:        userRows[0].full_name,
+              reporting_year:   assignment.reporting_year,
+              institution_name: institutionName,
+              scope,
+              login_url: process.env.APP_LOGIN_URL || "http://localhost:5173/login",
+            },
+          });
+          logger.info(`Enqueued nodal_officer_activated email to ${userRows[0].email} for ${assignment.reporting_year}`);
+        } catch (err) {
+          logger.error("Failed to enqueue nodal_officer_activated email", { stack: err.stack });
+        }
+      });
+    }
+
+    // Enqueue removal notification when the officer is explicitly deactivated.
+    if (is_active === false && assignment.is_active === true) {
+      setImmediate(async () => {
+        try {
+          const { rows: userRows } = await pool.query(
+            `SELECT full_name, email FROM users WHERE id = $1`,
+            [assignment.user_id]
+          );
+          if (!userRows.length) return;
+
+          await enqueueEmail(pool, {
+            eventId:         "nodal_officer_removed",
+            recipientEmail:  userRows[0].email,
+            recipientUserId: assignment.user_id,
+            payload: {
+              full_name:      userRows[0].full_name,
+              reporting_year: assignment.reporting_year,
+            },
+          });
+          logger.info(`Enqueued nodal_officer_removed email to ${userRows[0].email} for ${assignment.reporting_year}`);
+        } catch (err) {
+          logger.error("Failed to enqueue nodal_officer_removed email (deactivate)", { stack: err.stack });
+        }
+      });
+    }
+
     return res.json({ success: true, assignment: updated[0] });
   } catch (err) {
     logger.error("PUT /api/nodal-officer-assignments/:id failed", { ...getLogContext(req), stack: err.stack });
@@ -252,6 +364,30 @@ router.delete("/:id", verifyToken, requireRole(ALLOWED_ROLES), async (req, res) 
     }
 
     await pool.query("DELETE FROM nodal_officer_assignments WHERE id = $1", [id]);
+
+    // Enqueue removal notification to the officer whose assignment was deleted.
+    setImmediate(async () => {
+      try {
+        const { rows: userRows } = await pool.query(
+          `SELECT full_name, email FROM users WHERE id = $1`,
+          [assignment.user_id]
+        );
+        if (!userRows.length) return;
+
+        await enqueueEmail(pool, {
+          eventId:         "nodal_officer_removed",
+          recipientEmail:  userRows[0].email,
+          recipientUserId: assignment.user_id,
+          payload: {
+            full_name:      userRows[0].full_name,
+            reporting_year: assignment.reporting_year,
+          },
+        });
+        logger.info(`Enqueued nodal_officer_removed email to ${userRows[0].email} for ${assignment.reporting_year} (DELETE)`);
+      } catch (err) {
+        logger.error("Failed to enqueue nodal_officer_removed email (DELETE)", { stack: err.stack });
+      }
+    });
 
     return res.json({ success: true, message: "Assignment deleted." });
   } catch (err) {

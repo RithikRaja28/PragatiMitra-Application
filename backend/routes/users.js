@@ -7,7 +7,7 @@ const bcrypt         = require("bcrypt");
 const { randomUUID } = require("crypto");
 const { verifyToken, requireRole } = require("../middleware/auth");
 const { writeAuditLog }            = require("../utils/audit");
-const { sendWelcomeEmail }         = require("../services/mailService");
+const { enqueueEmail }             = require("../services/mailService");
 const { domainForUser }            = require("../services/domainService");
 
 const logger            = require("../utils/logger");
@@ -547,6 +547,25 @@ router.post(
              VALUES ${rt.join(",")} ON CONFLICT DO NOTHING`,
             rv
           );
+        }
+
+        // Enqueue welcome email for each newly created user (fire-and-forget).
+        for (const row of ins) {
+          const userData = chunk.find((u) => u.email === row.email);
+          if (userData) {
+            enqueueEmail(pool, {
+              eventId:         "user_created",
+              recipientEmail:  row.email,
+              recipientUserId: row.id,
+              payload: {
+                full_name: userData.full_name,
+                password:  userData.rawPassword,
+                login_url: process.env.APP_LOGIN_URL || "http://localhost:5173/login",
+              },
+            }).catch((err) =>
+              logger.error("Failed to enqueue import welcome email", { email: row.email, error: err.message })
+            );
+          }
         }
 
         done += ins.length;
@@ -1154,6 +1173,32 @@ router.put("/:id", verifyToken, requireRole(["super_admin", "institute_admin", "
 
     const updated = rows[0];
 
+    // Enqueue status-change emails when account_status actually changed.
+    if (account_status && existing.account_status !== account_status) {
+      if (account_status === "SUSPENDED") {
+        enqueueEmail(pool, {
+          eventId:         "account_suspended",
+          recipientEmail:  updated.email,
+          recipientUserId: updated.id,
+          payload: { full_name: updated.full_name },
+        }).catch((err) =>
+          logger.error("Failed to enqueue account_suspended email", { userId: updated.id, error: err.message })
+        );
+      } else if (account_status === "ACTIVE") {
+        enqueueEmail(pool, {
+          eventId:         "account_reactivated",
+          recipientEmail:  updated.email,
+          recipientUserId: updated.id,
+          payload: {
+            full_name: updated.full_name,
+            login_url: process.env.APP_LOGIN_URL || "http://localhost:5173/login",
+          },
+        }).catch((err) =>
+          logger.error("Failed to enqueue account_reactivated email", { userId: updated.id, error: err.message })
+        );
+      }
+    }
+
     const changedFields = ["full_name", "email", "account_status", "institution_id", "department_id"]
       .filter((f) => String(existing[f] ?? "") !== String(updated[f] ?? ""));
 
@@ -1268,33 +1313,24 @@ router.post("/", verifyToken, requireRole(["super_admin", "institute_admin", "de
       message: `User "${rows[0].full_name}" created`,
     });
 
-    // Fire-and-forget welcome email
+    // Enqueue welcome email — returns immediately; worker delivers asynchronously.
     const newUser = rows[0];
-    setImmediate(() => {
-      sendWelcomeEmail(pool, {
+    enqueueEmail(pool, {
+      eventId:         "user_created",
+      recipientEmail:  newUser.email,
+      recipientUserId: newUser.id,
+      payload: {
         full_name: newUser.full_name,
-        email:     newUser.email,
         password,
         login_url: process.env.APP_LOGIN_URL || "http://localhost:5173/login",
+      },
+    }).catch((err) =>
+      logger.error("Failed to enqueue welcome email (user still created)", {
         userId:    newUser.id,
+        recipient: newUser.email,
+        error:     err.message,
       })
-        .then((info) => {
-          if (!info) return;
-          logger.info("Welcome email sent", {
-            userId:    newUser.id,
-            recipient: newUser.email,
-            messageId: info.messageId,
-          });
-        })
-        .catch((err) => {
-          logger.error("Welcome email FAILED (user still created)", {
-            userId:    newUser.id,
-            recipient: newUser.email,
-            error:     err.message,
-            stack:     err.stack,
-          });
-        });
-    });
+    );
 
     return res.status(201).json({ success: true, user: rows[0] });
   } catch (err) {

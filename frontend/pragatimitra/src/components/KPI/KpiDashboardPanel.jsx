@@ -1,7 +1,17 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useAuth } from "../../store/AuthContext";
+import { useLanguage } from "../../i18n/LanguageContext";
+import { t } from "../../i18n/translations";
 
 const API = "http://localhost:5000/api/kpi";
+
+// Language-aware metadata helpers (mirrors KpiManagementPage)
+function cfgTitle(cfg, lang) {
+  return (lang === "hi" && cfg?.title_hi) ? cfg.title_hi : (cfg?.title || "KPI Chart");
+}
+function cfgDesc(cfg, lang) {
+  return (lang === "hi" && cfg?.description_hi) ? cfg.description_hi : (cfg?.description || "");
+}
 
 // ─── Palette ──────────────────────────────────────────────────────────────────
 const PALETTE = [
@@ -40,8 +50,10 @@ function getTotal(series) {
 // so parent controls the size — cards use large dimensions for readability.
 
 function KpiChart({ chartType = "bar", x = [], series = [], width, height, colors }) {
-  const C   = colors || SERIES_COLORS;
-  const PAD = { l: 48, r: 16, t: 12, b: 32 };
+  const C        = colors || SERIES_COLORS;
+  // Determine if labels need rotation: rotate when many items or any label is long
+  const needsRotation = x.length > 6 || x.some(l => String(l).length > 8);
+  const PAD = { l: 52, r: 16, t: 12, b: needsRotation ? 64 : 36 };
   const cW  = width  - PAD.l - PAD.r;
   const cH  = height - PAD.t - PAD.b;
 
@@ -63,10 +75,10 @@ function KpiChart({ chartType = "bar", x = [], series = [], width, height, color
   const allVals = series.flatMap(s => s.values || []).filter(v => typeof v === "number");
   const maxV    = Math.max(...allVals, 1);
   const minV    = Math.min(0, ...allVals);
-  const vRange  = maxV - minV || 1;
 
   // Y-axis: 4–5 nicely rounded gridlines
   function niceStep(range, steps = 4) {
+    if (!range || range <= 0) return 1;
     const raw = range / steps;
     const pow = Math.pow(10, Math.floor(Math.log10(raw)));
     for (const m of [1, 2, 2.5, 5, 10]) {
@@ -84,8 +96,8 @@ function KpiChart({ chartType = "bar", x = [], series = [], width, height, color
   const toY  = v  => PAD.t + cH - ((v - yMin) / yRange) * cH;
   const toXi = i  => PAD.l + (x.length < 2 ? cW / 2 : (i / (x.length - 1)) * cW);
 
-  const xStep = Math.max(1, Math.ceil(x.length / 8));
-  const abbr  = l  => { const s = String(l); return s.length > 10 ? s.slice(0, 9) + "…" : s; };
+  // Truncate label for display but keep full value in tooltip
+  const abbr  = l  => { const s = String(l); return s.length > 12 ? s.slice(0, 11) + "…" : s; };
 
   function fmtY(v) {
     if (Math.abs(v) >= 1_000_000) return (v / 1_000_000).toFixed(1) + "M";
@@ -99,9 +111,11 @@ function KpiChart({ chartType = "bar", x = [], series = [], width, height, color
     const numS   = series.length;
     const gap    = Math.max(2, groupW * 0.08);
     const barW   = Math.max(3, (groupW - gap * 2) / numS - 1);
+    // Label baseline: just above the bottom of the SVG
+    const labelY = PAD.t + cH + (needsRotation ? 8 : 18);
 
     return (
-      <svg width={width} height={height} style={{ display:"block" }}>
+      <svg width={width} height={height} style={{ display:"block", overflow:"visible" }}>
         {/* Grid lines + Y labels */}
         {gridYs.map(v => (
           <g key={v}>
@@ -120,17 +134,33 @@ function KpiChart({ chartType = "bar", x = [], series = [], width, height, color
             return (
               <g key={`${si}-${xi}`}>
                 <rect x={bx} y={toY(v)} width={Math.max(2, barW - 1)} height={bh}
-                  fill={C[si % C.length]} rx={3} opacity={0.9}/>
+                  fill={C[si % C.length]} rx={3} opacity={0.9}>
+                  <title>{`${x[xi]}: ${v}`}</title>
+                </rect>
               </g>
             );
           })
         )}
 
-        {/* X labels */}
-        {x.map((l, i) => (i % xStep !== 0 && i !== x.length - 1) ? null : (
-          <text key={i} x={PAD.l + i * groupW + groupW / 2} y={height - 6}
-            textAnchor="middle" fontSize={10} fill="#94a3b8">{abbr(l)}</text>
-        ))}
+        {/* X labels — always shown, rotated when needed */}
+        {x.map((l, i) => {
+          const lx = PAD.l + i * groupW + groupW / 2;
+          return needsRotation ? (
+            <text key={i}
+              x={lx} y={labelY}
+              textAnchor="end" fontSize={10} fill="#64748b"
+              transform={`rotate(-38, ${lx}, ${labelY})`}>
+              <title>{String(l)}</title>
+              {abbr(l)}
+            </text>
+          ) : (
+            <text key={i} x={lx} y={labelY}
+              textAnchor="middle" fontSize={10} fill="#64748b">
+              <title>{String(l)}</title>
+              {abbr(l)}
+            </text>
+          );
+        })}
       </svg>
     );
   }
@@ -139,9 +169,10 @@ function KpiChart({ chartType = "bar", x = [], series = [], width, height, color
   if (chartType === "line" || chartType === "area") {
     const filled = chartType === "area";
     const baseY  = toY(Math.max(yMin, 0));
+    const labelY = PAD.t + cH + (needsRotation ? 8 : 18);
 
     return (
-      <svg width={width} height={height} style={{ display:"block" }}>
+      <svg width={width} height={height} style={{ display:"block", overflow:"visible" }}>
         {/* Grid */}
         {gridYs.map(v => (
           <g key={v}>
@@ -179,11 +210,25 @@ function KpiChart({ chartType = "bar", x = [], series = [], width, height, color
           );
         })}
 
-        {/* X labels */}
-        {x.map((l, i) => (i % xStep !== 0 && i !== x.length - 1) ? null : (
-          <text key={i} x={toXi(i).toFixed(1)} y={height - 6}
-            textAnchor="middle" fontSize={10} fill="#94a3b8">{abbr(l)}</text>
-        ))}
+        {/* X labels — always shown, rotated when needed */}
+        {x.map((l, i) => {
+          const lx = toXi(i);
+          return needsRotation ? (
+            <text key={i}
+              x={lx} y={labelY}
+              textAnchor="end" fontSize={10} fill="#64748b"
+              transform={`rotate(-38, ${lx}, ${labelY})`}>
+              <title>{String(l)}</title>
+              {abbr(l)}
+            </text>
+          ) : (
+            <text key={i} x={lx} y={labelY}
+              textAnchor="middle" fontSize={10} fill="#64748b">
+              <title>{String(l)}</title>
+              {abbr(l)}
+            </text>
+          );
+        })}
       </svg>
     );
   }
@@ -251,7 +296,7 @@ function SeriesLegend({ series, colors }) {
           fontSize:11, color:"#64748b", fontWeight:500 }}>
           <span style={{ width:10, height:10, borderRadius:3,
             background:C[i % C.length], flexShrink:0, display:"inline-block" }}/>
-          {s.column}
+          {s.label || s.column}
         </span>
       ))}
     </div>
@@ -281,10 +326,24 @@ function ResponsiveChart({ chartType, x, series, height, colors }) {
   );
 }
 
+// ─── Top-N cap for rendering — avoids SVG thrash with 500+ groups ─────────────
+const CHART_LABEL_CAP = 50;   // max X-axis groups to render
+
+function capChartData(x, series, cap = CHART_LABEL_CAP) {
+  if (!x || x.length <= cap) return { x, series, capped: false };
+  return {
+    x:      x.slice(0, cap),
+    series: series.map(s => ({ ...s, values: (s.values || []).slice(0, cap) })),
+    capped: true,
+    total_groups: x.length,
+  };
+}
+
 // ─── Single KPI card ─────────────────────────────────────────────────────────
 // Full-width card: big chart + single Total metric
 
 function SingleCard({ item, idx }) {
+  const { lang } = useLanguage();
   const cfg   = item.config || {};
   const p     = palette(idx);
   const total = getTotal(item.series || []);
@@ -311,10 +370,10 @@ function SingleCard({ item, idx }) {
         <div style={{ flex:1, minWidth:0 }}>
           <div style={{ fontSize:17, fontWeight:700, color:"#0f172a", marginBottom:4,
             overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
-            {cfg.title || "KPI Chart"}
+            {cfgTitle(cfg, lang)}
           </div>
-          {cfg.description && (
-            <div style={{ fontSize:12, color:"#94a3b8" }}>{cfg.description}</div>
+          {cfgDesc(cfg, lang) && (
+            <div style={{ fontSize:12, color:"#94a3b8" }}>{cfgDesc(cfg, lang)}</div>
           )}
           {/* Series legend */}
           {has && (
@@ -329,7 +388,7 @@ function SingleCard({ item, idx }) {
           {total !== null && (
             <div style={{ marginBottom:6 }}>
               <div style={{ fontSize:11, fontWeight:600, color:"#94a3b8",
-                textTransform:"uppercase", letterSpacing:.6, marginBottom:2 }}>Total</div>
+                textTransform:"uppercase", letterSpacing:.6, marginBottom:2 }}>{t("Total", lang)}</div>
               <div style={{ fontSize:32, fontWeight:800, color:p.stroke,
                 lineHeight:1, fontFamily:"'JetBrains Mono', monospace" }}>
                 {fmtTotal(total)}
@@ -348,15 +407,31 @@ function SingleCard({ item, idx }) {
 
       {/* Chart — the main content */}
       <div style={{ padding:"0 24px 20px" }}>
-        {has ? (
-          <ResponsiveChart
-            chartType={cfg.chart_type}
-            x={item.x}
-            series={item.series}
-            height={240}
-            colors={colors}
-          />
-        ) : (
+        {/* Dependency / data-source error */}
+        {item.dependency_err && (
+          <div style={{ padding:"10px 14px", background:"#fef3c7", border:"1px solid #fbbf24", borderRadius:8, fontSize:12, color:"#92400e", marginBottom:10 }}>
+            ⚠️ {item.error || "The data source for this KPI no longer exists."}
+          </div>
+        )}
+        {/* Row truncation notice */}
+        {item.truncated && (
+          <div style={{ padding:"8px 14px", background:"#eff6ff", border:"1px solid #bfdbfe", borderRadius:8, fontSize:11, color:"#1d4ed8", marginBottom:8 }}>
+            Showing first 5,000 rows. Add an aggregation to see complete totals.
+          </div>
+        )}
+        {has ? (() => {
+          const { x: cx, series: cs, capped, total_groups } = capChartData(item.x, item.series);
+          return (
+            <>
+              {capped && (
+                <div style={{ fontSize:11, color:"#64748b", marginBottom:6 }}>
+                  Showing top {CHART_LABEL_CAP} of {total_groups} groups.
+                </div>
+              )}
+              <ResponsiveChart chartType={cfg.chart_type} x={cx} series={cs} height={240} colors={colors} />
+            </>
+          );
+        })() : (
           <div style={{
             height:200, display:"flex", flexDirection:"column",
             alignItems:"center", justifyContent:"center",
@@ -368,7 +443,7 @@ function SingleCard({ item, idx }) {
               <path d="M3 9h18M9 21V9"/>
             </svg>
             <span style={{ fontSize:13, fontStyle:"italic" }}>
-              {item.error ? `Error: ${item.error}` : "No data available"}
+              {item.dependency_err ? "Data source unavailable" : item.error ? `Error: ${item.error}` : "No data available"}
             </span>
           </div>
         )}
@@ -378,13 +453,21 @@ function SingleCard({ item, idx }) {
       <div style={{
         padding:"10px 24px", borderTop:`1px solid ${p.border}40`,
         background:p.fill + "60",
-        display:"flex", alignItems:"center", justifyContent:"space-between",
+        display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:6,
       }}>
         <span style={{ fontSize:11, color:p.text, fontWeight:500 }}>
           Source: <code style={{ fontFamily:"monospace", fontSize:11 }}>{cfg.table_name}</code>
+          {cfg.academic_year && (
+            <span style={{ marginLeft:8, padding:"1px 7px", borderRadius:10, background:p.border, color:p.text, fontWeight:600 }}>
+              {cfg.academic_year}
+            </span>
+          )}
         </span>
         <span style={{ fontSize:11, color:"#94a3b8" }}>
           {item.row_count ?? 0} records · {cfg.x_col}
+          {cfg.aggregation_type && cfg.aggregation_type !== "none" && (
+            <span style={{ marginLeft:6, color:"#7c3aed", fontWeight:600 }}>· {cfg.aggregation_type.toUpperCase()}</span>
+          )}
         </span>
       </div>
     </div>
@@ -395,6 +478,7 @@ function SingleCard({ item, idx }) {
 // One wide card containing multiple related KPIs side-by-side
 
 function GroupCard({ name, items, themeIdx }) {
+  const { lang } = useLanguage();
   const tp = palette(themeIdx);
 
   return (
@@ -450,7 +534,7 @@ function GroupCard({ name, items, themeIdx }) {
                 <div style={{ flex:1, minWidth:0 }}>
                   <div style={{ fontSize:14, fontWeight:700, color:"#0f172a",
                     overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
-                    {cfg.title || "KPI"}
+                    {cfgTitle(cfg, lang)}
                   </div>
                   {has && (
                     <div style={{ marginTop:6 }}>
@@ -462,7 +546,7 @@ function GroupCard({ name, items, themeIdx }) {
                 {total !== null && (
                   <div style={{ textAlign:"right", flexShrink:0 }}>
                     <div style={{ fontSize:10, fontWeight:600, color:"#94a3b8",
-                      textTransform:"uppercase", letterSpacing:.5 }}>Total</div>
+                      textTransform:"uppercase", letterSpacing:.5 }}>{t("Total", lang)}</div>
                     <div style={{ fontSize:26, fontWeight:800, color:sp.stroke,
                       lineHeight:1.1, fontFamily:"'JetBrains Mono', monospace" }}>
                       {fmtTotal(total)}
@@ -473,15 +557,19 @@ function GroupCard({ name, items, themeIdx }) {
 
               {/* Chart */}
               <div style={{ padding:"12px 16px 16px", flex:1 }}>
-                {has ? (
-                  <ResponsiveChart
-                    chartType={cfg.chart_type}
-                    x={item.x}
-                    series={item.series}
-                    height={200}
-                    colors={colors}
-                  />
-                ) : (
+                {has ? (() => {
+                  const { x: cx, series: cs, capped, total_groups } = capChartData(item.x, item.series, 30);
+                  return (
+                    <>
+                      {capped && (
+                        <div style={{ fontSize:10, color:"#94a3b8", marginBottom:4 }}>
+                          Top 30 of {total_groups}
+                        </div>
+                      )}
+                      <ResponsiveChart chartType={cfg.chart_type} x={cx} series={cs} height={200} colors={colors} />
+                    </>
+                  );
+                })() : (
                   <div style={{
                     height:160, display:"flex", flexDirection:"column",
                     alignItems:"center", justifyContent:"center",
@@ -586,8 +674,9 @@ function PanelHeader({ total, fetchedAt, onRefresh }) {
 
 // ─── Main panel ───────────────────────────────────────────────────────────────
 
-export default function KpiDashboardPanel() {
+export default function KpiDashboardPanel({ scope = "institute" }) {
   const { accessToken } = useAuth();
+  const { lang } = useLanguage();
   const [singles,   setSingles]   = useState([]);
   const [groups,    setGroups]    = useState([]);
   const [loading,   setLoading]   = useState(true);
@@ -599,7 +688,7 @@ export default function KpiDashboardPanel() {
     try {
       const headers = { "Content-Type": "application/json" };
       if (accessToken) headers["Authorization"] = `Bearer ${accessToken}`;
-      const res  = await fetch(`${API}/dashboard-charts`, { headers, credentials:"include" });
+      const res  = await fetch(`${API}/dashboard-charts?lang=${lang}&scope=${scope}`, { headers, credentials:"include" });
       const json = await res.json();
       if (!json.ok) throw new Error(json.error || "Failed to load KPI charts");
       setSingles(json.singles || []);
@@ -610,7 +699,7 @@ export default function KpiDashboardPanel() {
     } finally {
       setLoading(false);
     }
-  }, [accessToken]);
+  }, [accessToken, lang, scope]); // re-fetch when language or scope changes
 
   useEffect(() => { load(); }, [load]);
 

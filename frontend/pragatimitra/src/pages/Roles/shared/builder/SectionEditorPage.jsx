@@ -853,7 +853,7 @@ function InlineAdder({ isOpen, onToggle, onAdd }) {
 /* ═══════════════════════════════════════════════════════════════════════════
    SECTION EDITOR PAGE
 ═══════════════════════════════════════════════════════════════════════════ */
-export default function SectionEditorPage({ sectionId, reportTitle, onBack }) {
+export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiScope = "department" }) {
   const { user }     = useAuth();
   const { apiFetch } = useApi();
 
@@ -1475,6 +1475,7 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack }) {
                       block={block}
                       readOnly={readOnly}
                       onChange={(newContent) => handleBlockChange(block.id, newContent)}
+                      kpiScope={kpiScope}
                     />
                   </div>
 

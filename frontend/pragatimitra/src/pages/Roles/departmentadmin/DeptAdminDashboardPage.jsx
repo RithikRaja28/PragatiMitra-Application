@@ -149,7 +149,7 @@ export default function DeptAdminDashboardPage() {
         <div style={{ fontSize: 12, color: C.muted, marginBottom: 14 }}>
           Charts from KPIs pinned to the dashboard — configure in KPI Charts.
         </div>
-        <KpiDashboardPanel />
+        <KpiDashboardPanel scope="department" />
       </div>
 
       {/* Up next — real forms with deadlines/status */}

@@ -21,6 +21,7 @@ const {
 } = require("../services/departmentFormService");
 const { resolveActiveAcademicYear } = require("../services/academicYearService");
 const { assertEquivalent } = require("../services/equivalenceGuard");
+const { enqueueEmail }    = require("../services/mailService");
 
 const router = express.Router();
 router.use(verifyToken);
@@ -464,6 +465,70 @@ router.post("/", requireRole(WRITE_ROLES), async (req, res) => {
         entityType: "department_form",
         entityId: formId,
         newValue: { form_name: slug, table, department_id: departmentId, academic_year: year },
+      });
+
+      // Notify users in this department who hold the configured form roles (fire-and-forget).
+      setImmediate(async () => {
+        try {
+          const { rows: creatorRows } = await pool.query(
+            `SELECT full_name FROM users WHERE id = $1`, [req.user.userId]
+          );
+          const createdByName = creatorRows[0]?.full_name || "System";
+
+          const { rows: deptRows } = await pool.query(
+            `SELECT name FROM departments WHERE department_id = $1`, [departmentId]
+          );
+          const departmentName = deptRows[0]?.name || "Your Department";
+
+          let recipients;
+          if (roles.length > 0) {
+            const { rows } = await pool.query(
+              `SELECT DISTINCT u.id, u.full_name, u.email
+               FROM users u
+               JOIN user_roles ur ON ur.user_id = u.id
+               JOIN roles r ON r.id = ur.role_id
+               WHERE u.department_id = $1
+                 AND u.institution_id = $2
+                 AND u.account_status = 'ACTIVE'
+                 AND r.name = ANY($3::text[])
+                 AND ur.revoked_at IS NULL
+                 AND (ur.expires_at IS NULL OR ur.expires_at > now())`,
+              [departmentId, institutionId, roles]
+            );
+            recipients = rows;
+          } else {
+            const { rows } = await pool.query(
+              `SELECT id, full_name, email FROM users WHERE id = $1`, [req.user.userId]
+            );
+            recipients = rows;
+          }
+
+          const academicYear = `${year}-${year + 1}`;
+          const loginUrl     = process.env.APP_LOGIN_URL || "http://localhost:5173/login";
+          const deadlineStr  = createDeadline
+            ? new Date(createDeadline).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })
+            : null;
+
+          await Promise.all(recipients.map((r) =>
+            enqueueEmail(pool, {
+              eventId:         "department_form_created",
+              recipientEmail:  r.email,
+              recipientUserId: r.id,
+              payload: {
+                full_name:       r.full_name,
+                form_name:       slug,
+                department_name: departmentName,
+                academic_year:   academicYear,
+                created_by_name: createdByName,
+                deadline:        deadlineStr,
+                login_url:       loginUrl,
+              },
+            })
+          ));
+          logger.info(`Enqueued department_form_created for ${recipients.length} recipient(s) — form "${slug}"`);
+        } catch (err) {
+          logger.error("Failed to enqueue department_form_created email", { stack: err.stack });
+        }
       });
 
       return res.json({ success: true, message: `Department form "${slug}" created.`, id: formId, table });

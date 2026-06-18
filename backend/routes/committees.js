@@ -33,6 +33,7 @@ const { getLogContext }    = logger;
 
 // ── FIX: Use the shared audit utility instead of the internal one ──────────
 const { writeAuditLog }    = require("../utils/audit");
+const { enqueueEmail }     = require("../services/mailService");
 
 const router = express.Router();
 router.use(verifyToken);
@@ -263,6 +264,47 @@ router.post("/", async (req, res) => {
       },
     });
 
+    // Notify all active Institute Admins for this institution (fire-and-forget).
+    setImmediate(async () => {
+      try {
+        const { rows: instRows } = await pool.query(
+          `SELECT institution_name FROM institutions WHERE institution_id = $1`,
+          [institute_id]
+        );
+        const institutionName = instRows[0]?.institution_name || "Your Institution";
+
+        const { rows: admins } = await pool.query(
+          `SELECT DISTINCT u.id, u.full_name, u.email
+           FROM users u
+           JOIN user_roles ur ON ur.user_id = u.id
+           JOIN roles r ON r.id = ur.role_id
+           WHERE r.name = 'institute_admin'
+             AND ur.institution_id = $1
+             AND u.account_status = 'ACTIVE'`,
+          [institute_id]
+        );
+
+        await Promise.all(admins.map((admin) =>
+          enqueueEmail(pool, {
+            eventId:         "committee_created",
+            recipientEmail:  admin.email,
+            recipientUserId: admin.id,
+            payload: {
+              full_name:        admin.full_name,
+              committee_type:   typeLabel,
+              finance_year:     created.finance_year,
+              position:         created.position,
+              institution_name: institutionName,
+            },
+          })
+        ));
+        if (admins.length)
+          logger.info(`Enqueued committee_created email to ${admins.length} institute admin(s) for institute ${institute_id}`);
+      } catch (err) {
+        logger.error("Failed to enqueue committee_created email", { stack: err.stack });
+      }
+    });
+
     return res.status(201).json({
       success: true,
       message: `Committee "${typeLabel}" created successfully.`,
@@ -441,7 +483,7 @@ router.patch("/:id/status", async (req, res) => {
 
   try {
     const { rows: existing } = await pool.query(
-      `SELECT id, committee_type, finance_year, status FROM management_committees WHERE id = $1`, [id]
+      `SELECT id, institute_id, committee_type, finance_year, status FROM management_committees WHERE id = $1`, [id]
     );
     if (!existing.length) {
       return res.status(404).json({ success: false, message: "Committee not found." });
@@ -473,6 +515,49 @@ router.patch("/:id/status", async (req, res) => {
       oldValue:      { status: prevStatus },
       newValue:      { status },
       changedFields: ["status"],   // ← raw array, correct for utils/audit.js
+    });
+
+    // Fan-out to Institute Admins of the institution (fire-and-forget).
+    setImmediate(async () => {
+      try {
+        const committeeEventId = status === "ACTIVE" ? "committee_activated" : "committee_deactivated";
+        const typeLabel = COMMITTEE_TYPES.find((t) => t.value === existing[0].committee_type)?.label ?? existing[0].committee_type;
+
+        const { rows: instRows } = await pool.query(
+          `SELECT institution_name FROM institutions WHERE institution_id = $1`, [existing[0].institute_id]
+        );
+        const institutionName = instRows[0]?.institution_name || "Your Institution";
+
+        const { rows: admins } = await pool.query(
+          `SELECT DISTINCT u.id, u.full_name, u.email
+           FROM users u
+           JOIN user_roles ur ON ur.user_id = u.id
+           JOIN roles r       ON r.id = ur.role_id
+           WHERE u.institution_id = $1
+             AND u.account_status = 'ACTIVE'
+             AND r.name = 'institute_admin'
+             AND ur.revoked_at IS NULL
+             AND (ur.expires_at IS NULL OR ur.expires_at > now())`,
+          [existing[0].institute_id]
+        );
+
+        await Promise.all(admins.map((a) =>
+          enqueueEmail(pool, {
+            eventId:         committeeEventId,
+            recipientEmail:  a.email,
+            recipientUserId: a.id,
+            payload: {
+              full_name:        a.full_name,
+              committee_type:   typeLabel,
+              finance_year:     existing[0].finance_year,
+              institution_name: institutionName,
+            },
+          })
+        ));
+        if (admins.length) logger.info(`Enqueued ${committeeEventId} to ${admins.length} admin(s)`);
+      } catch (err) {
+        logger.error("Failed to enqueue committee status email", { stack: err.stack });
+      }
     });
 
     return res.json({

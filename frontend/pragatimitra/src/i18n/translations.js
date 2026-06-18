@@ -561,6 +561,101 @@ export const translations = {
     "Previously Archived":               "पहले संग्रहीत",
     "Check to activate in new year":    "नए वर्ष में सक्रिय करने के लिए चेक करें",
     "None":                              "कोई नहीं",
+
+    /* ════════════════════════════════════════════════════════════
+       KPI MODULE
+    ════════════════════════════════════════════════════════════ */
+    "Series":                    "श्रृंखला",
+    "Table":                     "तालिका",
+    "Total":                     "कुल",
+    "Exported":                  "निर्यात किया",
+    "Refresh":                   "ताज़ा करें",
+    "Refresh Data":              "डेटा ताज़ा करें",
+    "Refreshing…":               "ताज़ा हो रहा है…",
+    "New KPI Chart":             "नया केपीआई चार्ट",
+    "Department KPI":            "विभाग केपीआई",
+    "Institute KPI":             "संस्था केपीआई",
+    "Loading configurations…":   "कॉन्फ़िगरेशन लोड हो रहे हैं…",
+    "No KPI charts yet":         "अभी कोई केपीआई चार्ट नहीं",
+    "Export SVG":                "SVG निर्यात करें",
+    "Exporting…":                "निर्यात हो रहा है…",
+    "Export to Annual Report":   "वार्षिक रिपोर्ट में निर्यात करें",
+    "Configure and export KPI charts for your department's annual report.":
+                                 "अपने विभाग की वार्षिक रिपोर्ट के लिए केपीआई चार्ट कॉन्फ़िगर और निर्यात करें।",
+    "Configure and export KPI charts for the institute's annual report.":
+                                 "संस्था की वार्षिक रिपोर्ट के लिए केपीआई चार्ट कॉन्फ़िगर और निर्यात करें।",
+
+    // ── KPI Form labels ────────────────────────────────────────────────────────
+    "KPI Charts":                          "केपीआई चार्ट",
+    "Edit KPI Chart":                      "केपीआई चार्ट संपादित करें",
+    "Update the chart configuration.":    "चार्ट कॉन्फ़िगरेशन अपडेट करें।",
+    "Configure a new KPI chart for the annual report.":
+                                           "वार्षिक रिपोर्ट के लिए नया केपीआई चार्ट कॉन्फ़िगर करें।",
+    "Create KPI Chart":                    "केपीआई चार्ट बनाएं",
+    "Chart Title":                         "चार्ट शीर्षक",
+    "(optional)":                          "(वैकल्पिक)",
+    "Export Display Name":                 "निर्यात प्रदर्शन नाम",
+    "Appears as the heading in exported SVG/PDF. Falls back to Description, then KPI Name.":
+                                           "निर्यात किए गए SVG/PDF में शीर्षक के रूप में दिखता है। विवरण, फिर KPI नाम पर वापस आता है।",
+    "Academic Year":                       "शैक्षणिक वर्ष",
+    "Academic year this KPI belongs to — sourced from Academic Year Settings":
+                                           "इस KPI का शैक्षणिक वर्ष — शैक्षणिक वर्ष सेटिंग से लिया गया",
+    "Loading options…":                    "विकल्प लोड हो रहे हैं…",
+    "Loading academic years…":             "शैक्षणिक वर्ष लोड हो रहे हैं…",
+    "— Select academic year —":            "— शैक्षणिक वर्ष चुनें —",
+    "No academic years configured. Go to Settings → Academic Year to add them.":
+                                           "कोई शैक्षणिक वर्ष कॉन्फ़िगर नहीं। सेटिंग → शैक्षणिक वर्ष में जाएं।",
+    "Dashboard Display":                   "डैशबोर्ड प्रदर्शन",
+    "Show on Dashboard":                   "डैशबोर्ड पर दिखाएं",
+    "Pin this chart to the admin dashboard": "इस चार्ट को एडमिन डैशबोर्ड पर पिन करें",
+    "Display Type":                        "प्रदर्शन प्रकार",
+    "Single Card":                         "एकल कार्ड",
+    "Standalone chart":                    "स्वतंत्र चार्ट",
+    "Group Card":                          "समूह कार्ड",
+    "Merged with related KPIs":            "संबंधित KPI के साथ मिलाया गया",
+    "Group Name":                          "समूह नाम",
+    "New Group":                           "नया समूह",
+    "Existing Group":                      "मौजूदा समूह",
+    "— Select group —":                    "— समूह चुनें —",
+    "KPIs with the same group name appear together in one dashboard card.":
+                                           "एक ही समूह नाम वाले KPI एक डैशबोर्ड कार्ड में एक साथ दिखते हैं।",
+    "Source Table":                        "स्रोत तालिका",
+    "Loading tables…":                     "तालिकाएं लोड हो रही हैं…",
+    "Could not load tables.":              "तालिकाएं लोड नहीं हो सकीं।",
+    "Retry":                               "पुनः प्रयास",
+    "Filter tables…":                      "तालिकाएं फ़िल्टर करें…",
+    "X-Axis Column":                       "X-अक्ष कॉलम",
+    "Horizontal axis — month, date, or category": "क्षैतिज अक्ष — महीना, दिनांक, या श्रेणी",
+    "Select a table first.":               "पहले एक तालिका चुनें।",
+    "Loading columns…":                    "कॉलम लोड हो रहे हैं…",
+    "Y-Axis Columns (numeric)":            "Y-अक्ष कॉलम (संख्यात्मक)",
+    "Each selected column becomes one data series": "प्रत्येक चयनित कॉलम एक डेटा श्रृंखला बन जाती है",
+    "Loading numeric columns…":            "संख्यात्मक कॉलम लोड हो रहे हैं…",
+    "Chart Type":                          "चार्ट प्रकार",
+    "Aggregation":                         "एकत्रीकरण",
+    "Aggregation Type":                    "एकत्रीकरण प्रकार",
+    "Apply a calculation to Y-axis values grouped by X-axis":
+                                           "X-अक्ष द्वारा समूहीकृत Y-अक्ष मानों पर गणना लागू करें",
+    "None (raw values)":                   "कोई नहीं (कच्चे मान)",
+    "Count (rows)":                        "गिनती (पंक्तियाँ)",
+    "Average":                             "औसत",
+    "Minimum":                             "न्यूनतम",
+    "Maximum":                             "अधिकतम",
+    "Count Distinct":                      "विशिष्ट गिनती",
+    "Group By Column":                     "इसके अनुसार समूहित करें",
+    "(optional — overrides X-axis for grouping)": "(वैकल्पिक — समूहन के लिए X-अक्ष को ओवरराइड करता है)",
+    "Leave empty to group by X-axis column. Set to group by a different field (e.g. department, year).":
+                                           "X-अक्ष कॉलम द्वारा समूहन के लिए खाली छोड़ें। किसी अन्य फ़ील्ड (जैसे विभाग, वर्ष) द्वारा समूहन के लिए सेट करें।",
+    "Preview SQL pattern:":                "SQL पैटर्न पूर्वावलोकन:",
+
+    // ── Chart type labels ──────────────────────────────────────────────────────
+    "Grouped Bar":   "समूहीकृत बार",
+    "Stacked Bar":   "स्टैक्ड बार",
+    "Line":          "रेखा",
+    "Area":          "क्षेत्र",
+    "Pie":           "पाई",
+    "Doughnut":      "डोनट",
+    "Sum":           "योग",
   },
 };
 

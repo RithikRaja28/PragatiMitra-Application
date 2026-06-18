@@ -1,7 +1,7 @@
 const express = require("express");
 const { verifyToken, requireRole } = require("../middleware/auth");
 const { writeAuditLog }            = require("../utils/audit");
-const { sendRoleUpdatedEmail }     = require("../services/mailService"); // ← NEW
+const { enqueueEmail }             = require("../services/mailService");
 
 const logger            = require("../utils/logger");
 const { getLogContext } = logger;
@@ -74,6 +74,31 @@ router.post("/", verifyToken, requireRole(SUPER_ADMIN), async (req, res) => {
       newValue:   { name: rows[0].name, display_name: rows[0].display_name, description: rows[0].description, permissions },
       status:     "SUCCESS",
       message:    `Role "${rows[0].display_name}" (${rows[0].name}) created`,
+    });
+
+    // Notify the Super Admin who created the role (fire-and-forget).
+    setImmediate(async () => {
+      try {
+        const { rows: userRows } = await pool.query(
+          `SELECT full_name, email FROM users WHERE id = $1`, [req.user.userId]
+        );
+        if (!userRows.length) return;
+
+        await enqueueEmail(pool, {
+          eventId:         "role_created",
+          recipientEmail:  userRows[0].email,
+          recipientUserId: req.user.userId,
+          payload: {
+            full_name:         userRows[0].full_name,
+            role_name:         rows[0].name,
+            role_display_name: rows[0].display_name,
+            role_description:  rows[0].description,
+          },
+        });
+        logger.info(`Enqueued role_created email to ${userRows[0].email} for role "${rows[0].name}"`);
+      } catch (err) {
+        logger.error("Failed to enqueue role_created email", { stack: err.stack });
+      }
     });
 
     res.status(201).json({ success: true, data: rows[0] });
@@ -169,12 +194,11 @@ router.put("/:id", verifyToken, requireRole(SUPER_ADMIN), async (req, res) => {
       }
     }
 
-    // ── Fire-and-forget: notify all users who have this role ──
-    // Only fires when permissions changed — not for label/description edits
+    // ── Enqueue role-update notifications for all affected users ──
+    // Only fires when permissions changed — not for label/description edits.
     if (permissions) {
       setImmediate(async () => {
         try {
-          // Fetch all active users currently assigned this role
           const { rows: affectedUsers } = await pool.query(
             `SELECT u.id, u.full_name, u.email
              FROM users u
@@ -191,35 +215,24 @@ router.put("/:id", verifyToken, requireRole(SUPER_ADMIN), async (req, res) => {
             return;
           }
 
-          logger.info(`Notifying ${affectedUsers.length} user(s) of role change: "${updated.display_name}"`);
-
-          // Send email + in-app notification to every affected user
-          const results = await Promise.allSettled(
+          await Promise.all(
             affectedUsers.map((u) =>
-              sendRoleUpdatedEmail(pool, {
-                full_name: u.full_name,
-                email:     u.email,
-                new_role:  updated.display_name,
-                login_url: process.env.APP_LOGIN_URL || "http://localhost:5173/login",
-                userId:    u.id,
+              enqueueEmail(pool, {
+                eventId:         "user_role_updated",
+                recipientEmail:  u.email,
+                recipientUserId: u.id,
+                payload: {
+                  full_name: u.full_name,
+                  new_role:  updated.display_name,
+                  login_url: process.env.APP_LOGIN_URL || "http://localhost:5173/login",
+                },
               })
             )
           );
 
-          // Log each result so we can see exactly what failed
-          results.forEach((r, i) => {
-            if (r.status === "rejected") {
-              logger.error(`[ROLE NOTIFY] FAILED for ${affectedUsers[i].email}: ${r.reason?.message}`, {
-                stack: r.reason?.stack,
-              });
-            } else {
-              logger.info(`[ROLE NOTIFY] OK for ${affectedUsers[i].email}`);
-            }
-          });
-
-          logger.info(`Role-update notifications complete for role "${updated.display_name}"`);
+          logger.info(`Enqueued role-update notifications for ${affectedUsers.length} user(s) of role "${updated.display_name}"`);
         } catch (err) {
-          logger.error("Role-update notification FAILED (role was still updated)", {
+          logger.error("Role-update notification enqueue FAILED (role was still updated)", {
             roleId:   id,
             roleName: updated.display_name,
             error:    err.message,
