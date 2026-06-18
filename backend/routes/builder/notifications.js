@@ -18,8 +18,7 @@ const { getLogContext } = logger;
 const router = express.Router();
 router.use(verifyToken);
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const isUUID  = v => typeof v === "string" && UUID_RE.test(v);
+const isValidId = v => /^\d+$/.test(v) && Number(v) > 0;
 
 /* ── GET / ── list notifications ────────────────────────────────────────────── */
 router.get("/", async (req, res) => {
@@ -29,7 +28,7 @@ router.get("/", async (req, res) => {
     const params = [req.user.userId];
     const conds  = ["n.user_id = $1"];
 
-    if (unread_only === "true") conds.push("n.read_at IS NULL");
+    if (unread_only === "true") conds.push("n.is_read = false");
 
     const { rows } = await pool.query(
       `SELECT * FROM public.notifications n
@@ -38,7 +37,7 @@ router.get("/", async (req, res) => {
        LIMIT ${Math.min(200, Number(limit))}`, params
     );
 
-    const unreadCount = rows.filter(r => !r.read_at).length;
+    const unreadCount = rows.filter(r => !r.is_read).length;
     return res.json({ success: true, data: rows, unread_count: unreadCount });
   } catch (err) {
     logger.error("notifications GET /", { ...getLogContext(req), err: err.message });
@@ -51,11 +50,11 @@ router.patch("/:id/read", async (req, res) => {
   const pool = req.app.locals.pool;
   try {
     const { id } = req.params;
-    if (!isUUID(id)) return res.status(400).json({ success: false, message: "Invalid id" });
+    if (!isValidId(id)) return res.status(400).json({ success: false, message: "Invalid id" });
 
     await pool.query(
-      `UPDATE public.notifications SET read_at = NOW()
-       WHERE id = $1 AND user_id = $2 AND read_at IS NULL`,
+      `UPDATE public.notifications SET is_read = true
+       WHERE id = $1 AND user_id = $2 AND is_read = false`,
       [id, req.user.userId]
     );
     return res.json({ success: true });
@@ -70,8 +69,8 @@ router.patch("/read-all", async (req, res) => {
   const pool = req.app.locals.pool;
   try {
     const { rows } = await pool.query(
-      `UPDATE public.notifications SET read_at = NOW()
-       WHERE user_id = $1 AND read_at IS NULL RETURNING id`,
+      `UPDATE public.notifications SET is_read = true
+       WHERE user_id = $1 AND is_read = false RETURNING id`,
       [req.user.userId]
     );
     return res.json({ success: true, marked: rows.length });
@@ -86,7 +85,7 @@ router.delete("/:id", async (req, res) => {
   const pool = req.app.locals.pool;
   try {
     const { id } = req.params;
-    if (!isUUID(id)) return res.status(400).json({ success: false, message: "Invalid id" });
+    if (!isValidId(id)) return res.status(400).json({ success: false, message: "Invalid id" });
 
     await pool.query(
       `DELETE FROM public.notifications WHERE id = $1 AND user_id = $2`,
