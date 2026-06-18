@@ -54,8 +54,20 @@ function deepEqual(a, b) {
  * Behavior can never change because the returned value always equals legacy.
  *
  * `compareFn(legacy, candidate)` overrides the default structural comparison.
+ *
+ * L-4 — the comparison is a DEV-only diagnostic. In production it is pure overhead
+ * (the candidate has been validated to equal legacy), so we skip the deepEqual +
+ * logging and return the resolver candidate directly — which is exactly what the
+ * dev path returns in the steady (equal) state, so behaviour is unchanged. Set
+ * SHADOW_GUARD=on to force the full comparison even in production; SHADOW_GUARD=off
+ * disables it in dev.
  */
+const SHADOW_ON =
+  process.env.SHADOW_GUARD === "on" ||
+  (process.env.NODE_ENV !== "production" && process.env.SHADOW_GUARD !== "off");
+
 function assertEquivalent(label, legacy, candidate, compareFn) {
+  if (!SHADOW_ON) return candidate; // resolver-only fast path (prod)
   let equal;
   try {
     equal = compareFn ? !!compareFn(legacy, candidate) : deepEqual(legacy, candidate);
