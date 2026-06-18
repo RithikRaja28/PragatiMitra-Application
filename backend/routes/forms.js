@@ -8,6 +8,7 @@ const { translateSentence, enrichSchemaLabels } = require("../services/translati
 const { formatAcademicYear, ensureYearRows, setFormStatusForYear, ensureFormArchivedIfUnclassified, getInstitutionStartYears, getAcademicYearLockBlockForReq } = require("../services/academicYearService");
 const { ensureSchemaExists, publishSchemaSnapshot } = require("../services/schemaPropagationService");
 const { resolveUserDomain, resolveListFilterDomain, assertFormDomainAccess, normalizeDomain } = require("../services/domainService");
+const { enqueueEmail } = require("../services/mailService");
 const { resolveEffectiveDepartment } = require("../services/departmentContext");
 const { ensureRecordsIndexes } = require("../services/recordsIndexService");
 const { getAssignedFormIds, isContributorOnly } = require("./formAssignments");
@@ -677,6 +678,58 @@ router.post(
           entityId: schemaId,
           newValue: { form_name: normalizedName, records_table: recordsTable, share_table, institution_id: institutionId },
           message: `Form Created - "${normalizedName}"`,
+        });
+
+        // Notify Institute Admins of the creator institution (fire-and-forget).
+        setImmediate(async () => {
+          try {
+            const { rows: creatorRows } = await pool.query(
+              `SELECT full_name FROM users WHERE id = $1`, [req.user.userId]
+            );
+            const createdByName = creatorRows[0]?.full_name || "System";
+
+            const { rows: instRows } = await pool.query(
+              `SELECT institution_name FROM institutions WHERE institution_id = $1`, [institutionId]
+            );
+            const institutionName = instRows[0]?.institution_name || "Your Institution";
+
+            const { rows: admins } = await pool.query(
+              `SELECT DISTINCT u.id, u.full_name, u.email
+               FROM users u
+               JOIN user_roles ur ON ur.user_id = u.id
+               JOIN roles r ON r.id = ur.role_id
+               WHERE u.institution_id = $1
+                 AND u.account_status = 'ACTIVE'
+                 AND r.name = 'institute_admin'
+                 AND ur.revoked_at IS NULL
+                 AND (ur.expires_at IS NULL OR ur.expires_at > now())`,
+              [institutionId]
+            );
+
+            const academicYear = formatAcademicYear(formYear);
+            const loginUrl     = process.env.APP_LOGIN_URL || "http://localhost:5173/login";
+
+            await Promise.all(admins.map((a) =>
+              enqueueEmail(pool, {
+                eventId:         "institute_form_created",
+                recipientEmail:  a.email,
+                recipientUserId: a.id,
+                payload: {
+                  full_name:        a.full_name,
+                  form_name:        normalizedName,
+                  academic_year:    academicYear,
+                  institution_name: institutionName,
+                  created_by_name:  createdByName,
+                  deadline:         null,
+                  is_shared:        share_table,
+                  login_url:        loginUrl,
+                },
+              })
+            ));
+            logger.info(`Enqueued institute_form_created for ${admins.length} admin(s) — form "${normalizedName}"`);
+          } catch (err) {
+            logger.error("Failed to enqueue institute_form_created email", { stack: err.stack });
+          }
         });
 
         return res.json({

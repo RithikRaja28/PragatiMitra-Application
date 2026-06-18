@@ -3,6 +3,11 @@
  */
 import React, { useRef, useEffect, useState } from "react";
 import { useApi } from "../../../../hooks/useApi";
+import { useLanguage } from "../../../../i18n/LanguageContext";
+
+function cfgTitle(cfg, lang) {
+  return (lang === "hi" && cfg?.title_hi) ? cfg.title_hi : (cfg?.title || "KPI Chart");
+}
 
 export const BLOCK_ICONS = {
   PARAGRAPH:  "P",
@@ -846,6 +851,147 @@ export function DividerBlock() {
   return <hr style={{ border: "none", borderTop: "2px solid #e2e8f0", margin: "8px 0" }} />;
 }
 
+/* ── KPI ─────────────────────────────────────────────────────────────── */
+const CHART_ICON = {
+  bar: "▊", bar_stack: "▊", line: "╱", area: "◬", pie: "◑", doughnut: "◎",
+};
+
+export function KpiBlock({ content, onChange, readOnly, kpiScope = "department" }) {
+  const { apiFetch } = useApi();
+  const { lang } = useLanguage();
+  const [kpis,    setKpis]    = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error,   setError]   = useState("");
+  const [open,    setOpen]    = useState(false);
+
+  const selectedId = content?.kpi_id ? String(content.kpi_id) : "";
+  const selected   = kpis.find(k => String(k.id) === selectedId);
+
+  // Load KPI list when picker opens (or on mount in edit mode).
+  // scope= ensures only KPIs belonging to the same context (institute/department)
+  // are shown, even when the logged-in user holds both roles via NOA.
+  useEffect(() => {
+    if (readOnly) return;
+    setLoading(true); setError("");
+    apiFetch(`/api/kpi/configs?scope=${kpiScope}`)
+      .then(r => r.json())
+      .then(j => { if (j.ok) setKpis(j.data || []); else throw new Error(j.error); })
+      .catch(e => setError(e.message || "Failed to load KPIs"))
+      .finally(() => setLoading(false));
+  }, [kpiScope]); // eslint-disable-line
+
+  if (readOnly) {
+    if (!selectedId) return (
+      <div style={{ padding:"12px 16px", background:"#f8fafc", border:"1px dashed #cbd5e1", borderRadius:8, fontSize:12, color:"#94a3b8", fontStyle:"italic" }}>
+        No KPI selected
+      </div>
+    );
+    return (
+      <div style={{ padding:"12px 16px", background:"#eff6ff", border:"1px solid #bfdbfe", borderRadius:8, display:"flex", alignItems:"center", gap:10 }}>
+        <span style={{ fontSize:18, color:"#2563eb" }}>📊</span>
+        <div>
+          <div style={{ fontSize:13, fontWeight:600, color:"#1e40af" }}>
+            {(lang === "hi" && content.kpi_title_hi) ? content.kpi_title_hi : (content.kpi_title || `KPI #${selectedId}`)}
+          </div>
+          {content.kpi_description && <div style={{ fontSize:11, color:"#3b82f6" }}>{content.kpi_description}</div>}
+          {(content.kpi_academic_year || content.kpi_chart_type || content.kpi_aggregation_type) && (
+            <div style={{ fontSize:11, color:"#64748b", marginTop:2 }}>
+              {content.kpi_academic_year && <span style={{ marginRight:6 }}>AY: {content.kpi_academic_year}</span>}
+              {content.kpi_chart_type && <span style={{ marginRight:6, textTransform:"capitalize" }}>{content.kpi_chart_type}</span>}
+              {content.kpi_aggregation_type && content.kpi_aggregation_type !== "none" && (
+                <span style={{ color:"#7c3aed", fontWeight:600 }}>{content.kpi_aggregation_type.toUpperCase()}</span>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+      {/* Current selection display */}
+      {selected ? (
+        <div style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 14px", background:"#eff6ff", border:"1.5px solid #bfdbfe", borderRadius:9 }}>
+          <span style={{ fontSize:20, color:"#2563eb" }}>{CHART_ICON[selected.chart_type] || "📊"}</span>
+          <div style={{ flex:1, minWidth:0 }}>
+            <div style={{ fontSize:13, fontWeight:600, color:"#1e40af", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{cfgTitle(selected, lang)}</div>
+            {selected.description && <div style={{ fontSize:11, color:"#3b82f6", marginTop:1 }}>{(lang === "hi" && selected.description_hi) ? selected.description_hi : selected.description}</div>}
+            <div style={{ fontSize:11, color:"#64748b", marginTop:2 }}>
+              {selected.academic_year && <span style={{ marginRight:8, fontWeight:600 }}>AY: {selected.academic_year}</span>}
+              <span style={{ textTransform:"capitalize" }}>{selected.chart_type || "chart"}</span>
+              {selected.aggregation_type && selected.aggregation_type !== "none" && (
+                <span style={{ marginLeft:6, color:"#7c3aed" }}>· {selected.aggregation_type.toUpperCase()}</span>
+              )}
+            </div>
+          </div>
+          <button onClick={() => { onChange({ kpi_id: "" }); setOpen(false); }}
+            style={{ padding:"4px 10px", borderRadius:6, border:"1px solid #fecaca", background:"#fef2f2", fontSize:11, color:"#dc2626", cursor:"pointer", flexShrink:0 }}>
+            Clear
+          </button>
+        </div>
+      ) : (
+        <button onClick={() => setOpen(v => !v)}
+          style={{ padding:"10px 14px", border:"1.5px dashed #bfdbfe", borderRadius:9, background:"#f8fafc", fontSize:13, color:"#64748b", cursor:"pointer", textAlign:"left" }}>
+          {loading ? "Loading KPIs…" : "📊 Click to select a KPI chart"}
+        </button>
+      )}
+
+      {error && <div style={{ fontSize:11, color:"#dc2626", padding:"6px 10px", background:"#fef2f2", borderRadius:6 }}>{error}</div>}
+
+      {/* KPI picker list */}
+      {!selected && (open || !selectedId) && !loading && kpis.length > 0 && (
+        <div style={{ border:"1.5px solid #e2e8f0", borderRadius:10, maxHeight:280, overflowY:"auto", background:"#fff" }}>
+          {kpis.map(k => (
+            <div key={k.id}
+              onClick={() => {
+                onChange({
+                  kpi_id:               k.id,
+                  kpi_title:            k.title,
+                  kpi_title_hi:         k.title_hi || "",
+                  kpi_description:      k.description || "",
+                  kpi_description_hi:   k.description_hi || "",
+                  kpi_academic_year:    k.academic_year || "",
+                  kpi_chart_type:       k.chart_type || "bar",
+                  kpi_aggregation_type: k.aggregation_type || "none",
+                });
+                setOpen(false);
+              }}
+              style={{ display:"flex", alignItems:"flex-start", gap:12, padding:"10px 14px", borderBottom:"1px solid #f1f5f9", cursor:"pointer" }}
+              onMouseEnter={e => e.currentTarget.style.background = "#f8fafc"}
+              onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+            >
+              <span style={{ fontSize:16, color:"#2563eb", flexShrink:0, marginTop:1 }}>{CHART_ICON[k.chart_type] || "📊"}</span>
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ fontSize:13, fontWeight:600, color:"#1e293b", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{cfgTitle(k, lang)}</div>
+                {k.description && (
+                  <div style={{ fontSize:11, color:"#64748b", marginTop:1, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{(lang === "hi" && k.description_hi) ? k.description_hi : k.description}</div>
+                )}
+                <div style={{ display:"flex", gap:8, marginTop:3, flexWrap:"wrap" }}>
+                  {k.academic_year && (
+                    <span style={{ fontSize:10, padding:"1px 6px", borderRadius:4, background:"#eff6ff", color:"#1d4ed8", fontWeight:600 }}>{k.academic_year}</span>
+                  )}
+                  <span style={{ fontSize:10, padding:"1px 6px", borderRadius:4, background:"#f1f5f9", color:"#64748b", textTransform:"capitalize" }}>{k.chart_type || "bar"}</span>
+                  {k.aggregation_type && k.aggregation_type !== "none" && (
+                    <span style={{ fontSize:10, padding:"1px 6px", borderRadius:4, background:"#f5f3ff", color:"#7c3aed", fontWeight:600 }}>{k.aggregation_type.toUpperCase()}</span>
+                  )}
+                  <span style={{ fontSize:10, color:"#94a3b8" }}>{k.table_name}</span>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {!loading && kpis.length === 0 && !error && (
+        <div style={{ fontSize:12, color:"#94a3b8", padding:"8px 12px", background:"#f8fafc", borderRadius:6 }}>
+          No KPI charts found. Create one in the KPI module first.
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ── File ─────────────────────────────────────────────────────────────── */
 export function FileBlock({ content, onChange, readOnly }) {
   return (
@@ -1094,7 +1240,10 @@ export function KpiImportBlock({ blockId, content, onChange, onRefetched, readOn
 }
 
 /* ── Block router ─────────────────────────────────────────────────────── */
-export function BlockEditor({ block, onChange, onRefetched, readOnly, blockId, apiFetch }) {
+// kpiScope: "institute" | "department" — controls which KPIs appear in the KPI picker.
+// Pass this from the report builder so the picker only shows KPIs belonging to the
+// same scope as the report being authored.
+export function BlockEditor({ block, onChange, onRefetched, readOnly, kpiScope = "department", blockId, apiFetch }) {
   const p = { content: block.content, onChange, readOnly };
   switch (block.block_type) {
     case "PARAGRAPH":  return <RichTextBlock  {...p} />;
@@ -1109,7 +1258,7 @@ export function BlockEditor({ block, onChange, onRefetched, readOnly, blockId, a
       if ((block.content || {}).source === "kpi_import") {
         return <KpiImportBlock blockId={blockId || block.id} content={block.content} onChange={onChange} onRefetched={onRefetched} readOnly={readOnly} apiFetch={apiFetch} />;
       }
-      return <div style={{ color: "#94a3b8", fontSize: 13 }}>[KPI — id: {block.content?.kpi_id || "none"}]</div>;
+      return <KpiBlock {...p} kpiScope={kpiScope} />;
     default:           return <div style={{ color: "#94a3b8", fontSize: 13 }}>[{block.block_type}]</div>;
   }
 }
@@ -1124,7 +1273,7 @@ export const DEFAULT_CONTENT = {
   LIST:       { items: [""], ordered: false, fontSize: 13, fontColor: "#1e293b" },
   DIVIDER:    {},
   FILE:       { name: "", url: "" },
-  KPI:        { kpi_id: "" },
+  KPI:        { kpi_id: "", kpi_title: "", kpi_description: "", kpi_academic_year: "", kpi_chart_type: "bar", kpi_aggregation_type: "none" },
 };
 
 /* ── Add-block strip ──────────────────────────────────────────────────── */
@@ -1137,6 +1286,7 @@ const BLOCK_MENU = [
   { type: "IMAGE_GRID", icon: "Grd", label: "Image Grid" },
   { type: "DIVIDER",    icon: "--",  label: "Divider" },
   { type: "FILE",       icon: "Fil", label: "File" },
+  { type: "KPI",        icon: "KPI", label: "KPI Chart" },
 ];
 
 export function AddBlockMenu({ onAdd }) {

@@ -130,6 +130,33 @@ pool.connect((err, client, release) => {
 // Make pool available to all route handlers via req.app.locals.pool
 app.locals.pool = pool;
 
+/* ── Password reset tokens ── */
+pool.query(`
+  CREATE TABLE IF NOT EXISTS password_reset_tokens (
+    id         UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id    UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token_hash TEXT        NOT NULL UNIQUE,
+    expires_at TIMESTAMPTZ NOT NULL,
+    used_at    TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  )
+`).catch((e) => logger.error("Failed to ensure password_reset_tokens table", { stack: e.stack }));
+
+pool.query(`CREATE INDEX IF NOT EXISTS idx_prt_user ON password_reset_tokens(user_id)`)
+  .catch((e) => logger.error("Failed to ensure idx_prt_user index", { stack: e.stack }));
+
+/* ── Deadline reminder deduplication log ── */
+pool.query(`
+  CREATE TABLE IF NOT EXISTS form_deadline_reminder_log (
+    id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    form_key        TEXT        NOT NULL,
+    reminder_type   TEXT        NOT NULL,
+    recipient_email TEXT        NOT NULL,
+    sent_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (form_key, reminder_type, recipient_email)
+  )
+`).catch((e) => logger.error("Failed to ensure form_deadline_reminder_log table", { stack: e.stack }));
+
 /* ── Nodal Officer Assignments: ensure table + index exist on startup ── */
 pool.query(`
   CREATE TABLE IF NOT EXISTS nodal_officer_assignments (
@@ -186,6 +213,261 @@ pool
     WHERE NOT EXISTS (SELECT 1 FROM roles r WHERE r.name = v.name)
   `)
   .catch((e) => logger.error("Failed to seed domain-admin roles", { stack: e.stack }));
+
+/* ── Notification templates: seed missing event rows (idempotent) ──────────
+   ON CONFLICT (event_id) DO NOTHING preserves any admin customisations that
+   were made after initial seeding while still creating missing rows on upgrade.
+── */
+pool.query(`
+  INSERT INTO notification_templates
+    (event_id, label, email_subject, email_body, app_message,
+     email_enabled, app_enabled, role_group, category)
+  VALUES
+    (
+      'department_created',
+      'Department Created',
+      'New Department Added — {DEPARTMENT_NAME}',
+      E'Hi {FULL_NAME},\n\nA new department has been added to {INSTITUTION_NAME} on {APP_NAME}.\n\nDepartment: {DEPARTMENT_NAME}\nCode: {DEPARTMENT_CODE}\n\nYou can now assign users and forms to this department.\n\n— {APP_NAME} Team',
+      'Department "{DEPARTMENT_NAME}" has been added to {INSTITUTION_NAME}.',
+      true, true, 'system', 'Administration'
+    ),
+    (
+      'nodal_officer_assigned',
+      'Nodal Officer Assigned',
+      'You have been assigned as Nodal Officer — {REPORTING_YEAR}',
+      E'Hi {FULL_NAME},\n\nYou have been assigned as a Nodal Officer on {APP_NAME}.\n\nReporting Year: {REPORTING_YEAR}\nInstitution: {INSTITUTION_NAME}\nScope: {SCOPE}\n\nPlease log in to view your assigned sections and responsibilities.\n\n{LOGIN_URL}\n\n— {APP_NAME} Team',
+      'You have been assigned as Nodal Officer for {REPORTING_YEAR}.',
+      true, true, 'system', 'Assignments'
+    ),
+    (
+      'nodal_officer_removed',
+      'Nodal Officer Removed',
+      'Your Nodal Officer Assignment Has Been Removed — {REPORTING_YEAR}',
+      E'Hi {FULL_NAME},\n\nYour Nodal Officer assignment for {REPORTING_YEAR} on {APP_NAME} has been removed.\n\nIf you believe this is a mistake, please contact your institution administrator.\n\n— {APP_NAME} Team',
+      'Your Nodal Officer assignment for {REPORTING_YEAR} has been removed.',
+      true, true, 'system', 'Assignments'
+    ),
+    (
+      'institution_created',
+      'Institution Created',
+      'New Institution Registered — {INSTITUTION_NAME}',
+      E'Hi {FULL_NAME},\n\nA new institution has been successfully registered on {APP_NAME}.\n\nInstitution: {INSTITUTION_NAME}\nCode: {INSTITUTION_CODE}\nEmail Domain: {EMAIL_DOMAIN}\nLocation: {CITY}, {STATE}\n\nYou can now onboard administrators and departments for this institution.\n\n— {APP_NAME} Team',
+      'Institution "{INSTITUTION_NAME}" has been registered.',
+      true, true, 'system', 'Administration'
+    ),
+    (
+      'committee_created',
+      'Committee Created',
+      'Management Committee Added — {COMMITTEE_TYPE} ({FINANCE_YEAR})',
+      E'Hi {FULL_NAME},\n\nA new management committee record has been created on {APP_NAME}.\n\nCommittee Type: {COMMITTEE_TYPE}\nFinance Year: {FINANCE_YEAR}\nPosition: {POSITION}\nInstitution: {INSTITUTION_NAME}\n\nPlease review the committee details in the system.\n\n— {APP_NAME} Team',
+      'Committee "{COMMITTEE_TYPE}" for {FINANCE_YEAR} has been added.',
+      true, true, 'system', 'Administration'
+    )
+  ON CONFLICT (event_id) DO NOTHING
+`).catch((e) => logger.error("Failed to seed notification templates", { stack: e.stack }));
+
+/* ── Fix stale nodal_officer_removed template if it still references {DepartmentName} ── */
+pool.query(`
+  UPDATE notification_templates
+  SET email_body  = E'Hi {FULL_NAME},\n\nYour Nodal Officer assignment for {REPORTING_YEAR} on {APP_NAME} has been removed.\n\nIf you believe this is a mistake, please contact your institution administrator.\n\n— {APP_NAME} Team',
+      app_message = 'Your Nodal Officer assignment for {REPORTING_YEAR} has been removed.'
+  WHERE event_id = 'nodal_officer_removed'
+    AND (email_body ILIKE '%DepartmentName%')
+`).catch((e) => logger.error("Failed to fix nodal_officer_removed template", { stack: e.stack }));
+
+/* ── Seed additional notification templates (idempotent) ── */
+pool.query(`
+  INSERT INTO notification_templates
+    (event_id, label, email_subject, email_body, app_message,
+     email_enabled, app_enabled, role_group, category)
+  VALUES
+    (
+      'nodal_officer_activated',
+      'Nodal Officer Activated',
+      'Your Nodal Officer Assignment Has Been Reinstated — {REPORTING_YEAR}',
+      E'Hi {FULL_NAME},\n\nYour Nodal Officer assignment for {REPORTING_YEAR} on {APP_NAME} has been reinstated.\n\nInstitution: {INSTITUTION_NAME}\nScope: {SCOPE}\n\nPlease log in to access your responsibilities.\n\n{LOGIN_URL}\n\n— {APP_NAME} Team',
+      'Your Nodal Officer assignment for {REPORTING_YEAR} has been reinstated.',
+      true, true, 'system', 'Assignments'
+    ),
+    (
+      'department_activated',
+      'Department Activated',
+      'Department Reactivated — {DEPARTMENT_NAME}',
+      E'Hi {FULL_NAME},\n\nThe department "{DEPARTMENT_NAME}" at {INSTITUTION_NAME} on {APP_NAME} has been reactivated.\n\nDepartment: {DEPARTMENT_NAME}\nCode: {DEPARTMENT_CODE}\n\nUsers can now be assigned to this department.\n\n— {APP_NAME} Team',
+      'Department "{DEPARTMENT_NAME}" has been reactivated.',
+      true, true, 'system', 'Administration'
+    ),
+    (
+      'department_deactivated',
+      'Department Deactivated',
+      'Department Deactivated — {DEPARTMENT_NAME}',
+      E'Hi {FULL_NAME},\n\nThe department "{DEPARTMENT_NAME}" at {INSTITUTION_NAME} on {APP_NAME} has been deactivated.\n\nDepartment: {DEPARTMENT_NAME}\nCode: {DEPARTMENT_CODE}\n\nNo new users can be assigned to this department while inactive.\n\n— {APP_NAME} Team',
+      'Department "{DEPARTMENT_NAME}" has been deactivated.',
+      true, true, 'system', 'Administration'
+    ),
+    (
+      'institution_activated',
+      'Institution Activated',
+      'Institution Reactivated — {INSTITUTION_NAME}',
+      E'Hi {FULL_NAME},\n\n{INSTITUTION_NAME} has been reactivated on {APP_NAME}.\n\nInstitution: {INSTITUTION_NAME}\nCode: {INSTITUTION_CODE}\nLocation: {CITY}, {STATE}\n\nAll associated users and departments are now active.\n\n— {APP_NAME} Team',
+      'Institution "{INSTITUTION_NAME}" has been reactivated.',
+      true, true, 'system', 'Administration'
+    ),
+    (
+      'institution_deactivated',
+      'Institution Deactivated',
+      'Institution Deactivated — {INSTITUTION_NAME}',
+      E'Hi {FULL_NAME},\n\n{INSTITUTION_NAME} has been deactivated on {APP_NAME}.\n\nInstitution: {INSTITUTION_NAME}\nCode: {INSTITUTION_CODE}\nLocation: {CITY}, {STATE}\n\nAccess for users of this institution has been restricted.\n\n— {APP_NAME} Team',
+      'Institution "{INSTITUTION_NAME}" has been deactivated.',
+      true, true, 'system', 'Administration'
+    ),
+    (
+      'committee_activated',
+      'Committee Activated',
+      'Committee Reactivated — {COMMITTEE_TYPE} ({FINANCE_YEAR})',
+      E'Hi {FULL_NAME},\n\nThe {COMMITTEE_TYPE} committee for {FINANCE_YEAR} at {INSTITUTION_NAME} on {APP_NAME} has been reactivated.\n\nCommittee Type: {COMMITTEE_TYPE}\nFinance Year: {FINANCE_YEAR}\n\n— {APP_NAME} Team',
+      'Committee "{COMMITTEE_TYPE}" for {FINANCE_YEAR} has been reactivated.',
+      true, true, 'system', 'Administration'
+    ),
+    (
+      'committee_deactivated',
+      'Committee Deactivated',
+      'Committee Deactivated — {COMMITTEE_TYPE} ({FINANCE_YEAR})',
+      E'Hi {FULL_NAME},\n\nThe {COMMITTEE_TYPE} committee for {FINANCE_YEAR} at {INSTITUTION_NAME} on {APP_NAME} has been deactivated.\n\nCommittee Type: {COMMITTEE_TYPE}\nFinance Year: {FINANCE_YEAR}\n\n— {APP_NAME} Team',
+      'Committee "{COMMITTEE_TYPE}" for {FINANCE_YEAR} has been deactivated.',
+      true, true, 'system', 'Administration'
+    ),
+    (
+      'role_created',
+      'Role Created',
+      'New Role Created — {ROLE_DISPLAY_NAME}',
+      E'Hi {FULL_NAME},\n\nA new custom role has been created on {APP_NAME}.\n\nRole: {ROLE_DISPLAY_NAME}\nIdentifier: {ROLE_NAME}\nDescription: {ROLE_DESCRIPTION}\n\n— {APP_NAME} Team',
+      'New role "{ROLE_DISPLAY_NAME}" has been created.',
+      true, true, 'system', 'Administration'
+    )
+  ON CONFLICT (event_id) DO NOTHING
+`).catch((e) => logger.error("Failed to seed additional notification templates", { stack: e.stack }));
+
+/* ── Seed password reset + deadline reminder templates (idempotent) ── */
+pool.query(`
+  INSERT INTO notification_templates
+    (event_id, label, email_subject, email_body, app_message,
+     email_enabled, app_enabled, role_group, category)
+  VALUES
+    (
+      'password_reset',
+      'Password Reset',
+      'Reset Your Password — {APP_NAME}',
+      E'Hi {FULL_NAME},\n\nWe received a request to reset the password for your {APP_NAME} account.\n\nClick the button below to set a new password. This link is valid for 1 hour and can only be used once.\n\nIf you did not request a password reset, you can safely ignore this email — your password will not change.\n\n— {APP_NAME} Team',
+      'A password reset link has been sent to your email address.',
+      true, false, 'system', 'Security'
+    ),
+    (
+      'form_deadline_reminder',
+      'Form Deadline Reminder',
+      'Deadline Reminder: {FORM_NAME} — {DAYS_REMAINING} day(s) left',
+      E'Hi {FULL_NAME},\n\nThis is a reminder that the submission deadline for "{FORM_NAME}" is approaching on {APP_NAME}.\n\nForm: {FORM_NAME}\nDeadline: {DEADLINE}\nTime Remaining: {DAYS_REMAINING} day(s)\n\nPlease ensure all required submissions are completed before the deadline.\n\n— {APP_NAME} Team',
+      'Deadline reminder: "{FORM_NAME}" is due on {DEADLINE}.',
+      true, true, 'system', 'Forms'
+    )
+  ON CONFLICT (event_id) DO NOTHING
+`).catch((e) => logger.error("Failed to seed password_reset/deadline_reminder templates", { stack: e.stack }));
+
+/* ── Seed form creation notification templates (idempotent) ── */
+pool.query(`
+  INSERT INTO notification_templates
+    (event_id, label, email_subject, email_body, app_message,
+     email_enabled, app_enabled, role_group, category)
+  VALUES
+    (
+      'institute_form_created',
+      'Institute Form Created',
+      'New Form Created — {FORM_NAME}',
+      E'Hi {FULL_NAME},\n\nA new form has been created on {APP_NAME} for your institution.\n\nForm: {FORM_NAME}\nAcademic Year: {ACADEMIC_YEAR}\nInstitution: {INSTITUTION_NAME}\nCreated By: {CREATED_BY}\nType: {FORM_TYPE}\nDeadline: {DEADLINE}\n\nPlease log in to review and manage this form.\n\n— {APP_NAME} Team',
+      'New form "{FORM_NAME}" has been created for {ACADEMIC_YEAR}.',
+      true, true, 'institute_admin', 'Forms'
+    ),
+    (
+      'department_form_created',
+      'Department Form Created',
+      'New Department Form — {FORM_NAME}',
+      E'Hi {FULL_NAME},\n\nA new department form has been created on {APP_NAME}.\n\nForm: {FORM_NAME}\nDepartment: {DEPARTMENT_NAME}\nAcademic Year: {ACADEMIC_YEAR}\nCreated By: {CREATED_BY}\nDeadline: {DEADLINE}\n\nPlease log in to review and complete this form before the deadline.\n\n— {APP_NAME} Team',
+      'New department form "{FORM_NAME}" created for {DEPARTMENT_NAME}.',
+      true, true, 'department_admin', 'Forms'
+    )
+  ON CONFLICT (event_id) DO NOTHING
+`).catch((e) => logger.error("Failed to seed form creation notification templates", { stack: e.stack }));
+
+/* ── Seed academic year activation template ── */
+pool.query(`
+  INSERT INTO notification_templates
+    (event_id, label, email_subject, email_body, app_message,
+     email_enabled, app_enabled, role_group, category)
+  VALUES (
+    'academic_year_activated',
+    'Academic Year Activated',
+    'New Academic Year Activated — {ACADEMIC_YEAR}',
+    E'Hi {FULL_NAME},\n\nAcademic Year {ACADEMIC_YEAR} has been activated for {INSTITUTION_NAME} on {APP_NAME}.\n\n{ACTIVE_FORMS_COUNT} form(s) are now available for submission. Please review your assigned forms and complete submissions before their deadlines.\n\nLog in to get started: {LOGIN_URL}\n\n— {APP_NAME} Team',
+    'Academic Year {ACADEMIC_YEAR} activated. {ACTIVE_FORMS_COUNT} form(s) available.',
+    true, true, 'system', 'Academic Year'
+  )
+  ON CONFLICT (event_id) DO NOTHING
+`).catch((e) => logger.error("Failed to seed academic_year_activated template", { stack: e.stack }));
+
+/* ── Cleanup: remove all legacy/unused notification templates ── */
+pool.query(`
+  DELETE FROM notification_templates
+  WHERE event_id NOT IN (
+    'user_created', 'account_suspended', 'account_reactivated',
+    'password_reset', 'academic_year_activated', 'form_deadline_reminder',
+    'institution_created', 'institution_activated', 'institution_deactivated',
+    'role_created', 'user_role_updated',
+    'department_created', 'department_activated', 'department_deactivated',
+    'committee_created', 'committee_activated', 'committee_deactivated',
+    'institute_form_created',
+    'nodal_officer_assigned', 'nodal_officer_activated', 'nodal_officer_removed',
+    'department_form_created'
+  )
+`).catch((e) => logger.error("Failed to delete legacy notification templates", { stack: e.stack }));
+
+/* ── Fix role_group assignments for templates that were mis-seeded ── */
+pool.query(`
+  UPDATE notification_templates
+  SET role_group = 'system', category = 'User Management'
+  WHERE event_id = 'user_created' AND role_group != 'system'
+`).catch((e) => logger.error("Failed to fix user_created role_group", { stack: e.stack }));
+
+pool.query(`
+  UPDATE notification_templates
+  SET role_group = 'super_admin', category = 'Administration'
+  WHERE event_id IN ('institution_created', 'institution_activated', 'institution_deactivated', 'role_created')
+    AND role_group != 'super_admin'
+`).catch((e) => logger.error("Failed to fix institution/role_created role_groups", { stack: e.stack }));
+
+pool.query(`
+  UPDATE notification_templates
+  SET role_group = 'institute_admin', category = 'Administration'
+  WHERE event_id IN (
+    'department_created', 'department_activated', 'department_deactivated',
+    'committee_created', 'committee_activated', 'committee_deactivated'
+  )
+  AND role_group != 'institute_admin'
+`).catch((e) => logger.error("Failed to fix department/committee role_groups", { stack: e.stack }));
+
+pool.query(`
+  UPDATE notification_templates
+  SET role_group = 'department_admin', category = 'Team Management'
+  WHERE event_id = 'nodal_officer_activated' AND role_group != 'department_admin'
+`).catch((e) => logger.error("Failed to fix nodal_officer_activated role_group", { stack: e.stack }));
+
+/* ── Fix password_reset template content (legacy db dump had 30-min expiry) ── */
+pool.query(`
+  UPDATE notification_templates
+  SET email_subject = 'Reset Your Password — {APP_NAME}',
+      email_body    = E'Hi {FULL_NAME},\n\nWe received a request to reset your password for your {APP_NAME} account.\n\nClick the button below to reset your password. This link expires in 1 hour.\n\nIf you did not request a password reset, you can safely ignore this email.\n\n— {APP_NAME} Team'
+  WHERE event_id = 'password_reset'
+    AND email_body LIKE '%30 minutes%'
+`).catch((e) => logger.error("Failed to fix password_reset template content", { stack: e.stack }));
 
 /* ── audit_logs: ensure columns added after initial table creation ── */
 pool.query(`ALTER TABLE public.audit_logs ADD COLUMN IF NOT EXISTS browser_name VARCHAR(50)`)
@@ -279,6 +561,41 @@ const { ensureDepartmentFormTables, backfillFixedFormRoles } = require("./servic
 ensureDepartmentFormTables(pool)
   .then(() => backfillFixedFormRoles(pool))
   .catch((e) => logger.error("Failed to ensure department form tables", { stack: e.stack }));
+
+/* ── Email queue: create table + index, then start background worker ──
+   PostgreSQL-backed async email queue. The worker polls every 5 s using
+   FOR UPDATE SKIP LOCKED so multiple server instances remain safe.
+── */
+pool.query(`
+  CREATE TABLE IF NOT EXISTS email_queue (
+    id                UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    event_id          VARCHAR(50) NOT NULL,
+    recipient_email   TEXT        NOT NULL,
+    recipient_user_id UUID,
+    payload           JSONB       NOT NULL DEFAULT '{}',
+    status            VARCHAR(20) NOT NULL DEFAULT 'pending'
+                      CHECK (status IN ('pending','processing','sent','failed')),
+    attempts          INTEGER     NOT NULL DEFAULT 0,
+    max_attempts      INTEGER     NOT NULL DEFAULT 3,
+    last_attempted_at TIMESTAMPTZ,
+    last_error        TEXT,
+    scheduled_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    processed_at      TIMESTAMPTZ,
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+  )
+`)
+  .then(() => pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_email_queue_pending
+    ON email_queue (scheduled_at)
+    WHERE status = 'pending'
+  `))
+  .then(() => {
+    const { startEmailWorker } = require("./services/mailService");
+    startEmailWorker(pool);
+    const { startDeadlineReminderJob } = require("./services/deadlineReminderService");
+    startDeadlineReminderJob(pool);
+  })
+  .catch((e) => logger.error("Failed to initialise email queue", { stack: e.stack }));
 
 /* ── Contributor form assignment: ensure the additive form_assignments table ── */
 const { ensureFormAssignmentsTable } = require("./routes/formAssignments");

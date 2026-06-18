@@ -25,7 +25,7 @@ const express = require("express");
 const { verifyToken, requireRole } = require("../middleware/auth");
 const logger = require("../utils/logger");
 const { formatAcademicYear, parseStartYear, ensureFormArchivedIfUnclassified } = require("../services/academicYearService");
-const { sendAcademicYearActivatedEmail } = require("../services/mailService");
+const { enqueueEmail } = require("../services/mailService");
 
 const router = express.Router();
 router.use(verifyToken);
@@ -271,9 +271,52 @@ router.post("/", requireRole(MANAGE_ROLES), async (req, res) => {
 
     await client.query("COMMIT");
 
-    // Fire-and-forget activation email to all department HODs / Nodal Officers.
-    // Async, never blocks the response; each send is retried and audit-logged.
-    notifyAcademicYearActivated(pool, { institutionId, academicYear, activeFormsCount: active.length });
+    // Enqueue activation emails to all department HODs / Nodal Officers.
+    // Returns immediately; worker delivers each email asynchronously with retry.
+    setImmediate(async () => {
+      try {
+        const { rows: instRows } = await pool.query(
+          `SELECT institution_name FROM institutions WHERE institution_id = $1`,
+          [institutionId]
+        );
+        const institutionName = instRows[0]?.institution_name || "Your Institution";
+
+        const { rows: recipients } = await pool.query(
+          `SELECT DISTINCT u.id, u.email, u.full_name
+           FROM users u
+           JOIN user_roles ur ON ur.user_id = u.id
+           JOIN roles r       ON r.id = ur.role_id
+           WHERE u.institution_id = $1
+             AND u.account_status = 'ACTIVE'
+             AND u.email IS NOT NULL
+             AND r.name IN ('head_of_department', 'nodal_officer', 'department_admin')`,
+          [institutionId]
+        );
+
+        const loginUrl = process.env.APP_LOGIN_URL || "http://localhost:5173/login";
+
+        await Promise.all(
+          recipients.map((r) =>
+            enqueueEmail(pool, {
+              eventId:         "academic_year_activated",
+              recipientEmail:  r.email,
+              recipientUserId: r.id,
+              payload: {
+                full_name:          r.full_name,
+                institution_name:   institutionName,
+                academic_year:      academicYear,
+                active_forms_count: active.length,
+                login_url:          loginUrl,
+              },
+            })
+          )
+        );
+
+        logger.info(`Enqueued ${recipients.length} academic-year activation email(s) for ${academicYear}`);
+      } catch (err) {
+        logger.error("Failed to enqueue academic-year activation emails", { stack: err.stack });
+      }
+    });
 
     return res.json({ success: true, academicYear, masterId: masterRows[0]?.id, activeCount: active.length, archivedCount: archived.length });
   } catch (err) {
@@ -285,58 +328,6 @@ router.post("/", requireRole(MANAGE_ROLES), async (req, res) => {
   }
 });
 
-/* ─────────────────────────────────────────────────────────────────────
-   notifyAcademicYearActivated — async email fan-out + audit logging.
-   Recipients: every ACTIVE Head of Department / Nodal Officer in the
-   institution (resolved from user_roles — never hardcoded). Each email is
-   retried once on failure and written to academic_year_notification_logs.
-─────────────────────────────────────────────────────────────────────── */
-function notifyAcademicYearActivated(pool, { institutionId, academicYear, activeFormsCount }) {
-  setImmediate(async () => {
-    try {
-      const { rows: instRows } = await pool.query(
-        `SELECT institution_name FROM institutions WHERE institution_id = $1`,
-        [institutionId]
-      );
-      const institutionName = instRows[0]?.institution_name || "Your Institution";
-
-      // Department leads under this institution: Head of Department, Nodal
-      // Officer, and Department Admin (the department head in practice).
-      const { rows: recipients } = await pool.query(
-        `SELECT DISTINCT u.email
-         FROM users u
-         JOIN user_roles ur ON ur.user_id = u.id
-         JOIN roles r       ON r.id = ur.role_id
-         WHERE u.institution_id = $1
-           AND u.account_status = 'ACTIVE'
-           AND u.email IS NOT NULL
-           AND r.name IN ('head_of_department', 'nodal_officer', 'department_admin')`,
-        [institutionId]
-      );
-
-      for (const { email } of recipients) {
-        let ok = false, lastErr = null;
-        for (let attempt = 0; attempt < 2 && !ok; attempt++) {
-          try {
-            await sendAcademicYearActivatedEmail({ to: email, institutionName, academicYear, activeFormsCount });
-            ok = true;
-          } catch (e) {
-            lastErr = e.message || String(e);
-          }
-        }
-        await pool.query(
-          `INSERT INTO academic_year_notification_logs
-             (institution_id, academic_year, recipient, status, sent_at, error)
-           VALUES ($1, $2, $3, $4, $5, $6)`,
-          [institutionId, academicYear, email, ok ? "sent" : "failed", ok ? new Date() : null, ok ? null : lastErr]
-        );
-      }
-      logger.info(`Academic year ${academicYear} activation emails processed for ${recipients.length} recipient(s).`);
-    } catch (err) {
-      logger.error("notifyAcademicYearActivated failed", { stack: err.stack });
-    }
-  });
-}
 
 /* ─────────────────────────────────────────────────────────────────────
    PATCH /api/academic-years/:academicYear/lock   Body: { locked: boolean }
@@ -634,7 +625,7 @@ router.patch("/:academicYear/activate", requireRole(MANAGE_ROLES), async (req, r
 /* ─────────────────────────────────────────────────────────────────────
    GET /api/academic-years/:academicYear/notifications
    Activation-email audit for this institution + year (for the Mail Status UI):
-   per-recipient status (sent/failed) + a rollup summary.
+   per-recipient status + a rollup summary, sourced from email_queue.
 ─────────────────────────────────────────────────────────────────────── */
 router.get("/:academicYear/notifications", async (req, res) => {
   const pool = req.app.locals.pool;
@@ -645,16 +636,25 @@ router.get("/:academicYear/notifications", async (req, res) => {
       return res.status(400).json({ success: false, message: "Institution ID required." });
 
     const { rows } = await pool.query(
-      `SELECT recipient, status, error, sent_at, created_at
-       FROM academic_year_notification_logs
-       WHERE institution_id = $1 AND academic_year = $2
-       ORDER BY created_at DESC`,
-      [institutionId, academicYear]
+      `SELECT eq.recipient_email AS recipient,
+              eq.status,
+              eq.last_error      AS error,
+              eq.processed_at    AS sent_at,
+              eq.created_at
+       FROM   email_queue eq
+       WHERE  eq.event_id = 'academic_year_activated'
+         AND  eq.payload->>'academic_year' = $1
+         AND  eq.recipient_email IN (
+               SELECT u.email FROM users u WHERE u.institution_id = $2
+             )
+       ORDER  BY eq.created_at DESC`,
+      [academicYear, institutionId]
     );
     const summary = {
-      total:  rows.length,
-      sent:   rows.filter((r) => r.status === "sent").length,
-      failed: rows.filter((r) => r.status === "failed").length,
+      total:   rows.length,
+      sent:    rows.filter((r) => r.status === "sent").length,
+      failed:  rows.filter((r) => r.status === "failed").length,
+      pending: rows.filter((r) => r.status === "pending" || r.status === "processing").length,
     };
     return res.json({ success: true, academicYear, summary, logs: rows });
   } catch (err) {
@@ -665,8 +665,8 @@ router.get("/:academicYear/notifications", async (req, res) => {
 
 /* ─────────────────────────────────────────────────────────────────────
    POST /api/academic-years/:academicYear/notifications/retry
-   Re-sends ONLY the failed activation emails for this institution + year and
-   updates their log rows. Returns the refreshed summary.
+   Resets all failed email_queue jobs for this institution + year back to
+   'pending' so the worker picks them up again. Returns a queue summary.
 ─────────────────────────────────────────────────────────────────────── */
 router.post("/:academicYear/notifications/retry", requireRole(MANAGE_ROLES), async (req, res) => {
   const pool = req.app.locals.pool;
@@ -676,51 +676,39 @@ router.post("/:academicYear/notifications/retry", requireRole(MANAGE_ROLES), asy
     if (!institutionId)
       return res.status(400).json({ success: false, message: "Institution ID required." });
 
-    const { rows: failed } = await pool.query(
-      `SELECT id, recipient FROM academic_year_notification_logs
-       WHERE institution_id = $1 AND academic_year = $2 AND status = 'failed'`,
-      [institutionId, academicYear]
+    // Reset failed queue jobs for this year back to pending (max_attempts reset).
+    const { rowCount: retried } = await pool.query(
+      `UPDATE email_queue
+       SET    status       = 'pending',
+              attempts     = 0,
+              last_error   = NULL,
+              scheduled_at = now()
+       WHERE  event_id = 'academic_year_activated'
+         AND  status   = 'failed'
+         AND  payload->>'academic_year' = $1
+         AND  recipient_email IN (
+               SELECT u.email FROM users u WHERE u.institution_id = $2
+             )`,
+      [academicYear, institutionId]
     );
 
-    if (failed.length) {
-      const { rows: instRows } = await pool.query(
-        `SELECT institution_name FROM institutions WHERE institution_id = $1`,
-        [institutionId]
-      );
-      const institutionName = instRows[0]?.institution_name || "Your Institution";
-      const { rows: cfgRows } = await pool.query(
-        `SELECT active_forms_json FROM academic_year_form_config
-         WHERE institution_id = $1 AND academic_year = $2`,
-        [institutionId, academicYear]
-      );
-      const activeFormsCount = Array.isArray(cfgRows[0]?.active_forms_json)
-        ? cfgRows[0].active_forms_json.length : 0;
-
-      for (const row of failed) {
-        let ok = false, errMsg = null;
-        try {
-          await sendAcademicYearActivatedEmail({ to: row.recipient, institutionName, academicYear, activeFormsCount });
-          ok = true;
-        } catch (e) { errMsg = e.message || String(e); }
-        await pool.query(
-          `UPDATE academic_year_notification_logs
-           SET status = $2, sent_at = $3, error = $4 WHERE id = $1`,
-          [row.id, ok ? "sent" : "failed", ok ? new Date() : null, ok ? null : errMsg]
-        );
-      }
-    }
-
+    // Summary from the queue for this year.
     const { rows: all } = await pool.query(
-      `SELECT status FROM academic_year_notification_logs
-       WHERE institution_id = $1 AND academic_year = $2`,
-      [institutionId, academicYear]
+      `SELECT status FROM email_queue
+       WHERE  event_id = 'academic_year_activated'
+         AND  payload->>'academic_year' = $1
+         AND  recipient_email IN (
+               SELECT u.email FROM users u WHERE u.institution_id = $2
+             )`,
+      [academicYear, institutionId]
     );
     const summary = {
-      total:  all.length,
-      sent:   all.filter((r) => r.status === "sent").length,
-      failed: all.filter((r) => r.status === "failed").length,
+      total:   all.length,
+      sent:    all.filter((r) => r.status === "sent").length,
+      failed:  all.filter((r) => r.status === "failed").length,
+      pending: all.filter((r) => r.status === "pending").length,
     };
-    return res.json({ success: true, retried: failed.length, summary });
+    return res.json({ success: true, retried, summary });
   } catch (err) {
     logger.error("POST /api/academic-years/:academicYear/notifications/retry", { stack: err.stack });
     return res.status(500).json({ success: false, message: "Failed to retry notifications." });

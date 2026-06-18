@@ -9,6 +9,7 @@ const { randomUUID } = require("crypto");
 
 const { verifyToken, requireRole } = require("../middleware/auth");
 const { writeAuditLog } = require("../utils/audit");
+const { enqueueEmail } = require("../services/mailService");
 
 const logger            = require("../utils/logger");
 const { getLogContext } = logger;
@@ -805,6 +806,63 @@ router.post(
         message:    `Department "${newDept.name}" created`,
       });
 
+      // Enqueue department_created notification (fire-and-forget).
+      // Super Admin → notify all active Institute Admins of the institution.
+      // Institute Admin → confirm to themselves only.
+      setImmediate(async () => {
+        try {
+          const { rows: instRows } = await pool.query(
+            `SELECT institution_name FROM institutions WHERE institution_id = $1`,
+            [institution_id]
+          );
+          const institutionName = instRows[0]?.institution_name || "Your Institution";
+
+          let recipients;
+          if (isOnlyInstAdmin(req)) {
+            const { rows } = await pool.query(
+              `SELECT id, full_name, email FROM users WHERE id = $1`,
+              [createdBy]
+            );
+            recipients = rows;
+          } else {
+            const { rows } = await pool.query(
+              `SELECT DISTINCT u.id, u.full_name, u.email
+               FROM users u
+               JOIN user_roles ur ON ur.user_id = u.id
+               JOIN roles r       ON r.id = ur.role_id
+               WHERE u.institution_id = $1
+                 AND u.account_status = 'ACTIVE'
+                 AND u.email IS NOT NULL
+                 AND r.name = 'institute_admin'
+                 AND ur.revoked_at IS NULL
+                 AND (ur.expires_at IS NULL OR ur.expires_at > now())`,
+              [institution_id]
+            );
+            recipients = rows;
+          }
+
+          await Promise.all(
+            recipients.map((r) =>
+              enqueueEmail(pool, {
+                eventId:         "department_created",
+                recipientEmail:  r.email,
+                recipientUserId: r.id,
+                payload: {
+                  full_name:        r.full_name,
+                  department_name:  newDept.name,
+                  department_code:  newDept.code,
+                  institution_name: institutionName,
+                },
+              })
+            )
+          );
+
+          logger.info(`Enqueued department_created notifications for ${recipients.length} recipient(s) — dept "${newDept.name}"`);
+        } catch (err) {
+          logger.error("Failed to enqueue department_created email", { stack: err.stack });
+        }
+      });
+
       return res.status(201).json({
         success: true,
         message: `Department "${newDept.name}" created successfully.`,
@@ -984,6 +1042,49 @@ router.put(
         message:       `Department "${updated.name}" updated`,
       });
 
+      // Notify Institute Admins if the status was toggled.
+      if (changedFields.includes("status")) {
+        const deptEventId = updated.status === "ACTIVE" ? "department_activated" : "department_deactivated";
+        setImmediate(async () => {
+          try {
+            const { rows: instRows } = await pool.query(
+              `SELECT institution_name FROM institutions WHERE institution_id = $1`, [existing.institution_id]
+            );
+            const institutionName = instRows[0]?.institution_name || "Your Institution";
+
+            const { rows: admins } = await pool.query(
+              `SELECT DISTINCT u.id, u.full_name, u.email
+               FROM users u
+               JOIN user_roles ur ON ur.user_id = u.id
+               JOIN roles r       ON r.id = ur.role_id
+               WHERE u.institution_id = $1
+                 AND u.account_status = 'ACTIVE'
+                 AND r.name = 'institute_admin'
+                 AND ur.revoked_at IS NULL
+                 AND (ur.expires_at IS NULL OR ur.expires_at > now())`,
+              [existing.institution_id]
+            );
+
+            await Promise.all(admins.map((a) =>
+              enqueueEmail(pool, {
+                eventId:         deptEventId,
+                recipientEmail:  a.email,
+                recipientUserId: a.id,
+                payload: {
+                  full_name:        a.full_name,
+                  department_name:  updated.name,
+                  department_code:  updated.code,
+                  institution_name: institutionName,
+                },
+              })
+            ));
+            if (admins.length) logger.info(`Enqueued ${deptEventId} to ${admins.length} admin(s) for dept "${updated.name}"`);
+          } catch (err) {
+            logger.error(`Failed to enqueue ${deptEventId} email`, { stack: err.stack });
+          }
+        });
+      }
+
       return res.json({
         success: true,
         message: `Department "${updated.name}" updated successfully.`,
@@ -1022,7 +1123,7 @@ router.patch(
 
     try {
       const { rows: deptRows } = await pool.query(
-        `SELECT department_id, name, status
+        `SELECT department_id, name, code, status
          FROM   departments
          WHERE  department_id = $1 AND institution_id = $2`,
         [departmentId, institution_id]
@@ -1062,6 +1163,46 @@ router.patch(
         changedFields: ["status"],
         status:        "SUCCESS",
         message:       `Department "${dept.name}" deactivated`,
+      });
+
+      // Notify Institute Admins of the institution (fire-and-forget).
+      setImmediate(async () => {
+        try {
+          const { rows: instRows } = await pool.query(
+            `SELECT institution_name FROM institutions WHERE institution_id = $1`, [institution_id]
+          );
+          const institutionName = instRows[0]?.institution_name || "Your Institution";
+
+          const { rows: admins } = await pool.query(
+            `SELECT DISTINCT u.id, u.full_name, u.email
+             FROM users u
+             JOIN user_roles ur ON ur.user_id = u.id
+             JOIN roles r       ON r.id = ur.role_id
+             WHERE u.institution_id = $1
+               AND u.account_status = 'ACTIVE'
+               AND r.name = 'institute_admin'
+               AND ur.revoked_at IS NULL
+               AND (ur.expires_at IS NULL OR ur.expires_at > now())`,
+            [institution_id]
+          );
+
+          await Promise.all(admins.map((a) =>
+            enqueueEmail(pool, {
+              eventId:         "department_deactivated",
+              recipientEmail:  a.email,
+              recipientUserId: a.id,
+              payload: {
+                full_name:        a.full_name,
+                department_name:  dept.name,
+                department_code:  dept.code,
+                institution_name: institutionName,
+              },
+            })
+          ));
+          if (admins.length) logger.info(`Enqueued department_deactivated to ${admins.length} admin(s) for dept "${dept.name}"`);
+        } catch (err) {
+          logger.error("Failed to enqueue department_deactivated email (PATCH)", { stack: err.stack });
+        }
       });
 
       return res.json({ success: true, message: `"${dept.name}" has been deactivated.` });

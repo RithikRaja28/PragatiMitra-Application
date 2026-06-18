@@ -33,6 +33,14 @@ const refreshLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+const forgotPasswordLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  message: { success: false, message: "Too many reset requests. Try again after 15 minutes." },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 /* ── Helpers ── */
 function signAccessToken(payload) {
   return jwt.sign(payload, process.env.JWT_SECRET, {
@@ -563,6 +571,162 @@ router.post("/change-password", verifyToken, async (req, res) => {
 
   } catch (err) {
     logger.error("POST /api/auth/change-password failed", { ...getLogContext(req), stack: err.stack });
+    return res.status(500).json({ success: false, message: "Internal server error." });
+  }
+});
+
+/* ── POST /api/auth/forgot-password ──
+   Generates a single-use 1-hour reset token and queues the reset email.
+   Always returns the same success message to prevent email enumeration. ── */
+router.post("/forgot-password", forgotPasswordLimiter, async (req, res) => {
+  const pool = req.app.locals.pool;
+  const { email } = req.body;
+
+  const safeSuccess = () => res.json({
+    success: true,
+    message: "If an account with that email exists, a reset link has been sent.",
+  });
+
+  if (!email || typeof email !== "string")
+    return res.status(400).json({ success: false, message: "Email is required." });
+
+  try {
+    const normalizedEmail = email.trim().toLowerCase();
+
+    const { rows } = await pool.query(
+      `SELECT id, full_name, email, account_status FROM users WHERE LOWER(email) = $1`,
+      [normalizedEmail]
+    );
+
+    if (!rows.length || rows[0].account_status !== "ACTIVE") {
+      await writeAuditLog(req, {
+        actionType: "PASSWORD_RESET_REQUESTED",
+        entityType: "USER",
+        entityId:   null,
+        status:     "INFO",
+        message:    `Reset requested for ${normalizedEmail} — not found or inactive`,
+        metadata:   { email: normalizedEmail },
+      });
+      return safeSuccess();
+    }
+
+    const user = rows[0];
+
+    // Invalidate any outstanding unused tokens for this user before issuing a new one.
+    await pool.query(
+      `UPDATE password_reset_tokens
+       SET used_at = now()
+       WHERE user_id = $1 AND used_at IS NULL AND expires_at > now()`,
+      [user.id]
+    );
+
+    const rawToken  = crypto.randomBytes(32).toString("hex");
+    const tokenHash = hashToken(rawToken);
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+
+    await pool.query(
+      `INSERT INTO password_reset_tokens (user_id, token_hash, expires_at)
+       VALUES ($1, $2, $3)`,
+      [user.id, tokenHash, expiresAt]
+    );
+
+    const resetUrl = `${process.env.APP_RESET_URL || "http://localhost:5173/reset-password"}?token=${rawToken}`;
+
+    const { enqueueEmail } = require("../services/mailService");
+    await enqueueEmail(pool, {
+      eventId:         "password_reset",
+      recipientEmail:  user.email,
+      recipientUserId: user.id,
+      payload: { full_name: user.full_name, reset_url: resetUrl },
+    });
+
+    await writeAuditLog(req, {
+      actionType: "PASSWORD_RESET_REQUESTED",
+      entityType: "USER",
+      entityId:   user.id,
+      status:     "SUCCESS",
+      message:    `Password reset email queued for ${user.email}`,
+    });
+
+    return safeSuccess();
+  } catch (err) {
+    logger.error("POST /api/auth/forgot-password failed", { ...getLogContext(req), stack: err.stack });
+    return safeSuccess(); // still return success to prevent enumeration
+  }
+});
+
+/* ── POST /api/auth/reset-password ──
+   Validates token, sets new password, marks token consumed — all in one transaction. ── */
+router.post("/reset-password", async (req, res) => {
+  const pool = req.app.locals.pool;
+  const { token, newPassword } = req.body;
+
+  if (!token || typeof token !== "string")
+    return res.status(400).json({ success: false, message: "Reset token is required." });
+  if (!newPassword || typeof newPassword !== "string")
+    return res.status(400).json({ success: false, message: "New password is required." });
+  if (newPassword.length < 8)
+    return res.status(400).json({ success: false, message: "Password must be at least 8 characters." });
+
+  try {
+    const tokenHash = hashToken(token.trim());
+
+    const { rows } = await pool.query(
+      `SELECT prt.id, prt.user_id, prt.expires_at, prt.used_at,
+              u.email, u.full_name, u.account_status
+       FROM password_reset_tokens prt
+       JOIN users u ON u.id = prt.user_id
+       WHERE prt.token_hash = $1`,
+      [tokenHash]
+    );
+
+    if (!rows.length)
+      return res.status(400).json({ success: false, message: "Invalid or expired reset link." });
+
+    const rec = rows[0];
+
+    if (rec.used_at)
+      return res.status(400).json({ success: false, message: "This reset link has already been used." });
+    if (new Date(rec.expires_at) < new Date())
+      return res.status(400).json({ success: false, message: "This reset link has expired. Please request a new one." });
+    if (rec.account_status !== "ACTIVE")
+      return res.status(403).json({ success: false, message: "This account is not active." });
+
+    const newHash = await bcrypt.hash(newPassword, 12);
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query(
+        `UPDATE users
+         SET password_hash = $1, must_change_password = false, is_temporary_password = false
+         WHERE id = $2`,
+        [newHash, rec.user_id]
+      );
+      await client.query(
+        `UPDATE password_reset_tokens SET used_at = now() WHERE id = $1`,
+        [rec.id]
+      );
+      await client.query("COMMIT");
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
+
+    await writeAuditLog(req, {
+      actionType:     "PASSWORD_RESET_COMPLETED",
+      entityType:     "USER",
+      entityId:       rec.user_id,
+      overrideUserId: rec.user_id,
+      status:         "SUCCESS",
+      message:        `Password successfully reset for ${rec.email}`,
+    });
+
+    return res.json({ success: true, message: "Password reset successfully. You can now log in." });
+  } catch (err) {
+    logger.error("POST /api/auth/reset-password failed", { ...getLogContext(req), stack: err.stack });
     return res.status(500).json({ success: false, message: "Internal server error." });
   }
 });
