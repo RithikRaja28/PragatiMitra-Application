@@ -476,7 +476,7 @@ function ImportProgressPanel({ total, processed, remaining, percent, chunksDone,
 /* ════════════════════════════════════════════════════════════════════
    FormImportWizard — with dept selection, rendered via ModalPortal
 ════════════════════════════════════════════════════════════════════ */
-function FormImportWizard({ formName, onClose, onDone, apiFetch, getToken }) {
+function FormImportWizard({ formName, onClose, onDone, apiFetch, getToken, selectedYear = null }) {
   const [step, setStep] = useState(1);
   const fileRef = useRef(null);
 
@@ -525,11 +525,17 @@ function FormImportWizard({ formName, onClose, onDone, apiFetch, getToken }) {
     setParsing(true); setParseError("");
     try {
       const fd = new FormData(); fd.append("file", file);
+      if (selectedYear != null) fd.append("year", selectedYear);
       const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
       const token = getToken();
+      // Bug 7 — send the selected academic year (header + form field) so the backend
+      // year-scoped assignment guard blocks parsing an import for an unassigned year.
       const res = await fetch(`${API_BASE}/api/form-data/${formName}/import/parse`, {
         method: "POST", body: fd,
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...(selectedYear != null ? { "X-Academic-Year": String(selectedYear) } : {}),
+        },
       });
       const data = await res.json();
       if (!data.success) { setParseError(data.message || "Parse failed."); return; }
@@ -578,7 +584,15 @@ function FormImportWizard({ formName, onClose, onDone, apiFetch, getToken }) {
     try {
       const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
       const token = getToken();
-      const res = await fetch(`${API_BASE}/api/form-data/${formName}/export/sample?format=${format}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+      const res = await fetch(`${API_BASE}/api/form-data/${formName}/export/sample?format=${format}`, {
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          // Bug 7 — carry the selected academic year so the year-scoped assignment
+          // guard authorizes the contributor for THIS year (else it falls back to the
+          // calendar year and would wrongly block the sample for their assigned year).
+          ...(selectedYear != null ? { "X-Academic-Year": String(selectedYear) } : {}),
+        },
+      });
       if (!res.ok) return;
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
@@ -798,7 +812,7 @@ function useDropDirection(open, estimatedHeight = 240) {
 }
 
 /* ── Export dropdown with progress bar ── */
-function ExportDropdown({ formName, accessToken, language = "en" }) {
+function ExportDropdown({ formName, accessToken, language = "en", selectedYear = null }) {
   const [open, setOpen]                   = useState(false);
   const [exporting, setExporting]         = useState(null);
   const [exportPercent, setExportPercent] = useState(0);
@@ -822,9 +836,12 @@ function ExportDropdown({ formName, accessToken, language = "en" }) {
   }
 
   const langTag = language !== "en" ? `_${language}` : "";
+  // Bug 7 — carry the selected academic year so the backend can enforce the
+  // year-scoped assignment (export of an unassigned year is blocked server-side).
+  const yearQ = selectedYear != null ? `&year=${selectedYear}` : "";
   const options = [
-    { key: "csv",  label: "Export as CSV",  action: () => download(`/api/form-data/${formName}/export?format=csv&language=${language}`,  `${formName}${langTag}_export.csv`,  "csv")  },
-    { key: "xlsx", label: "Export as Excel", action: () => download(`/api/form-data/${formName}/export?format=xlsx&language=${language}`, `${formName}${langTag}_export.xlsx`, "xlsx") },
+    { key: "csv",  label: "Export as CSV",  action: () => download(`/api/form-data/${formName}/export?format=csv&language=${language}${yearQ}`,  `${formName}${langTag}_export.csv`,  "csv")  },
+    { key: "xlsx", label: "Export as Excel", action: () => download(`/api/form-data/${formName}/export?format=xlsx&language=${language}${yearQ}`, `${formName}${langTag}_export.xlsx`, "xlsx") },
   ];
 
   const [wrapRef, openUp] = useDropDirection(open && !exporting, 130);
@@ -1517,6 +1534,7 @@ export default function FormDataPage() {
           formName={formEntity.form_name}
           apiFetch={apiFetch}
           getToken={getToken}
+          selectedYear={selectedYear}
           onClose={() => setImportOpen(false)}
           onDone={() => { setImportOpen(false); showToast("Import complete!"); loadRecords(formEntity); }}
         />
@@ -1595,7 +1613,7 @@ export default function FormDataPage() {
               sortDir={sortDir}
               onSort={(dir) => { setSortDir(dir); setSortField("created_at"); setCurrentPage(1); setSelectedIds(new Set()); }}
             />
-            <ExportDropdown formName={formEntity?.form_name} accessToken={accessToken} language={lang} />
+            <ExportDropdown formName={formEntity?.form_name} accessToken={accessToken} language={lang} selectedYear={selectedYear} />
             <button
               onClick={() => { if (!readOnly) setImportOpen(true); }}
               disabled={readOnly}

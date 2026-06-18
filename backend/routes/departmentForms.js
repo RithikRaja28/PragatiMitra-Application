@@ -497,6 +497,35 @@ router.put("/:id/schema", requireRole(WRITE_ROLES), async (req, res) => {
 
     const table = deptRecordsTable(form.department_id, form.form_name);
     const currentNames = new Set((form.schema?.fields || []).map((f) => f.column_name));
+
+    // Bug 8 — a previously-used (now deleted) column name must not be reintroduced:
+    // the underlying table column still holds the old data (ADD COLUMN IF NOT EXISTS
+    // is a no-op), so a new field reusing that name would silently expose orphaned
+    // values. Reject it — mirrors the institution PUT /schema guard. Renames are a
+    // label-only change (column_name is locked in the builder), so this never fires
+    // for a genuine rename.
+    const usedColumnNames = new Set(form.used_column_names || []);
+    const excludedIncoming = new Set(schema.excluded_fixed_columns || []);
+    const reused = (schema.fields || [])
+      .filter((f) => !excludedIncoming.has(f.column_name))
+      .map((f) => f.column_name?.trim().toLowerCase().replace(/\s+/g, "_"))
+      .filter((col) => col && usedColumnNames.has(col) && !currentNames.has(col));
+    if (reused.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Column name(s) were previously used and cannot be reused: ${reused.join(", ")}. Choose a different name to avoid exposing old data.`,
+      });
+    }
+
+    // Bug 9 — an existing field's TYPE is immutable: its records-table column was
+    // created with that type and is never ALTERed, so a changed type would corrupt
+    // stored data. Force already-saved fields back to their stored type (the builder
+    // locks this in the UI; this is the defense-in-depth backstop).
+    const existingTypeByCol = new Map((form.schema?.fields || []).map((f) => [f.column_name, f.type]));
+    for (const f of (schema.fields || [])) {
+      if (existingTypeByCol.has(f.column_name)) f.type = existingTypeByCol.get(f.column_name);
+    }
+
     const mergedUsed = Array.from(new Set([...(form.used_column_names || []), ...collectColumnNames(schema.fields)]));
 
     const client = await pool.connect();

@@ -24,7 +24,10 @@
       "Bash(node -c services/departmentContext.js)",
       "Bash(node -c services/departmentFormService.js)",
       "Bash(node -c routes/formAssignments.js)",
-      "Bash(node -c routes/nodalOfficerAssignments.js)"
+      "Bash(node -c routes/nodalOfficerAssignments.js)",
+      "Bash(node -c middleware/auth.js)",
+      "Bash(node -c routes/users.js)",
+      "Bash(node -c routes/importExport.js)"
     ]
   }
 }

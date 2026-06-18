@@ -308,10 +308,8 @@ router.post(
                 `INSERT INTO user_roles (user_id, role_id, assigned_by) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING`,
                 [existingId, user.role_id, req.user.userId]
               );
-              /* Role changed → invalidate the user's sessions so the new role takes
-                 effect on their next request (roles live in the short-lived JWT).
-                 Inside the import transaction → atomic with the role change. */
-              await client.query(`DELETE FROM sessions WHERE user_id = $1`, [existingId]);
+              /* Role changes take effect immediately via the per-request role
+                 refresh in verifyToken (Bug 5) — no forced re-login needed. */
             }
             success++;
             continue;

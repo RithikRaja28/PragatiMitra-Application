@@ -244,19 +244,26 @@ function FieldRow({ field, index, total, isFixed, isEdit, onChange, onRemove, on
             })()}
           </div>
 
-          {/* field type */}
+          {/* field type — locked once saved (Bug 9): the records table column is
+              created with this type and never ALTERed, so changing it would make
+              the schema disagree with stored data and corrupt new writes. */}
           <div>
             <label style={S.label}>Field Type</label>
             <select
               style={S.select(false)}
               value={field.type}
               onChange={(e) => onChange(index, "type", e.target.value)}
-              disabled={isFixed}
+              disabled={lockColumnName}
             >
               {FIELD_TYPES.map((t) => (
                 <option key={t.value} value={t.value}>{t.label}</option>
               ))}
             </select>
+            {lockColumnName && !isFixed && (
+              <div style={hintStyle}>
+                The field type is locked after creation to keep existing records readable.
+              </div>
+            )}
           </div>
 
           {/* language labels — one input per supported language */}

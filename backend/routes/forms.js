@@ -873,6 +873,18 @@ router.put(
           });
         }
 
+        // Bug 9 — an existing field's TYPE is immutable: its records-table column
+        // was created with that type and is never ALTERed, so accepting a changed
+        // type would make the schema disagree with the stored data and corrupt new
+        // writes. Force each already-saved field back to its stored type (the
+        // builder locks this in the UI; this is the defense-in-depth backstop).
+        const existingTypeByCol = new Map(
+          (currentRow.schema?.fields || []).map((f) => [f.column_name, f.type])
+        );
+        for (const f of incomingFields) {
+          if (existingTypeByCol.has(f.column_name)) f.type = existingTypeByCol.get(f.column_name);
+        }
+
         // Merge new column names into used_column_names
         const newColNames = collectColumnNames(incomingFields);
         const mergedUsed = Array.from(new Set([...usedColumnNames, ...newColNames]));
@@ -1157,10 +1169,12 @@ router.put(
         return res.status(403).json({ success: false, message: ayLock.message });
 
       // Issue 5 — deadlines are scoped to the SELECTED academic year (X-Academic-
-      // Year header). When a year is in context we write the per-year row and clear
-      // the legacy form-wide deadline (virtual migration) so it no longer leaks into
-      // other years. With NO year context (e.g. a non-adopter institution) we keep
-      // the original form-wide behavior — fully backward compatible.
+      // Year header). When a year is in context we write ONLY that year's per-year
+      // row and leave every other year — and the legacy form-wide row — untouched.
+      // The legacy form_lock_config deadline is preserved as the FALLBACK for years
+      // that have no per-year override (read, never deleted — Bug 6 isolation). With
+      // NO year context (non-adopter institution) we keep the original form-wide
+      // behavior — fully backward compatible.
       const headerYear = Number(req.headers["x-academic-year"]);
       const yearScoped = Number.isInteger(headerYear);
 
@@ -1189,19 +1203,11 @@ router.put(
           [formName, institutionId, headerYear, newDeadline]
         ));
 
-        // Virtual migration: drop the legacy form-wide deadline + its auto-lock so
-        // it stops blocking other years. A MANUAL admin lock (auto_locked=false) is
-        // preserved.
-        await pool.query(
-          `UPDATE form_lock_config
-           SET deadline_at = NULL,
-               auto_locked = false,
-               is_locked   = CASE WHEN auto_locked THEN false ELSE is_locked END,
-               locked_at   = CASE WHEN auto_locked THEN NULL  ELSE locked_at END,
-               updated_at  = now()
-           WHERE form_name = $1 AND institution_id = $2`,
-          [formName, institutionId]
-        );
+        // NOTE (Bug 6): we intentionally do NOT touch form_lock_config here. The
+        // previous "virtual migration" nulled the legacy form-wide deadline on every
+        // year-scoped save, which silently erased the fallback deadline that every
+        // OTHER year (and the global default) relies on. Each year now owns its own
+        // row; the legacy row is the untouched fallback for years without an override.
       } else {
         const { rows: existingDeadlineRows } = await pool.query(
           `SELECT deadline_at FROM form_lock_config WHERE form_name = $1 AND institution_id = $2`,

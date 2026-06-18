@@ -13,7 +13,7 @@ const { getReadUrl } = require("../utils/s3");
 const { getAcademicYearLockBlockForReq, getFormArchiveBlockForReq } = require("../services/academicYearService");
 const { assertFormDomainAccess } = require("../services/domainService");
 const { resolveEffectiveDepartment } = require("../services/departmentContext");
-const { isFormAssignedAnyYear, isContributorOnly } = require("./formAssignments");
+const { isFormAssigned, isContributorOnly } = require("./formAssignments");
 
 /* 7 days — maximum presigned URL lifetime for long-term IAM credentials */
 const DOC_URL_TTL = 7 * 24 * 3600;
@@ -55,11 +55,16 @@ router.param("formName", async (req, res, next, formName) => {
     const acc = await assertFormDomainAccess(pool, req, formName);
     if (!acc.allowed) return res.status(acc.status || 403).json({ success: false, message: acc.message });
 
-    // Contributor: only their assigned forms (export downloads may not carry the
-    // year header, so gate on "assigned in any active year" here).
+    // Contributor: only their assigned forms FOR THE SELECTED ACADEMIC YEAR (Bug 7).
+    // Import/export authorization must be year-scoped exactly like record entry —
+    // an assignment is User + Form + Academic Year, not User + Form. Resolve the
+    // year identically to formData.js's param guard (query → X-Academic-Year header
+    // → body → current year) so a contributor assigned only for 2025 cannot
+    // export/import while the top bar is on 2027.
     if (isContributorOnly(req)) {
-      const ok = await isFormAssignedAnyYear(pool, req.user.userId, formName);
-      if (!ok) return res.status(403).json({ success: false, message: "This form is not assigned to you." });
+      const year = Number(req.query.year) || Number(req.get("X-Academic-Year")) || Number(req.body?.year) || new Date().getFullYear();
+      const ok = await isFormAssigned(pool, req.user.userId, formName, year);
+      if (!ok) return res.status(403).json({ success: false, message: "This form is not assigned to you for the selected academic year." });
     }
     return next();
   } catch (err) {

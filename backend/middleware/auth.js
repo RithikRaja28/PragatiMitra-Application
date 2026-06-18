@@ -35,7 +35,16 @@ async function verifyToken(req, res, next) {
       `SELECT u.account_status,
               CASE WHEN $1::uuid IS NULL THEN TRUE
                    ELSE EXISTS (SELECT 1 FROM sessions s WHERE s.id = $1 AND s.user_id = u.id)
-              END AS session_ok
+              END AS session_ok,
+              COALESCE(
+                (SELECT array_agg(r.name)
+                   FROM user_roles ur
+                   JOIN roles r ON r.id = ur.role_id
+                  WHERE ur.user_id = u.id
+                    AND ur.revoked_at IS NULL
+                    AND (ur.expires_at IS NULL OR ur.expires_at > now())),
+                ARRAY[]::text[]
+              ) AS db_roles
          FROM users u
         WHERE u.id = $2`,
       [req.user.sessionId || null, req.user.userId]
@@ -55,6 +64,26 @@ async function verifyToken(req, res, next) {
     // A login elsewhere / remote logout invalidates this token immediately.
     if (rows[0].session_ok === false)
       return res.status(401).json({ success: false, message: "Session is no longer valid. Please sign in again." });
+
+    /* ── Bug 5: evaluate the CURRENT DB role on EVERY request ──────────────
+       Authorization must reflect the live user_roles, not the login-time JWT
+       snapshot. Re-read the base roles fresh here and overwrite the roles claim,
+       so a downgrade/upgrade takes effect on the very next request — no logout,
+       re-login, or token-expiry wait.
+
+       NOA-derived roles (department_admin / institute_admin) are computed, not
+       stored in user_roles, so re-apply them from the JWT's noaActiveYears (a
+       Nodal Officer must keep their elevation). NOA *capability* changes are
+       enforced separately via session revocation, so the JWT's NOA claims are
+       authoritative within a live session. A query failure falls through to the
+       catch below → 500 (deny), never a stale-role allow. */
+    const dbRoles = rows[0].db_roles || [];
+    const roles = [...dbRoles];
+    if (req.user.noaActiveYears?.length && !roles.includes("department_admin"))
+      roles.unshift("department_admin");
+    if (req.user.noaInstituteActiveYears?.length && !roles.includes("institute_admin"))
+      roles.unshift("institute_admin");
+    req.user.roles = roles;
   } catch {
     return res.status(500).json({ success: false, message: "Internal server error." });
   }
