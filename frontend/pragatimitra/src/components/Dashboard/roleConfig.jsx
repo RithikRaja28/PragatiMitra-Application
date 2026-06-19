@@ -784,10 +784,23 @@ export const ROLE_CONFIG = {
           { id: "pc-templates", label: "Templates", icon: "LayoutList", permission: null, slug: "templates" },
         ],
       },
+      {
+        group: "Workflow",
+        items: [
+          {
+            id: "pc-workflow-templates",
+            label: "Workflow Templates",
+            icon: "GitBranch",
+            permission: null,
+            slug: "workflow-templates",
+          },
+        ],
+      },
     ],
     pages: {
-      "pc-sections":        <MyAssignedSectionsPage />,
-      "pc-templates": <TemplateListPage />,
+      "pc-sections":           <MyAssignedSectionsPage />,
+      "pc-templates":          <TemplateListPage />,
+      "pc-workflow-templates": <WorkflowTemplatePage />,
     },
     defaultPage: "pc-sections",
     user: { name: "Publication Cell", initials: "PC", org: "PragatiMitra" },

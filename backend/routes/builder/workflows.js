@@ -59,10 +59,12 @@ router.get("/", async (req, res) => {
     const { rows: templates } = await pool.query(
       `SELECT wt.*,
               u.full_name AS created_by_name,
-              COUNT(ws.id) AS step_count
+              COUNT(DISTINCT ws.id) AS step_count,
+              COUNT(DISTINCT rs.id) FILTER (WHERE rs.deleted_at IS NULL) AS usage_count
        FROM public.workflow_templates wt
        LEFT JOIN public.users u ON u.id = wt.created_by
        LEFT JOIN public.workflow_steps ws ON ws.template_id = wt.id
+       LEFT JOIN public.report_sections rs ON rs.workflow_template_id = wt.id
        WHERE wt.institution_id = $1
        GROUP BY wt.id, u.full_name
        ORDER BY wt.is_default DESC, wt.name`, [instId]
@@ -96,7 +98,7 @@ router.get("/", async (req, res) => {
 });
 
 /* ── POST / ── create workflow template ─────────────────────────────────────── */
-router.post("/", requireRole(["super_admin", "institute_admin"]), async (req, res) => {
+router.post("/", requireRole(["super_admin", "institute_admin", "publication_cell"]), async (req, res) => {
   const pool = req.app.locals.pool;
   try {
     const instId = callerInstitution(req);
@@ -177,7 +179,7 @@ router.get("/:id", async (req, res) => {
 });
 
 /* ── PUT /:id ── update template metadata ───────────────────────────────────── */
-router.put("/:id", requireRole(["super_admin", "institute_admin"]), async (req, res) => {
+router.put("/:id", requireRole(["super_admin", "institute_admin", "publication_cell"]), async (req, res) => {
   const pool = req.app.locals.pool;
   try {
     const { id } = req.params;
@@ -200,7 +202,7 @@ router.put("/:id", requireRole(["super_admin", "institute_admin"]), async (req, 
 });
 
 /* ── DELETE /:id ── delete template if not in use ───────────────────────────── */
-router.delete("/:id", requireRole(["super_admin", "institute_admin"]), async (req, res) => {
+router.delete("/:id", requireRole(["super_admin", "institute_admin", "publication_cell"]), async (req, res) => {
   const pool = req.app.locals.pool;
   try {
     const { id } = req.params;
@@ -226,7 +228,7 @@ router.delete("/:id", requireRole(["super_admin", "institute_admin"]), async (re
 });
 
 /* ── POST /:id/steps ── add step ────────────────────────────────────────────── */
-router.post("/:id/steps", requireRole(["super_admin", "institute_admin"]), async (req, res) => {
+router.post("/:id/steps", requireRole(["super_admin", "institute_admin", "publication_cell"]), async (req, res) => {
   const pool = req.app.locals.pool;
   try {
     const { id } = req.params;
@@ -257,7 +259,7 @@ router.post("/:id/steps", requireRole(["super_admin", "institute_admin"]), async
 });
 
 /* ── PUT /:id/steps/:stepId ── update step ──────────────────────────────────── */
-router.put("/:id/steps/:stepId", requireRole(["super_admin", "institute_admin"]), async (req, res) => {
+router.put("/:id/steps/:stepId", requireRole(["super_admin", "institute_admin", "publication_cell"]), async (req, res) => {
   const pool = req.app.locals.pool;
   try {
     const { id, stepId } = req.params;
@@ -288,7 +290,7 @@ router.put("/:id/steps/:stepId", requireRole(["super_admin", "institute_admin"])
 });
 
 /* ── DELETE /:id/steps/:stepId ── remove step ───────────────────────────────── */
-router.delete("/:id/steps/:stepId", requireRole(["super_admin", "institute_admin"]), async (req, res) => {
+router.delete("/:id/steps/:stepId", requireRole(["super_admin", "institute_admin", "publication_cell"]), async (req, res) => {
   const pool = req.app.locals.pool;
   try {
     const { id, stepId } = req.params;
@@ -303,7 +305,7 @@ router.delete("/:id/steps/:stepId", requireRole(["super_admin", "institute_admin
 });
 
 /* ── PATCH /:id/default ── set as institution default ───────────────────────── */
-router.patch("/:id/default", requireRole(["super_admin", "institute_admin"]), async (req, res) => {
+router.patch("/:id/default", requireRole(["super_admin", "institute_admin", "publication_cell"]), async (req, res) => {
   const pool = req.app.locals.pool;
   try {
     const { id } = req.params;

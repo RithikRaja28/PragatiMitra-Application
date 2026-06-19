@@ -5,19 +5,19 @@ import TemplateCreationWizardPage from "./TemplateCreationWizardPage";
 
 /* ── design tokens ─────────────────────────────────────────────────────── */
 const C = {
-  primary:   "#4f46e5", primaryDk: "#3730a3", primaryLt: "#eef2ff", primaryMid: "#818cf8",
-  success:   "#059669", successLt: "#ecfdf5", successMid: "#34d399",
-  warning:   "#d97706", warningLt: "#fffbeb", warningMid: "#fbbf24",
-  danger:    "#dc2626", dangerLt:  "#fef2f2",
+  primary:   "#2563eb", primaryDk: "#1d4ed8", primaryLt: "#eff6ff", primaryMid: "#93c5fd",
+  success:   "#16a34a", successLt: "#dcfce7", successMid: "#4ade80",
+  warning:   "#d97706", warningLt: "#fef3c7", warningMid: "#fbbf24",
+  danger:    "#ef4444", dangerLt:  "#fef2f2",
   slate:     "#64748b", slateLt:   "#f1f5f9", slateMid:  "#cbd5e1",
-  text:      "#0f172a", textSub: "#475569", textMuted: "#94a3b8",
+  text:      "#1e293b", textSub: "#475569", textMuted: "#94a3b8",
   border:    "#e2e8f0", bg: "#f8fafc", surface: "#fff",
 };
 
 const STATUS = {
-  DRAFT:    { label: "Draft",    accent: "#f59e0b", accentLt: "#fef9c3", accentDk: "#92400e", dot: "#f59e0b" },
-  ACTIVE:   { label: "Active",   accent: "#059669", accentLt: "#dcfce7", accentDk: "#14532d", dot: "#10b981" },
-  ARCHIVED: { label: "Archived", accent: "#94a3b8", accentLt: "#f1f5f9", accentDk: "#475569", dot: "#94a3b8" },
+  DRAFT:    { label: "Draft",    accent: "#d97706", accentLt: "#fef3c7", accentDk: "#92400e", dot: "#f59e0b",  bar: "#f59e0b"  },
+  ACTIVE:   { label: "Active",   accent: "#16a34a", accentLt: "#dcfce7", accentDk: "#14532d", dot: "#22c55e",  bar: "#22c55e"  },
+  ARCHIVED: { label: "Archived", accent: "#94a3b8", accentLt: "#f1f5f9", accentDk: "#475569", dot: "#94a3b8",  bar: "#94a3b8"  },
 };
 
 async function apj(apiFetch, path, opts) {
@@ -117,11 +117,8 @@ function TemplateList({ onCreateNew, onEdit }) {
             background: C.primary, color: "#fff",
             border: "none", cursor: "pointer", fontFamily: "inherit",
             fontSize: 13, fontWeight: 700,
-            boxShadow: "0 2px 8px rgba(79,70,229,0.3)",
-            transition: "transform 0.1s, box-shadow 0.1s",
+            boxShadow: "0 2px 8px rgba(37,99,235,0.25)",
           }}
-            onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-1px)"; e.currentTarget.style.boxShadow = "0 4px 14px rgba(79,70,229,0.4)"; }}
-            onMouseLeave={e => { e.currentTarget.style.transform = ""; e.currentTarget.style.boxShadow = "0 2px 8px rgba(79,70,229,0.3)"; }}
           >
             <span style={{ fontSize: 16, fontWeight: 400 }}>+</span>
             New Template
@@ -206,7 +203,7 @@ function TemplateList({ onCreateNew, onEdit }) {
                 fontFamily: "inherit", fontSize: 12, fontWeight: 600, transition: "all 0.15s",
                 background: active ? C.primary : "transparent",
                 color: active ? "#fff" : C.textSub,
-                boxShadow: active ? "0 2px 6px rgba(79,70,229,0.25)" : "none",
+                boxShadow: active ? "0 2px 6px rgba(37,99,235,0.22)" : "none",
               }}>
                 {tab.label}
                 <span style={{
@@ -263,7 +260,7 @@ function TemplateList({ onCreateNew, onEdit }) {
                 padding: "11px 28px", background: C.primary, color: "#fff",
                 border: "none", borderRadius: 10, cursor: "pointer",
                 fontSize: 13, fontWeight: 700, fontFamily: "inherit",
-                boxShadow: "0 4px 12px rgba(79,70,229,0.3)",
+                boxShadow: "0 4px 12px rgba(37,99,235,0.28)",
               }}>Create First Template</button>
             )}
           </div>
@@ -322,17 +319,12 @@ function TemplateCard({ template: t, busy, onEdit, onChangeStatus }) {
       onMouseLeave={() => setHover(false)}
       style={{
         background: C.surface, borderRadius: 14, overflow: "hidden",
-        border: `1px solid ${hover ? cfg.accent + "55" : C.border}`,
-        boxShadow: hover
-          ? `0 8px 28px rgba(0,0,0,0.10), 0 0 0 1px ${cfg.accent}22`
-          : "0 2px 8px rgba(0,0,0,0.05)",
-        transition: "all 0.2s ease",
+        border: `1px solid ${C.border}`,
+        boxShadow: hover ? "0 8px 24px rgba(0,0,0,0.10)" : "0 1px 4px rgba(0,0,0,0.05)",
+        transition: "box-shadow 0.18s",
         display: "flex", flexDirection: "column",
-        transform: hover ? "translateY(-2px)" : "none",
       }}
     >
-      {/* coloured top strip by status */}
-      <div style={{ height: 4, background: cfg.accent, flexShrink: 0 }} />
 
       {/* card body */}
       <div style={{ padding: "18px 20px 14px", flex: 1, display: "flex", flexDirection: "column" }}>
@@ -344,7 +336,6 @@ function TemplateCard({ template: t, busy, onEdit, onChangeStatus }) {
             display: "inline-flex", alignItems: "center", gap: 5,
             padding: "3px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700,
             background: cfg.accentLt, color: cfg.accentDk,
-            border: `1px solid ${cfg.accent}44`,
           }}>
             <span style={{ width: 6, height: 6, borderRadius: "50%", background: cfg.dot, display: "inline-block" }} />
             {cfg.label}
@@ -393,7 +384,7 @@ function TemplateCard({ template: t, busy, onEdit, onChangeStatus }) {
         }}>
           <div style={{
             width: 22, height: 22, borderRadius: "50%",
-            background: "linear-gradient(135deg, #c7d2fe, #a5b4fc)",
+            background: "linear-gradient(135deg, #bfdbfe, #93c5fd)",
             display: "flex", alignItems: "center", justifyContent: "center",
             fontSize: 9, fontWeight: 800, color: C.primaryDk, flexShrink: 0,
           }}>
@@ -412,13 +403,13 @@ function TemplateCard({ template: t, busy, onEdit, onChangeStatus }) {
                 onClick={() => onEdit(t.id)}
                 variant="ghost"
                 style={{ flex: 1 }}
-              >✏ Edit</CardBtn>
+              >Edit</CardBtn>
               <CardBtn
                 onClick={() => onChangeStatus(t.id, "ACTIVE")}
                 variant="success"
                 busy={busy}
                 style={{ flex: 1 }}
-              >{busy ? "Publishing…" : "🚀 Publish"}</CardBtn>
+              >{busy ? "Publishing…" : "Publish"}</CardBtn>
             </>
           )}
           {isActive && (
@@ -427,13 +418,13 @@ function TemplateCard({ template: t, busy, onEdit, onChangeStatus }) {
                 onClick={() => onEdit(t.id)}
                 variant="primary"
                 style={{ flex: 1 }}
-              >✏ Edit</CardBtn>
+              >Edit</CardBtn>
               <CardBtn
                 onClick={() => onChangeStatus(t.id, "ARCHIVED")}
                 variant="ghost"
                 busy={busy}
                 style={{ flex: 1 }}
-              >{busy ? "…" : "📦 Archive"}</CardBtn>
+              >{busy ? "…" : "Archive"}</CardBtn>
             </>
           )}
           {isArchived && (
@@ -442,13 +433,13 @@ function TemplateCard({ template: t, busy, onEdit, onChangeStatus }) {
                 onClick={() => onEdit(t.id)}
                 variant="ghost"
                 style={{ flex: 1 }}
-              >✏ Edit</CardBtn>
+              >Edit</CardBtn>
               <CardBtn
                 onClick={() => onChangeStatus(t.id, "DRAFT")}
                 variant="warning"
                 busy={busy}
                 style={{ flex: 1 }}
-              >{busy ? "…" : "↩ Restore"}</CardBtn>
+              >{busy ? "…" : "Restore"}</CardBtn>
             </>
           )}
         </div>
@@ -472,10 +463,10 @@ function MetaPill({ icon, value, color, bg }) {
 }
 
 const CARD_BTN_STYLES = {
-  primary: { bg: C.primaryLt,   color: C.primary,  border: `1px solid ${C.primaryMid}55` },
-  success: { bg: "#dcfce7",     color: "#15803d",   border: "1px solid #86efac" },
-  warning: { bg: "#fef9c3",     color: "#854d0e",   border: "1px solid #fde047" },
-  ghost:   { bg: C.bg,          color: C.textSub,   border: `1px solid ${C.border}` },
+  primary: { bg: C.primaryLt, color: C.primary  },
+  success: { bg: "#dcfce7",   color: "#15803d"  },
+  warning: { bg: "#fef9c3",   color: "#854d0e"  },
+  ghost:   { bg: C.bg,        color: C.textSub  },
 };
 
 function CardBtn({ onClick, variant = "ghost", busy, style: extraStyle, children }) {
@@ -486,7 +477,7 @@ function CardBtn({ onClick, variant = "ghost", busy, style: extraStyle, children
       disabled={!!busy}
       style={{
         padding: "7px 12px", borderRadius: 8, cursor: busy ? "not-allowed" : "pointer",
-        fontFamily: "inherit", fontSize: 11, fontWeight: 700, border: s.border,
+        fontFamily: "inherit", fontSize: 11, fontWeight: 700, border: `1px solid ${C.border}`,
         background: s.bg, color: s.color, opacity: busy ? 0.6 : 1,
         transition: "opacity 0.15s", whiteSpace: "nowrap",
         textAlign: "center",

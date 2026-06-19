@@ -6,10 +6,6 @@ import Toast from "../../../../components/shared/Toast";
 
 /* ── helpers ─────────────────────────────────────────────────────────────── */
 function fmtAcYear(y) { return `${y}-${String(y + 1).slice(-2)}`; }
-function genAcYears() {
-  const cur = new Date().getFullYear();
-  return Array.from({ length: 7 }, (_, i) => fmtAcYear(cur - 2 + i));
-}
 async function apj(apiFetch, path, opts) {
   const res  = await apiFetch(path, opts);
   const text = await res.text();
@@ -307,12 +303,19 @@ export default function CreateReportWizardPage({ onCreated, onCancel, initialRep
 
   /* ══ save functions ═════════════════════════════════════════════ */
   const saveStep1 = async () => {
-    if (!title.trim()) { setToast({ type: "error", message: "Report name is required" }); return false; }
+    if (!title.trim())  { setToast({ type: "error", message: "Report name is required" }); return false; }
+    if (!desc.trim())   { setToast({ type: "error", message: "Description is required" }); return false; }
+    if (!repType)       { setToast({ type: "error", message: "Report type is required" }); return false; }
+    if (!lang)          { setToast({ type: "error", message: "Primary language is required" }); return false; }
+    if (!cycleId)       { setToast({ type: "error", message: "Reporting cycle is required" }); return false; }
+    if (!tmplId)        { setToast({ type: "error", message: "Report template is required" }); return false; }
+    if (!subDl || !revDl || !appDl) { setToast({ type: "error", message: "All report-level deadlines are required" }); return false; }
     setBusy(true);
     try {
+      const selectedCycle = cycles.find(c => c.id === cycleId);
       const body = {
         title: title.trim(), description: desc || null,
-        report_type: repType, academic_year: acYear, primary_language: lang,
+        report_type: repType, academic_year: selectedCycle?.reporting_year || acYear, primary_language: lang,
         cycle_id: cycleId || undefined,
         template_id: tmplId ? tmplId : undefined,
         default_workflow_id: defaultWfId || undefined,
@@ -589,7 +592,7 @@ export default function CreateReportWizardPage({ onCreated, onCancel, initialRep
                 </F>
               </div>
               <div style={{ gridColumn: "1/-1" }}>
-                <F label="Description">
+                <F label="Description *">
                   <textarea style={{ ...inp, height: 64, resize: "vertical" }} value={desc}
                     onChange={e => setDesc(e.target.value)} placeholder="Brief scope or purpose…" />
                 </F>
@@ -600,21 +603,16 @@ export default function CreateReportWizardPage({ onCreated, onCancel, initialRep
                     <option key={t}>{t}</option>)}
                 </select>
               </F>
-              <F label="Academic Year *">
-                <select style={inp} value={acYear} onChange={e => setAcYear(e.target.value)}>
-                  {genAcYears().map(y => <option key={y}>{y}</option>)}
-                </select>
-              </F>
-              <F label="Primary Language">
+              <F label="Primary Language *">
                 <select style={inp} value={lang} onChange={e => setLang(e.target.value)}>
                   <option value="en">English</option>
                   <option value="hi">Hindi</option>
                   <option value="ta">Tamil</option>
                 </select>
               </F>
-              <F label="Reporting Cycle">
+              <F label="Reporting Cycle *">
                 <select style={inp} value={cycleId} onChange={e => setCycleId(e.target.value)}>
-                  <option value="">— Not linked to a cycle —</option>
+                  <option value="">— Select a cycle —</option>
                   {cycles.filter(c => c.status !== "ARCHIVED").map(c =>
                     <option key={c.id} value={c.id}>{c.name} ({c.reporting_year || c.status})</option>)}
                 </select>
@@ -636,7 +634,7 @@ export default function CreateReportWizardPage({ onCreated, onCancel, initialRep
 
               {/* Template picker — always show, no scratch/template toggle */}
               <div style={{ gridColumn: "1/-1", marginTop: 4 }}>
-                <div style={lbl}>Report Template</div>
+                <div style={lbl}>Report Template *</div>
                 {tmplFetchErr ? (
                   <div style={{ padding: "10px 14px", background: "#fef2f2", border: "1px solid #fca5a5",
                     borderRadius: 8, fontSize: 12, color: "#dc2626" }}>
@@ -674,7 +672,7 @@ export default function CreateReportWizardPage({ onCreated, onCancel, initialRep
 
               {/* Deadlines */}
               <div style={{ gridColumn: "1/-1", marginTop: 16 }}>
-                <div style={{ ...lbl, marginBottom: 10 }}>Report-Level Deadlines <span style={{ fontWeight: 400, textTransform: "none" }}>(optional — used as defaults)</span></div>
+                <div style={{ ...lbl, marginBottom: 10 }}>Report-Level Deadlines *</div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
                   {[
                     { label: "Submission Deadline", val: subDl, set: setSubDl, color: "#d97706" },

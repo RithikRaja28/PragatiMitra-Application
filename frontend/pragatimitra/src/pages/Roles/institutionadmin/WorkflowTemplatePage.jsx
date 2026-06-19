@@ -1,7 +1,25 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useApi }  from "../../../hooks/useApi";
 import { useAuth } from "../../../store/AuthContext";
-import { S, Toast, isAuthError } from "../../../components/shared/formUtils";
+import { S, Toast, ConfirmDialog, isAuthError } from "../../../components/shared/formUtils";
+
+/**
+ * Roles that are institution-wide — not scoped to any single department.
+ * Matches on role.name (machine key) or role.display_name (for display-only labels).
+ */
+function isInstituteWideRole(role) {
+  if (!role) return false;
+  const n = (role.name || "").toLowerCase();
+  const d = (role.display_name || "").toLowerCase();
+  return (
+    n === "super_admin" ||
+    n === "institute_admin" ||
+    n === "finance_admin" ||
+    n.includes("finance_officer") ||
+    d.includes("director") ||
+    d.includes("publication")
+  );
+}
 
 /* ─── Design tokens ────────────────────────────────────────────── */
 const C = {
@@ -53,7 +71,7 @@ function dbStepToLocal(s) {
 }
 
 /* ─── Step card ─────────────────────────────────────────────────── */
-function StepCard({ step, index, total, roles, departments, allUsers, onChange, onRemove, onMoveUp, onMoveDown, error }) {
+function StepCard({ step, index, total, roles, departments, allUsers, onChange, onRemove, onMoveUp, onMoveDown, error, readOnly }) {
   const deptName  = departments.find(d => d.department_id === step.deptFilter)?.name;
   const filtered  = step.deptFilter
     ? allUsers.filter(u => u.department_name === deptName)
@@ -88,25 +106,34 @@ function StepCard({ step, index, total, roles, departments, allUsers, onChange, 
           placeholder={`Step ${index + 1} name, e.g. Department Head Review`}
           value={step.name}
           onChange={e => onChange({ name: e.target.value })}
-          style={{ ...S.input(!!error), flex: 1, height: 34 }}
+          disabled={readOnly}
+          readOnly={readOnly}
+          style={{
+            ...S.input(!!error), flex: 1, height: 34,
+            ...(readOnly ? { background: "#f8fafc", color: "#475569" } : {}),
+          }}
         />
-        <button
-          onClick={onMoveUp}
-          disabled={index === 0}
-          style={{ ...iconBtn, opacity: index === 0 ? 0.3 : 1 }}
-          title="Move step up"
-        >↑</button>
-        <button
-          onClick={onMoveDown}
-          disabled={index === total - 1}
-          style={{ ...iconBtn, opacity: index === total - 1 ? 0.3 : 1 }}
-          title="Move step down"
-        >↓</button>
-        <button
-          onClick={onRemove}
-          style={{ ...iconBtn, borderColor: "#fee2e2", color: C.danger }}
-          title="Remove step"
-        >✕</button>
+        {!readOnly && (
+          <>
+            <button
+              onClick={onMoveUp}
+              disabled={index === 0}
+              style={{ ...iconBtn, opacity: index === 0 ? 0.3 : 1 }}
+              title="Move step up"
+            >↑</button>
+            <button
+              onClick={onMoveDown}
+              disabled={index === total - 1}
+              style={{ ...iconBtn, opacity: index === total - 1 ? 0.3 : 1 }}
+              title="Move step down"
+            >↓</button>
+            <button
+              onClick={onRemove}
+              style={{ ...iconBtn, borderColor: "#fee2e2", color: C.danger }}
+              title="Remove step"
+            >✕</button>
+          </>
+        )}
       </div>
 
       {/* Row 2: Assign-to toggle */}
@@ -120,13 +147,14 @@ function StepCard({ step, index, total, roles, departments, allUsers, onChange, 
         ].map(opt => (
           <button
             key={opt.key}
-            onClick={() => onChange({ assignType: opt.key, role: "", roleDept: "", userId: "", deptFilter: "" })}
+            onClick={() => !readOnly && onChange({ assignType: opt.key, role: "", roleDept: "", userId: "", deptFilter: "" })}
+            disabled={readOnly}
             style={{
               padding: "4px 13px", borderRadius: 20, fontSize: 11, fontWeight: 600,
               border: `1.5px solid ${step.assignType === opt.key ? C.primary : "#e2e8f0"}`,
               background: step.assignType === opt.key ? "#eff6ff" : "#fff",
               color: step.assignType === opt.key ? "#1d4ed8" : C.textSub,
-              cursor: "pointer", transition: "all 0.15s",
+              cursor: readOnly ? "default" : "pointer", transition: "all 0.15s",
             }}
           >
             {opt.label}
@@ -135,40 +163,62 @@ function StepCard({ step, index, total, roles, departments, allUsers, onChange, 
       </div>
 
       {/* Row 3: ROLE mode — role + optional department scope */}
-      {step.assignType === "ROLE" && (
-        <div style={{ display: "flex", gap: 10 }}>
-          <div style={{ flex: 2 }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: C.textSub, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 5 }}>
-              Role <span style={{ color: "#ef4444" }}>*</span>
+      {step.assignType === "ROLE" && (() => {
+        const selectedRole = roles.find(r => r.name === step.role);
+        const instWide = isInstituteWideRole(selectedRole);
+        return (
+          <div style={{ display: "flex", gap: 10 }}>
+            <div style={{ flex: 2 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: C.textSub, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 5 }}>
+                Role <span style={{ color: "#ef4444" }}>*</span>
+              </div>
+              <select
+                value={step.role}
+                onChange={e => {
+                  const r = roles.find(ro => ro.name === e.target.value);
+                  onChange({ role: e.target.value, roleDept: isInstituteWideRole(r) ? "" : step.roleDept });
+                }}
+                disabled={readOnly}
+                style={{ ...S.select(false), ...(readOnly ? { background: "#f8fafc", color: "#475569" } : {}) }}
+              >
+                <option value="">— Select a role —</option>
+                {roles.map(r => (
+                  <option key={r.id} value={r.name}>{r.display_name}</option>
+                ))}
+              </select>
             </div>
-            <select
-              value={step.role}
-              onChange={e => onChange({ role: e.target.value })}
-              style={S.select(false)}
-            >
-              <option value="">— Select a role —</option>
-              {roles.map(r => (
-                <option key={r.id} value={r.name}>{r.display_name}</option>
-              ))}
-            </select>
+
+            {/* Department scope — hidden for institution-wide roles */}
+            {!instWide ? (
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: C.textSub, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 5 }}>
+                  In department <span style={{ color: "#94a3b8", fontWeight: 400 }}>(optional)</span>
+                </div>
+                <select
+                  value={step.roleDept}
+                  onChange={e => onChange({ roleDept: e.target.value })}
+                  disabled={readOnly}
+                  style={{ ...S.select(false), ...(readOnly ? { background: "#f8fafc", color: "#475569" } : {}) }}
+                >
+                  <option value="">All departments</option>
+                  {departments.map(d => (
+                    <option key={d.department_id} value={d.department_id}>{d.name}</option>
+                  ))}
+                </select>
+              </div>
+            ) : (
+              <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
+                <div style={{
+                  padding: "8px 12px", borderRadius: 8, fontSize: 11, lineHeight: 1.4,
+                  background: "#f0f9ff", border: "1px solid #bae6fd", color: "#0369a1",
+                }}>
+                  Institution-wide role — not scoped to a department.
+                </div>
+              </div>
+            )}
           </div>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: C.textSub, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 5 }}>
-              In department <span style={{ color: "#94a3b8", fontWeight: 400 }}>(optional)</span>
-            </div>
-            <select
-              value={step.roleDept}
-              onChange={e => onChange({ roleDept: e.target.value })}
-              style={S.select(false)}
-            >
-              <option value="">All departments</option>
-              {departments.map(d => (
-                <option key={d.department_id} value={d.department_id}>{d.name}</option>
-              ))}
-            </select>
-          </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Row 3: USER mode — dept filter + specific user */}
       {step.assignType === "USER" && (
@@ -180,7 +230,8 @@ function StepCard({ step, index, total, roles, departments, allUsers, onChange, 
             <select
               value={step.deptFilter}
               onChange={e => onChange({ deptFilter: e.target.value, userId: "" })}
-              style={S.select(false)}
+              disabled={readOnly}
+              style={{ ...S.select(false), ...(readOnly ? { background: "#f8fafc", color: "#475569" } : {}) }}
             >
               <option value="">All departments</option>
               {departments.map(d => (
@@ -195,7 +246,8 @@ function StepCard({ step, index, total, roles, departments, allUsers, onChange, 
             <select
               value={step.userId}
               onChange={e => onChange({ userId: e.target.value })}
-              style={S.select(false)}
+              disabled={readOnly}
+              style={{ ...S.select(false), ...(readOnly ? { background: "#f8fafc", color: "#475569" } : {}) }}
             >
               <option value="">— Select a user —</option>
               {filtered.map(u => (
@@ -215,16 +267,18 @@ function StepCard({ step, index, total, roles, departments, allUsers, onChange, 
   );
 }
 
-/* ─── Workflow form (Create / Edit) ─────────────────────────────── */
+/* ─── Workflow form (Create / Edit / View) ──────────────────────── */
 function WorkflowForm({ mode, entity, onSaved, onBack }) {
   const { apiFetch }   = useApi();
   const { user }       = useAuth();
   const instId         = user?.institutionId;
   const isEdit         = mode === "edit";
+  const isView         = mode === "view";
+  const readOnly       = isView;
 
   const [form,       setForm]       = useState({ name: entity?.name || "", description: entity?.description || "" });
   const [steps,      setSteps]      = useState(() =>
-    isEdit && entity?.steps?.length
+    (isEdit || isView) && entity?.steps?.length
       ? entity.steps.map(dbStepToLocal)
       : [blankStep()]
   );
@@ -293,6 +347,10 @@ function WorkflowForm({ mode, entity, onSaved, onBack }) {
 
   async function handleSubmit(e) {
     e.preventDefault();
+    if (isEdit && Number(entity?.usage_count || 0) > 0) {
+      setSubmitError("This workflow is in use and cannot be modified.");
+      return;
+    }
     if (!validate()) return;
     setSubmitting(true);
     setSubmitError("");
@@ -369,15 +427,65 @@ function WorkflowForm({ mode, entity, onSaved, onBack }) {
         </button>
         <div style={{ marginLeft: 4 }}>
           <div style={{ fontSize: 18, fontWeight: 800, color: C.text }}>
-            {isEdit ? "Edit Workflow Template" : "New Workflow Template"}
+            {isView ? "View Workflow Template" : isEdit ? "Edit Workflow Template" : "New Workflow Template"}
           </div>
           <div style={{ fontSize: 12, color: C.textSub, marginTop: 2 }}>
-            {isEdit
-              ? "Update the name/description and step configuration."
-              : "Define a reusable approval chain. Each step represents one review/approval stage."}
+            {isView
+              ? "Read-only view — this workflow is in use and cannot be modified."
+              : isEdit
+                ? "Update the name/description and step configuration."
+                : "Define a reusable approval chain. Each step represents one review/approval stage."}
           </div>
         </div>
       </div>
+
+      {/* Read-only notice for view mode */}
+      {isView && (
+        <div style={{
+          background: "#f0f9ff", border: "1px solid #bae6fd",
+          borderRadius: 12, padding: "14px 20px", marginBottom: 24,
+          display: "flex", gap: 12, alignItems: "center",
+        }}>
+          <span style={{ fontSize: 18, flexShrink: 0 }}>👁️</span>
+          <div style={{ fontSize: 13, color: "#0369a1", lineHeight: 1.5 }}>
+            <strong>Read-only view.</strong> This workflow is assigned to{" "}
+            <strong>{entity?.usage_count} section{Number(entity?.usage_count) !== 1 ? "s" : ""}</strong> and cannot be modified.
+            Create a new workflow template to make changes for future sections.
+          </div>
+        </div>
+      )}
+
+      {/* Hard block if edit mode somehow reached for in-use workflow */}
+      {isEdit && Number(entity?.usage_count || 0) > 0 && (
+        <div style={{
+          background: "#fef2f2", border: "1px solid #fca5a5",
+          borderRadius: 12, padding: "18px 22px", marginBottom: 24,
+          display: "flex", gap: 14, alignItems: "flex-start",
+        }}>
+          <div style={{ fontSize: 24, flexShrink: 0, marginTop: 2 }}>🔒</div>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: "#b91c1c", marginBottom: 4 }}>
+              This workflow cannot be edited
+            </div>
+            <div style={{ fontSize: 13, color: "#7f1d1d", lineHeight: 1.6 }}>
+              <strong>"{entity.name}"</strong> is assigned to{" "}
+              <strong>{entity.usage_count} section{Number(entity.usage_count) !== 1 ? "s" : ""}</strong>.
+              Modifying it would affect all those sections' approval chains.
+              To make changes, create a new workflow template.
+            </div>
+            <button
+              onClick={onBack}
+              style={{
+                marginTop: 12, padding: "7px 16px", borderRadius: 8,
+                border: "1px solid #fca5a5", background: "#fff",
+                fontSize: 12, fontWeight: 600, color: "#b91c1c", cursor: "pointer",
+              }}
+            >
+              ← Go Back
+            </button>
+          </div>
+        </div>
+      )}
 
       <form onSubmit={handleSubmit}>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24, alignItems: "start" }}>
@@ -396,9 +504,10 @@ function WorkflowForm({ mode, entity, onSaved, onBack }) {
                 placeholder="e.g. Standard 3-Level Approval"
                 value={form.name}
                 onChange={e => setF("name", e.target.value)}
-                disabled={submitting}
+                disabled={submitting || readOnly}
+                readOnly={readOnly}
                 maxLength={160}
-                style={S.input(false)}
+                style={{ ...S.input(false), ...(readOnly ? { background: "#f8fafc", color: "#475569" } : {}) }}
               />
               <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 4 }}>
                 A clear name helps contributors understand which workflow they're under.
@@ -411,11 +520,14 @@ function WorkflowForm({ mode, entity, onSaved, onBack }) {
                 placeholder="Optional: describe when to use this workflow…"
                 value={form.description}
                 onChange={e => setF("description", e.target.value)}
-                disabled={submitting}
+                disabled={submitting || readOnly}
+                readOnly={readOnly}
                 rows={3}
                 style={{
                   ...S.input(false), height: "auto", padding: "9px 14px",
-                  resize: "vertical", fontFamily: "'Plus Jakarta Sans', sans-serif",
+                  resize: readOnly ? "none" : "vertical",
+                  fontFamily: "'Plus Jakarta Sans', sans-serif",
+                  ...(readOnly ? { background: "#f8fafc", color: "#475569" } : {}),
                 }}
               />
             </div>
@@ -470,14 +582,20 @@ function WorkflowForm({ mode, entity, onSaved, onBack }) {
 
             {/* Action buttons */}
             <div style={{ display: "flex", gap: 10, paddingTop: 4 }}>
-              <button
-                type="submit"
-                disabled={submitting}
-                style={S.btnPrimary(submitting)}
-              >
-                {submitting ? "Saving…" : isEdit ? "Save Changes" : "Create Workflow"}
-              </button>
-              <button type="button" onClick={onBack} style={S.btnGhost}>Cancel</button>
+              {readOnly ? (
+                <button type="button" onClick={onBack} style={S.btnGhost}>← Close</button>
+              ) : (
+                <>
+                  <button
+                    type="submit"
+                    disabled={submitting}
+                    style={S.btnPrimary(submitting)}
+                  >
+                    {submitting ? "Saving…" : isEdit ? "Save Changes" : "Create Workflow"}
+                  </button>
+                  <button type="button" onClick={onBack} style={S.btnGhost}>Cancel</button>
+                </>
+              )}
             </div>
           </div>
 
@@ -514,35 +632,38 @@ function WorkflowForm({ mode, entity, onSaved, onBack }) {
                     roles={roles}
                     departments={departments}
                     allUsers={allUsers}
-                    onChange={patch => updateStep(i, patch)}
-                    onRemove={() => removeStep(i)}
-                    onMoveUp={() => moveStep(i, -1)}
-                    onMoveDown={() => moveStep(i, 1)}
+                    onChange={patch => !readOnly && updateStep(i, patch)}
+                    onRemove={() => !readOnly && removeStep(i)}
+                    onMoveUp={() => !readOnly && moveStep(i, -1)}
+                    onMoveDown={() => !readOnly && moveStep(i, 1)}
                     error={stepErrors[i]}
+                    readOnly={readOnly}
                   />
                 ))}
 
-                <button
-                  type="button"
-                  onClick={addStep}
-                  style={{
-                    padding: "9px 0", borderRadius: 10,
-                    border: `1.5px dashed ${C.primary}`,
-                    background: "#f0f7ff",
-                    fontSize: 12, fontWeight: 700, color: C.primary,
-                    cursor: "pointer", display: "flex", alignItems: "center",
-                    justifyContent: "center", gap: 6, transition: "background 0.15s",
-                  }}
-                >
-                  <span style={{ fontSize: 16 }}>＋</span> Add Approval Step
-                </button>
+                {!readOnly && (
+                  <button
+                    type="button"
+                    onClick={addStep}
+                    style={{
+                      padding: "9px 0", borderRadius: 10,
+                      border: `1.5px dashed ${C.primary}`,
+                      background: "#f0f7ff",
+                      fontSize: 12, fontWeight: 700, color: C.primary,
+                      cursor: "pointer", display: "flex", alignItems: "center",
+                      justifyContent: "center", gap: 6, transition: "background 0.15s",
+                    }}
+                  >
+                    <span style={{ fontSize: 16 }}>＋</span> Add Approval Step
+                  </button>
+                )}
 
                 {steps.length === 0 && (
                   <div style={{
                     textAlign: "center", padding: "24px 0",
                     color: "#94a3b8", fontSize: 13,
                   }}>
-                    No steps yet. Click "Add Approval Step" to begin.
+                    {readOnly ? "No steps configured." : `No steps yet. Click "Add Approval Step" to begin.`}
                   </div>
                 )}
               </div>
@@ -557,8 +678,10 @@ function WorkflowForm({ mode, entity, onSaved, onBack }) {
 }
 
 /* ─── Template card (list view) ─────────────────────────────────── */
-function TemplateCard({ template, onEdit, onSetDefault, onDelete, settingDefault, deleting }) {
-  const steps = template.steps || [];
+function TemplateCard({ template, onEdit, onView, onSetDefault, onDelete, settingDefault, deleting }) {
+  const steps    = template.steps || [];
+  const inUse    = Number(template.usage_count || 0) > 0;
+  const useCount = Number(template.usage_count || 0);
 
   return (
     <div style={{
@@ -585,6 +708,14 @@ function TemplateCard({ template, onEdit, onSetDefault, onDelete, settingDefault
             }}>
               {template.step_count || steps.length} step{Number(template.step_count || steps.length) !== 1 ? "s" : ""}
             </span>
+            {inUse && (
+              <span style={{
+                padding: "2px 8px", borderRadius: 20, fontSize: 10, fontWeight: 600,
+                background: "#f0fdf4", color: "#166534", flexShrink: 0,
+              }}>
+                In use · {useCount} section{useCount !== 1 ? "s" : ""}
+              </span>
+            )}
           </div>
           {template.description && (
             <div style={{ fontSize: 12, color: C.textSub, marginTop: 4, lineHeight: 1.5 }}>
@@ -661,16 +792,29 @@ function TemplateCard({ template, onEdit, onSetDefault, onDelete, settingDefault
 
       {/* Action buttons */}
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        <button
-          onClick={() => onEdit(template)}
-          style={{
-            flex: 1, minWidth: 70, padding: "7px 0", borderRadius: 8,
-            border: "1.5px solid #e2e8f0", background: "#fff",
-            fontSize: 12, fontWeight: 600, color: C.primary, cursor: "pointer",
-          }}
-        >
-          Edit
-        </button>
+        {inUse ? (
+          <button
+            onClick={() => onView(template)}
+            style={{
+              flex: 1, minWidth: 70, padding: "7px 0", borderRadius: 8,
+              border: "1.5px solid #bae6fd", background: "#f0f9ff",
+              fontSize: 12, fontWeight: 600, color: "#0369a1", cursor: "pointer",
+            }}
+          >
+            👁 View
+          </button>
+        ) : (
+          <button
+            onClick={() => onEdit(template)}
+            style={{
+              flex: 1, minWidth: 70, padding: "7px 0", borderRadius: 8,
+              border: "1.5px solid #e2e8f0", background: "#fff",
+              fontSize: 12, fontWeight: 600, color: C.primary, cursor: "pointer",
+            }}
+          >
+            Edit
+          </button>
+        )}
 
         {!template.is_default && (
           <button
@@ -688,21 +832,35 @@ function TemplateCard({ template, onEdit, onSetDefault, onDelete, settingDefault
           </button>
         )}
 
-        <button
-          onClick={() => onDelete(template)}
-          disabled={deleting}
-          style={{
-            padding: "7px 14px", borderRadius: 8,
-            border: "1.5px solid #fee2e2", background: "#fff",
-            fontSize: 12, fontWeight: 600, color: C.danger,
-            cursor: deleting ? "not-allowed" : "pointer",
-            opacity: deleting ? 0.6 : 1,
-          }}
-          title="Delete workflow (only allowed if no sections use it)"
-        >
-          Delete
-        </button>
+        {/* Delete hidden when workflow is in use */}
+        {!inUse && (
+          <button
+            onClick={() => onDelete(template)}
+            disabled={deleting}
+            style={{
+              padding: "7px 14px", borderRadius: 8,
+              border: "1.5px solid #fee2e2", background: "#fff",
+              fontSize: 12, fontWeight: 600, color: C.danger,
+              cursor: deleting ? "not-allowed" : "pointer",
+              opacity: deleting ? 0.6 : 1,
+            }}
+          >
+            Delete
+          </button>
+        )}
       </div>
+
+      {/* In-use notice */}
+      {inUse && (
+        <div style={{
+          marginTop: 10, padding: "7px 12px", borderRadius: 8,
+          background: "#f0fdf4", border: "1px solid #bbf7d0",
+          fontSize: 11, color: "#166534", lineHeight: 1.5,
+        }}>
+          This workflow is assigned to {useCount} section{useCount !== 1 ? "s" : ""} and cannot be edited or deleted.
+          Create a new template for future changes.
+        </div>
+      )}
     </div>
   );
 }
@@ -736,7 +894,8 @@ export default function WorkflowTemplatePage() {
   const [loading,  setLoading]  = useState(true);
   const [editItem, setEditItem] = useState(null);
   const [toast,    setToast]    = useState(null);
-  const [actioning, setActioning] = useState(null); // id being acted on
+  const [actioning, setActioning] = useState(null);
+  const [confirm,  setConfirm]  = useState(null);
 
   const toastTimer = useRef(null);
   function showToast(message, type = "success") {
@@ -760,19 +919,23 @@ export default function WorkflowTemplatePage() {
   useEffect(() => { fetchTemplates(); }, [fetchTemplates]);
 
   /* ── Delete ───────────────────────────────────────────────── */
-  async function handleDelete(template) {
-    const inUse = Number(template.step_count || 0) > 0
-      ? ""
-      : "";
-    if (!window.confirm(`Delete workflow "${template.name}"?\n\nThis cannot be undone. Delete will fail if any section references this workflow.`)) return;
-    setActioning(template.id);
-    try {
-      const res  = await apiFetch(`/api/builder/workflows/${template.id}`, { method: "DELETE" });
-      const data = await res.json();
-      if (data.success) { showToast("Workflow deleted."); fetchTemplates(); }
-      else showToast(data.message || "Failed to delete.", "error");
-    } catch { showToast("Network error.", "error"); }
-    finally { setActioning(null); }
+  function handleDelete(template) {
+    setConfirm({
+      title: "Delete this workflow?",
+      message: `"${template.name}" will be permanently deleted. This cannot be undone.`,
+      variant: "danger",
+      confirmLabel: "Delete",
+      onConfirm: async () => {
+        setActioning(template.id);
+        try {
+          const res  = await apiFetch(`/api/builder/workflows/${template.id}`, { method: "DELETE" });
+          const data = await res.json();
+          if (data.success) { showToast("Workflow deleted."); fetchTemplates(); }
+          else showToast(data.message || "Failed to delete.", "error");
+        } catch { showToast("Network error.", "error"); }
+        finally { setActioning(null); }
+      },
+    });
   }
 
   /* ── Set default ──────────────────────────────────────────── */
@@ -793,7 +956,8 @@ export default function WorkflowTemplatePage() {
 
   /* ── Form screens ─────────────────────────────────────────── */
   if (screen === "create") return <WorkflowForm mode="create" onSaved={onSaved} onBack={onBack} />;
-  if (screen === "edit" && editItem) return <WorkflowForm mode="edit" entity={editItem} onSaved={onSaved} onBack={onBack} />;
+  if (screen === "edit"   && editItem) return <WorkflowForm mode="edit" entity={editItem} onSaved={onSaved} onBack={onBack} />;
+  if (screen === "view"   && editItem) return <WorkflowForm mode="view" entity={editItem} onBack={onBack} />;
 
   /* ── List screen ──────────────────────────────────────────── */
   const defaultTemplate = templates.find(t => t.is_default);
@@ -802,6 +966,7 @@ export default function WorkflowTemplatePage() {
   return (
     <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", background: C.bg, minHeight: "100%", padding: 28 }}>
       {toast && <Toast message={toast.message} type={toast.type} />}
+      {confirm && <ConfirmDialog {...confirm} onCancel={() => setConfirm(null)} />}
       <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}} @keyframes spin{to{transform:rotate(360deg)}}`}</style>
 
       {/* ── Header ── */}
@@ -912,6 +1077,7 @@ export default function WorkflowTemplatePage() {
               key={t.id}
               template={t}
               onEdit={item => { setEditItem(item); setScreen("edit"); }}
+              onView={item => { setEditItem(item); setScreen("view"); }}
               onSetDefault={handleSetDefault}
               onDelete={handleDelete}
               settingDefault={actioning === t.id + "_default"}
