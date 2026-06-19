@@ -4,7 +4,7 @@ import ReactDOM from "react-dom";
 import { createPortal } from "react-dom";
 
 const SLUG = "form-data";
-import { Trash2, FileText, FilePlus, Lock, Clock, Globe, SearchX, Table2, LayoutGrid, UserPlus } from "lucide-react";
+import { Trash2, FileText, FilePlus, Lock, Clock, Globe, SearchX, Table2, LayoutGrid, UserPlus, Eye } from "lucide-react";
 import AssignContributorsModal from "./AssignContributorsModal";
 import { useApi } from "../../hooks/useApi";
 import { useAuth } from "../../store/AuthContext";
@@ -13,7 +13,7 @@ import { useLanguage } from "../../i18n/LanguageContext";
 import { S, Toast, isAuthError, formatDate } from "../../components/shared/formUtils";
 import PageHeader from "../../components/shared/PageHeader";
 import { tableCardStyle } from "../../components/shared/ui";
-import { Button, Input, Textarea, FieldLabel, Badge } from "../../ui";
+import { Button, Input, Textarea, FieldLabel, Badge, DataTable, color } from "../../ui";
 
 const ACCENT = "#2563eb";
 const CHUNK_SIZE = 500;
@@ -786,14 +786,14 @@ function FormImportWizard({ formName, onClose, onDone, apiFetch, getToken, selec
               </div>
             )}
           </div>
-          {/* Footer */}
+          {/* Footer — standardized on ui/Button */}
           <div style={{ padding: "12px 20px", borderTop: "1px solid #f1f5f9", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <div>{step === 2 && !executing && <button onClick={() => setStep(1)} style={S.btnGhost}>← Back</button>}</div>
+            <div>{step === 2 && !executing && <Button variant="ghost" onClick={() => setStep(1)}>← Back</Button>}</div>
             <div style={{ display: "flex", gap: 10 }}>
-              {step !== 3 && <button onClick={onClose} style={S.btnGhost} disabled={parsing || executing}>Cancel</button>}
-              {step === 1 && <button onClick={handleParse} disabled={!file || parsing} style={S.btnPrimary(!file || parsing)}>{parsing ? "Parsing…" : "Next →"}</button>}
-              {step === 2 && <button onClick={handleExecute} disabled={executing || mappedCount === 0} style={S.btnPrimary(executing || mappedCount === 0)}>{executing ? `Importing… ${Math.round(importPercent)}%` : `Import ${totalRows.toLocaleString()} Rows`}</button>}
-              {step === 3 && <button onClick={onDone} style={{ ...S.btnPrimary(false), background: "#16a34a" }}>Done</button>}
+              {step !== 3 && <Button variant="secondary" onClick={onClose} disabled={parsing || executing}>Cancel</Button>}
+              {step === 1 && <Button variant="primary" onClick={handleParse} loading={parsing} disabled={!file || parsing}>{parsing ? "Parsing…" : "Next →"}</Button>}
+              {step === 2 && <Button variant="primary" onClick={handleExecute} loading={executing} disabled={executing || mappedCount === 0}>{executing ? `Importing… ${Math.round(importPercent)}%` : `Import ${totalRows.toLocaleString()} Rows`}</Button>}
+              {step === 3 && <Button variant="primary" onClick={onDone} style={{ background: "#16a34a", borderColor: "#16a34a" }}>Done</Button>}
             </div>
           </div>
         </div>
@@ -1063,6 +1063,14 @@ export default function FormDataPage() {
     (user?.noaActiveYears?.length || 0) > 0;
   const [assignForm, setAssignForm] = useState(null);
 
+  /* Part 4 — a "pure" contributor (worker role) gets a work-focused view: the
+     framing is "your assigned work", not admin/management. NOA-capable contributors
+     are assigners, so they keep the standard view (canAssign covers that). */
+  const isContributorOnly =
+    (user?.roles || []).some((r) => r.name === "contributor") &&
+    !(user?.roles || []).some((r) => ["super_admin", "institute_admin", "department_admin", "nodal_officer", "hospital_admin", "finance_admin"].includes(r.name)) &&
+    !((user?.noaActiveYears?.length || 0) > 0);
+
   const isRecords = location.pathname.endsWith("/records");
   const listPath  = `/${SLUG}`;
   const formEntity = isRecords ? (location.state?.entity ?? null) : null;
@@ -1328,10 +1336,10 @@ export default function FormDataPage() {
     const expiredForms = forms.filter(isExpired).length;
 
     const summary = [
-      { label: "Total Forms",      value: totalForms,   color: "#2563eb", bg: "#ecfeff", hint: "All accessible forms" },
+      { label: isContributorOnly ? "Assigned Forms" : "Total Forms", value: totalForms, color: "#2563eb", bg: "#ecfeff", hint: isContributorOnly ? "Assigned to you" : "All accessible forms" },
       { label: "Active Forms",     value: activeForms,  color: "#16a34a", bg: "#f0fdf4", hint: "Open for submissions" },
       { label: "Pending Deadline", value: pendingForms, color: "#d97706", bg: "#fffbeb", hint: "Due within 7 days" },
-      { label: "Expired Forms",    value: expiredForms, color: "#dc2626", bg: "#fef2f2", hint: "Past deadline" },
+      { label: isContributorOnly ? "Overdue Forms" : "Expired Forms", value: expiredForms, color: "#dc2626", bg: "#fef2f2", hint: "Past deadline" },
     ];
 
     return (
@@ -1351,7 +1359,9 @@ export default function FormDataPage() {
         <PageHeader
           breadcrumb={["Home", "Department", "Forms & Data Entry"]}
           title="Forms & Data Entry Center"
-          description="Access all department forms, monitor deadlines, and manage records in one place."
+          description={isContributorOnly
+            ? "Complete assigned work and monitor deadlines."
+            : "Access all department forms, monitor deadlines, and manage records in one place."}
         />
 
         {formsError && (
@@ -1375,123 +1385,82 @@ export default function FormDataPage() {
           ))}
         </div>
 
-        {/* Available Forms table */}
-        <div style={{ ...tableCardStyle, flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
-          <div style={{ padding: "12px 16px", borderBottom: "1px solid #eef2f6", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+        {/* Available/Assigned Forms — standardized on ui/DataTable to match the
+            Institution & Department forms tables (same header/spacing/hover/badges). */}
+        <DataTable
+          fill
+          minWidth={820}
+          rows={forms}
+          rowKey={(f) => f.id}
+          loading={formsLoading}
+          onRowClick={openForm}
+          toolbar={
             <div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: "#1e293b" }}>Available Forms</div>
-              <div style={{ fontSize: 11.5, color: "#94a3b8", marginTop: 1 }}>
-                {formsLoading ? "Loading…" : `${forms.length} form${forms.length !== 1 ? "s" : ""} accessible to your department`}
+              <div style={{ fontSize: 13, fontWeight: 700, color: color.text }}>{isContributorOnly ? "Assigned Forms" : "Available Forms"}</div>
+              <div style={{ fontSize: 11.5, color: color.muted, marginTop: 1 }}>
+                {`${forms.length} form${forms.length !== 1 ? "s" : ""} ${isContributorOnly ? "assigned to you" : "accessible to your department"}`}
               </div>
             </div>
-          </div>
-
-          {formsLoading ? (
-            <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "#94a3b8", fontSize: 13 }}>Loading forms…</div>
-          ) : forms.length === 0 ? (
-            <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", color: "#94a3b8", padding: "24px" }}>
+          }
+          empty={
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", color: "#94a3b8", padding: "24px" }}>
               <div style={{ width: 56, height: 56, borderRadius: 8, margin: "0 auto 16px", background: "#f1f5f9", border: "1px solid #e2e8f0", display: "flex", alignItems: "center", justifyContent: "center" }}>
                 <FileText size={26} strokeWidth={1.6} color="#94a3b8" />
               </div>
-              <div style={{ fontSize: 13.5, fontWeight: 600, color: "#64748b", marginBottom: 4 }}>No forms available</div>
-              <div style={{ fontSize: 12.5 }}>Your institution hasn't shared any forms with your department yet.</div>
+              <div style={{ fontSize: 13.5, fontWeight: 600, color: "#64748b", marginBottom: 4 }}>{isContributorOnly ? "No Assigned Forms" : "No forms available"}</div>
+              <div style={{ fontSize: 12.5 }}>{isContributorOnly ? "You currently have no forms assigned. Assigned forms will appear here." : "Your institution hasn't shared any forms with your department yet."}</div>
             </div>
-          ) : (
-            <div style={{ overflow: "auto", flex: 1, minHeight: 0 }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 820 }}>
-                <thead>
-                  <tr style={{ background: "#f8fafc" }}>
-                    {["Form", "Form Name & Description", "Deadline", "Status", "Actions"].map((h) => (
-                      <th key={h} style={{ padding: "8px 14px", textAlign: h === "Actions" ? "right" : "left", fontSize: 10.5, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.5, borderBottom: "1px solid #eef2f6", whiteSpace: "nowrap" }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {forms.map((form) => {
-                    const expired = form.deadline_at && new Date(form.deadline_at).getTime() <= now;
-                    const locked  = form.is_locked;
-                    const statusBadge = locked
-                      ? { label: "LOCKED",  color: "#dc2626" }
-                      : expired
-                        ? { label: "EXPIRED", color: "#dc2626" }
-                        : { label: "OPEN",    color: "#16a34a" };
-                    const deadlineText = form.deadline_at
-                      ? new Date(form.deadline_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })
-                      : "—";
-                    let deadlineSubBadge = null;
-                    if (form.deadline_at) {
-                      if (expired) {
-                        deadlineSubBadge = { label: "EXPIRED", color: "#dc2626" };
-                      } else {
-                        const daysLeft = Math.ceil((new Date(form.deadline_at).getTime() - now) / (24 * 3600 * 1000));
-                        deadlineSubBadge = { label: `${daysLeft} DAY${daysLeft !== 1 ? "S" : ""} LEFT`, color: daysLeft <= 3 ? "#d97706" : "#16a34a" };
-                      }
-                    }
-                    return (
-                      <tr key={form.id}
-                        style={{ borderBottom: "1px solid #f1f5f9", transition: "background .1s", cursor: "pointer" }}
-                        onClick={() => openForm(form)}
-                        onMouseEnter={(e) => (e.currentTarget.style.background = "#f8fafc")}
-                        onMouseLeave={(e) => (e.currentTarget.style.background = "")}
-                      >
-                        <td style={{ padding: "8px 14px" }}>
-                          <div style={{ width: 30, height: 30, borderRadius: 8, background: ACCENT + "18", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, color: ACCENT, fontWeight: 800, letterSpacing: 0.3 }}>
-                            {form.form_name.slice(0, 2).toUpperCase()}
-                          </div>
-                        </td>
-                        <td style={{ padding: "8px 14px" }}>
-                          <div style={{ fontSize: 12.5, fontWeight: 700, color: "#1e293b", letterSpacing: 0.2 }}>
-                            {form.form_name.toUpperCase()}
-                          </div>
-                          <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 1, fontFamily: "monospace" }}>{form.form_name}</div>
-                        </td>
-                        <td style={{ padding: "8px 14px" }}>
-                          <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                            <span style={{ fontSize: 12.5, color: "#475569", fontWeight: 600 }}>{deadlineText}</span>
-                            {deadlineSubBadge && (
-                              <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 8px", borderRadius: 20, fontSize: 10, fontWeight: 700, background: deadlineSubBadge.color + "18", color: deadlineSubBadge.color, alignSelf: "flex-start", whiteSpace: "nowrap", letterSpacing: 0.3 }}>
-                                {deadlineSubBadge.label}
-                              </span>
-                            )}
-                          </div>
-                        </td>
-                        <td style={{ padding: "8px 14px" }}>
-                          <span style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700, background: statusBadge.color + "18", color: statusBadge.color, letterSpacing: 0.3, whiteSpace: "nowrap" }}>
-                            <span style={{ width: 6, height: 6, borderRadius: "50%", background: statusBadge.color, display: "inline-block" }} />
-                            {statusBadge.label}
-                          </span>
-                        </td>
-                        <td style={{ padding: "6px 14px", textAlign: "right" }}>
-                          <div style={{ display: "inline-flex", alignItems: "center", gap: 6, justifyContent: "flex-end" }}>
-                            {canAssign && (
-                              <button
-                                onClick={(e) => { e.stopPropagation(); setAssignForm(form); }}
-                                title="Assign contributors" aria-label="Assign contributors"
-                                style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 30, height: 30, background: "#fff", color: ACCENT, border: `1px solid ${ACCENT}40`, borderRadius: 7, cursor: "pointer", transition: "background .15s, border-color .15s" }}
-                                onMouseEnter={(e) => { e.currentTarget.style.background = ACCENT + "12"; e.currentTarget.style.borderColor = ACCENT; }}
-                                onMouseLeave={(e) => { e.currentTarget.style.background = "#fff"; e.currentTarget.style.borderColor = ACCENT + "40"; }}
-                              >
-                                <UserPlus size={15} strokeWidth={1.9} />
-                              </button>
-                            )}
-                            <button
-                              onClick={(e) => { e.stopPropagation(); openForm(form); }}
-                              style={{ display: "inline-flex", alignItems: "center", gap: 5, background: "#fff", color: ACCENT, border: `1px solid ${ACCENT}40`, borderRadius: 7, padding: "0 12px", height: 30, fontSize: 11.5, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap", transition: "background .15s, border-color .15s" }}
-                              onMouseEnter={(e) => { e.currentTarget.style.background = ACCENT + "12"; e.currentTarget.style.borderColor = ACCENT; }}
-                              onMouseLeave={(e) => { e.currentTarget.style.background = "#fff"; e.currentTarget.style.borderColor = ACCENT + "40"; }}
-                            >
-                              Open <span style={{ fontSize: 12 }}>→</span>
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
+          }
+          columns={[
+            { key: "_sno", header: "#", width: 56, align: "left", render: (_f, i) => <span style={{ fontSize: 13, fontWeight: 600, color: color.muted }}>{i + 1}</span> },
+            {
+              key: "form", header: "Form Name", width: 340,
+              render: (form) => {
+                const title = form.form_name.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+                return (
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+                    <div style={{ width: 34, height: 34, borderRadius: 9, flexShrink: 0, background: color.primarySoft, color: color.primary, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 800 }}>{form.form_name.slice(0, 2).toUpperCase()}</div>
+                    <div style={{ minWidth: 0 }}>
+                      <div className="ui-ellipsis" style={{ fontSize: 13.5, fontWeight: 700, color: color.text }} title={title}>{title}</div>
+                      <div className="ui-ellipsis" style={{ fontSize: 11.5, color: color.muted, marginTop: 1, maxWidth: 260, fontFamily: "monospace" }} title={form.form_name}>{form.form_name}</div>
+                    </div>
+                  </div>
+                );
+              },
+            },
+            {
+              key: "deadline", header: "Deadline", width: 150,
+              render: (form) => {
+                const exp = form.deadline_at && new Date(form.deadline_at).getTime() <= now;
+                const dt = form.deadline_at ? new Date(form.deadline_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "No Deadline";
+                let badge = null;
+                if (form.deadline_at) {
+                  if (exp) badge = { tone: "danger", label: "EXPIRED" };
+                  else { const dl = Math.ceil((new Date(form.deadline_at).getTime() - now) / 86400000); badge = { tone: dl <= 3 ? "warning" : "success", label: `${dl} DAY${dl !== 1 ? "S" : ""} LEFT` }; }
+                }
+                return <div style={{ display: "flex", flexDirection: "column", gap: 4 }}><span style={{ fontSize: 13, color: color.text, fontWeight: 600 }}>{dt}</span>{badge && <Badge tone={badge.tone}>{badge.label}</Badge>}</div>;
+              },
+            },
+            {
+              key: "access", header: "Access", width: 110,
+              render: (form) => {
+                const exp = form.deadline_at && new Date(form.deadline_at).getTime() <= now;
+                return form.is_locked
+                  ? <Badge tone="danger" icon={<Lock size={11} strokeWidth={1.75} />}>Locked</Badge>
+                  : exp ? <Badge tone="danger">Expired</Badge> : <Badge tone="success">Open</Badge>;
+              },
+            },
+            {
+              key: "actions", header: "", align: "right", width: 140,
+              render: (form) => (
+                <div style={{ display: "inline-flex", alignItems: "center", gap: 6, justifyContent: "flex-end" }}>
+                  {canAssign && <Button variant="secondary" iconOnly title="Assign contributors" icon={<UserPlus size={16} strokeWidth={1.9} />} onClick={(e) => { e.stopPropagation(); setAssignForm(form); }} />}
+                  <Button variant="secondary" iconOnly title="Open & manage records" icon={<Eye size={16} strokeWidth={1.9} />} onClick={(e) => { e.stopPropagation(); openForm(form); }} />
+                </div>
+              ),
+            },
+          ]}
+        />
       </div>
     );
   }

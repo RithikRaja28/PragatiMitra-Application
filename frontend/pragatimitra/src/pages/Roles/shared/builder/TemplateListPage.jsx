@@ -88,7 +88,7 @@ function TemplateList({ onCreateNew, onEdit }) {
   const visible = filter === "ALL" ? templates : templates.filter(t => t.status === filter);
 
   return (
-    <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", minHeight: "100vh", background: C.bg }}>
+    <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", minHeight: "100vh", background: "transparent" }}>
 
       {/* ── Page header ─────────────────────────────────────────────── */}
       <div style={{

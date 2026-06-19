@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useApi }  from "../../../hooks/useApi";
 import { useAuth } from "../../../store/AuthContext";
 import PageHeader  from "../../../components/shared/PageHeader";
+import { Button } from "../../../ui";
+import { Plus } from "lucide-react";
 import { S, Toast, ConfirmDialog, isAuthError } from "../../../components/shared/formUtils";
 
 /**
@@ -412,7 +414,7 @@ function WorkflowForm({ mode, entity, onSaved, onBack }) {
   };
 
   return (
-    <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", background: C.bg, minHeight: "100%", padding: 28 }}>
+    <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", background: "transparent", minHeight: "100%", padding: 28 }}>
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 24 }}>
         <button
@@ -965,7 +967,7 @@ export default function WorkflowTemplatePage() {
   const totalSteps = templates.reduce((s, t) => s + Number(t.step_count || 0), 0);
 
   return (
-    <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", background: C.bg, minHeight: "100%", padding: 28 }}>
+    <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", background: "transparent", minHeight: "100%", padding: 28 }}>
       {toast && <Toast message={toast.message} type={toast.type} />}
       {confirm && <ConfirmDialog {...confirm} onCancel={() => setConfirm(null)} />}
       <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}} @keyframes spin{to{transform:rotate(360deg)}}`}</style>
@@ -976,18 +978,9 @@ export default function WorkflowTemplatePage() {
         title="Workflow Templates"
         description="Reusable approval chains — assign any template to any report section. Different sections can use different workflows."
         actions={
-          <button
-            onClick={() => setScreen("create")}
-            style={{
-              display: "flex", alignItems: "center", gap: 7,
-              padding: "9px 18px", borderRadius: 10, border: "none",
-              background: C.primary, color: "#fff",
-              fontSize: 13, fontWeight: 700, cursor: "pointer",
-              boxShadow: "0 2px 8px rgba(37,99,235,0.25)",
-            }}
-          >
-            <span style={{ fontSize: 16 }}>＋</span> New Workflow
-          </button>
+          <Button variant="primary" icon={<Plus size={18} strokeWidth={2.2} />} onClick={() => setScreen("create")}>
+            New Workflow
+          </Button>
         }
       />
 

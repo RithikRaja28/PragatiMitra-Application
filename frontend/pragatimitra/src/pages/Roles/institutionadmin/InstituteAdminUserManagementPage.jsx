@@ -7,6 +7,8 @@ const SLUG = "user-management";
 import { S, Toast } from "../../../components/shared/formUtils";
 import FormScreen from "../../../components/shared/FormScreen";
 import PageHeader from "../../../components/shared/PageHeader";
+import { Button } from "../../../ui";
+import { Plus } from "lucide-react";
 import { Select } from "../../../components/shared/ui";
 
 /* ── Constants & pure helpers ──────────────────────────────────── */
@@ -699,17 +701,9 @@ export default function InstituteAdminUserManagementPage() {
         title="Users"
         description={<>Manage users belonging to <span style={{ color: "#0891b2", fontWeight: 600 }}>{institutionName}</span>.</>}
         actions={
-          <button
-            onClick={() => navigate(`${listPath}/create`)}
-            style={{
-              display: "inline-flex", alignItems: "center", gap: 8,
-              padding: "10px 20px", borderRadius: 10, border: "none",
-              background: "#0891b2", fontSize: 13, fontWeight: 700,
-              color: "#fff", cursor: "pointer", flexShrink: 0,
-            }}
-          >
-            + New User
-          </button>
+          <Button variant="primary" icon={<Plus size={18} strokeWidth={2.2} />} onClick={() => navigate(`${listPath}/create`)}>
+            New User
+          </Button>
         }
       />
 

@@ -600,7 +600,7 @@ export default function ReportBuilderListPage() {
   return (
     <div style={{
       padding: "28px 32px", fontFamily: "'Plus Jakarta Sans', sans-serif",
-      background: "#f8f9fb", minHeight: "100%",
+      background: "transparent", minHeight: "100%",
     }}>
       <style>{`
         @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.45} }

@@ -81,7 +81,7 @@ export default function ReviewQueuePage() {
   const underReview  = queue.filter(q => q.status === "UNDER_REVIEW").length;
 
   return (
-    <div style={{ padding: "24px 28px", fontFamily: "'Plus Jakarta Sans', sans-serif", background: C.bg, minHeight: "100vh" }}>
+    <div style={{ padding: "24px 28px", fontFamily: "'Plus Jakarta Sans', sans-serif", background: "transparent", minHeight: "100vh" }}>
 
       {/* header */}
       <PageHeader

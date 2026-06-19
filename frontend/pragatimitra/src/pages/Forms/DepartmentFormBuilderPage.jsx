@@ -254,7 +254,7 @@ export default function DepartmentFormBuilderPage({ mode, initialData, onDone, o
   const modeLabel = isEdit ? t("Edit Department Form", lang) : t("Create Department Form", lang);
 
   return (
-    <div style={{ background: color.bg, minHeight: "100%", padding: "20px 0", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+    <div style={{ background: "transparent", minHeight: "100%", padding: "20px 0", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
       <div style={{ padding: "0 28px" }}>
         <PageHeader
           breadcrumb={[t("Home", lang), { label: t("Department Forms", lang), onClick: onBack }, modeLabel]}

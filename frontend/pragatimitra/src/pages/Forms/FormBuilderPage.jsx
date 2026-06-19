@@ -654,7 +654,7 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
 
   /* ══════════════ RENDER ══════════════ */
   return (
-    <div className="fb-scope" style={{ background: "#f8f9fb", minHeight: "100%", padding: "20px 0", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+    <div className="fb-scope" style={{ background: "transparent", minHeight: "100%", padding: "20px 0", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
       <style>{`
         /* Enterprise input scaling — taller fields, softer radii, blue focus ring.
            Scoped to .fb-scope so no other screen is affected. */

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useApi } from "../../../../hooks/useApi";
+import { Button } from "../../../../ui";
 import Toast from "../../../../components/shared/Toast";
 
 async function apiJson(apiFetch, path, opts) {
@@ -131,7 +132,7 @@ export default function ReportStructurePage({ reportId, onNavigate }) {
   if (loading) return <LoadingState />;
 
   return (
-    <div style={{ minHeight: "100vh", background: C.bg, fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+    <div style={{ minHeight: "100vh", background: "transparent", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
       {toast && <Toast {...toast} onClose={() => setToast(null)} />}
 
       {/* ── header ── */}
@@ -146,7 +147,7 @@ export default function ReportStructurePage({ reportId, onNavigate }) {
         </div>
         <div style={{ display: "flex", gap: 10 }}>
           <button style={outlineBtn} onClick={() => onNavigate?.("assign", reportId)}>Assign Sections</button>
-          <button style={primaryBtn} onClick={() => onNavigate?.("compile", reportId)}>Compile Report</button>
+          <Button variant="primary" onClick={() => onNavigate?.("compile", reportId)}>Compile Report</Button>
         </div>
       </header>
 
