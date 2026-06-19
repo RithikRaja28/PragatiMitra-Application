@@ -24,7 +24,6 @@
  */
 
 import React from "react";
-import PlaceholderPage from "../shared/PlaceholderPage";
 
 /* ── Collaborative Report Builder ──────────────────────────── */
 import ReportBuilderListPage        from "../../pages/Roles/shared/builder/ReportBuilderListPage";
@@ -42,6 +41,7 @@ import RoleAccessPage            from "../../pages/Roles/superadmin/RoleAccessPa
 
 /* ── Institute Admin page imports ───────────────────────────── */
 import InstitutionAdminOverviewPage     from "../../pages/Roles/institutionadmin/InstitutionAdminOverviewPage";
+import DomainDashboardPage              from "../../pages/Roles/shared/DomainDashboardPage";
 import ReportSetupPage                  from "../../pages/Roles/institutionadmin/ReportSetupPage";
 import InstituteAdminUserManagementPage from "../../pages/Roles/institutionadmin/InstituteAdminUserManagementPage";
 import InstituteAdminDepartmentPage     from "../../pages/Roles/institutionadmin/InstituteAdminDepartmentPage";
@@ -76,15 +76,12 @@ import BalanceSheetPage    from "../../pages/Roles/financeofficer/BalanceSheetPa
 /* ── Re-export so existing imports of PlaceholderPage from this file still work ── */
 export { default as PlaceholderPage } from "../shared/PlaceholderPage";
 
-/* ── Super Admin placeholders ───────────────────────────────── */
-const SuperAdminMasterDataPage = () => <PlaceholderPage title="Master Data" subtitle="Manage lookup values, categories, and reference data" color="#2563eb" />;
-
-/* ── Institute Admin placeholders ───────────────────────────── */
-const SectionsPage       = () => <PlaceholderPage title="Sections"        subtitle="Manage academic sections and groupings"         color="#2563eb" />;
-const WorkflowPage       = () => <PlaceholderPage title="Workflow"        subtitle="Define and oversee institutional workflows"     color="#2563eb" />;
-const TaskWorkflowPage   = () => <PlaceholderPage title="Task Workflow"   subtitle="Assign and track task-level workflow stages"    color="#2563eb" />;
-const VersionControlPage = () => <PlaceholderPage title="Version Control" subtitle="Manage document versions and change history"    color="#2563eb" />;
-const SystemPage         = () => <PlaceholderPage title="System"          subtitle="Institution system settings and configurations" color="#2563eb" />;
+/* Part 1 (sidebar standardization): the Super-Admin "Master Data" and the
+   Institute-Admin "Sections / Workflow / Task Workflow / Version Control / System"
+   entries were non-functional PlaceholderPage stubs that rendered regardless of
+   access. They have been removed from the nav + page maps so the sidebar only
+   surfaces real, usable features. PlaceholderPage stays re-exported below for any
+   other importer. */
 
 /* ── Shared subRoute arrays (de-duplicated by collectRouteSlugs) ── */
 const REPORT_BUILDER_SUB = [
@@ -235,13 +232,6 @@ export const ROLE_CONFIG = {
               { path: "role-access/edit",   element: <RoleAccessPage /> },
             ],
           },
-          {
-            id: "master-data",
-            label: "Master Data",
-            icon: "Database",
-            permission: "master_data",
-            slug: "master-data",
-          },
         ],
       },
       {
@@ -271,7 +261,6 @@ export const ROLE_CONFIG = {
       institutions: <InstitutionManagementPage />,
       committees: <CommitteeManagementPage />,
       "role-access": <RoleAccessPage />,
-      "master-data": <SuperAdminMasterDataPage />,
       "audit-logs":     <AuditLogsPage />,
       "report-builder": <ReportBuilderListPage />,
       "sa-my-sections": <MyAssignedSectionsPage />,
@@ -336,18 +325,6 @@ export const ROLE_CONFIG = {
         ],
       },
       {
-        group: "Structure",
-        items: [
-          {
-            id: "ia-sections",
-            label: "Sections",
-            icon: "Layers",
-            permission: null,
-            slug: "sections",
-          },
-        ],
-      },
-      {
         group: "Workflow",
         items: [
           {
@@ -356,39 +333,6 @@ export const ROLE_CONFIG = {
             icon: "GitBranch",
             permission: null,
             slug: "workflow-templates",
-          },
-          {
-            id: "ia-workflow",
-            label: "Workflow",
-            icon: "Network",
-            permission: null,
-            slug: "workflow",
-          },
-          {
-            id: "ia-task-workflow",
-            label: "Task Workflow",
-            icon: "ListTodo",
-            permission: null,
-            slug: "task-workflow",
-          },
-        ],
-      },
-      {
-        group: "Version & System",
-        items: [
-          {
-            id: "ia-version-control",
-            label: "Version Control",
-            icon: "History",
-            permission: null,
-            slug: "version-control",
-          },
-          {
-            id: "ia-system",
-            label: "System",
-            icon: "Settings2",
-            permission: null,
-            slug: "system",
           },
         ],
       },
@@ -404,12 +348,7 @@ export const ROLE_CONFIG = {
       "ia-report-builder":    <ReportBuilderListPage />,
       "ia-my-sections":       <MyAssignedSectionsPage />,
       "ia-review-queue":      <ReviewQueuePage />,
-      "ia-sections":              <SectionsPage />,
       "ia-workflow-templates":    <WorkflowTemplatePage />,
-      "ia-workflow":              <WorkflowPage />,
-      "ia-task-workflow":     <TaskWorkflowPage />,
-      "ia-version-control": <VersionControlPage />,
-      "ia-system": <SystemPage />,
     },
     defaultPage: "ia-overview",
     user: { name: "Institute Admin", initials: "IA", org: "PragatiMitra" },
@@ -545,18 +484,6 @@ export const ROLE_CONFIG = {
         ],
       },
       {
-        group: "Tasks",
-        items: [
-          {
-            id: "da-tasks",
-            label: "Task Overview",
-            icon: "ListChecks",
-            permission: null,
-            slug: "task-overview",
-          },
-        ],
-      },
-      {
         group: "Reports",
         items: [
           {
@@ -595,13 +522,6 @@ export const ROLE_CONFIG = {
           },
         ],
       },
-      {
-        group: "Report Sections",
-        items: [
-          { id: "da-my-sections",  label: "My Sections",  icon: "FileEdit",      permission: null, slug: "my-sections",  subRoutes: MY_SECTIONS_SUB },
-          { id: "da-review-queue", label: "Review Queue", icon: "ClipboardList", permission: null, slug: "review-queue", subRoutes: REVIEW_QUEUE_SUB },
-        ],
-      },
     ],
     pages: {
       "da-dashboard":    <DeptAdminDashboardPage />,
@@ -609,8 +529,6 @@ export const ROLE_CONFIG = {
       "da-kpi":          <DeptKpiPage />,
       "da-dept-forms":   <DepartmentFormManagementPage />,
       "da-form-data":    <FormDataPage />,
-      "da-my-sections":  <MyAssignedSectionsPage />,
-      "da-review-queue": <ReviewQueuePage />,
     },
     defaultPage: "da-dashboard",
     user: {
@@ -712,29 +630,9 @@ export const ROLE_CONFIG = {
           { id: "c-dept-forms", label: "Department Forms", icon: "FileStack", permission: null, slug: "form-management", subRoutes: FORM_FILL_SUB },
         ],
       },
-      {
-        group: "My Work",
-        items: [
-          { id: "c-sections", label: "My Sections", icon: "FileEdit", permission: null, slug: "my-sections", subRoutes: MY_SECTIONS_SUB },
-        ],
-      },
-      {
-        group: "Forms",
-        items: [
-          { id: "c-dept-forms", label: "Department Forms", icon: "FileStack", permission: null },
-        ],
-      },
-      {
-        group: "Forms",
-        items: [
-          { id: "c-dept-forms", label: "Department Forms", icon: "FileStack", permission: null },
-        ],
-      },
     ],
     pages: {
       "c-form-data":  <FormDataPage />,
-      "c-dept-forms": <DepartmentFormFillPage />,
-      "c-sections":   <MyAssignedSectionsPage />,
       "c-dept-forms": <DepartmentFormFillPage />,
     },
     defaultPage: "c-form-data",
@@ -815,7 +713,7 @@ export const ROLE_CONFIG = {
       { group: "Reports", items: [{ id: "ha-report-setup", label: "Reports", icon: "FileText", permission: null, slug: "report-management" }] },
     ],
     pages: {
-      "ha-overview":     <InstitutionAdminOverviewPage />,
+      "ha-overview":     <DomainDashboardPage domain="hospital" />,
       "ha-form-data":    <FormDataPage />,
       "ha-report-setup": <ReportSetupPage />,
     },
@@ -833,7 +731,7 @@ export const ROLE_CONFIG = {
       { group: "Reports", items: [{ id: "fa-report-setup", label: "Reports", icon: "FileText", permission: null, slug: "report-management" }] },
     ],
     pages: {
-      "fa-overview":     <InstitutionAdminOverviewPage />,
+      "fa-overview":     <DomainDashboardPage domain="finance" />,
       "fa-form-data":    <FormDataPage />,
       "fa-report-setup": <ReportSetupPage />,
     },

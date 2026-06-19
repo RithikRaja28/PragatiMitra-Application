@@ -5,6 +5,7 @@ import {
 } from "recharts";
 import { Plus } from "lucide-react";
 import { useLanguage } from "../../../i18n/LanguageContext";
+import { useAcademicYear } from "../../../store/AcademicYearContext";
 import { t } from "../../../i18n/translations";
 import KpiDashboardPanel from "../../../components/KPI/KpiDashboardPanel";
 import PageHeader from "../../../components/shared/PageHeader";
@@ -82,6 +83,11 @@ function Avatar({ name, size = 28 }) {
 
 export default function InstitutionAdminOverviewPage() {
   const { lang } = useLanguage();
+  // Part 1 (no hardcoded labels): the academic year shown on the dashboard derives
+  // from the institution's selected academic year (top-bar context), not a static
+  // "2026". Falls back gracefully when no year context is present.
+  const { selectedYear, academicYear } = useAcademicYear() || {};
+  const yearLabel = selectedYear != null ? String(selectedYear) : (academicYear || "");
   return (
     <div style={{ padding: "24px 28px", fontFamily: "'Plus Jakarta Sans', sans-serif",
       display: "flex", flexDirection: "column", gap: 14, background: C.bg, minHeight: "100vh" }}>
@@ -90,7 +96,7 @@ export default function InstitutionAdminOverviewPage() {
       <PageHeader
         breadcrumb={[t("Home", lang), t("Institution", lang), t("Dashboard", lang)]}
         title={t("Institute Overview", lang)}
-        description="Annual Report 2026 — real-time progress"
+        description={`${t("Annual Report", lang)}${yearLabel ? ` ${yearLabel}` : ""} — ${t("real-time progress", lang)}`}
         actions={
           <>
             <button style={{ background: C.primaryLt, border: `0.5px solid ${C.border}`, color: C.textMid,
@@ -109,7 +115,7 @@ export default function InstitutionAdminOverviewPage() {
       {/* Stat cards */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 10 }}>
         {[
-          { label: "Total Sections", value: 24, sub: "Annual Report 2026", color: C.primary,   bar: 60, barBg: C.primaryLt },
+          { label: "Total Sections", value: 24, sub: yearLabel ? `Annual Report ${yearLabel}` : "Annual Report", color: C.primary,   bar: 60, barBg: C.primaryLt },
           { label: "In Progress",    value: 8,  sub: "+2 since last week", color: "#7c3aed",   bar: 33, barBg: "#f5f3ff"   },
           { label: "Completed",      value: 10, sub: "42% of total",       color: "#059669",   bar: 42, barBg: "#ecfdf5"   },
           { label: "Overdue",        value: 6,  sub: "Needs attention",    color: "#dc2626",   bar: 25, barBg: "#fff1f2"   },
@@ -141,7 +147,7 @@ export default function InstitutionAdminOverviewPage() {
         <div style={card}>
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 14 }}>
             <div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 2 }}>Section-wise completion — Annual 2026</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 2 }}>{t("Section-wise completion", lang)}{yearLabel ? ` — ${yearLabel}` : ""}</div>
               <div style={{ fontSize: 11, color: C.textSub }}>Department completion percentage — hover for details</div>
             </div>
             <span style={{ fontSize: 10, color: "#c7d2fe", alignSelf: "flex-start" }}>hover for %</span>
@@ -235,7 +241,7 @@ export default function InstitutionAdminOverviewPage() {
           {/* Section tree */}
           <div style={card}>
             <div style={{ fontSize: 10, fontWeight: 700, color: C.textSub, textTransform: "uppercase",
-              letterSpacing: "0.06em", marginBottom: 10 }}>Section tree — Annual 2026</div>
+              letterSpacing: "0.06em", marginBottom: 10 }}>{t("Section tree", lang)}{yearLabel ? ` — ${yearLabel}` : ""}</div>
             {treeItems.map((sec, si) => (
               <div key={sec.name}>
                 <div style={{ display: "flex", alignItems: "center", gap: 6, padding: `${si===0?0:6}px 0 6px`,

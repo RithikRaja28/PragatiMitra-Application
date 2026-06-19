@@ -653,6 +653,7 @@ app.use("/api/department-form-data",   require("./routes/departmentFormData"));
 app.use("/api/academic-years",         require("./routes/academicYear"));
 app.use("/api/form-data",              require("./routes/formData"));
 app.use("/api/form-data",              require("./routes/formimportexport"));
+app.use("/api/dashboard",              require("./routes/dashboard"));
 app.use("/api/nodal-officer-assignments", nodalOfficerAssignmentsRouter);
 app.use("/api/form-assignments",       require("./routes/formAssignments").router);
 
