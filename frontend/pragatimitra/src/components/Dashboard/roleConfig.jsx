@@ -486,6 +486,18 @@ export const ROLE_CONFIG = {
         ],
       },
       {
+        group: "Tasks",
+        items: [
+          {
+            id: "da-tasks",
+            label: "Task Overview",
+            icon: "ListChecks",
+            permission: null,
+            slug: "task-overview",
+          },
+        ],
+      },
+      {
         group: "Reports",
         items: [
           {
@@ -524,6 +536,13 @@ export const ROLE_CONFIG = {
           },
         ],
       },
+      {
+        group: "Report Sections",
+        items: [
+          { id: "da-my-sections",  label: "My Sections",  icon: "FileEdit",      permission: null, slug: "my-sections",  subRoutes: MY_SECTIONS_SUB },
+          { id: "da-review-queue", label: "Review Queue", icon: "ClipboardList", permission: null, slug: "review-queue", subRoutes: REVIEW_QUEUE_SUB },
+        ],
+      },
     ],
     pages: {
       "da-dashboard":    <DeptAdminDashboardPage />,
@@ -531,6 +550,8 @@ export const ROLE_CONFIG = {
       "da-kpi":          <DeptKpiPage />,
       "da-dept-forms":   <DepartmentFormManagementPage />,
       "da-form-data":    <FormDataPage />,
+      "da-my-sections":  <MyAssignedSectionsPage />,
+      "da-review-queue": <ReviewQueuePage />,
     },
     defaultPage: "da-dashboard",
     user: {
@@ -632,10 +653,17 @@ export const ROLE_CONFIG = {
           { id: "c-dept-forms", label: "Department Forms", icon: "FileStack", permission: null, slug: "form-management", subRoutes: FORM_FILL_SUB },
         ],
       },
+      {
+        group: "My Work",
+        items: [
+          { id: "c-sections", label: "My Sections", icon: "FileEdit", permission: null, slug: "my-sections", subRoutes: MY_SECTIONS_SUB },
+        ],
+      },
     ],
     pages: {
       "c-form-data":  <FormDataPage />,
       "c-dept-forms": <DepartmentFormFillPage />,
+      "c-sections":   <MyAssignedSectionsPage />,
     },
     defaultPage: "c-form-data",
     user: { name: "Contributor", initials: "CT", org: "PragatiMitra" },
