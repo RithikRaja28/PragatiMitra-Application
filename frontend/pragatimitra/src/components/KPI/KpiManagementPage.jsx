@@ -6,6 +6,7 @@ import Button from "../../ui/Button";
 import { useNavigate, useLocation, Navigate } from "react-router-dom";
 import { useAuth } from "../../store/AuthContext";
 import FormScreen from "../shared/FormScreen";
+import PageHeader from "../shared/PageHeader";
 import { S } from "../shared/formUtils";
 import { Select } from "../shared/ui";
 import { useLanguage } from "../../i18n/LanguageContext";
@@ -1354,14 +1355,11 @@ export default function KpiManagementPage({ scope = "institute" }) {
     <div style={{ padding:"32px 36px", fontFamily:"'Plus Jakarta Sans',sans-serif", minHeight:"100%" }}>
 
       {/* Header */}
-      <div style={{ marginBottom:28 }}>
-        <div style={{ display:"inline-flex", alignItems:"center", gap:8, background:"#ecfdf3", borderRadius:8, padding:"4px 12px", marginBottom:12 }}>
-          <span style={{ width:7, height:7, borderRadius:"50%", background:"#027a48" }}/>
-          <span style={{ fontSize:11, fontWeight:600, color:"#027a48", textTransform:"uppercase", letterSpacing:1 }}>{scopeLabel}</span>
-        </div>
-        <h1 style={{ fontSize:24, fontWeight:700, color:"#1e293b", letterSpacing:"-0.4px", marginBottom:6 }}>{t("KPI Charts", lang)}</h1>
-        <p style={{ color:"#94a3b8", fontSize:14 }}>{scopeDesc}</p>
-      </div>
+      <PageHeader
+        breadcrumb={["Home", scope === "department" ? "Department" : "Institution", t("KPI Charts", lang)]}
+        title={t("KPI Charts", lang)}
+        description={scopeDesc}
+      />
 
       {/* Action row */}
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:12, marginBottom:20 }}>

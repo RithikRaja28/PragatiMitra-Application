@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate, useLocation, Navigate } from "react-router-dom";
 import { useApi } from "../../../hooks/useApi";
+import PageHeader from "../../../components/shared/PageHeader";
 import ReviewSectionPage from "../shared/builder/ReviewSectionPage";
 
 const SLUG = "review-queue";
@@ -83,21 +84,11 @@ export default function ReviewQueuePage() {
     <div style={{ padding: "24px 28px", fontFamily: "'Plus Jakarta Sans', sans-serif", background: C.bg, minHeight: "100vh" }}>
 
       {/* header */}
-      <div style={{ marginBottom: 20 }}>
-        <div style={{ display: "inline-flex", alignItems: "center", gap: 6,
-          background: C.primaryLt, borderRadius: 6, padding: "3px 11px", marginBottom: 8 }}>
-          <span style={{ width: 6, height: 6, borderRadius: "50%", background: C.primary }} />
-          <span style={{ fontSize: 10, fontWeight: 700, color: C.primary, textTransform: "uppercase", letterSpacing: "0.08em" }}>
-            Review Queue
-          </span>
-        </div>
-        <h1 style={{ fontSize: 22, fontWeight: 700, color: C.text, margin: 0, letterSpacing: "-0.4px" }}>
-          Section Review Queue
-        </h1>
-        <p style={{ fontSize: 13, color: C.textSub, margin: "4px 0 0" }}>
-          Sections awaiting your review — click a row to begin
-        </p>
-      </div>
+      <PageHeader
+        breadcrumb={["Home", "Reports", "Review Queue"]}
+        title="Section Review Queue"
+        description="Sections awaiting your review — click a row to begin"
+      />
 
       {/* summary chips */}
       {!loading && queue.length > 0 && (

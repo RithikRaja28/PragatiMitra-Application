@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useApi }  from "../../../hooks/useApi";
 import { useAuth } from "../../../store/AuthContext";
+import PageHeader  from "../../../components/shared/PageHeader";
 import { S, Toast, ConfirmDialog, isAuthError } from "../../../components/shared/formUtils";
 
 /**
@@ -970,29 +971,25 @@ export default function WorkflowTemplatePage() {
       <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}} @keyframes spin{to{transform:rotate(360deg)}}`}</style>
 
       {/* ── Header ── */}
-      <div style={{
-        display: "flex", alignItems: "flex-start",
-        justifyContent: "space-between", marginBottom: 24, gap: 16, flexWrap: "wrap",
-      }}>
-        <div>
-          <div style={{ fontSize: 20, fontWeight: 800, color: C.text }}>Workflow Templates</div>
-          <div style={{ fontSize: 13, color: C.textSub, marginTop: 4 }}>
-            Reusable approval chains — assign any template to any report section. Different sections can use different workflows.
-          </div>
-        </div>
-        <button
-          onClick={() => setScreen("create")}
-          style={{
-            display: "flex", alignItems: "center", gap: 7,
-            padding: "9px 18px", borderRadius: 10, border: "none",
-            background: C.primary, color: "#fff",
-            fontSize: 13, fontWeight: 700, cursor: "pointer",
-            boxShadow: "0 2px 8px rgba(37,99,235,0.25)",
-          }}
-        >
-          <span style={{ fontSize: 16 }}>＋</span> New Workflow
-        </button>
-      </div>
+      <PageHeader
+        breadcrumb={["Home", "Institution", "Workflow Templates"]}
+        title="Workflow Templates"
+        description="Reusable approval chains — assign any template to any report section. Different sections can use different workflows."
+        actions={
+          <button
+            onClick={() => setScreen("create")}
+            style={{
+              display: "flex", alignItems: "center", gap: 7,
+              padding: "9px 18px", borderRadius: 10, border: "none",
+              background: C.primary, color: "#fff",
+              fontSize: 13, fontWeight: 700, cursor: "pointer",
+              boxShadow: "0 2px 8px rgba(37,99,235,0.25)",
+            }}
+          >
+            <span style={{ fontSize: 16 }}>＋</span> New Workflow
+          </button>
+        }
+      />
 
       {/* ── Summary stats ── */}
       <div style={{ display: "flex", gap: 14, marginBottom: 24, flexWrap: "wrap" }}>

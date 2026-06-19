@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useApi } from "../../../hooks/useApi";
 import { useAuth } from "../../../store/AuthContext";
 import FormScreen from "../../../components/shared/FormScreen";
+import PageHeader from "../../../components/shared/PageHeader";
 import { S, Toast, isAuthError, formatDate } from "../../../components/shared/formUtils";
 
 /* ─── Department Form ────────────────────────────────────────────
@@ -460,37 +461,11 @@ export default function InstituteAdminDepartmentPage() {
       {toast && <Toast message={toast.message} type={toast.type} />}
 
       {/* ── Header ── */}
-      <div style={{
-        display: "flex", alignItems: "flex-start", justifyContent: "space-between",
-        marginBottom: 28, flexWrap: "wrap", gap: 16,
-      }}>
-        <div>
-          <div style={{
-            display: "inline-flex", alignItems: "center", gap: 8,
-            background: "#05966914", borderRadius: 8, padding: "4px 12px", marginBottom: 12,
-          }}>
-            <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#059669" }} />
-            <span style={{
-              fontSize: 11, fontWeight: 600, color: "#059669",
-              textTransform: "uppercase", letterSpacing: 1,
-            }}>
-              Dept Management
-            </span>
-          </div>
-          <h1 style={{
-            fontSize: 24, fontWeight: 700, color: "#1e293b",
-            letterSpacing: "-0.4px", marginBottom: 6,
-          }}>
-            Departments
-          </h1>
-          <p style={{ color: "#94a3b8", fontSize: 14 }}>
-            Manage departments in{" "}
-            <span style={{ color: "#059669", fontWeight: 600 }}>{institutionName}</span>.
-          </p>
-        </div>
-
-        {/* New Department button — only when institution is resolved */}
-        {institutionId && !loadError && (
+      <PageHeader
+        breadcrumb={["Home", "Institution", "Departments"]}
+        title="Departments"
+        description={<>Manage departments in <span style={{ color: "#059669", fontWeight: 600 }}>{institutionName}</span>.</>}
+        actions={institutionId && !loadError && (
           <button
             onClick={() => setFormView({ mode: "create", entity: null })}
             style={{
@@ -504,7 +479,7 @@ export default function InstituteAdminDepartmentPage() {
             New Department
           </button>
         )}
-      </div>
+      />
 
       {/* Load error */}
       {loadError && (

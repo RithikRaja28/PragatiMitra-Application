@@ -3,6 +3,7 @@ import { useNavigate, useLocation, Navigate } from "react-router-dom";
 import { useAuth } from "../../../../store/AuthContext";
 import { useApi }  from "../../../../hooks/useApi";
 import FormScreen              from "../../../../components/shared/FormScreen";
+import PageHeader              from "../../../../components/shared/PageHeader";
 import { S }                  from "../../../../components/shared/formUtils";
 import CollaborativeEditorPage   from "./CollaborativeEditorPage";
 import CreateReportWizardPage    from "./CreateReportWizardPage";
@@ -607,26 +608,11 @@ export default function ReportBuilderListPage() {
       `}</style>
 
       {/* ── Header ── */}
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 24, gap: 16, flexWrap: "wrap" }}>
-        <div>
-          <div style={{
-            display: "inline-flex", alignItems: "center", gap: 6,
-            background: "#ede9fe", borderRadius: 8, padding: "3px 10px", marginBottom: 10,
-          }}>
-            <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#7c3aed" }} />
-            <span style={{ fontSize: 10, fontWeight: 700, color: "#7c3aed", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-              Report Builder
-            </span>
-          </div>
-          <div style={{ fontSize: 22, fontWeight: 800, color: "#1e293b", letterSpacing: "-0.3px", marginBottom: 4 }}>
-            Collaborative Reports
-          </div>
-          <div style={{ fontSize: 13, color: "#94a3b8" }}>
-            Create and manage institutional reports with section-level collaboration
-          </div>
-        </div>
-
-        {canCreate && (
+      <PageHeader
+        breadcrumb={["Home", "Reports", "Report Builder"]}
+        title="Collaborative Reports"
+        description="Create and manage institutional reports with section-level collaboration"
+        actions={canCreate && (
           <button
             onClick={() => navFn(`${listPath}/create`)}
             style={{
@@ -639,7 +625,7 @@ export default function ReportBuilderListPage() {
             <span style={{ fontSize: 18, lineHeight: 1 }}>＋</span> New Report
           </button>
         )}
-      </div>
+      />
 
       {/* ── Stat chips ── */}
       {!loading && reports.length > 0 && (

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useApi }  from "../../../hooks/useApi";
 import { useAuth } from "../../../store/AuthContext";
 import FormScreen  from "../../../components/shared/FormScreen";
+import PageHeader  from "../../../components/shared/PageHeader";
 import { S, Toast, ConfirmDialog, isAuthError } from "../../../components/shared/formUtils";
 
 /* ─── Design tokens ────────────────────────────────────────────── */
@@ -563,29 +564,25 @@ export default function ReportCyclePage() {
       <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}`}</style>
 
       {/* ── Page header ── */}
-      <div style={{
-        display: "flex", alignItems: "flex-start",
-        justifyContent: "space-between", marginBottom: 24, gap: 16, flexWrap: "wrap",
-      }}>
-        <div>
-          <div style={{ fontSize: 20, fontWeight: 800, color: C.text }}>Reporting Cycles</div>
-          <div style={{ fontSize: 13, color: C.textSub, marginTop: 4 }}>
-            Each reporting cycle defines the period and outer deadline bounds for all reports under it.
-          </div>
-        </div>
-        <button
-          onClick={() => setScreen("create")}
-          style={{
-            display: "flex", alignItems: "center", gap: 7,
-            padding: "9px 18px", borderRadius: 10, border: "none",
-            background: C.primary, color: "#fff",
-            fontSize: 13, fontWeight: 700, cursor: "pointer",
-            boxShadow: "0 2px 8px rgba(37,99,235,0.25)",
-          }}
-        >
-          <span style={{ fontSize: 16, lineHeight: 1 }}>＋</span> New Cycle
-        </button>
-      </div>
+      <PageHeader
+        breadcrumb={["Home", "Institution", "Report Cycles"]}
+        title="Reporting Cycles"
+        description="Each reporting cycle defines the period and outer deadline bounds for all reports under it."
+        actions={
+          <button
+            onClick={() => setScreen("create")}
+            style={{
+              display: "flex", alignItems: "center", gap: 7,
+              padding: "9px 18px", borderRadius: 10, border: "none",
+              background: C.primary, color: "#fff",
+              fontSize: 13, fontWeight: 700, cursor: "pointer",
+              boxShadow: "0 2px 8px rgba(37,99,235,0.25)",
+            }}
+          >
+            <span style={{ fontSize: 16, lineHeight: 1 }}>＋</span> New Cycle
+          </button>
+        }
+      />
 
       {/* ── Stats ── */}
       <div style={{ display: "flex", gap: 14, marginBottom: 24, flexWrap: "wrap" }}>

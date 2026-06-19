@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate, useLocation, Navigate } from "react-router-dom";
 import { useApi }  from "../../../../hooks/useApi";
+import PageHeader from "../../../../components/shared/PageHeader";
 import SectionEditorPage from "./SectionEditorPage";
 
 const STATUS_CFG = {
@@ -176,23 +177,11 @@ export default function MyAssignedSectionsPage() {
     <div style={{ padding: "28px 32px", fontFamily: "'Plus Jakarta Sans', sans-serif", maxWidth: 900 }}>
 
       {/* header */}
-      <div style={{ marginBottom: 24 }}>
-        <div style={{
-          display: "inline-flex", alignItems: "center", gap: 6,
-          background: "#ede9fe", borderRadius: 8, padding: "3px 10px", marginBottom: 10,
-        }}>
-          <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#7c3aed" }} />
-          <span style={{ fontSize: 10, fontWeight: 700, color: "#7c3aed", textTransform: "uppercase", letterSpacing: 1 }}>
-            My Sections
-          </span>
-        </div>
-        <h1 style={{ fontSize: 22, fontWeight: 700, color: "#1e293b", letterSpacing: "-0.3px", marginBottom: 4 }}>
-          My Assigned Sections
-        </h1>
-        <p style={{ fontSize: 13, color: "#94a3b8" }}>
-          Report sections assigned directly to you
-        </p>
-      </div>
+      <PageHeader
+        breadcrumb={["Home", "Reports", "My Sections"]}
+        title="My Assigned Sections"
+        description="Report sections assigned directly to you"
+      />
 
       {/* summary chips */}
       {!loading && sections.length > 0 && (

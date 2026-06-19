@@ -6,6 +6,7 @@ import { useAuth } from "../../../store/AuthContext";
 const SLUG = "user-management";
 import { S, Toast } from "../../../components/shared/formUtils";
 import FormScreen from "../../../components/shared/FormScreen";
+import PageHeader from "../../../components/shared/PageHeader";
 import { Select } from "../../../components/shared/ui";
 
 /* ── Constants & pure helpers ──────────────────────────────────── */
@@ -693,38 +694,24 @@ export default function InstituteAdminUserManagementPage() {
       {toast && <Toast message={toast.message} type={toast.type} />}
 
       {/* Header */}
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 28 }}>
-        <div>
-          <div style={{
-            display: "inline-flex", alignItems: "center", gap: 8,
-            background: "#0891b214", borderRadius: 8, padding: "4px 12px", marginBottom: 12,
-          }}>
-            <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#0891b2" }} />
-            <span style={{ fontSize: 11, fontWeight: 600, color: "#0891b2", textTransform: "uppercase", letterSpacing: 1 }}>
-              User Management
-            </span>
-          </div>
-          <h1 style={{ fontSize: 24, fontWeight: 700, color: "#1e293b", letterSpacing: "-0.4px", marginBottom: 6 }}>
-            Users
-          </h1>
-          <p style={{ color: "#94a3b8", fontSize: 14 }}>
-            Manage users belonging to{" "}
-            <span style={{ color: "#0891b2", fontWeight: 600 }}>{institutionName}</span>.
-          </p>
-        </div>
-
-        <button
-          onClick={() => navigate(`${listPath}/create`)}
-          style={{
-            display: "inline-flex", alignItems: "center", gap: 8,
-            padding: "10px 20px", borderRadius: 10, border: "none",
-            background: "#0891b2", fontSize: 13, fontWeight: 700,
-            color: "#fff", cursor: "pointer", flexShrink: 0, marginTop: 4,
-          }}
-        >
-          + New User
-        </button>
-      </div>
+      <PageHeader
+        breadcrumb={["Home", "Institution", "Users"]}
+        title="Users"
+        description={<>Manage users belonging to <span style={{ color: "#0891b2", fontWeight: 600 }}>{institutionName}</span>.</>}
+        actions={
+          <button
+            onClick={() => navigate(`${listPath}/create`)}
+            style={{
+              display: "inline-flex", alignItems: "center", gap: 8,
+              padding: "10px 20px", borderRadius: 10, border: "none",
+              background: "#0891b2", fontSize: 13, fontWeight: 700,
+              color: "#fff", cursor: "pointer", flexShrink: 0,
+            }}
+          >
+            + New User
+          </button>
+        }
+      />
 
       <UserList
         apiFetch={apiFetch}
