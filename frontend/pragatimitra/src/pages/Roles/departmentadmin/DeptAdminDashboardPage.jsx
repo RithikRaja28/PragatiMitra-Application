@@ -101,7 +101,7 @@ export default function DeptAdminDashboardPage() {
   }
 
   return (
-    <div style={{ padding: "24px 28px", fontFamily: "'Plus Jakarta Sans', sans-serif", background: C.bg, minHeight: "100%", display: "flex", flexDirection: "column", gap: 16 }}>
+    <div style={{ padding: "24px 28px", fontFamily: "'Plus Jakarta Sans', sans-serif", background: "transparent", minHeight: "100%", display: "flex", flexDirection: "column", gap: 16 }}>
       <PageHeader
         breadcrumb={[t("Home", lang), t("Department", lang), t("Dashboard", lang)]}
         title={t("Department Dashboard", lang)}

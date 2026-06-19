@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from "react";
+import { Check } from "lucide-react";
 import { useApi }  from "../../../../hooks/useApi";
 import { useAuth } from "../../../../store/AuthContext";
+import { Button } from "../../../../ui";
 import { useShell } from "../../../../components/Dashboard/shellContext";
 import Toast from "../../../../components/shared/Toast";
 
@@ -520,7 +522,7 @@ export default function CreateReportWizardPage({ onCreated, onCancel, initialRep
 
   /* ══════════════════════════════════════════════ RENDER ═══════════════════ */
   return (
-    <div style={{ minHeight: "100vh", background: C.bg, fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+    <div style={{ minHeight: "100vh", background: "transparent", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
       {toast && <Toast {...toast} onClose={() => setToast(null)} />}
 
       {/* ── sticky header ── */}
@@ -571,10 +573,7 @@ export default function CreateReportWizardPage({ onCreated, onCancel, initialRep
           })}
         </div>
 
-        <button onClick={onCancel} style={{
-          padding: "7px 16px", background: "transparent", border: `1.5px solid ${C.border}`,
-          borderRadius: 8, cursor: "pointer", fontSize: 13, color: C.textSub, fontWeight: 600, fontFamily: "inherit",
-        }}>Cancel</button>
+        <Button variant="secondary" onClick={onCancel}>Cancel</Button>
       </header>
 
       <main style={{ maxWidth: 960, margin: "0 auto", padding: "40px 24px 100px" }}>
@@ -1262,12 +1261,7 @@ export default function CreateReportWizardPage({ onCreated, onCancel, initialRep
                   Click Done to return to the reports list. The report is saved as Draft.
                 </div>
               </div>
-              <button onClick={finish} style={{
-                padding: "11px 28px", background: C.success, border: "none",
-                borderRadius: 9, cursor: "pointer", fontSize: 13, fontWeight: 700,
-                color: "#fff", fontFamily: "inherit",
-                boxShadow: "0 2px 8px rgba(22,163,74,0.3)",
-              }}>Done ✓</button>
+              <Button variant="primary" icon={<Check size={17} strokeWidth={2.4} />} onClick={finish} style={{ background: C.success, borderColor: C.success }}>Done</Button>
             </div>
           </div>
         )}
@@ -1599,19 +1593,12 @@ function NavBar({ onBack, onNext, busy, showBack = true, nextLabel = "Next →" 
   return (
     <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 32 }}>
       {showBack && onBack && (
-        <button onClick={onBack} disabled={busy} style={{
-          padding: "9px 22px", background: "transparent", border: `1.5px solid ${C.border}`,
-          borderRadius: 9, cursor: busy ? "not-allowed" : "pointer",
-          fontSize: 13, fontWeight: 600, color: C.textSub, fontFamily: "inherit",
-        }}>← Back</button>
+        <Button variant="secondary" onClick={onBack} disabled={busy}>← Back</Button>
       )}
       {onNext && (
-        <button onClick={onNext} disabled={busy} style={{
-          padding: "9px 24px", background: busy ? C.primaryMid : C.primary,
-          border: "none", borderRadius: 9, cursor: busy ? "not-allowed" : "pointer",
-          fontSize: 13, fontWeight: 600, color: "#fff", fontFamily: "inherit",
-          boxShadow: "0 2px 6px rgba(79,70,229,0.3)", minWidth: 140,
-        }}>{busy ? "Saving…" : nextLabel}</button>
+        <Button variant="primary" onClick={onNext} loading={busy} disabled={busy} style={{ minWidth: 140 }}>
+          {busy ? "Saving…" : nextLabel}
+        </Button>
       )}
     </div>
   );

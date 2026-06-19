@@ -6,6 +6,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useApi }  from "../../../../hooks/useApi";
 import { useAuth } from "../../../../store/AuthContext";
+import { Button } from "../../../../ui";
 import { useShell } from "../../../../components/Dashboard/shellContext";
 import { BlockEditor, AddBlockMenu, DEFAULT_CONTENT, BLOCK_ICONS } from "./BlockEditors";
 
@@ -133,10 +134,7 @@ function StepHeader({ step, onCancel, pageTitle }) {
       </div>
 
       {/* right: cancel */}
-      <button onClick={onCancel} style={{
-        padding: "7px 16px", background: "transparent", border: `1.5px solid ${C.border}`,
-        borderRadius: 8, cursor: "pointer", fontSize: 13, color: C.textSub, fontWeight: 600, fontFamily: "inherit",
-      }}>Cancel</button>
+      <Button variant="secondary" onClick={onCancel}>Cancel</Button>
     </header>
   );
 }
@@ -160,19 +158,12 @@ function NavBar({ onBack, onNext, busy, showBack = true, nextLabel = "Next →" 
   return (
     <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 32 }}>
       {showBack && onBack && (
-        <button onClick={onBack} disabled={busy} style={{
-          padding: "9px 22px", background: "transparent", border: `1.5px solid ${C.border}`,
-          borderRadius: 9, cursor: busy ? "not-allowed" : "pointer",
-          fontSize: 13, fontWeight: 600, color: C.textSub, fontFamily: "inherit",
-        }}>← Back</button>
+        <Button variant="secondary" onClick={onBack} disabled={busy}>← Back</Button>
       )}
       {onNext && (
-        <button onClick={onNext} disabled={busy} style={{
-          padding: "9px 28px", background: busy ? C.primaryMid : C.primary,
-          border: "none", borderRadius: 9, cursor: busy ? "not-allowed" : "pointer",
-          fontSize: 13, fontWeight: 700, color: "#fff", fontFamily: "inherit",
-          boxShadow: "0 2px 6px rgba(37,99,235,0.3)", minWidth: 140,
-        }}>{busy ? "Saving…" : nextLabel}</button>
+        <Button variant="primary" onClick={onNext} loading={busy} disabled={busy} style={{ minWidth: 140 }}>
+          {busy ? "Saving…" : nextLabel}
+        </Button>
       )}
     </div>
   );
@@ -1084,7 +1075,7 @@ export default function TemplateCreationWizardPage({ initialId = null, onDone: o
   const immutable = false;
 
   return (
-    <div style={{ minHeight: "100vh", background: C.bg, fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+    <div style={{ minHeight: "100vh", background: "transparent", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
       <StepHeader step={step} pageTitle={initialId ? "Edit Template" : "Create Report Template"} onCancel={handleDone} />
 
       <main style={{ maxWidth: 960, margin: "0 auto", padding: "40px 24px 100px" }}>

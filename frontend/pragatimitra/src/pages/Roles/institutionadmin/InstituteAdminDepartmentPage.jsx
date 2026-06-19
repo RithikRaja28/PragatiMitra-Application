@@ -2,10 +2,12 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useApi } from "../../../hooks/useApi";
 import { useAuth } from "../../../store/AuthContext";
 import FormScreen from "../../../components/shared/FormScreen";
+import PageHeader from "../../../ui/PageHeader";
+import { Button } from "../../../ui";
+import { Plus } from "lucide-react";
 import { S, Toast, isAuthError, formatDate } from "../../../components/shared/formUtils";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { t } from "../../../i18n/translations";
-import PageHeader from "../../../ui/PageHeader";
 
 /* ─── Department Form ────────────────────────────────────────────
    Institution is always locked to the logged-in admin's institution.
@@ -468,18 +470,9 @@ export default function InstituteAdminDepartmentPage() {
         title={t("Departments", lang)}
         description={<>Manage departments in <span style={{ color: "#059669", fontWeight: 600 }}>{institutionName}</span>.</>}
         actions={institutionId && !loadError && (
-          <button
-            onClick={() => setFormView({ mode: "create", entity: null })}
-            style={{
-              padding: "10px 20px", borderRadius: 10, border: "none",
-              background: "#2563eb", fontSize: 13, fontWeight: 700,
-              color: "#fff", cursor: "pointer",
-              display: "flex", alignItems: "center", gap: 7, whiteSpace: "nowrap",
-            }}
-          >
-            <span style={{ fontSize: 18, lineHeight: 1 }}>+</span>
+          <Button variant="primary" icon={<Plus size={18} strokeWidth={2.2} />} onClick={() => setFormView({ mode: "create", entity: null })}>
             {t("New Department", lang)}
-          </button>
+          </Button>
         )}
       />
 

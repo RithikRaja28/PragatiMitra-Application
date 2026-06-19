@@ -2,10 +2,12 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useApi }  from "../../../hooks/useApi";
 import { useAuth } from "../../../store/AuthContext";
 import FormScreen  from "../../../components/shared/FormScreen";
+import PageHeader from "../../../ui/PageHeader";
+import { Button } from "../../../ui";
+import { Plus } from "lucide-react";
 import { S, Toast, ConfirmDialog, isAuthError } from "../../../components/shared/formUtils";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { t } from "../../../i18n/translations";
-import PageHeader from "../../../ui/PageHeader";
 
 /* ─── Design tokens ────────────────────────────────────────────── */
 const C = {
@@ -554,7 +556,7 @@ export default function ReportCyclePage() {
   return (
     <div style={{
       fontFamily: "'Plus Jakarta Sans', sans-serif",
-      background: C.bg, minHeight: "100%", padding: 28,
+      background: "transparent", minHeight: "100%", padding: 28,
     }}>
       {toast && <Toast message={toast.message} type={toast.type} />}
       {confirm && (
@@ -571,18 +573,9 @@ export default function ReportCyclePage() {
         title={t("Report Cycles", lang)}
         description={t("Each reporting cycle defines the period and outer deadline bounds for all reports under it.", lang)}
         actions={
-          <button
-            onClick={() => setScreen("create")}
-            style={{
-              display: "flex", alignItems: "center", gap: 7,
-              padding: "9px 18px", borderRadius: 10, border: "none",
-              background: C.primary, color: "#fff",
-              fontSize: 13, fontWeight: 700, cursor: "pointer",
-              boxShadow: "0 2px 8px rgba(37,99,235,0.25)",
-            }}
-          >
-            <span style={{ fontSize: 16, lineHeight: 1 }}>＋</span> {t("New Cycle", lang)}
-          </button>
+          <Button variant="primary" icon={<Plus size={18} strokeWidth={2.2} />} onClick={() => setScreen("create")}>
+            {t("New Cycle", lang)}
+          </Button>
         }
       />
 

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate, useLocation, Navigate } from "react-router-dom";
-import { FilePlus, Search, RefreshCw, Lock, CalendarClock, ArrowRight } from "lucide-react";
+import { FilePlus, Search, RefreshCw, Lock, CalendarClock, Eye } from "lucide-react";
 
 const SLUG = "form-management";
 import { useApi } from "../../hooks/useApi";
@@ -65,30 +65,40 @@ export default function DepartmentFormFillPage() {
   const visible = forms.filter((f) => !q || titleOf(f.form_name).toLowerCase().includes(q) || f.form_name.toLowerCase().includes(q) || (f.form_description || "").toLowerCase().includes(q));
   const searching = q.length > 0;
 
+  /* Columns mirror the Institution & Department-Admin forms tables (same ui/DataTable,
+     same #/Form/Deadline/Access layout and icon-only action) so every forms list in
+     the app looks identical. */
   const columns = [
     {
-      key: "form", header: "Form Name", width: 360,
+      key: "_sno", header: "#", width: 56, align: "left",
+      render: (_form, i) => <span style={{ fontSize: 13, fontWeight: 600, color: color.muted }}>{i + 1}</span>,
+    },
+    {
+      key: "form", header: "Form Name", width: 340,
       render: (form) => (
         <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
           <div style={{ width: 34, height: 34, borderRadius: 9, flexShrink: 0, background: color.primarySoft, color: color.primary, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 800 }}>{form.form_name.slice(0, 2).toUpperCase()}</div>
           <div style={{ minWidth: 0 }}>
             <div className="ui-ellipsis" style={{ fontSize: 13.5, fontWeight: 700, color: color.text }} title={titleOf(form.form_name)}>{titleOf(form.form_name)}</div>
-            <div className="ui-ellipsis" style={{ fontSize: 11.5, color: color.muted, marginTop: 1, maxWidth: 280 }} title={form.form_description || form.form_name}>{form.form_description || form.form_name}</div>
+            <div className="ui-ellipsis" style={{ fontSize: 11.5, color: color.muted, marginTop: 1, maxWidth: 260 }} title={form.form_description || form.form_name}>{form.form_description || form.form_name}</div>
           </div>
         </div>
       ),
     },
     {
       key: "deadline", header: "Deadline", width: 150,
-      render: (form) => { const d = deadlineInfo(form); return (<div style={{ display: "flex", flexDirection: "column", gap: 4 }}><span style={{ fontSize: 13, color: color.text, fontWeight: 600 }}>{d.dateText}</span>{d.label && <Badge tone={d.tone}>{d.label}</Badge>}</div>); },
+      render: (form) => { const d = deadlineInfo(form); return (<div style={{ display: "flex", flexDirection: "column", gap: 4 }}><span style={{ fontSize: 13, color: color.text, fontWeight: 600 }}>{form.deadline_at ? d.dateText : "No Deadline"}</span>{d.label && <Badge tone={d.tone}>{d.label}</Badge>}</div>); },
     },
-    { key: "access", header: "Access", width: 110, render: (form) => form.is_locked ? <Badge tone="danger" icon={<Lock size={11} strokeWidth={STROKE} />}>View only</Badge> : <Badge tone="success">Open</Badge> },
     {
-      key: "actions", header: "", align: "right", width: 130,
+      key: "access", header: "Access", width: 110,
+      render: (form) => form.is_locked
+        ? <Badge tone="danger" icon={<Lock size={11} strokeWidth={STROKE} />}>Locked</Badge>
+        : <Badge tone="success">Open</Badge>,
+    },
+    {
+      key: "actions", header: "", align: "right", width: 192,
       render: (form) => (
-        <Button variant="primary" icon={<ArrowRight size={16} strokeWidth={STROKE} />} onClick={() => navigate(`${listPath}/records`, { state: { entity: form } })}>
-          {form.is_locked ? "View" : "Open"}
-        </Button>
+        <Button variant="secondary" iconOnly title={form.is_locked ? "View records" : "Open & fill records"} icon={<Eye size={18} strokeWidth={STROKE} />} onClick={() => navigate(`${listPath}/records`, { state: { entity: form } })} />
       ),
     },
   ];

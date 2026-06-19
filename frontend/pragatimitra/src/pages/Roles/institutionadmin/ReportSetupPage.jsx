@@ -344,7 +344,7 @@ export default function ReportSetupPage() {
 
   return (
     <div style={{ padding: "24px 28px", fontFamily: "'Plus Jakarta Sans', sans-serif",
-      display: "flex", flexDirection: "column", gap: 18, minHeight: "100vh", background: C.bg }}>
+      display: "flex", flexDirection: "column", gap: 18, minHeight: "100vh", background: "transparent" }}>
 
       {/* Header */}
       <PageHeader

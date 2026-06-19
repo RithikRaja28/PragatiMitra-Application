@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useApi } from "../../../../hooks/useApi";
+import { Button } from "../../../../ui";
 import Toast from "../../../../components/shared/Toast";
 
 async function apiJson(apiFetch, path, opts) {
@@ -82,7 +83,7 @@ export default function ReportDashboardPage({ reportId, onNavigate }) {
   );
 
   return (
-    <div style={{ minHeight: "100vh", background: C.bg, fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+    <div style={{ minHeight: "100vh", background: "transparent", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
       {toast && <Toast {...toast} onClose={() => setToast(null)} />}
 
       {/* ── header ── */}
@@ -98,7 +99,7 @@ export default function ReportDashboardPage({ reportId, onNavigate }) {
         <div style={{ display: "flex", gap: 10 }}>
           <button style={outlineBtn} onClick={() => onNavigate?.("structure", reportId)}>Structure</button>
           <button style={outlineBtn} onClick={() => onNavigate?.("assign", reportId)}>Assign</button>
-          <button style={primaryBtn} onClick={() => onNavigate?.("compile", reportId)}>Compile</button>
+          <Button variant="primary" onClick={() => onNavigate?.("compile", reportId)}>Compile</Button>
         </div>
       </header>
 

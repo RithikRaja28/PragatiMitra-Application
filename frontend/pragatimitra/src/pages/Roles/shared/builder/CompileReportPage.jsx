@@ -103,7 +103,7 @@ export default function CompileReportPage({ reportId, onBack }) {
   );
 
   return (
-    <div style={{ minHeight: "100vh", background: C.bg, fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+    <div style={{ minHeight: "100vh", background: "transparent", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
       {toast && <Toast {...toast} onClose={() => setToast(null)} />}
 
       {/* header */}
