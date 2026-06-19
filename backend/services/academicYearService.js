@@ -253,6 +253,25 @@ async function resolveActiveAcademicYear(pool, institutionId) {
   }
 }
 
+/* M-2 — the year a request should OPERATE in when none is explicitly supplied,
+   WITHOUT drifting to the calendar year for an academic-year-aware institution:
+     active year (flagged current)  →  latest created academic year  →  null
+   The calendar-year last resort in the route resolvers therefore only ever fires
+   for a truly legacy institution that has created NO academic years (where the
+   year is just a tag and backward-compat must be preserved). Read-only; never
+   throws — returns null on any failure so callers keep their own fallback. */
+async function resolveOperatingYear(pool, institutionId) {
+  if (!institutionId) return null;
+  try {
+    const active = await resolveActiveAcademicYear(pool, institutionId);
+    if (Number.isInteger(active)) return active;
+    const years = await getInstitutionStartYears(pool, institutionId);
+    return years.length ? years[years.length - 1] : null; // ascending → last = latest
+  } catch {
+    return null;
+  }
+}
+
 /* 2025 → "2025-2026"  (canonical YYYY-YYYY format, plain hyphen) */
 function formatAcademicYear(startYear) {
   const s = Number(startYear);
@@ -359,4 +378,5 @@ module.exports = {
   getFormArchiveBlock,
   getFormArchiveBlockForReq,
   resolveActiveAcademicYear,
+  resolveOperatingYear,
 };

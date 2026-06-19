@@ -515,6 +515,16 @@ pool.query(`
     ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ
 `).catch((e) => logger.error("Failed to ensure institutions lifecycle columns", { stack: e.stack }));
 
+/* The institution_status ENUM originally shipped as ACTIVE | INACTIVE only, but
+   Archive / soft-delete persist ARCHIVED / DELETED. Extend it idempotently at boot
+   so those lifecycle writes succeed. Each runs as its own statement (a new enum
+   value can't be used in the transaction that adds it) and is a harmless no-op when
+   status is a plain TEXT column. */
+["ARCHIVED", "DELETED"].forEach((val) => {
+  pool.query(`ALTER TYPE public.institution_status ADD VALUE IF NOT EXISTS '${val}'`)
+    .catch((e) => logger.error(`Failed to add institution_status value '${val}'`, { stack: e.stack }));
+});
+
 /* ── Form deadline auto-lock: ensure columns, then start periodic checker ── */
 const { ensureDeadlineColumns, startDeadlineScheduler } = require("./services/formDeadlineService");
 ensureDeadlineColumns(pool)

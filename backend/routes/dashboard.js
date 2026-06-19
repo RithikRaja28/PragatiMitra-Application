@@ -14,6 +14,7 @@
 const express = require("express");
 const { verifyToken } = require("../middleware/auth");
 const { resolveUserDomain } = require("../services/domainService");
+const { resolveOperatingYear } = require("../services/academicYearService");
 const logger = require("../utils/logger");
 
 const router = express.Router();
@@ -48,9 +49,12 @@ router.get("/summary", async (req, res) => {
     if (!institutionId)
       return res.json({ success: true, domain, metrics: emptyMetrics, recent_activity: [] });
 
-    // Selected academic year (top-bar) → for per-year deadlines.
+    // Selected academic year (top-bar) → for per-year deadlines. N-3 — fall back to
+    // the institution's ACTIVE → latest real academic year (never the calendar year),
+    // matching every other surface. A null year simply yields no per-year overrides
+    // (form-wide deadlines still apply), so the dashboard never invents a year.
     const headerYear = Number(req.get("X-Academic-Year"));
-    const year = Number.isInteger(headerYear) ? headerYear : new Date().getFullYear();
+    const year = Number.isInteger(headerYear) ? headerYear : await resolveOperatingYear(pool, institutionId);
 
     // Domain forms accessible to this institution, with their form-wide lock +
     // deadline. institute_access = the institutions a form is shared with.
@@ -95,22 +99,33 @@ router.get("/summary", async (req, res) => {
     // Records per form — sum English rows; capture last activity. Each form has its
     // own physical {form_name}_records table; a missing table (form never received
     // data) counts as 0 and is skipped, never an error.
+    /* N-4 — count records in BOUNDED-PARALLEL batches instead of one sequential
+       query per form. Wall-clock drops from N×latency to ~ceil(N/8)×latency for a
+       large institution, while the per-table try/catch (missing table → 0) and the
+       (institution_id, created_at) index keep each query cheap. Results are
+       identical (activity is sorted by last_updated below). */
     let totalRecords = 0;
     const activity = [];
-    for (const f of forms) {
-      if (!SLUG_RE.test(f.form_name)) continue;
-      try {
-        const { rows: rc } = await pool.query(
-          `SELECT COUNT(*)::int AS n, MAX(created_at) AS last
-             FROM ${f.form_name}_records
-            WHERE institution_id = $1 AND (language = 'en' OR language IS NULL)`,
-          [institutionId]
-        );
-        const n = rc[0]?.n || 0;
-        totalRecords += n;
-        if (rc[0]?.last) activity.push({ form_name: f.form_name, record_count: n, last_updated: rc[0].last });
-      } catch {
-        /* records table absent for this form → 0, skip */
+    const countForms = forms.filter((f) => SLUG_RE.test(f.form_name));
+    const COUNT_CONCURRENCY = 8;
+    for (let i = 0; i < countForms.length; i += COUNT_CONCURRENCY) {
+      const batch = countForms.slice(i, i + COUNT_CONCURRENCY);
+      const results = await Promise.all(batch.map(async (f) => {
+        try {
+          const { rows: rc } = await pool.query(
+            `SELECT COUNT(*)::int AS n, MAX(created_at) AS last
+               FROM ${f.form_name}_records
+              WHERE institution_id = $1 AND (language = 'en' OR language IS NULL)`,
+            [institutionId]
+          );
+          return { form_name: f.form_name, n: rc[0]?.n || 0, last: rc[0]?.last || null };
+        } catch {
+          return { form_name: f.form_name, n: 0, last: null }; // records table absent → 0
+        }
+      }));
+      for (const r of results) {
+        totalRecords += r.n;
+        if (r.last) activity.push({ form_name: r.form_name, record_count: r.n, last_updated: r.last });
       }
     }
 

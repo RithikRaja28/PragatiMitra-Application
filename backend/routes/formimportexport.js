@@ -10,7 +10,7 @@ const { getLogContext } = logger;
 const { writeAuditLog } = require("../utils/audit");
 const { translateSentence, transliteratePhrase, lookupLabel, translateRow, resolveTranslationMode } = require("../services/translationService");
 const { getReadUrl } = require("../utils/s3");
-const { getAcademicYearLockBlockForReq, getFormArchiveBlockForReq, resolveActiveAcademicYear } = require("../services/academicYearService");
+const { getAcademicYearLockBlockForReq, getFormArchiveBlockForReq, resolveOperatingYear } = require("../services/academicYearService");
 const { assertFormDomainAccess } = require("../services/domainService");
 const { resolveEffectiveDepartment, getDepartmentWriteBlock } = require("../services/departmentContext");
 const { ensureSchemaExists } = require("../services/schemaPropagationService");
@@ -57,7 +57,8 @@ router.use(async (req, _res, next) => {
     const explicit = vy(req.query.year) || vy(req.get("X-Academic-Year")) || vy(req.body?.year);
     if (!explicit) {
       const { institutionId } = await resolveEffectiveDepartment(req.app.locals.pool, req);
-      req.institutionAcademicYear = await resolveActiveAcademicYear(req.app.locals.pool, institutionId);
+      // M-2 — active → latest real academic year (no calendar drift when year-aware).
+      req.institutionAcademicYear = await resolveOperatingYear(req.app.locals.pool, institutionId);
     }
   } catch { /* leave undefined → calendar-year fallback */ }
   next();
@@ -540,6 +541,28 @@ router.post("/:formName/import/execute-chunk", async (req, res) => {
         formName, institutionId: ctx.institutionId,
         resolved_year: effectiveYear, schema_year: formYear,
       });
+    }
+
+    /* N-2 — honor the PER-YEAR deadline lock (form_year_deadlines) exactly like the
+       record-save path's getLockBlock, so import and manual entry resolve the SAME
+       lock state. The form-wide lock is already checked above; this closes the gap
+       where a year whose deadline has auto-locked it still accepted imported rows. */
+    {
+      const { rows: yd } = await pool.query(
+        `SELECT is_locked, auto_locked, deadline_at FROM form_year_deadlines
+          WHERE form_name = $1 AND institution_id = $2 AND academic_year = $3`,
+        [formName, ctx.institutionId, Number(formYear)]
+      );
+      if (yd[0]?.is_locked) {
+        const expired = yd[0].auto_locked
+          || (yd[0].deadline_at && new Date(yd[0].deadline_at).getTime() <= Date.now());
+        return res.status(403).json({
+          success: false,
+          message: expired
+            ? "This form deadline has expired for your institution. Import is disabled."
+            : "This form is currently locked by the institution admin. Import is disabled.",
+        });
+      }
     }
 
     /* Academic-year lock — checks the SELECTED year (header), blocks import.
