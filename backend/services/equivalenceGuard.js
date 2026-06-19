@@ -67,7 +67,13 @@ const SHADOW_ON =
   (process.env.NODE_ENV !== "production" && process.env.SHADOW_GUARD !== "off");
 
 function assertEquivalent(label, legacy, candidate, compareFn) {
-  if (!SHADOW_ON) return candidate; // resolver-only fast path (prod)
+  // H-1 — LEGACY is always authoritative. In the prod fast-path we skip the
+  // deepEqual + logging overhead, but we must still return the LEGACY value
+  // (not the resolver candidate). Returning the candidate here silently made the
+  // shadow resolver authoritative in production, so any unproven divergence
+  // would change behavior vs. dev with no log. The resolver only becomes
+  // authoritative once a call site is deliberately promoted off this guard.
+  if (!SHADOW_ON) return legacy; // fast path (prod) — legacy stays authoritative
   let equal;
   try {
     equal = compareFn ? !!compareFn(legacy, candidate) : deepEqual(legacy, candidate);

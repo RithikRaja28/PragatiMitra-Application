@@ -10,7 +10,7 @@ const { getLogContext } = logger;
 const { writeAuditLog } = require("../utils/audit");
 const { translateSentence, transliteratePhrase, lookupLabel, translateRow, resolveTranslationMode } = require("../services/translationService");
 const { getReadUrl } = require("../utils/s3");
-const { getAcademicYearLockBlockForReq, getFormArchiveBlockForReq, resolveActiveAcademicYear } = require("../services/academicYearService");
+const { getAcademicYearLockBlockForReq, getFormArchiveBlockForReq, resolveOperatingYear } = require("../services/academicYearService");
 const { assertFormDomainAccess } = require("../services/domainService");
 const { resolveEffectiveDepartment, getDepartmentWriteBlock } = require("../services/departmentContext");
 const { ensureSchemaExists } = require("../services/schemaPropagationService");
@@ -57,7 +57,8 @@ router.use(async (req, _res, next) => {
     const explicit = vy(req.query.year) || vy(req.get("X-Academic-Year")) || vy(req.body?.year);
     if (!explicit) {
       const { institutionId } = await resolveEffectiveDepartment(req.app.locals.pool, req);
-      req.institutionAcademicYear = await resolveActiveAcademicYear(req.app.locals.pool, institutionId);
+      // M-2 — active → latest real academic year (no calendar drift when year-aware).
+      req.institutionAcademicYear = await resolveOperatingYear(req.app.locals.pool, institutionId);
     }
   } catch { /* leave undefined → calendar-year fallback */ }
   next();
