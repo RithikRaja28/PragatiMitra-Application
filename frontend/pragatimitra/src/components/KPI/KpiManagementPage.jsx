@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { Trash2 } from "lucide-react";
 import Modal from "../../ui/Modal";
 import Button from "../../ui/Button";
+import PageHeader from "../../ui/PageHeader";
 import { useNavigate, useLocation, Navigate } from "react-router-dom";
 import { useAuth } from "../../store/AuthContext";
 import FormScreen from "../shared/FormScreen";
@@ -784,18 +785,18 @@ function KpiForm({ cfg, tables, tabStatus, existingConfigs, scope, onBack, onSav
                 </div>
                 {selTable && !colsLoading && cols.length > 0 ? (
                   <select style={S.select(false)} value={groupByCol} onChange={e=>setGroupByCol(e.target.value)} disabled={submitting}>
-                    <option value="">— Use X-axis column —</option>
+                    <option value="">{t("— Use X-axis column —", lang)}</option>
                     {cols.map(c=><option key={c.column_name} value={c.column_name}>{c.column_name} ({c.data_type})</option>)}
                   </select>
                 ) : selTable && colsLoading ? (
                   groupByCol
                     ? <div style={{ display:"flex", alignItems:"center", gap:8, padding:"8px 12px", background:"#eff6ff", border:"1px solid #bfdbfe", borderRadius:8, fontSize:13 }}>
                         <span style={{ fontWeight:600, color:"#1e40af", flex:1 }}>{groupByCol}</span>
-                        <span style={{ fontSize:11, color:"#94a3b8" }}>Loading options…</span>
+                        <span style={{ fontSize:11, color:"#94a3b8" }}>{t("Loading options…", lang)}</span>
                       </div>
-                    : <div style={{ fontSize:12, color:"#94a3b8" }}>Loading columns…</div>
+                    : <div style={{ fontSize:12, color:"#94a3b8" }}>{t("Loading columns…", lang)}</div>
                 ) : (
-                  <div style={{ fontSize:12, color:"#94a3b8" }}>Select a source table first to choose columns.</div>
+                  <div style={{ fontSize:12, color:"#94a3b8" }}>{t("Select a source table first to choose columns.", lang)}</div>
                 )}
               </div>
             )}
@@ -1198,16 +1199,13 @@ export default function KpiManagementPage({ scope = "institute" }) {
     return (
       <div style={{ padding:"32px 36px", fontFamily:"'Plus Jakarta Sans',sans-serif", minHeight:"100%" }}>
 
-        {/* Header */}
-        <div style={{ display:"flex", alignItems:"center", gap:14, marginBottom:22 }}>
-          <button onClick={()=>navFn(listPath)} style={{ display:"inline-flex", alignItems:"center", gap:6, padding:"8px 14px", borderRadius:10, border:"1.5px solid #e2e8f0", background:"#fff", fontSize:13, fontWeight:600, color:"#475569", cursor:"pointer" }}>
-            ← {t("Back", lang)}
-          </button>
-          <div>
-            <h1 style={{ fontSize:22, fontWeight:700, color:"#1e293b", letterSpacing:"-0.4px", margin:0 }}>{cfgTitle(previewCfg, lang)}</h1>
-            <p style={{ color:"#94a3b8", fontSize:13, margin:"2px 0 0" }}>{previewCfg.table_name}</p>
-          </div>
-        </div>
+        <PageHeader
+          breadcrumb={scope === "department"
+            ? [t("Home", lang), t("Department", lang), { label: t("KPI Charts", lang), onClick: () => navFn(listPath) }, cfgTitle(previewCfg, lang)]
+            : [t("Home", lang), t("Institute", lang), { label: t("KPI Charts", lang), onClick: () => navFn(listPath) }, cfgTitle(previewCfg, lang)]}
+          title={cfgTitle(previewCfg, lang)}
+          description={previewCfg.table_name}
+        />
 
         {!ready ? (
           <div style={{ minHeight:560, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:12, color:"#94a3b8", fontSize:14, background:"#fff", border:"1px solid #e2e8f0", borderRadius:14 }}>
@@ -1350,18 +1348,18 @@ export default function KpiManagementPage({ scope = "institute" }) {
   }
 
   // ── List view ────────────────────────────────────────────────────────────────
+  const kpiBreadcrumb = scope === "department"
+    ? [t("Home", lang), t("Department", lang), t("KPI Charts", lang)]
+    : [t("Home", lang), t("Institute", lang), t("KPI Charts", lang)];
+
   return (
     <div style={{ padding:"32px 36px", fontFamily:"'Plus Jakarta Sans',sans-serif", minHeight:"100%" }}>
 
-      {/* Header */}
-      <div style={{ marginBottom:28 }}>
-        <div style={{ display:"inline-flex", alignItems:"center", gap:8, background:"#ecfdf3", borderRadius:8, padding:"4px 12px", marginBottom:12 }}>
-          <span style={{ width:7, height:7, borderRadius:"50%", background:"#027a48" }}/>
-          <span style={{ fontSize:11, fontWeight:600, color:"#027a48", textTransform:"uppercase", letterSpacing:1 }}>{scopeLabel}</span>
-        </div>
-        <h1 style={{ fontSize:24, fontWeight:700, color:"#1e293b", letterSpacing:"-0.4px", marginBottom:6 }}>{t("KPI Charts", lang)}</h1>
-        <p style={{ color:"#94a3b8", fontSize:14 }}>{scopeDesc}</p>
-      </div>
+      <PageHeader
+        breadcrumb={kpiBreadcrumb}
+        title={t("KPI Charts", lang)}
+        description={scopeDesc}
+      />
 
       {/* Action row */}
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:12, marginBottom:20 }}>
@@ -1399,7 +1397,7 @@ export default function KpiManagementPage({ scope = "institute" }) {
       ) : filtered.length===0 ? (
         <div style={{ textAlign:"center", padding:"64px 24px", color:"#94a3b8" }}>
           <div style={{ fontSize:14, fontWeight:600, color:"#64748b", marginBottom:4 }}>{t("No KPI charts yet", lang)}</div>
-          <div style={{ fontSize:13 }}>Click "New KPI Chart" to create your first chart.</div>
+          <div style={{ fontSize:13 }}>{t('Click "New KPI Chart" to create your first chart.', lang)}</div>
         </div>
       ) : (
         <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))", gap:20, marginBottom:24 }}>

@@ -6,6 +6,8 @@ import {
 import { useApi } from "../../../hooks/useApi";
 import PageHeader from "../../../components/shared/PageHeader";
 import { isAuthError } from "../../../components/shared/formUtils";
+import { useLanguage } from "../../../i18n/LanguageContext";
+import { t } from "../../../i18n/translations";
 
 /* Enterprise governance palette — shared across the platform. */
 const C = {
@@ -30,20 +32,21 @@ const card = {
 function titleCase(s = "") {
   return String(s).replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
-function timeAgo(ts) {
+function timeAgo(ts, lang = "en") {
   if (!ts) return "";
   const diff = Date.now() - new Date(ts).getTime();
   if (Number.isNaN(diff)) return "";
   const m = Math.floor(diff / 60000);
-  if (m < 1) return "just now";
-  if (m < 60) return `${m}m ago`;
+  if (m < 1) return t("just now", lang);
+  if (m < 60) return lang === "hi" ? `${m}मि पहले` : `${m}m ago`;
   const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
-  return `${Math.floor(h / 24)}d ago`;
+  if (h < 24) return lang === "hi" ? `${h}घं पहले` : `${h}h ago`;
+  return lang === "hi" ? `${Math.floor(h / 24)}दि पहले` : `${Math.floor(h / 24)}d ago`;
 }
 
 export default function SuperAdminOverviewPage() {
   const { apiFetch } = useApi();
+  const { lang } = useLanguage();
 
   const [institutions, setInstitutions] = useState([]);
   const [years, setYears]   = useState([]);
@@ -82,10 +85,10 @@ export default function SuperAdminOverviewPage() {
   const yearCount = years.length;
 
   const stats = [
-    { label: "Institutions",   value: instCount, Icon: University,   color: C.primary, bg: "#eff4ff" },
-    { label: "Departments",    value: deptCount, Icon: Building2,    color: "#7c3aed", bg: "#f5f3ff" },
-    { label: "Users",          value: userCount, Icon: Users,        color: C.success, bg: "#f0fdf4" },
-    { label: "Academic Years", value: yearCount, Icon: CalendarRange,color: C.warning, bg: "#fffbeb" },
+    { label: t("Institutions", lang),   value: instCount, Icon: University,   color: C.primary, bg: "#eff4ff" },
+    { label: t("Departments", lang),    value: deptCount, Icon: Building2,    color: "#7c3aed", bg: "#f5f3ff" },
+    { label: t("Users", lang),          value: userCount, Icon: Users,        color: C.success, bg: "#f0fdf4" },
+    { label: t("Academic Years", lang), value: yearCount, Icon: CalendarRange, color: C.warning, bg: "#fffbeb" },
   ];
 
   const currentYear  = years.find((y) => y.active);
@@ -99,9 +102,9 @@ export default function SuperAdminOverviewPage() {
   return (
     <div style={{ padding: "24px 28px", fontFamily: "'Plus Jakarta Sans', sans-serif", background: C.bg, minHeight: "100%", display: "flex", flexDirection: "column", gap: 16 }}>
       <PageHeader
-        breadcrumb={["Home", "Super Admin", "Overview"]}
-        title="System Overview"
-        description="Platform-wide visibility across institutions, users, and governance."
+        breadcrumb={[t("Home", lang), t("Super Admin", lang), t("Overview", lang)]}
+        title={t("System Overview", lang)}
+        description={t("Platform-wide visibility across institutions, users, and governance.", lang)}
       />
 
       {/* SECTION 1 — System overview cards */}
@@ -127,11 +130,11 @@ export default function SuperAdminOverviewPage() {
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           {/* SECTION 2 — Activity feed */}
           <div style={card}>
-            <SectionHeader icon={<Activity size={16} />} title="Recent Activity" />
+            <SectionHeader icon={<Activity size={16} />} title={t("Recent Activity", lang)} />
             {loading ? (
               <SkeletonRows rows={4} />
             ) : logs.length === 0 ? (
-              <Empty text="No recent activity recorded." />
+              <Empty text={t("No recent activity recorded.", lang)} />
             ) : (
               <div>
                 {logs.map((log, i) => (
@@ -149,7 +152,7 @@ export default function SuperAdminOverviewPage() {
                         </div>
                       )}
                     </div>
-                    <span style={{ fontSize: 11.5, color: C.muted, whiteSpace: "nowrap", flexShrink: 0 }}>{timeAgo(log.created_at)}</span>
+                    <span style={{ fontSize: 11.5, color: C.muted, whiteSpace: "nowrap", flexShrink: 0 }}>{timeAgo(log.created_at, lang)}</span>
                   </div>
                 ))}
               </div>
@@ -158,11 +161,11 @@ export default function SuperAdminOverviewPage() {
 
           {/* SECTION 5 — Recent institution activity */}
           <div style={card}>
-            <SectionHeader icon={<University size={16} />} title="Recent Institutions" />
+            <SectionHeader icon={<University size={16} />} title={t("Recent Institutions", lang)} />
             {loading ? (
               <SkeletonRows rows={4} />
             ) : recentInstitutions.length === 0 ? (
-              <Empty text="No institutions yet." />
+              <Empty text={t("No institutions yet.", lang)} />
             ) : (
               <div>
                 {recentInstitutions.map((inst, i) => {
@@ -177,7 +180,9 @@ export default function SuperAdminOverviewPage() {
                           {inst.institution_name}
                         </div>
                         <div style={{ fontSize: 11.5, color: C.muted, marginTop: 1 }}>
-                          {Number(inst.department_count || 0)} depts · {Number(inst.user_count || 0)} users
+                          {lang === "hi"
+                            ? `${Number(inst.department_count || 0)} विभाग · ${Number(inst.user_count || 0)} उपयोगकर्ता`
+                            : `${Number(inst.department_count || 0)} depts · ${Number(inst.user_count || 0)} users`}
                         </div>
                       </div>
                       <StatusPill ok={active} okLabel="ACTIVE" offLabel="INACTIVE" />
@@ -193,31 +198,31 @@ export default function SuperAdminOverviewPage() {
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           {/* SECTION 4 — Academic year status */}
           <div style={card}>
-            <SectionHeader icon={<CalendarRange size={16} />} title="Academic Year" />
+            <SectionHeader icon={<CalendarRange size={16} />} title={t("Academic Year", lang)} />
             <div style={{ padding: "14px 20px", display: "flex", flexDirection: "column", gap: 12 }}>
               <div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>Current</div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>{t("Current", lang)}</div>
                 <div style={{ fontSize: 22, fontWeight: 800, color: currentYear ? C.text : C.muted, marginTop: 4, letterSpacing: -0.3 }}>
-                  {loading ? "—" : currentYear?.academic_year || "Not set"}
+                  {loading ? "—" : currentYear?.academic_year || t("Not set", lang)}
                 </div>
               </div>
               <div style={{ display: "flex", gap: 10 }}>
-                <MiniStat icon={<Lock size={14} />} label="Locked" value={loading ? "—" : lockedYears} color={C.danger} />
-                <MiniStat icon={<Archive size={14} />} label="Archived" value={loading ? "—" : archivedYears} color={C.muted} />
+                <MiniStat icon={<Lock size={14} />} label={t("Locked", lang)} value={loading ? "—" : lockedYears} color={C.danger} />
+                <MiniStat icon={<Archive size={14} />} label={t("Archived", lang)} value={loading ? "—" : archivedYears} color={C.muted} />
               </div>
             </div>
           </div>
 
           {/* SECTION 3 — Health status */}
           <div style={card}>
-            <SectionHeader icon={<Server size={16} />} title="Platform Health" />
+            <SectionHeader icon={<Server size={16} />} title={t("Platform Health", lang)} />
             <div style={{ padding: "8px 20px 16px" }}>
-              <HealthRow label="API / Platform" ok={apiOk} okLabel="Operational" offLabel="Unreachable" />
+              <HealthRow label={t("API / Platform", lang)} ok={apiOk} okLabel={t("Operational", lang)} offLabel="Unreachable" lang={lang} />
               {["Mail", "Storage", "Queue", "Translation"].map((s) => (
-                <HealthRow key={s} label={s} neutral />
+                <HealthRow key={s} label={t(s, lang)} neutral lang={lang} />
               ))}
               <div style={{ fontSize: 11, color: C.muted, marginTop: 8, lineHeight: 1.5 }}>
-                Detailed service telemetry is not yet instrumented; only live API reachability is shown.
+                {t("Detailed service telemetry is not yet instrumented; only live API reachability is shown.", lang)}
               </div>
             </div>
           </div>
@@ -262,13 +267,13 @@ function MiniStat({ icon, label, value, color }) {
   );
 }
 
-function HealthRow({ label, ok, okLabel = "Operational", offLabel = "Down", neutral }) {
+function HealthRow({ label, ok, okLabel = "Operational", offLabel = "Down", neutral, lang = "en" }) {
   const color = neutral ? C.muted : ok ? C.success : C.danger;
   return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "9px 0", borderBottom: `1px solid #f4f6f9` }}>
       <span style={{ fontSize: 13, color: C.text, fontWeight: 500 }}>{label}</span>
       {neutral ? (
-        <span style={{ fontSize: 11.5, color: C.muted }}>Not monitored</span>
+        <span style={{ fontSize: 11.5, color: C.muted }}>{t("Not monitored", lang)}</span>
       ) : (
         <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 700, color }}>
           {ok ? <CheckCircle2 size={14} /> : <Clock size={14} />} {ok ? okLabel : offLabel}

@@ -6,6 +6,7 @@ import {
   Search, Mail,
 } from "lucide-react";
 import { useApi }          from "../../../hooks/useApi";
+import PageHeader          from "../../../ui/PageHeader";
 import { useAcademicYear } from "../../../store/AcademicYearContext";
 import { useLanguage }     from "../../../i18n/LanguageContext";
 import { t }               from "../../../i18n/translations";
@@ -225,23 +226,19 @@ export default function AcademicYearPage() {
       `}</style>
       {toast && <Toast message={toast.message} type={toast.type} />}
 
-      {/* Header */}
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, marginBottom: 20 }}>
-        <div>
-          <h2 style={{ fontSize: 20, fontWeight: 800, letterSpacing: -0.3, display: "flex", alignItems: "center", gap: 10 }}>
-            <CalendarRange size={22} color={ACCENT} /> {t("Academic Year Management", lang)}
-          </h2>
-          <p style={{ fontSize: 13, color: "#64748b", marginTop: 4 }}>
-            {t("Create academic years and control which forms are active or archived per year. Same form, different status across years.", lang)}
-          </p>
-        </div>
-        <button
-          onClick={() => setWizardOpen(true)}
-          style={{ display: "inline-flex", alignItems: "center", gap: 7, background: ACCENT, color: "#fff", border: "none", borderRadius: 10, padding: "10px 16px", fontSize: 13, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap", boxShadow: `0 2px 8px ${ACCENT}40` }}
-        >
-          <Plus size={16} /> {t("Create New Academic Year", lang)}
-        </button>
-      </div>
+      <PageHeader
+        breadcrumb={[t("Home", lang), t("Settings", lang), t("Academic Year Management", lang)]}
+        title={t("Academic Year Management", lang)}
+        description={t("Create academic years and control which forms are active or archived per year. Same form, different status across years.", lang)}
+        actions={
+          <button
+            onClick={() => setWizardOpen(true)}
+            style={{ display: "inline-flex", alignItems: "center", gap: 7, background: ACCENT, color: "#fff", border: "none", borderRadius: 10, padding: "10px 16px", fontSize: 13, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap", boxShadow: `0 2px 8px ${ACCENT}40` }}
+          >
+            <Plus size={16} /> {t("Create New Academic Year", lang)}
+          </button>
+        }
+      />
 
       {loading ? (
         <div style={{ ...card, padding: 40, textAlign: "center", color: "#94a3b8", fontSize: 13 }}>

@@ -416,7 +416,7 @@ function SingleCard({ item, idx }) {
         {/* Row truncation notice */}
         {item.truncated && (
           <div style={{ padding:"8px 14px", background:"#eff6ff", border:"1px solid #bfdbfe", borderRadius:8, fontSize:11, color:"#1d4ed8", marginBottom:8 }}>
-            Showing first 5,000 rows. Add an aggregation to see complete totals.
+            {t("Showing first 5,000 rows. Add an aggregation to see complete totals.", lang)}
           </div>
         )}
         {has ? (() => {
@@ -425,7 +425,9 @@ function SingleCard({ item, idx }) {
             <>
               {capped && (
                 <div style={{ fontSize:11, color:"#64748b", marginBottom:6 }}>
-                  Showing top {CHART_LABEL_CAP} of {total_groups} groups.
+                  {lang === "hi"
+                    ? `कुल ${total_groups} समूहों में से शीर्ष ${CHART_LABEL_CAP} दिखा रहे हैं।`
+                    : `Showing top ${CHART_LABEL_CAP} of ${total_groups} groups.`}
                 </div>
               )}
               <ResponsiveChart chartType={cfg.chart_type} x={cx} series={cs} height={240} colors={colors} />
@@ -443,7 +445,11 @@ function SingleCard({ item, idx }) {
               <path d="M3 9h18M9 21V9"/>
             </svg>
             <span style={{ fontSize:13, fontStyle:"italic" }}>
-              {item.dependency_err ? "Data source unavailable" : item.error ? `Error: ${item.error}` : "No data available"}
+              {item.dependency_err
+                ? t("Data source unavailable", lang)
+                : item.error
+                  ? `${lang === "hi" ? "त्रुटि" : "Error"}: ${item.error}`
+                  : t("No data available", lang)}
             </span>
           </div>
         )}
@@ -456,7 +462,7 @@ function SingleCard({ item, idx }) {
         display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:6,
       }}>
         <span style={{ fontSize:11, color:p.text, fontWeight:500 }}>
-          Source: <code style={{ fontFamily:"monospace", fontSize:11 }}>{cfg.table_name}</code>
+          {t("Source:", lang)} <code style={{ fontFamily:"monospace", fontSize:11 }}>{cfg.table_name}</code>
           {cfg.academic_year && (
             <span style={{ marginLeft:8, padding:"1px 7px", borderRadius:10, background:p.border, color:p.text, fontWeight:600 }}>
               {cfg.academic_year}
@@ -464,7 +470,9 @@ function SingleCard({ item, idx }) {
           )}
         </span>
         <span style={{ fontSize:11, color:"#94a3b8" }}>
-          {item.row_count ?? 0} records · {cfg.x_col}
+          {lang === "hi"
+            ? `${item.row_count ?? 0} रिकॉर्ड · ${cfg.x_col}`
+            : `${item.row_count ?? 0} records · ${cfg.x_col}`}
           {cfg.aggregation_type && cfg.aggregation_type !== "none" && (
             <span style={{ marginLeft:6, color:"#7c3aed", fontWeight:600 }}>· {cfg.aggregation_type.toUpperCase()}</span>
           )}
@@ -499,7 +507,9 @@ function GroupCard({ name, items, themeIdx }) {
         <div>
           <div style={{ fontSize:16, fontWeight:700, color:"#0f172a" }}>{name}</div>
           <div style={{ fontSize:11, color:tp.text, marginTop:2, opacity:.85 }}>
-            {items.length} KPI{items.length > 1 ? "s" : ""} · grouped dashboard card
+            {lang === "hi"
+              ? `${items.length} KPI · ${t("grouped dashboard card", lang)}`
+              : `${items.length} KPI${items.length > 1 ? "s" : ""} · ${t("grouped dashboard card", lang)}`}
           </div>
         </div>
       </div>
@@ -563,7 +573,7 @@ function GroupCard({ name, items, themeIdx }) {
                     <>
                       {capped && (
                         <div style={{ fontSize:10, color:"#94a3b8", marginBottom:4 }}>
-                          Top 30 of {total_groups}
+                          {lang === "hi" ? `शीर्ष 30 में से ${total_groups}` : `Top 30 of ${total_groups}`}
                         </div>
                       )}
                       <ResponsiveChart chartType={cfg.chart_type} x={cx} series={cs} height={200} colors={colors} />
@@ -580,7 +590,7 @@ function GroupCard({ name, items, themeIdx }) {
                       <rect x="3" y="3" width="18" height="18" rx="3"/>
                       <path d="M3 9h18M9 21V9"/>
                     </svg>
-                    {item.error ? "Error loading" : "No data"}
+                    {item.error ? t("Error loading", lang) : t("No data", lang)}
                   </div>
                 )}
               </div>
@@ -597,7 +607,7 @@ function GroupCard({ name, items, themeIdx }) {
                   {cfg.chart_type?.toUpperCase()}
                 </span>
                 <span style={{ color:"#94a3b8" }}>
-                  {item.row_count ?? 0} records
+                  {lang === "hi" ? `${item.row_count ?? 0} रिकॉर्ड` : `${item.row_count ?? 0} records`}
                 </span>
               </div>
             </div>
@@ -611,6 +621,7 @@ function GroupCard({ name, items, themeIdx }) {
 // ─── Empty / guide state ──────────────────────────────────────────────────────
 
 function EmptyState() {
+  const { lang } = useLanguage();
   return (
     <div style={{
       padding:"40px 32px", textAlign:"center",
@@ -619,11 +630,20 @@ function EmptyState() {
     }}>
       <div style={{ fontSize:48, marginBottom:16, lineHeight:1 }}>📊</div>
       <div style={{ fontSize:16, fontWeight:700, color:"#1e293b", marginBottom:8 }}>
-        No KPI charts on dashboard yet
+        {t("No KPI charts on dashboard yet", lang)}
       </div>
       <div style={{ fontSize:13, color:"#64748b", lineHeight:1.8, maxWidth:340, margin:"0 auto" }}>
-        Go to <strong style={{ color:"#2563eb" }}>KPI Charts</strong>, open any chart config,
-        and enable <strong style={{ color:"#2563eb" }}>"Show on Dashboard"</strong> to display it here.
+        {lang === "hi" ? (
+          <>
+            <strong style={{ color:"#2563eb" }}>KPI चार्ट</strong> पर जाएं, कोई भी चार्ट कॉन्फ़िग खोलें,
+            और <strong style={{ color:"#2563eb" }}>"डैशबोर्ड पर दिखाएं"</strong> सक्षम करें।
+          </>
+        ) : (
+          <>
+            Go to <strong style={{ color:"#2563eb" }}>KPI Charts</strong>, open any chart config,
+            and enable <strong style={{ color:"#2563eb" }}>"Show on Dashboard"</strong> to display it here.
+          </>
+        )}
       </div>
     </div>
   );
@@ -632,6 +652,7 @@ function EmptyState() {
 // ─── Panel header ─────────────────────────────────────────────────────────────
 
 function PanelHeader({ total, fetchedAt, onRefresh }) {
+  const { lang } = useLanguage();
   return (
     <div style={{
       display:"flex", alignItems:"center", justifyContent:"space-between",
@@ -639,16 +660,16 @@ function PanelHeader({ total, fetchedAt, onRefresh }) {
     }}>
       <div>
         <span style={{ fontSize:13, fontWeight:700, color:"#0f172a" }}>
-          KPI Dashboard
+          {t("KPI Dashboard", lang)}
         </span>
         <span style={{ marginLeft:8, fontSize:12, color:"#94a3b8" }}>
-          {total} chart{total > 1 ? "s" : ""}
+          {lang === "hi" ? `${total} चार्ट` : `${total} chart${total > 1 ? "s" : ""}`}
         </span>
       </div>
       <div style={{ display:"flex", alignItems:"center", gap:12 }}>
         {fetchedAt && (
           <span style={{ fontSize:11, color:"#94a3b8" }}>
-            Updated {fetchedAt.toLocaleTimeString("en-IN", { hour:"2-digit", minute:"2-digit" })}
+            {t("Updated", lang)} {fetchedAt.toLocaleTimeString(lang === "hi" ? "hi-IN" : "en-IN", { hour:"2-digit", minute:"2-digit" })}
           </span>
         )}
         <button
@@ -665,7 +686,7 @@ function PanelHeader({ total, fetchedAt, onRefresh }) {
             <polyline points="1 4 1 10 7 10"/>
             <path d="M3.51 15a9 9 0 1 0 .49-4.95"/>
           </svg>
-          Refresh
+          {t("Refresh", lang)}
         </button>
       </div>
     </div>
@@ -711,7 +732,7 @@ export default function KpiDashboardPanel({ scope = "institute" }) {
         border:"2px solid #e2e8f0", borderTopColor:"#2563eb",
         animation:"kpi-dash-spin .7s linear infinite",
       }}/>
-      Loading KPI dashboard…
+      {t("Loading KPI dashboard…", lang)}
       <style>{`@keyframes kpi-dash-spin { to { transform:rotate(360deg) } }`}</style>
     </div>
   );
@@ -727,7 +748,7 @@ export default function KpiDashboardPanel({ scope = "institute" }) {
       <button onClick={load} style={{
         padding:"6px 14px", border:"1.5px solid #fecaca", borderRadius:8,
         background:"#fff", fontSize:12, fontWeight:600, color:"#dc2626", cursor:"pointer",
-      }}>Retry</button>
+      }}>{t("Retry", lang)}</button>
     </div>
   );
 

@@ -1,5 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "../../store/AuthContext";
+import { useLanguage } from "../../i18n/LanguageContext";
+import { t } from "../../i18n/translations";
 
 const API = "http://localhost:5000/api/kpi";
 
@@ -41,6 +43,7 @@ function fmtVal(v) {
  */
 export default function KpiSummaryCards({ compact = false }) {
   const { accessToken } = useAuth();
+  const { lang } = useLanguage();
   const [groups,  setGroups]  = useState([]);
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState(null);
@@ -68,7 +71,7 @@ export default function KpiSummaryCards({ compact = false }) {
     return (
       <div style={{ padding: "12px 0", display: "flex", alignItems: "center", gap: 8, color: "#94a3b8", fontSize: 13 }}>
         <span style={{ display:"inline-block", width:14, height:14, borderRadius:"50%", border:"2px solid #e2e8f0", borderTopColor:"#6366f1", animation:"spin .6s linear infinite" }}/>
-        Loading KPI summary…
+        {t("Loading KPI summary…", lang)}
         <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </div>
     );
@@ -77,7 +80,7 @@ export default function KpiSummaryCards({ compact = false }) {
   if (error) {
     return (
       <div style={{ padding: "10px 14px", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 10, fontSize: 12, color: "#991b1b" }}>
-        Could not load KPI summary: {error}
+        {t("Could not load KPI summary: ", lang)}{error}
       </div>
     );
   }
@@ -85,7 +88,7 @@ export default function KpiSummaryCards({ compact = false }) {
   if (!groups.length) {
     return (
       <div style={{ padding: "16px 0", color: "#94a3b8", fontSize: 13, fontStyle: "italic" }}>
-        No KPI summary cards yet. Create KPI charts and assign a Dashboard Category to show them here.
+        {t("No KPI summary cards yet. Create KPI charts and assign a Dashboard Category to show them here.", lang)}
       </div>
     );
   }
@@ -95,14 +98,14 @@ export default function KpiSummaryCards({ compact = false }) {
       {/* Section header */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.07em" }}>
-          KPI Summary
+          {t("KPI Summary", lang)}
         </div>
         <button
           onClick={fetchSummary}
           style={{ background: "none", border: "none", cursor: "pointer", fontSize: 11, color: "#94a3b8", padding: "2px 6px", borderRadius: 4 }}
-          title="Refresh KPI data"
+          title={t("Refresh", lang)}
         >
-          ↻ Refresh
+          ↻ {t("Refresh", lang)}
         </button>
       </div>
 
@@ -155,7 +158,9 @@ export default function KpiSummaryCards({ compact = false }) {
                           {item.title}
                         </div>
                         <div style={{ fontSize: 10, color: "#9ca3af", marginTop: 1 }}>
-                          {item.row_count} data point{item.row_count !== 1 ? "s" : ""}
+                          {lang === "hi"
+                            ? `${item.row_count} डेटा बिंदु`
+                            : `${item.row_count} data point${item.row_count !== 1 ? "s" : ""}`}
                         </div>
                       </div>
                       <div style={{ textAlign: "right", flexShrink: 0, marginLeft: 8 }}>
@@ -164,7 +169,7 @@ export default function KpiSummaryCards({ compact = false }) {
                         </div>
                         {totalVal !== null && totalVal !== primaryVal && (
                           <div style={{ fontSize: 10, color: "#9ca3af", marginTop: 2 }}>
-                            total {fmtVal(totalVal)}
+                            {lang === "hi" ? `कुल ${fmtVal(totalVal)}` : `total ${fmtVal(totalVal)}`}
                           </div>
                         )}
                       </div>
@@ -175,7 +180,9 @@ export default function KpiSummaryCards({ compact = false }) {
 
               {/* Footer count */}
               <div style={{ fontSize: 10, color: color.accent, opacity: 0.7, textAlign: "right" }}>
-                {group.items.length} metric{group.items.length !== 1 ? "s" : ""}
+                {lang === "hi"
+                  ? `${group.items.length} मेट्रिक`
+                  : `${group.items.length} metric${group.items.length !== 1 ? "s" : ""}`}
               </div>
             </div>
           );

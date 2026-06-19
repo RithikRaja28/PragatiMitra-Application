@@ -4,6 +4,8 @@ import { useApi } from "../../hooks/useApi";
 import { S, Toast, isAuthError, formatDate } from "../../components/shared/formUtils";
 import { tableCardStyle } from "../../components/shared/ui";
 import FormBuilderPage from "./FormBuilderPage";
+import { useLanguage } from "../../i18n/LanguageContext";
+import { t } from "../../i18n/translations";
 
 /* ── icons ── */
 function IconPlus() {
@@ -127,6 +129,7 @@ function SectionCard({ title, subtitle, icon, action, children }) {
 ═══════════════════════════════════════════════════════════════════ */
 export default function FormManagementPage({ isSuperAdmin = false }) {
   const { apiFetch } = useApi();
+  const { lang } = useLanguage();
 
   /* ── view state ── */
   const [view, setView]               = useState("list");
@@ -184,7 +187,7 @@ export default function FormManagementPage({ isSuperAdmin = false }) {
   }
   function onBuilderDone(message) {
     setView("list");
-    showToast(message || "Form saved successfully.");
+    showToast(message || t("Form saved successfully.", lang));
     load();
   }
   function onBuilderBack() {
@@ -244,14 +247,14 @@ export default function FormManagementPage({ isSuperAdmin = false }) {
           }}>
             <div style={{ width: 6, height: 6, borderRadius: "50%", background: ACCENT }} />
             <span style={{ fontSize: 11, fontWeight: 700, color: ACCENT, textTransform: "uppercase", letterSpacing: 1 }}>
-              Form Management
+              {t("Form Management", lang)}
             </span>
           </div>
           <h1 style={{ fontSize: 24, fontWeight: 700, color: "#1e293b", letterSpacing: "-0.4px", margin: "0 0 6px" }}>
-            Forms & Templates
+            {t("Forms & Templates", lang)}
           </h1>
           <p style={{ fontSize: 13, color: "#94a3b8", margin: 0 }}>
-            Design data collection forms and manage field schemas per institution.
+            {t("Design data collection forms and manage field schemas per institution.", lang)}
           </p>
         </div>
         <button
@@ -263,7 +266,7 @@ export default function FormManagementPage({ isSuperAdmin = false }) {
             boxShadow: "0 2px 8px rgba(37,99,235,0.3)",
           }}
         >
-          <IconPlus /> New Form
+          <IconPlus /> {t("New Form", lang)}
         </button>
       </div>
 
@@ -278,25 +281,25 @@ export default function FormManagementPage({ isSuperAdmin = false }) {
 
       {/* ── Shared Templates ── */}
       <SectionCard
-        title="Shared Templates"
-        subtitle="Forms available across institutions — adopt and customise for your needs"
+        title={t("Shared Templates", lang)}
+        subtitle={t("Forms available across institutions — adopt and customise for your needs", lang)}
         icon={<IconTemplate />}
       >
         {loading ? (
           <div style={{ padding: "40px 24px", textAlign: "center", color: "#94a3b8", fontSize: 13 }}>
-            Loading templates…
+            {t("Loading templates…", lang)}
           </div>
         ) : templates.length === 0 ? (
           <EmptyState
             icon={<FileText size={26} strokeWidth={1.6} color="#94a3b8" />}
-            title="No shared templates"
-            subtitle="Shared forms from other institutions will appear here"
+            title={t("No shared templates", lang)}
+            subtitle={t("Shared forms from other institutions will appear here", lang)}
           />
         ) : (
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
               <tr style={{ background: "#f8fafc" }}>
-                {["Form Name", "Institutions Using", "Created", ""].map((h) => (
+                {[t("Form Name", lang), t("Institutions Using", lang), t("Created", lang), ""].map((h) => (
                   <th key={h} style={{
                     padding: "10px 20px", textAlign: "left", fontSize: 11,
                     fontWeight: 700, color: "#94a3b8", textTransform: "uppercase",
@@ -331,18 +334,20 @@ export default function FormManagementPage({ isSuperAdmin = false }) {
                         <div style={{ fontSize: 13, fontWeight: 600, color: "#1e293b" }}>
                           {tpl.form_name}
                         </div>
-                        <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 1 }}>Shared template</div>
+                        <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 1 }}>{t("Shared template", lang)}</div>
                       </div>
                     </div>
                   </td>
                   <td style={{ padding: "14px 20px" }}>
                     <Badge
-                      label={`${(tpl.institute_access || []).length} institution${(tpl.institute_access || []).length !== 1 ? "s" : ""}`}
+                      label={lang === "hi"
+                        ? `${(tpl.institute_access || []).length} संस्था`
+                        : `${(tpl.institute_access || []).length} institution${(tpl.institute_access || []).length !== 1 ? "s" : ""}`}
                       color="#2563eb"
                     />
                   </td>
                   <td style={{ padding: "14px 20px", fontSize: 12, color: "#64748b" }}>
-                    {formatDate(tpl.created_at)}
+                    {formatDate(tpl.created_at, lang)}
                   </td>
                   <td style={{ padding: "14px 20px", textAlign: "right" }}>
                     <button
@@ -354,7 +359,7 @@ export default function FormManagementPage({ isSuperAdmin = false }) {
                         cursor: "pointer",
                       }}
                     >
-                      Use Template <IconArrow />
+                      {t("Use Template", lang)} <IconArrow />
                     </button>
                   </td>
                 </tr>
@@ -366,25 +371,25 @@ export default function FormManagementPage({ isSuperAdmin = false }) {
 
       {/* ── My Forms ── */}
       <SectionCard
-        title={isSuperAdmin ? "All Forms" : "Your Institution's Forms"}
-        subtitle={isSuperAdmin ? "All registered form schemas across the platform" : "Forms configured for your institution"}
+        title={isSuperAdmin ? t("All Forms", lang) : t("Your Institution's Forms", lang)}
+        subtitle={isSuperAdmin ? t("All registered form schemas across the platform", lang) : t("Forms configured for your institution", lang)}
         icon={<IconForm />}
       >
         {loading ? (
           <div style={{ padding: "40px 24px", textAlign: "center", color: "#94a3b8", fontSize: 13 }}>
-            Loading forms…
+            {t("Loading forms…", lang)}
           </div>
         ) : myForms.length === 0 ? (
           <EmptyState
             icon={<FilePlus size={26} strokeWidth={1.6} color="#94a3b8" />}
-            title="No forms yet"
-            subtitle='Click "New Form" to create your first form schema'
+            title={t("No forms yet", lang)}
+            subtitle={t("Click \"New Form\" to create your first form schema", lang)}
           />
         ) : (
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
               <tr style={{ background: "#f8fafc" }}>
-                {["Form Name", "Year", "Version", "Shared", isSuperAdmin ? null : "Lock Status", "Created", ""].filter(Boolean).map((h) => (
+                {[t("Form Name", lang), t("Year", lang), t("Version", lang), t("Shared", lang), isSuperAdmin ? null : t("Lock Status", lang), t("Created", lang), ""].filter(Boolean).map((h) => (
                   <th key={h} style={{
                     padding: "10px 20px", textAlign: "left", fontSize: 11,
                     fontWeight: 700, color: "#94a3b8", textTransform: "uppercase",
@@ -421,7 +426,9 @@ export default function FormManagementPage({ isSuperAdmin = false }) {
                         </div>
                         {isSuperAdmin && (
                           <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 1 }}>
-                            {(form.institute_access || []).length} institution{(form.institute_access || []).length !== 1 ? "s" : ""}
+                            {lang === "hi"
+                              ? `${(form.institute_access || []).length} संस्था`
+                              : `${(form.institute_access || []).length} institution${(form.institute_access || []).length !== 1 ? "s" : ""}`}
                           </div>
                         )}
                       </div>
@@ -435,23 +442,23 @@ export default function FormManagementPage({ isSuperAdmin = false }) {
                   </td>
                   <td style={{ padding: "14px 20px" }}>
                     {form.share_table ? (
-                      <Badge label="Shared" color="#2563eb" />
+                      <Badge label={t("Shared", lang)} color="#2563eb" />
                     ) : (
-                      <Badge label="Private" color="#64748b" />
+                      <Badge label={t("Private", lang)} color="#64748b" />
                     )}
                   </td>
                   {!isSuperAdmin && (
                     <td style={{ padding: "14px 20px" }}>
                       <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
                         {form.is_locked ? (
-                          <Badge label="Locked" color="#dc2626" />
+                          <Badge label={t("Locked", lang)} color="#dc2626" />
                         ) : (
-                          <Badge label="Open" color="#16a34a" />
+                          <Badge label={t("Open", lang)} color="#16a34a" />
                         )}
                         <button
                           onClick={() => handleToggleLock(form)}
                           disabled={lockTogglingForm === form.form_name}
-                          title={form.is_locked ? "Unlock form" : "Lock form"}
+                          title={form.is_locked ? t("Unlock form", lang) : t("Lock form", lang)}
                           style={{
                             display: "inline-flex", alignItems: "center", gap: 5,
                             background: form.is_locked ? "#fef2f2" : "#f0fdf4",
@@ -462,13 +469,13 @@ export default function FormManagementPage({ isSuperAdmin = false }) {
                             opacity: lockTogglingForm === form.form_name ? 0.6 : 1,
                           }}
                         >
-                          {form.is_locked ? <><IconUnlock /> Unlock</> : <><IconLock /> Lock</>}
+                          {form.is_locked ? <><IconUnlock /> {t("Unlock", lang)}</> : <><IconLock /> {t("Lock", lang)}</>}
                         </button>
                       </div>
                     </td>
                   )}
                   <td style={{ padding: "14px 20px", fontSize: 12, color: "#64748b" }}>
-                    {formatDate(form.created_at)}
+                    {formatDate(form.created_at, lang)}
                   </td>
                   <td style={{ padding: "14px 20px", textAlign: "right" }}>
                     <button
@@ -481,7 +488,7 @@ export default function FormManagementPage({ isSuperAdmin = false }) {
                         cursor: "pointer",
                       }}
                     >
-                      <IconEdit /> Edit Schema
+                      <IconEdit /> {t("Edit Schema", lang)}
                     </button>
                   </td>
                 </tr>

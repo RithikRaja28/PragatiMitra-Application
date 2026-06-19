@@ -1,5 +1,8 @@
 import { useState, useRef, useCallback } from "react";
 import { useNavigate, useLocation, Navigate } from "react-router-dom";
+import { useLanguage } from "../../../i18n/LanguageContext";
+import { t } from "../../../i18n/translations";
+import PageHeader from "../../../ui/PageHeader";
 
 const SLUG = "balance-sheet";
 
@@ -761,6 +764,7 @@ function ReportMeta({ meta }) {
 export default function BalanceSheetPage() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { lang } = useLanguage();
   const isNew    = location.pathname.endsWith("/new");
   const isDetail = location.pathname.endsWith("/detail");
   const listPath = `/${SLUG}`;
@@ -899,27 +903,12 @@ export default function BalanceSheetPage() {
   if (!isNew) {
     return (
       <div style={pageStyle}>
-        {/* Page header */}
-        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 24, flexWrap: "wrap", gap: 12 }}>
-          <div>
-            <div style={{
-              display: "inline-flex", alignItems: "center", gap: 8,
-              background: "#0891b214", borderRadius: 8, padding: "4px 12px", marginBottom: 10,
-            }}>
-              <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#0891b2" }} />
-              <span style={{ fontSize: 11, fontWeight: 600, color: "#0891b2", textTransform: "uppercase", letterSpacing: 1 }}>
-                Balance Sheet
-              </span>
-            </div>
-            <h1 style={{ fontSize: 22, fontWeight: 700, color: "#1e293b", letterSpacing: "-0.4px", marginBottom: 4 }}>
-              Schedule uploads
-            </h1>
-            <p style={{ color: "#94a3b8", fontSize: 14 }}>
-              {savedEntries.length} schedule{savedEntries.length !== 1 ? "s" : ""} saved
-            </p>
-          </div>
-          <button style={S.btnPrimary} onClick={() => navigate(`${listPath}/new`)}>+ New entry</button>
-        </div>
+        <PageHeader
+          breadcrumb={[t("Home", lang), t("Finance", lang), t("Balance Sheet", lang)]}
+          title={t("Balance Sheet", lang)}
+          description={`${savedEntries.length} schedule${savedEntries.length !== 1 ? "s" : ""} saved`}
+          actions={<button style={S.btnPrimary} onClick={() => navigate(`${listPath}/new`)}>+ New entry</button>}
+        />
 
         {/* Report metadata */}
         <ReportMeta meta={reportMeta} />

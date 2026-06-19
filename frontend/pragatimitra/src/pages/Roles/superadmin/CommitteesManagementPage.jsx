@@ -70,7 +70,7 @@ function MemberEditor({ members, onChange, disabled, error }) {
         >
           <input
             type="text"
-            placeholder="Full name"
+            placeholder={t("Full name", lang)}
             value={m.name}
             onChange={(e) => update(i, "name", e.target.value)}
             disabled={disabled}
@@ -79,7 +79,7 @@ function MemberEditor({ members, onChange, disabled, error }) {
           />
           <input
             type="text"
-            placeholder="Designation"
+            placeholder={t("Designation", lang)}
             value={m.designation}
             onChange={(e) => update(i, "designation", e.target.value)}
             disabled={disabled}
@@ -728,7 +728,7 @@ export default function CommitteeManagementPage() {
       <PageHeader
         breadcrumb={[t("Home", lang), t("Committee Management", lang), t("Committees", lang)]}
         title={t("Management Committees", lang)}
-        description="Configure governing bodies, councils, and committees for each finance year."
+        description={t("Configure governing bodies, councils, and committees for each finance year.", lang)}
         actions={
           <>
             {isReady && !institutionsError && institutions.length > 0 && (
@@ -794,12 +794,21 @@ export default function CommitteeManagementPage() {
               t("Loading committees…", lang)
             ) : (
               <>
-                <strong style={{ color: "#1e293b" }}>{filteredCommittees.length}</strong>{" "}
-                committee{filteredCommittees.length !== 1 ? "s" : ""}
-                {selectedInstitutionName && (
+                {lang === "hi" ? (
                   <>
-                    {" "}in{" "}
-                    <strong style={{ color: "#1e293b" }}>{selectedInstitutionName}</strong>
+                    <strong style={{ color: "#1e293b" }}>{filteredCommittees.length}</strong>
+                    {" "}समिति
+                    {selectedInstitutionName && (
+                      <>{" "}में{" "}<strong style={{ color: "#1e293b" }}>{selectedInstitutionName}</strong></>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <strong style={{ color: "#1e293b" }}>{filteredCommittees.length}</strong>{" "}
+                    committee{filteredCommittees.length !== 1 ? "s" : ""}
+                    {selectedInstitutionName && (
+                      <>{" "}in{" "}<strong style={{ color: "#1e293b" }}>{selectedInstitutionName}</strong></>
+                    )}
                   </>
                 )}
               </>
@@ -909,11 +918,11 @@ export default function CommitteeManagementPage() {
           <EmptyState
             icon={<Landmark size={26} strokeWidth={1.6} />}
             title={(typeFilter !== "ALL" || yearFilter !== "ALL" || statusFilter !== "ALL" || searchQuery)
-              ? "No committees match the current filters"
-              : "No committees yet"}
+              ? t("No committees match the current filters", lang)
+              : t("No committees yet", lang)}
             description={(typeFilter === "ALL" && yearFilter === "ALL" && statusFilter === "ALL" && !searchQuery)
-              ? 'Click "New Committee" to add the first one.'
-              : "Try adjusting the filters above."}
+              ? t('Click "New Committee" to add the first one.', lang)
+              : t("Try adjusting the filters above.", lang)}
           />
         }
       />

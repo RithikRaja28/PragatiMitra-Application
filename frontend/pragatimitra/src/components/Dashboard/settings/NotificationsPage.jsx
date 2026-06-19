@@ -1,5 +1,8 @@
 import { useState, useEffect } from "react";
 import { useApi } from "../../../hooks/useApi";
+import { useLanguage } from "../../../i18n/LanguageContext";
+import { t } from "../../../i18n/translations";
+import PageHeader from "../../../ui/PageHeader";
 import {
   Bell, Edit3, Check, X, Save, Eye,
   Loader2, ChevronDown, Mail, Smartphone,
@@ -107,6 +110,7 @@ function TokenChip({ token, onCopy, copied }) {
 
 /* ── Template editor ── */
 function TemplateEditor({ template, onSave, onCancel, saving }) {
+  const { lang } = useLanguage();
   const [subject,  setSubject]  = useState(template.email_subject);
   const [body,     setBody]     = useState(template.email_body);
   const [appMsg,   setAppMsg]   = useState(template.app_message || "");
@@ -133,19 +137,19 @@ function TemplateEditor({ template, onSave, onCancel, saving }) {
             fontSize: 11.5, fontWeight: 600,
             background: tab === key ? "#2563eb" : "transparent",
             color: tab === key ? "#fff" : "#64748b",
-          }}><Icon size={13} strokeWidth={2} /> {label}</button>
+          }}><Icon size={13} strokeWidth={2} /> {t(label, lang)}</button>
         ))}
       </div>
 
       {/* Token bar */}
       <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 7, padding: "10px 12px" }}>
         <div style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 7 }}>
-          Available tokens — click to copy
+          {t("Available tokens — click to copy", lang)}
         </div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
           {TOKENS.map(({ token, desc }) => (
             <div key={token} style={{ display: "flex", alignItems: "center", gap: 3 }}>
-              <TokenChip token={token} onCopy={t => { setCopied(t); setTimeout(() => setCopied(null), 1500); }} copied={copied} />
+              <TokenChip token={token} onCopy={tok => { setCopied(tok); setTimeout(() => setCopied(null), 1500); }} copied={copied} />
               <span style={{ fontSize: 9, color: "#94a3b8" }}>{desc}</span>
             </div>
           ))}
@@ -156,13 +160,13 @@ function TemplateEditor({ template, onSave, onCancel, saving }) {
         <div style={{ display: "flex", gap: 16 }}>
           <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 10 }}>
             <div>
-              <label style={{ fontSize: 10, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.8, display: "block", marginBottom: 4 }}>Subject</label>
+              <label style={{ fontSize: 10, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.8, display: "block", marginBottom: 4 }}>{t("Subject", lang)}</label>
               <input value={subject} onChange={e => setSubject(e.target.value)} style={inputStyle}
                 onFocus={e => e.target.style.borderColor = "#2563eb"}
                 onBlur={e => e.target.style.borderColor = "#e2e8f0"} />
             </div>
             <div>
-              <label style={{ fontSize: 10, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.8, display: "block", marginBottom: 4 }}>Body</label>
+              <label style={{ fontSize: 10, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.8, display: "block", marginBottom: 4 }}>{t("Body", lang)}</label>
               <textarea value={body} onChange={e => setBody(e.target.value)} rows={10}
                 style={{ ...inputStyle, fontFamily: "'Courier New', monospace", fontSize: 11.5, lineHeight: 1.7, resize: "vertical" }}
                 onFocus={e => e.target.style.borderColor = "#2563eb"}
@@ -171,9 +175,9 @@ function TemplateEditor({ template, onSave, onCancel, saving }) {
           </div>
           <div style={{ width: 250, flexShrink: 0 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 7 }}>
-              <label style={{ fontSize: 10, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.8 }}>Preview</label>
+              <label style={{ fontSize: 10, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.8 }}>{t("Preview", lang)}</label>
               <button onClick={() => setShowPrev(p => !p)} style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 10, fontWeight: 600, color: "#2563eb", background: "none", border: "none", cursor: "pointer" }}>
-                <Eye size={11} />{showPrev ? "Hide" : "Show"}
+                <Eye size={11} />{showPrev ? t("Hide", lang) : t("Show", lang)}
               </button>
             </div>
             {showPrev ? (
@@ -193,7 +197,7 @@ function TemplateEditor({ template, onSave, onCancel, saving }) {
             ) : (
               <div style={{ height: 140, borderRadius: 8, border: "1.5px dashed #e2e8f0", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 5 }}>
                 <Eye size={18} color="#cbd5e1" />
-                <span style={{ fontSize: 11, color: "#94a3b8" }}>Click Show to preview</span>
+                <span style={{ fontSize: 11, color: "#94a3b8" }}>{t("Click Show to preview", lang)}</span>
               </div>
             )}
           </div>
@@ -201,15 +205,15 @@ function TemplateEditor({ template, onSave, onCancel, saving }) {
       ) : (
         <div style={{ display: "flex", gap: 16 }}>
           <div style={{ flex: 1 }}>
-            <label style={{ fontSize: 10, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.8, display: "block", marginBottom: 4 }}>Message</label>
+            <label style={{ fontSize: 10, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.8, display: "block", marginBottom: 4 }}>{t("Message", lang)}</label>
             <textarea value={appMsg} onChange={e => setAppMsg(e.target.value)} rows={3}
               style={{ ...inputStyle, resize: "vertical", lineHeight: 1.6 }}
               onFocus={e => e.target.style.borderColor = "#2563eb"}
               onBlur={e => e.target.style.borderColor = "#e2e8f0"} />
-            <span style={{ fontSize: 10, color: "#94a3b8", marginTop: 3, display: "block" }}>Keep under 100 characters.</span>
+            <span style={{ fontSize: 10, color: "#94a3b8", marginTop: 3, display: "block" }}>{t("Keep under 100 characters.", lang)}</span>
           </div>
           <div style={{ width: 250, flexShrink: 0 }}>
-            <label style={{ fontSize: 10, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.8, display: "block", marginBottom: 7 }}>Preview</label>
+            <label style={{ fontSize: 10, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.8, display: "block", marginBottom: 7 }}>{t("Preview", lang)}</label>
             <div style={{ background: "#1e293b", borderRadius: 10, padding: "10px 12px", display: "flex", gap: 9, alignItems: "flex-start" }}>
               <div style={{ width: 28, height: 28, borderRadius: 8, flexShrink: 0, background: "linear-gradient(135deg,#2563eb,#7c3aed)", display: "flex", alignItems: "center", justifyContent: "center" }}>
                 <Bell size={13} color="#fff" />
@@ -230,10 +234,10 @@ function TemplateEditor({ template, onSave, onCancel, saving }) {
           style={{ display: "flex", alignItems: "center", gap: 5, padding: "7px 16px", borderRadius: 7, border: "none", background: "#2563eb", color: "#fff", fontSize: 12, fontWeight: 700, cursor: saving ? "not-allowed" : "pointer", opacity: saving ? 0.7 : 1 }}
         >
           {saving ? <Loader2 size={12} /> : <Save size={12} />}
-          {saving ? "Saving…" : "Save"}
+          {saving ? t("Saving…", lang) : t("Save", lang)}
         </button>
         <button onClick={onCancel} style={{ padding: "7px 12px", borderRadius: 7, border: "1.5px solid #e2e8f0", background: "#fff", color: "#64748b", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
-          Cancel
+          {t("Cancel", lang)}
         </button>
       </div>
     </div>
@@ -242,8 +246,9 @@ function TemplateEditor({ template, onSave, onCancel, saving }) {
 
 /* ── Category section ── */
 function CategorySection({ category, templates, editingId, savedId, saving, onEdit, onSave, onCancel, onToggle }) {
+  const { lang } = useLanguage();
   const [open, setOpen] = useState(true);
-  const enabledCount = templates.filter(t => t.email_enabled || t.app_enabled).length;
+  const enabledCount = templates.filter(tmpl => tmpl.email_enabled || tmpl.app_enabled).length;
 
   return (
     <div style={{ background: "#fff", borderRadius: 12, border: "1px solid #e5e7eb", overflow: "hidden", marginBottom: 12 }}>
@@ -273,13 +278,13 @@ function CategorySection({ category, templates, editingId, savedId, saving, onEd
       </div>
 
       {/* Rows */}
-      {open && templates.map((t, idx) => {
-        const isEdit  = editingId === t.event_id;
-        const isSaved = savedId   === t.event_id;
+      {open && templates.map((tmpl, idx) => {
+        const isEdit  = editingId === tmpl.event_id;
+        const isSaved = savedId   === tmpl.event_id;
         const isLast  = idx === templates.length - 1;
 
         return (
-          <div key={t.event_id}>
+          <div key={tmpl.event_id}>
             <div
               style={{
                 display: "flex", alignItems: "center",
@@ -295,15 +300,15 @@ function CategorySection({ category, templates, editingId, savedId, saving, onEd
               <div style={{ flex: 1, display: "flex", alignItems: "flex-start" }}>
                 <div>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span style={{ fontSize: 13.5, fontWeight: 500, color: "#111827" }}>{t.label}</span>
+                    <span style={{ fontSize: 13.5, fontWeight: 500, color: "#111827" }}>{tmpl.label}</span>
                     {isSaved && (
                       <span style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 10, color: "#10b981", fontWeight: 600 }}>
-                        <Check size={9} /> Saved
+                        <Check size={9} /> {t("Saved", lang)}
                       </span>
                     )}
                   </div>
                   <div style={{ fontSize: 11.5, color: "#6b7280", marginTop: 2, maxWidth: 400, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {t.email_subject}
+                    {tmpl.email_subject}
                   </div>
                 </div>
               </div>
@@ -311,15 +316,15 @@ function CategorySection({ category, templates, editingId, savedId, saving, onEd
               {/* Right side controls */}
               <div style={{ display: "flex", alignItems: "center", gap: 16, flexShrink: 0 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <span style={{ fontSize: 11, color: "#9ca3af", fontWeight: 500 }}>Email</span>
-                  <Toggle on={t.email_enabled} onChange={() => onToggle(t.event_id, "email_enabled")} />
+                  <span style={{ fontSize: 11, color: "#9ca3af", fontWeight: 500 }}>{t("Email", lang)}</span>
+                  <Toggle on={tmpl.email_enabled} onChange={() => onToggle(tmpl.event_id, "email_enabled")} />
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <span style={{ fontSize: 11, color: "#9ca3af", fontWeight: 500 }}>App</span>
-                  <Toggle on={t.app_enabled} onChange={() => onToggle(t.event_id, "app_enabled")} />
+                  <span style={{ fontSize: 11, color: "#9ca3af", fontWeight: 500 }}>{t("App", lang)}</span>
+                  <Toggle on={tmpl.app_enabled} onChange={() => onToggle(tmpl.event_id, "app_enabled")} />
                 </div>
                 <button
-                  onClick={() => isEdit ? onCancel() : onEdit(t.event_id)}
+                  onClick={() => isEdit ? onCancel() : onEdit(tmpl.event_id)}
                   style={{
                     display: "inline-flex", alignItems: "center", gap: 4,
                     padding: "5px 12px", borderRadius: 7,
@@ -330,7 +335,7 @@ function CategorySection({ category, templates, editingId, savedId, saving, onEd
                     cursor: "pointer",
                   }}
                 >
-                  {isEdit ? <><X size={11} /> Close</> : <><Edit3 size={11} /> Edit</>}
+                  {isEdit ? <><X size={11} /> {t("Close", lang)}</> : <><Edit3 size={11} /> {t("Edit", lang)}</>}
                 </button>
               </div>
             </div>
@@ -338,8 +343,8 @@ function CategorySection({ category, templates, editingId, savedId, saving, onEd
             {/* Inline editor */}
             {isEdit && (
               <TemplateEditor
-                template={t}
-                onSave={updates => onSave(t.event_id, updates)}
+                template={tmpl}
+                onSave={updates => onSave(tmpl.event_id, updates)}
                 onCancel={onCancel}
                 saving={saving}
               />
@@ -356,6 +361,7 @@ function CategorySection({ category, templates, editingId, savedId, saving, onEd
 ══════════════════════════════════════════════════════ */
 export default function NotificationsPage() {
   const { apiFetch } = useApi();
+  const { lang } = useLanguage();
 
   const [templates,  setTemplates]  = useState([]);
   const [loading,    setLoading]    = useState(true);
@@ -436,7 +442,7 @@ export default function NotificationsPage() {
   if (loading) return (
     <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: "50%", gap: 10, fontFamily: "'Plus Jakarta Sans', sans-serif", color: "#94a3b8" }}>
       <Loader2 size={20} style={{ animation: "spin 0.6s linear infinite" }} />
-      Loading templates…
+      {t("Loading templates…", lang)}
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   );
@@ -450,21 +456,11 @@ export default function NotificationsPage() {
   return (
     <div style={{ padding: "28px 32px", fontFamily: "'Plus Jakarta Sans', sans-serif", maxWidth: 960 }}>
 
-      {/* Page header */}
-      <div style={{ marginBottom: 24 }}>
-        <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#2563eb14", borderRadius: 6, padding: "3px 10px", marginBottom: 8 }}>
-          <Bell size={10} color="#2563eb" />
-          <span style={{ fontSize: 9, fontWeight: 700, color: "#2563eb", textTransform: "uppercase", letterSpacing: 1 }}>
-            Settings · Notifications
-          </span>
-        </div>
-        <h1 style={{ fontSize: 19, fontWeight: 800, color: "#111827", letterSpacing: "-0.4px", marginBottom: 4 }}>
-          Notification Templates
-        </h1>
-        <p style={{ color: "#6b7280", fontSize: 13 }}>
-          Configure email and in-app notifications per role and event.
-        </p>
-      </div>
+      <PageHeader
+        breadcrumb={[t("Home", lang), t("Settings", lang), t("Notification Templates", lang)]}
+        title={t("Notification Templates", lang)}
+        description={t("Configure email and in-app notifications per role and event.", lang)}
+      />
 
       {/* Role tabs */}
       <div style={{ display: "flex", gap: 4, marginBottom: 24, flexWrap: "wrap" }}>
@@ -486,7 +482,7 @@ export default function NotificationsPage() {
               }}
             >
               <Icon size={13} />
-              {label}
+              {t(label, lang)}
               <span style={{
                 fontSize: 10, fontWeight: 700, borderRadius: 20, padding: "1px 7px",
                 background: isOn ? "#2563eb" : "#f3f4f6",
@@ -509,7 +505,7 @@ export default function NotificationsPage() {
       {/* Category sections */}
       {Object.keys(byCategory).length === 0 ? (
         <div style={{ textAlign: "center", padding: 48, color: "#9ca3af", fontSize: 13, background: "#fff", borderRadius: 12, border: "1px solid #e5e7eb" }}>
-          No templates for this role yet.
+          {t("No templates for this role yet.", lang)}
         </div>
       ) : (
         Object.entries(byCategory).map(([category, catTemplates]) => (

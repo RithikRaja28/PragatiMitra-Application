@@ -753,7 +753,7 @@ export default function InstitutionManagementPage() {
                 <div>
                   <div style={{ fontSize: 13.5, fontWeight: 700, color: "#1e293b" }}>{inst.institution_name}</div>
                   <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>
-                    {t("Since", lang)} {formatDate(inst.created_at)} · @{inst.email_domain}
+                    {t("Since", lang)} {formatDate(inst.created_at, lang)} · @{inst.email_domain}
                   </div>
                 </div>
               ),

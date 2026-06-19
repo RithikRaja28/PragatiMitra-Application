@@ -3,6 +3,7 @@ import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
 import { Flag } from "lucide-react";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { t } from "../../../i18n/translations";
+import PageHeader from "../../../ui/PageHeader";
 
 const C = {
   primary:   "#1d4ed8",
@@ -51,23 +52,18 @@ export default function DirectorsDashboardPage() {
     <div style={{ padding: "24px 28px", fontFamily: "'Plus Jakarta Sans', sans-serif",
       display: "flex", flexDirection: "column", gap: 14, background: C.bg, minHeight: "100vh" }}>
 
-      {/* Header */}
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
-        <div>
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 6,
-            background: C.primaryLt, borderRadius: 6, padding: "3px 11px", marginBottom: 8 }}>
-            <span style={{ width: 6, height: 6, borderRadius: "50%", background: C.primary }} />
-            <span style={{ fontSize: 10, fontWeight: 700, color: C.primary, textTransform: "uppercase", letterSpacing: "0.08em" }}>{t("Director's Office", lang)}</span>
-          </div>
-          <h1 style={{ fontSize: 22, fontWeight: 700, color: C.text, margin: 0, letterSpacing: "-0.4px" }}>{t("Report Review Dashboard", lang)}</h1>
-          <p style={{ fontSize: 13, color: C.textSub, margin: "4px 0 0" }}>Annual Report 2026 — section approval pipeline</p>
-        </div>
-        <button style={{ background: C.primary, border: "none", color: "#fff",
-          borderRadius: 8, padding: "9px 18px", fontSize: 12, fontWeight: 600, cursor: "pointer",
-          boxShadow: "0 2px 8px rgba(29,78,216,0.3)" }}>
-          {t("Go to Review Queue →", lang)}
-        </button>
-      </div>
+      <PageHeader
+        breadcrumb={[t("Home", lang), t("Director's Office", lang), t("Review Dashboard", lang)]}
+        title={t("Report Review Dashboard", lang)}
+        description="Annual Report 2026 — section approval pipeline"
+        actions={
+          <button style={{ background: C.primary, border: "none", color: "#fff",
+            borderRadius: 8, padding: "9px 18px", fontSize: 12, fontWeight: 600, cursor: "pointer",
+            boxShadow: "0 2px 8px rgba(29,78,216,0.3)" }}>
+            {t("Go to Review Queue →", lang)}
+          </button>
+        }
+      />
 
       {/* Stat cards */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 10 }}>

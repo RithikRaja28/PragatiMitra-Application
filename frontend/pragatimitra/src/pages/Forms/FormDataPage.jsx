@@ -10,6 +10,7 @@ import { useApi } from "../../hooks/useApi";
 import { useAuth } from "../../store/AuthContext";
 import { useAcademicYear } from "../../store/AcademicYearContext";
 import { useLanguage } from "../../i18n/LanguageContext";
+import { t } from "../../i18n/translations";
 import { S, Toast, isAuthError, formatDate } from "../../components/shared/formUtils";
 import PageHeader from "../../components/shared/PageHeader";
 import { tableCardStyle } from "../../components/shared/ui";
@@ -218,6 +219,7 @@ function ReadOnlyField({ field, value, lang = "en" }) {
 
 /* ── One titled column of the edit dialog ─────────────────────────────── */
 function ModalPane({ title, reference, helper, loading, children }) {
+  const { lang } = useLanguage();
   return (
     <div>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: helper ? 4 : 14 }}>
@@ -226,11 +228,11 @@ function ModalPane({ title, reference, helper, loading, children }) {
         </span>
         {reference && (
           <span style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: 0.4, textTransform: "uppercase", color: "#64748b", background: "#e2e8f0", borderRadius: 20, padding: "2px 8px" }}>
-            Read Only
+            {t("Read Only", lang)}
           </span>
         )}
         {reference && loading && (
-          <span style={{ fontSize: 11, color: "#94a3b8", fontWeight: 600 }}>· loading…</span>
+          <span style={{ fontSize: 11, color: "#94a3b8", fontWeight: 600 }}>· {t("Loading…", lang)}</span>
         )}
       </div>
       {helper && (
@@ -259,6 +261,7 @@ function ModalPane({ title, reference, helper, loading, children }) {
    call; the page stays open and refreshes the preview on success).
 ════════════════════════════════════════════════════════════════════ */
 function RecordEditPage({ fields, record, onSave, onBack, getToken, formName, formTitle, apiFetch, translationEnabled = true, viewOnly = false }) {
+  const { lang } = useLanguage();
   const isEdit = !!record;
   const editLang = record?.language === "hi" ? "hi" : "en";
   const refLang  = editLang === "hi" ? "en" : "hi";
@@ -334,7 +337,7 @@ function RecordEditPage({ fields, record, onSave, onBack, getToken, formName, fo
   const noFields = <div style={{ textAlign: "center", color: "#94a3b8", fontSize: 13, padding: "24px 0" }}>No schema fields configured for this form.</div>;
 
   const editablePane = (
-    <ModalPane title={viewOnly ? (editLang === "hi" ? "Hindi" : "English") : (editLang === "hi" ? "Hindi (Editable)" : "English (Editable)")}>
+    <ModalPane title={viewOnly ? (editLang === "hi" ? (lang === "hi" ? "हिंदी" : "Hindi") : (lang === "hi" ? "अंग्रेज़ी" : "English")) : (editLang === "hi" ? t("Hindi (Editable)", lang) : t("English (Editable)", lang))}>
       {fields.length === 0 ? noFields : fields.map(field => (
         viewOnly
           ? <ReadOnlyField key={dbCol(field.column_name)} field={field} value={formData[dbCol(field.column_name)]} lang={editLang} />
@@ -344,7 +347,7 @@ function RecordEditPage({ fields, record, onSave, onBack, getToken, formName, fo
   );
 
   const referencePane = (
-    <ModalPane title={editLang === "hi" ? "English Reference (Current)" : "Hindi Reference (Current)"} reference loading={refLoading} helper="Translation updates after save.">
+    <ModalPane title={editLang === "hi" ? t("English Reference (Current)", lang) : t("Hindi Reference (Current)", lang)} reference loading={refLoading} helper={t("Translation updates after save.", lang)}>
       {fields.length === 0 ? noFields : fields.map(field => (
         <ReadOnlyField key={dbCol(field.column_name)} field={field} value={refData[dbCol(field.column_name)]} lang={refLang} />
       ))}
@@ -357,17 +360,17 @@ function RecordEditPage({ fields, record, onSave, onBack, getToken, formName, fo
   return (
     <div className="pm-rec-edit" style={{ padding: "20px 28px 28px", fontFamily: "'Plus Jakarta Sans', sans-serif", minHeight: "100%", maxWidth: 1440, display: "flex", flexDirection: "column" }}>
       <PageHeader
-        breadcrumb={["Home", { label: "Forms & Data Entry", onClick: onBack }, formTitle, isEdit ? "Edit Record" : "Add Record"]}
-        title={isEdit ? "Edit Record" : "Add Record"}
-        description={isEdit ? "Update data and review translated values." : "Fill in the details below."}
+        breadcrumb={[t("Home", lang), { label: t("Forms & Data Entry", lang), onClick: onBack }, formTitle, isEdit ? t("Edit Record", lang) : t("Add Record", lang)]}
+        title={isEdit ? t("Edit Record", lang) : t("Add Record", lang)}
+        description={isEdit ? t("Update data and review translated values.", lang) : t("Fill in the details below.", lang)}
         actions={
-          <Button variant="ghost" onClick={onBack} icon={<span style={{ fontSize: 15, lineHeight: 1 }}>←</span>}>Back</Button>
+          <Button variant="ghost" onClick={onBack} icon={<span style={{ fontSize: 15, lineHeight: 1 }}>←</span>}>{t("Back", lang)}</Button>
         }
       />
 
       {viewOnly && (
         <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#fef2f2", border: "1px solid #fecaca", color: "#b91c1c", borderRadius: 8, padding: "6px 12px", fontSize: 12, fontWeight: 700, marginBottom: 16 }}>
-          <Lock size={13} strokeWidth={2.2} /> VIEW ONLY
+          <Lock size={13} strokeWidth={2.2} /> {t("VIEW ONLY", lang)}
         </div>
       )}
 
@@ -377,7 +380,7 @@ function RecordEditPage({ fields, record, onSave, onBack, getToken, formName, fo
         <div style={{ flex: 1, minHeight: 0, background: "#fff", border: "1px solid #e5e7eb", borderRadius: 12, boxShadow: "0 1px 3px rgba(16,24,40,0.04)", overflow: "hidden", display: "flex", flexDirection: "column" }}>
           <div style={{ padding: "16px 28px", borderBottom: "1px solid #e5e7eb" }}>
             <div style={{ fontSize: 14, fontWeight: 700, color: "#1e293b" }}>{formTitle}</div>
-            <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 2 }}>{isEdit ? "Edit this record" : "Enter the details for a new record"}</div>
+            <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 2 }}>{isEdit ? t("Edit this record", lang) : t("Enter the details for a new record", lang)}</div>
           </div>
           <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 28 }}>
             {showReference ? <div className="pm-rec-grid">{leftPane}{rightPane}</div> : editablePane}
@@ -386,10 +389,10 @@ function RecordEditPage({ fields, record, onSave, onBack, getToken, formName, fo
             )}
           </div>
           <div style={{ padding: "16px 28px", borderTop: "1px solid #e5e7eb", background: "#f8fafc", display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 12 }}>
-            <Button type="button" variant="secondary" onClick={onBack} disabled={saving}>Cancel</Button>
+            <Button type="button" variant="secondary" onClick={onBack} disabled={saving}>{t("Cancel", lang)}</Button>
             {!viewOnly && (
               <Button type="submit" variant="primary" loading={saving} disabled={saving}>
-                {saving ? "Saving…" : isEdit ? "Update Record" : "Add Record"}
+                {saving ? t("Saving…", lang) : isEdit ? t("Update Record", lang) : t("Add Record", lang)}
               </Button>
             )}
           </div>
@@ -403,6 +406,7 @@ function RecordEditPage({ fields, record, onSave, onBack, getToken, formName, fo
    DeleteModal — single or bulk, rendered via ModalPortal
 ════════════════════════════════════════════════════════════════════ */
 function DeleteModal({ count = 1, onConfirm, onClose, deleting }) {
+  const { lang } = useLanguage();
   const isBulk = count > 1;
   return (
     <ModalPortal>
@@ -416,22 +420,26 @@ function DeleteModal({ count = 1, onConfirm, onClose, deleting }) {
         >
           <div style={{ width: 56, height: 56, borderRadius: "50%", background: "#fef2f2", border: "2px solid #fecaca", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px", fontSize: 24 }}>🗑️</div>
           <div style={{ fontSize: 16, fontWeight: 700, color: "#1e293b", marginBottom: 8 }}>
-            {isBulk ? `Delete ${count} Records?` : "Delete Record?"}
+            {isBulk
+              ? (lang === "hi" ? `${count} रिकॉर्ड हटाएं?` : `Delete ${count} Records?`)
+              : t("Delete Record?", lang)}
           </div>
           <div style={{ fontSize: 13, color: "#64748b", marginBottom: 8, lineHeight: 1.6 }}>
             {isBulk
-              ? `You are about to permanently delete ${count} selected records. This action cannot be undone.`
-              : "This record will be permanently deleted. This action cannot be undone."}
+              ? (lang === "hi"
+                  ? `आप ${count} चयनित रिकॉर्ड स्थायी रूप से हटाने वाले हैं। यह कार्रवाई पूर्ववत नहीं की जा सकती।`
+                  : `You are about to permanently delete ${count} selected records. This action cannot be undone.`)
+              : t("This record will be permanently deleted. This action cannot be undone.", lang)}
           </div>
           {isBulk && (
             <div style={{ background: "#fef3c7", border: "1px solid #fcd34d", borderRadius: 8, padding: "8px 12px", fontSize: 12, color: "#92400e", marginBottom: 20, textAlign: "left" }}>
-              ⚠️ Tip: Use bulk delete to clean up failed imports before re-importing.
+              ⚠️ {t("Tip: Use bulk delete to clean up failed imports before re-importing.", lang)}
             </div>
           )}
           <div style={{ display: "flex", gap: 10, justifyContent: "center", marginTop: isBulk ? 0 : 20 }}>
-            <Button variant="secondary" onClick={onClose} disabled={deleting}>Cancel</Button>
+            <Button variant="secondary" onClick={onClose} disabled={deleting}>{t("Cancel", lang)}</Button>
             <Button variant="danger" onClick={onConfirm} loading={deleting} disabled={deleting}>
-              {deleting ? "Deleting…" : isBulk ? `Delete ${count} Records` : "Delete Record"}
+              {deleting ? t("Deleting…", lang) : isBulk ? (lang === "hi" ? `${count} रिकॉर्ड हटाएं` : `Delete ${count} Records`) : t("Delete Record", lang)}
             </Button>
           </div>
         </div>
@@ -450,21 +458,22 @@ function ProgressBar({ percent, color = ACCENT, height = 8 }) {
 }
 
 function ImportProgressPanel({ total, processed, remaining, percent, chunksDone, chunksTotal }) {
+  const { lang } = useLanguage();
   return (
     <div style={{ background: "#f8fafc", border: `1.5px solid ${ACCENT}30`, borderRadius: 8, padding: "16px 18px", marginTop: 16 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <div style={{ width: 16, height: 16, borderRadius: "50%", border: `2.5px solid ${ACCENT}30`, borderTopColor: ACCENT, animation: "spin 0.8s linear infinite" }} />
-          <span style={{ fontSize: 13, fontWeight: 700, color: "#1e293b" }}>Importing records…</span>
+          <span style={{ fontSize: 13, fontWeight: 700, color: "#1e293b" }}>{t("Importing records…", lang)}</span>
         </div>
         <span style={{ fontSize: 14, fontWeight: 800, color: ACCENT }}>{Math.round(percent)}%</span>
       </div>
       <ProgressBar percent={percent} height={10} />
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 8, marginTop: 12 }}>
         {[
-          { label: "Total",     value: total,     color: "#475569", bg: "#f1f5f9" },
-          { label: "Processed", value: processed, color: "#16a34a", bg: "#dcfce7" },
-          { label: "Remaining", value: remaining, color: "#d97706", bg: "#fef3c7" },
+          { label: t("Total", lang),     value: total,     color: "#475569", bg: "#f1f5f9" },
+          { label: t("Processed", lang), value: processed, color: "#16a34a", bg: "#dcfce7" },
+          { label: t("Remaining", lang), value: remaining, color: "#d97706", bg: "#fef3c7" },
         ].map(({ label, value, color, bg }) => (
           <div key={label} style={{ background: bg, borderRadius: 8, padding: "8px 10px", textAlign: "center" }}>
             <div style={{ fontSize: 18, fontWeight: 800, color, lineHeight: 1 }}>{value.toLocaleString()}</div>
@@ -473,7 +482,9 @@ function ImportProgressPanel({ total, processed, remaining, percent, chunksDone,
         ))}
       </div>
       <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 10, textAlign: "center" }}>
-        Batch {chunksDone} of {chunksTotal} · Please keep this window open
+        {lang === "hi"
+          ? `बैच ${chunksDone} / ${chunksTotal} · ${t("Please keep this window open", lang)}`
+          : `Batch ${chunksDone} of ${chunksTotal} · ${t("Please keep this window open", lang)}`}
       </div>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
@@ -484,6 +495,7 @@ function ImportProgressPanel({ total, processed, remaining, percent, chunksDone,
    FormImportWizard — with dept selection, rendered via ModalPortal
 ════════════════════════════════════════════════════════════════════ */
 function FormImportWizard({ formName, onClose, onDone, apiFetch, getToken, selectedYear = null }) {
+  const { lang } = useLanguage();
   const [step, setStep] = useState(1);
   const fileRef = useRef(null);
 
@@ -611,7 +623,7 @@ function FormImportWizard({ formName, onClose, onDone, apiFetch, getToken, selec
   const mappedCount = schemaFields.filter(f => mapping[f.col]).length;
   const isDeptAdmin = userRole === "department_admin";
   const isInstAdmin = userRole === "institute_admin" || userRole === "super_admin";
-  const steps = ["Upload File", "Map Columns", "Result"];
+  const steps = [t("Upload File", lang), t("Map Columns", lang), t("Result", lang)];
 
   return (
     <ModalPortal>
@@ -624,7 +636,7 @@ function FormImportWizard({ formName, onClose, onDone, apiFetch, getToken, selec
           <div style={{ padding: "14px 24px", borderBottom: "1px solid #f1f5f9" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
               <div style={{ fontSize: 15, fontWeight: 700, color: "#1e293b" }}>
-                Import Records
+                {t("Import Records", lang)}
                 <span style={{ fontSize: 11, fontWeight: 500, color: "#94a3b8", marginLeft: 8, fontFamily: "monospace" }}>{formName}</span>
               </div>
               <button onClick={onClose} disabled={executing} style={{ background: "none", border: "none", fontSize: 20, color: "#94a3b8", cursor: executing ? "not-allowed" : "pointer", lineHeight: 1 }}>×</button>
@@ -650,14 +662,14 @@ function FormImportWizard({ formName, onClose, onDone, apiFetch, getToken, selec
           <div style={{ overflowY: "auto", maxHeight: "calc(100vh - 260px)" }}>
             {step === 1 && (
               <div style={{ padding: "16px 20px" }}>
-                {isDeptAdmin && <div style={{ background: "#f0fdf4", border: "1px solid #86efac", borderRadius: 8, padding: "9px 14px", marginBottom: 14, fontSize: 13, color: "#15803d" }}>🏢 Importing as Department Admin — data will be saved to your department only.</div>}
-                {isInstAdmin && <div style={{ background: ACCENT + "0d", border: `1px solid ${ACCENT}25`, borderRadius: 8, padding: "9px 14px", marginBottom: 14, fontSize: 13, color: "#1d4ed8" }}>🏛️ Importing as Institute Admin — you can tag data to a specific department below.</div>}
+                {isDeptAdmin && <div style={{ background: "#f0fdf4", border: "1px solid #86efac", borderRadius: 8, padding: "9px 14px", marginBottom: 14, fontSize: 13, color: "#15803d" }}>🏢 {t("Importing as Department Admin — data will be saved to your department only.", lang)}</div>}
+                {isInstAdmin && <div style={{ background: ACCENT + "0d", border: `1px solid ${ACCENT}25`, borderRadius: 8, padding: "9px 14px", marginBottom: 14, fontSize: 13, color: "#1d4ed8" }}>🏛️ {t("Importing as Institute Admin — you can tag data to a specific department below.", lang)}</div>}
                 {isInstAdmin && (
                   <div style={{ marginBottom: 14 }}>
-                    <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#475569", marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.5 }}>Department (optional)</label>
+                    <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#475569", marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.5 }}>{t("Department (optional)", lang)}</label>
                     <div style={{ position: "relative" }}>
                       <select value={selectedDepartmentId || ""} onChange={e => setSelectedDepartmentId(e.target.value || null)} style={{ width: "100%", padding: "8px 32px 8px 12px", fontSize: 13, border: "1.5px solid #e2e8f0", borderRadius: 8, background: "#fff", color: "#1e293b", appearance: "none", outline: "none", cursor: "pointer" }}>
-                        <option value="">— All departments (institution-wide) —</option>
+                        <option value="">{t("— All departments (institution-wide) —", lang)}</option>
                         {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
                       </select>
                       <div style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", pointerEvents: "none", color: "#94a3b8" }}><IcoChevronDown /></div>
@@ -668,23 +680,23 @@ function FormImportWizard({ formName, onClose, onDone, apiFetch, getToken, selec
                   style={{ border: `2px dashed ${file ? ACCENT : "#cbd5e1"}`, borderRadius: 10, padding: "18px 24px", textAlign: "center", cursor: "pointer", background: file ? ACCENT + "08" : "#f8fafc", marginBottom: 14, transition: "all .15s" }}>
                   <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" style={{ display: "none" }} onChange={e => { if (e.target.files[0]) setFile(e.target.files[0]); }} />
                   <div style={{ color: file ? ACCENT : "#94a3b8", marginBottom: 8, display: "flex", justifyContent: "center" }}><IcoUpload /></div>
-                  {file ? <div><div style={{ fontSize: 13, fontWeight: 700, color: ACCENT }}>{file.name}</div><div style={{ fontSize: 11, color: "#64748b", marginTop: 3 }}>{(file.size / 1024).toFixed(1)} KB · Click to change</div></div>
-                    : <div><div style={{ fontSize: 13, color: "#64748b" }}><span style={{ color: ACCENT, fontWeight: 700 }}>Click to upload</span> or drag & drop</div><div style={{ fontSize: 11, color: "#94a3b8", marginTop: 3 }}>CSV, Excel (.xlsx, .xls) · max 50 MB · up to 10,500 rows</div></div>}
+                  {file ? <div><div style={{ fontSize: 13, fontWeight: 700, color: ACCENT }}>{file.name}</div><div style={{ fontSize: 11, color: "#64748b", marginTop: 3 }}>{(file.size / 1024).toFixed(1)} KB · {t("Click to change", lang)}</div></div>
+                    : <div><div style={{ fontSize: 13, color: "#64748b" }}><span style={{ color: ACCENT, fontWeight: 700 }}>{t("Click to upload", lang)}</span> {t("or drag & drop", lang)}</div><div style={{ fontSize: 11, color: "#94a3b8", marginTop: 3 }}>CSV, Excel (.xlsx, .xls) · max 50 MB · up to 10,500 rows</div></div>}
                 </div>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14, padding: "8px 12px", background: "#f8fafc", borderRadius: 8, border: "1px solid #e2e8f0" }}>
-                  <div style={{ fontSize: 13, color: "#475569" }}><span style={{ fontWeight: 600, color: "#1e293b" }}>Need a template?</span> Download a sample with the correct columns.</div>
+                  <div style={{ fontSize: 13, color: "#475569" }}><span style={{ fontWeight: 600, color: "#1e293b" }}>{t("Need a template?", lang)}</span> {t("Download a sample with the correct columns.", lang)}</div>
                   <div style={{ display: "flex", gap: 6, flexShrink: 0, marginLeft: 12 }}>
                     <button onClick={() => downloadSample("csv")} style={{ display: "inline-flex", alignItems: "center", gap: 5, background: "#fff", color: "#475569", border: "1px solid #e2e8f0", borderRadius: 6, padding: "4px 10px", fontSize: 11, fontWeight: 600, cursor: "pointer" }}><IcoDownload /> CSV</button>
                     <button onClick={() => downloadSample("xlsx")} style={{ display: "inline-flex", alignItems: "center", gap: 5, background: "#fff", color: "#475569", border: "1px solid #e2e8f0", borderRadius: 6, padding: "4px 10px", fontSize: 11, fontWeight: 600, cursor: "pointer" }}><IcoDownload /> Excel</button>
                   </div>
                 </div>
                 <div style={{ marginBottom: 14 }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: "#475569", marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.5 }}>Duplicate Handling</div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "#475569", marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.5 }}>{t("Duplicate Handling", lang)}</div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                     {[
-                      { val: "skip", label: "Skip duplicates", desc: "Existing matching rows are left unchanged" },
-                      { val: "overwrite", label: "Overwrite", desc: "Existing matching rows are updated with new values" },
-                      { val: "new", label: "Always insert new", desc: "Every row is inserted regardless of duplicates" },
+                      { val: "skip", label: t("Skip duplicates", lang), desc: t("Existing matching rows are left unchanged", lang) },
+                      { val: "overwrite", label: t("Overwrite", lang), desc: t("Existing matching rows are updated with new values", lang) },
+                      { val: "new", label: t("Always insert new", lang), desc: t("Every row is inserted regardless of duplicates", lang) },
                     ].map(({ val, label, desc }) => (
                       <label key={val} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "8px 12px", borderRadius: 8, border: `1.5px solid ${duplicateHandling===val?ACCENT+"60":"#e2e8f0"}`, background: duplicateHandling===val?ACCENT+"06":"#fff", cursor: "pointer", transition: "all .12s" }}>
                         <input type="radio" name="dup" value={val} checked={duplicateHandling===val} onChange={() => setDuplicateHandling(val)} style={{ accentColor: ACCENT, marginTop: 2 }} />
@@ -701,17 +713,17 @@ function FormImportWizard({ formName, onClose, onDone, apiFetch, getToken, selec
                 <div style={{ background: ACCENT + "08", border: `1px solid ${ACCENT}20`, borderRadius: 8, padding: "9px 14px", marginBottom: 16, display: "flex", alignItems: "center", gap: 9, fontSize: 13 }}>
                   <IcoFile />
                   <span style={{ color: "#475569" }}>
-                    <strong style={{ color: "#1e293b" }}>{totalRows.toLocaleString()} rows</strong> detected ·{" "}
-                    <strong style={{ color: "#1e293b" }}>{mappedCount}</strong> of <strong style={{ color: "#1e293b" }}>{schemaFields.length}</strong> columns mapped
-                    {totalRows > 1000 && <span style={{ marginLeft: 10, color: "#7c3aed", fontWeight: 600 }}>· {Math.ceil(totalRows / CHUNK_SIZE)} batches of {CHUNK_SIZE}</span>}
+                    <strong style={{ color: "#1e293b" }}>{totalRows.toLocaleString()}</strong> {t("rows detected", lang)} ·{" "}
+                    <strong style={{ color: "#1e293b" }}>{mappedCount}</strong> {t("of", lang)} <strong style={{ color: "#1e293b" }}>{schemaFields.length}</strong> {t("columns mapped", lang)}
+                    {totalRows > 1000 && <span style={{ marginLeft: 10, color: "#7c3aed", fontWeight: 600 }}>· {Math.ceil(totalRows / CHUNK_SIZE)} {t("batches of", lang)} {CHUNK_SIZE}</span>}
                   </span>
                 </div>
                 {schemaFields.length > 0 && (
                   <div style={{ borderRadius: 8, overflow: "hidden", border: "1px solid #e2e8f0", marginBottom: 16 }}>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 24px 1fr", gap: "0 8px", padding: "7px 12px", background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.5 }}>Schema Field</div>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.5 }}>{t("Schema Field", lang)}</div>
                       <div />
-                      <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.5 }}>Your File Column</div>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.5 }}>{t("Your File Column", lang)}</div>
                     </div>
                     {schemaFields.map((field, idx) => {
                       const isDoc = field.type === "document";
@@ -724,13 +736,13 @@ function FormImportWizard({ formName, onClose, onDone, apiFetch, getToken, selec
                           <div style={{ color: !isDoc && mapping[field.col] ? "#16a34a" : "#cbd5e1", textAlign: "center", fontSize: 16 }}>→</div>
                           {isDoc ? (
                             <div style={{ fontSize: 12, color: "#94a3b8", fontStyle: "italic", padding: "6px 9px", border: "1.5px dashed #e2e8f0", borderRadius: 6, background: "#f8fafc" }}>
-                              Saved as blank — upload file manually after import
+                              {t("Saved as blank — upload file manually after import", lang)}
                             </div>
                           ) : (
                             <div style={{ position: "relative" }}>
                               <select value={mapping[field.col] || ""} onChange={e => setMapping(prev => ({ ...prev, [field.col]: e.target.value }))} disabled={executing}
                                 style={{ width: "100%", padding: "6px 26px 6px 9px", fontSize: 13, border: `1.5px solid ${mapping[field.col] ? "#86efac" : "#e2e8f0"}`, borderRadius: 6, background: "#fff", color: "#1e293b", appearance: "none", cursor: executing ? "not-allowed" : "pointer", outline: "none" }}>
-                                <option value="">— skip —</option>
+                                <option value="">{lang === "hi" ? "— छोड़ें —" : "— skip —"}</option>
                                 {fileColumns.map(col => <option key={col} value={col}>{col}</option>)}
                               </select>
                               <div style={{ position: "absolute", right: 7, top: "50%", transform: "translateY(-50%)", pointerEvents: "none", color: "#94a3b8" }}><IcoChevronDown /></div>
@@ -743,7 +755,7 @@ function FormImportWizard({ formName, onClose, onDone, apiFetch, getToken, selec
                 )}
                 {preview.length > 0 && !executing && (
                   <div style={{ marginBottom: 14 }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: "#475569", marginBottom: 7, textTransform: "uppercase", letterSpacing: 0.5 }}>Preview (first {preview.length} rows)</div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: "#475569", marginBottom: 7, textTransform: "uppercase", letterSpacing: 0.5 }}>{lang === "hi" ? `${t("Preview", lang)} (पहली ${preview.length} पंक्तियाँ)` : `Preview (first ${preview.length} rows)`}</div>
                     <div style={{ overflowX: "auto", borderRadius: 7, border: "1px solid #e2e8f0" }}>
                       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
                         <thead><tr style={{ background: "#f8fafc" }}>{schemaFields.filter(f => mapping[f.col]).map(f => <th key={f.col} style={{ padding: "6px 10px", textAlign: "left", color: "#64748b", fontWeight: 700, borderBottom: "1px solid #e2e8f0", whiteSpace: "nowrap" }}>{f.label}</th>)}</tr></thead>
@@ -759,17 +771,17 @@ function FormImportWizard({ formName, onClose, onDone, apiFetch, getToken, selec
             {step === 3 && result && (
               <div style={{ padding: "28px 24px", textAlign: "center" }}>
                 <div style={{ fontSize: 42, marginBottom: 12 }}>{result.failed === 0 ? "✅" : result.imported === 0 ? "❌" : "⚠️"}</div>
-                <div style={{ fontSize: 16, fontWeight: 700, color: "#1e293b", marginBottom: 4 }}>Import Complete</div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: "#1e293b", marginBottom: 4 }}>{t("Import Complete", lang)}</div>
                 <div style={{ fontSize: 13, color: "#64748b", marginBottom: 20 }}>{result.message}</div>
                 <div style={{ marginBottom: 20, textAlign: "left" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "#64748b", marginBottom: 6 }}><span>All {result.total.toLocaleString()} rows processed</span><span style={{ fontWeight: 700, color: "#16a34a" }}>100%</span></div>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "#64748b", marginBottom: 6 }}><span>{lang === "hi" ? `सभी ${result.total.toLocaleString()} पंक्तियाँ संसाधित हुईं` : `All ${result.total.toLocaleString()} rows processed`}</span><span style={{ fontWeight: 700, color: "#16a34a" }}>100%</span></div>
                   <ProgressBar percent={100} color="#16a34a" height={10} />
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10, marginBottom: result.errors?.length ? 20 : 0 }}>
                   {[
-                    { label: "Imported", value: result.imported, color: "#16a34a", bg: "#dcfce7" },
-                    { label: "Skipped",  value: result.skipped,  color: "#d97706", bg: "#fef3c7" },
-                    { label: "Failed",   value: result.failed,   color: "#dc2626", bg: "#fee2e2" },
+                    { label: t("Imported", lang), value: result.imported, color: "#16a34a", bg: "#dcfce7" },
+                    { label: t("Skipped", lang),  value: result.skipped,  color: "#d97706", bg: "#fef3c7" },
+                    { label: t("Failed", lang),   value: result.failed,   color: "#dc2626", bg: "#fee2e2" },
                   ].map(({ label, value, color, bg }) => (
                     <div key={label} style={{ background: bg, borderRadius: 10, padding: "14px 8px" }}>
                       <div style={{ fontSize: 26, fontWeight: 800, color, lineHeight: 1 }}>{value.toLocaleString()}</div>
@@ -788,12 +800,12 @@ function FormImportWizard({ formName, onClose, onDone, apiFetch, getToken, selec
           </div>
           {/* Footer */}
           <div style={{ padding: "12px 20px", borderTop: "1px solid #f1f5f9", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <div>{step === 2 && !executing && <button onClick={() => setStep(1)} style={S.btnGhost}>← Back</button>}</div>
+            <div>{step === 2 && !executing && <button onClick={() => setStep(1)} style={S.btnGhost}>{t("← Back", lang)}</button>}</div>
             <div style={{ display: "flex", gap: 10 }}>
-              {step !== 3 && <button onClick={onClose} style={S.btnGhost} disabled={parsing || executing}>Cancel</button>}
-              {step === 1 && <button onClick={handleParse} disabled={!file || parsing} style={S.btnPrimary(!file || parsing)}>{parsing ? "Parsing…" : "Next →"}</button>}
-              {step === 2 && <button onClick={handleExecute} disabled={executing || mappedCount === 0} style={S.btnPrimary(executing || mappedCount === 0)}>{executing ? `Importing… ${Math.round(importPercent)}%` : `Import ${totalRows.toLocaleString()} Rows`}</button>}
-              {step === 3 && <button onClick={onDone} style={{ ...S.btnPrimary(false), background: "#16a34a" }}>Done</button>}
+              {step !== 3 && <button onClick={onClose} style={S.btnGhost} disabled={parsing || executing}>{t("Cancel", lang)}</button>}
+              {step === 1 && <button onClick={handleParse} disabled={!file || parsing} style={S.btnPrimary(!file || parsing)}>{parsing ? t("Parsing…", lang) : t("Next →", lang)}</button>}
+              {step === 2 && <button onClick={handleExecute} disabled={executing || mappedCount === 0} style={S.btnPrimary(executing || mappedCount === 0)}>{executing ? `${t("Importing…", lang)} ${Math.round(importPercent)}%` : (lang === "hi" ? `${totalRows.toLocaleString()} पंक्तियाँ आयात करें` : `Import ${totalRows.toLocaleString()} Rows`)}</button>}
+              {step === 3 && <button onClick={onDone} style={{ ...S.btnPrimary(false), background: "#16a34a" }}>{t("Done", lang)}</button>}
             </div>
           </div>
         </div>
@@ -847,8 +859,8 @@ function ExportDropdown({ formName, accessToken, language = "en", selectedYear =
   // year-scoped assignment (export of an unassigned year is blocked server-side).
   const yearQ = selectedYear != null ? `&year=${selectedYear}` : "";
   const options = [
-    { key: "csv",  label: "Export as CSV",  action: () => download(`/api/form-data/${formName}/export?format=csv&language=${language}${yearQ}`,  `${formName}${langTag}_export.csv`,  "csv")  },
-    { key: "xlsx", label: "Export as Excel", action: () => download(`/api/form-data/${formName}/export?format=xlsx&language=${language}${yearQ}`, `${formName}${langTag}_export.xlsx`, "xlsx") },
+    { key: "csv",  label: t("Export as CSV", language),  action: () => download(`/api/form-data/${formName}/export?format=csv&language=${language}${yearQ}`,  `${formName}${langTag}_export.csv`,  "csv")  },
+    { key: "xlsx", label: t("Export as Excel", language), action: () => download(`/api/form-data/${formName}/export?format=xlsx&language=${language}${yearQ}`, `${formName}${langTag}_export.xlsx`, "xlsx") },
   ];
 
   const [wrapRef, openUp] = useDropDirection(open && !exporting, 130);
@@ -858,17 +870,17 @@ function ExportDropdown({ formName, accessToken, language = "en", selectedYear =
       <button onClick={() => setOpen(v => !v)} disabled={!!exporting}
         style={{ display: "inline-flex", alignItems: "center", gap: 7, background: "#fff", color: "#475569", border: "1.5px solid #e2e8f0", borderRadius: 10, padding: "9px 14px", fontSize: 13, fontWeight: 600, cursor: exporting ? "not-allowed" : "pointer", boxShadow: "0 1px 3px rgba(0,0,0,0.06)", opacity: exporting ? 0.85 : 1 }}>
         <IcoDownload />
-        {exporting ? `Exporting… ${Math.round(exportPercent)}%` : "Export"}
+        {exporting ? `${t("Exporting…", language)} ${Math.round(exportPercent)}%` : t("Export", language)}
         {!exporting && <IcoChevronDown />}
       </button>
       {exporting && (
         <div style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, right: 0, background: "#fff", borderRadius: 10, border: "1px solid #e2e8f0", padding: "10px 12px", boxShadow: "0 6px 20px rgba(0,0,0,0.1)", zIndex: 101, minWidth: 220 }}>
           <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, fontWeight: 600, color: "#475569", marginBottom: 6 }}>
-            <span>Building {exporting.toUpperCase()} file…</span>
+            <span>{t("Building", language)} {exporting.toUpperCase()} {t("file…", language)}</span>
             <span style={{ color: ACCENT }}>{Math.round(exportPercent)}%</span>
           </div>
           <ProgressBar percent={exportPercent} height={6} />
-          <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 5 }}>Download will start automatically</div>
+          <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 5 }}>{t("Download will start automatically", language)}</div>
         </div>
       )}
       {open && !exporting && (
@@ -894,11 +906,12 @@ function ExportDropdown({ formName, accessToken, language = "en", selectedYear =
    SortDropdown
 ════════════════════════════════════════════════════════════════════ */
 function SortDropdown({ sortDir, onSort }) {
+  const { lang } = useLanguage();
   const [open, setOpen] = useState(false);
 
   const options = [
-    { key: "desc", label: "Newest First", icon: <IcoSortDesc /> },
-    { key: "asc",  label: "Oldest First", icon: <IcoSortAsc />  },
+    { key: "desc", label: t("Newest First", lang), icon: <IcoSortDesc /> },
+    { key: "asc",  label: t("Oldest First", lang), icon: <IcoSortAsc />  },
   ];
 
   const active = options.find(o => o.key === sortDir);
@@ -921,7 +934,7 @@ function SortDropdown({ sortDir, onSort }) {
         }}
       >
         <IcoSort />
-        Sort: {active?.label}
+        {t("Sort:", lang)} {active?.label}
         <IcoChevronDown />
       </button>
 
@@ -971,6 +984,7 @@ function SortDropdown({ sortDir, onSort }) {
    RowsPerPageDropdown
 ════════════════════════════════════════════════════════════════════ */
 function RowsPerPageDropdown({ pageSize, onPageSizeChange }) {
+  const { lang } = useLanguage();
   const [open, setOpen] = useState(false);
   const OPTIONS = [50, 100, 250, 500];
 
@@ -982,7 +996,7 @@ function RowsPerPageDropdown({ pageSize, onPageSizeChange }) {
         onClick={() => setOpen(v => !v)}
         style={{ display: "inline-flex", alignItems: "center", gap: 7, background: "#fff", color: "#475569", border: "1.5px solid #e2e8f0", borderRadius: 10, padding: "7px 13px", fontSize: 13, fontWeight: 600, cursor: "pointer", boxShadow: "0 1px 3px rgba(0,0,0,0.06)", whiteSpace: "nowrap" }}
       >
-        {pageSize} / page
+        {pageSize} {t("/ page", lang)}
         <IcoChevronDown />
       </button>
       {open && (
@@ -990,7 +1004,7 @@ function RowsPerPageDropdown({ pageSize, onPageSizeChange }) {
           <div style={{ position: "fixed", inset: 0, zIndex: 99 }} onClick={() => setOpen(false)} />
           <div style={{ position: "absolute", bottom: "calc(100% + 6px)", left: 0, zIndex: 100, background: "#fff", borderRadius: 10, border: "1.5px solid #e2e8f0", boxShadow: "0 8px 24px rgba(0,0,0,0.12)", minWidth: 160, overflow: "hidden" }}>
             <div style={{ padding: "8px 14px 6px", fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.6, borderBottom: "1px solid #f1f5f9" }}>
-              Rows per page
+              {t("Rows per page", lang)}
             </div>
             {OPTIONS.map(val => (
               <button
@@ -1000,7 +1014,7 @@ function RowsPerPageDropdown({ pageSize, onPageSizeChange }) {
                 onMouseEnter={e => { if (pageSize !== val) e.currentTarget.style.background = "#f8fafc"; }}
                 onMouseLeave={e => { e.currentTarget.style.background = pageSize === val ? ACCENT + "08" : "none"; }}
               >
-                <span>{val} rows</span>
+                <span>{val} {t("rows", lang)}</span>
                 {pageSize === val && <span style={{ color: ACCENT }}><IcoCheck /></span>}
               </button>
             ))}
@@ -1015,20 +1029,23 @@ function RowsPerPageDropdown({ pageSize, onPageSizeChange }) {
    BulkActionBar
 ════════════════════════════════════════════════════════════════════ */
 function BulkActionBar({ selectedCount, totalOnPage, onSelectAll, onDeselectAll, onBulkDelete, allSelected }) {
+  const { lang } = useLanguage();
   return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 16px", background: `${ACCENT}08`, border: `1.5px solid ${ACCENT}25`, borderRadius: 10, marginBottom: 12 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
         <div style={{ fontSize: 13, fontWeight: 700, color: "#1e293b" }}>
-          <span style={{ color: ACCENT }}>{selectedCount}</span> record{selectedCount !== 1 ? "s" : ""} selected
+          {lang === "hi"
+            ? <><span style={{ color: ACCENT }}>{selectedCount}</span> {t("record(s) selected", lang)}</>
+            : <><span style={{ color: ACCENT }}>{selectedCount}</span> record{selectedCount !== 1 ? "s" : ""} selected</>}
         </div>
         {!allSelected && (
           <button onClick={onSelectAll} style={{ fontSize: 12, fontWeight: 600, color: ACCENT, background: "#fff", border: `1px solid ${ACCENT}30`, cursor: "pointer", padding: "3px 8px", borderRadius: 6 }}>
-            Select all {totalOnPage} on this page
+            {t("Select all", lang)} {totalOnPage} {t("on this page", lang)}
           </button>
         )}
         {allSelected && (
           <button onClick={onDeselectAll} style={{ fontSize: 12, fontWeight: 600, color: "#64748b", background: "#fff", border: "1px solid #e2e8f0", cursor: "pointer", padding: "3px 8px", borderRadius: 6 }}>
-            Deselect all
+            {t("Deselect all", lang)}
           </button>
         )}
       </div>
@@ -1036,7 +1053,7 @@ function BulkActionBar({ selectedCount, totalOnPage, onSelectAll, onDeselectAll,
         onClick={onBulkDelete}
         style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#fef2f2", color: "#dc2626", border: "1.5px solid #fecaca", borderRadius: 8, padding: "7px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
       >
-        <IcoTrash /> Delete {selectedCount} Selected
+        <IcoTrash /> {lang === "hi" ? `${selectedCount} चयनित हटाएं` : `Delete ${selectedCount} Selected`}
       </button>
     </div>
   );
@@ -1058,6 +1075,14 @@ export default function FormDataPage() {
   //     existing NOA signal (user.noaActiveYears, set by the backend's
   //     nodal_officer_assignments resolver). We do NOT hardcode a nodal role:
   //     the frontend user.roles stays "contributor"; noaActiveYears is the flag.
+  // Module crumb is role/domain-aware: Hospital Admin and Finance Admin reuse this
+  // same page (backend filters by form_domain), so the breadcrumb must reflect
+  // their actual module instead of always saying "Department".
+  const roleName = (user?.roles || [])[0]?.name || "";
+  const moduleLabel = roleName === "hospital_admin" ? "Hospital"
+    : roleName === "finance_admin" ? "Finance"
+    : "Department";
+
   const canAssign =
     (user?.roles || []).some((r) => r.name === "department_admin" || r.name === "institute_admin") ||
     (user?.noaActiveYears?.length || 0) > 0;
@@ -1328,10 +1353,10 @@ export default function FormDataPage() {
     const expiredForms = forms.filter(isExpired).length;
 
     const summary = [
-      { label: "Total Forms",      value: totalForms,   color: "#2563eb", bg: "#ecfeff", hint: "All accessible forms" },
-      { label: "Active Forms",     value: activeForms,  color: "#16a34a", bg: "#f0fdf4", hint: "Open for submissions" },
-      { label: "Pending Deadline", value: pendingForms, color: "#d97706", bg: "#fffbeb", hint: "Due within 7 days" },
-      { label: "Expired Forms",    value: expiredForms, color: "#dc2626", bg: "#fef2f2", hint: "Past deadline" },
+      { label: t("Total Forms", lang),      value: totalForms,   color: "#2563eb", bg: "#ecfeff", hint: t("All accessible forms", lang) },
+      { label: t("Active Forms", lang),     value: activeForms,  color: "#16a34a", bg: "#f0fdf4", hint: t("Open for submissions", lang) },
+      { label: t("Pending Deadline", lang), value: pendingForms, color: "#d97706", bg: "#fffbeb", hint: t("Due within 7 days", lang) },
+      { label: t("Expired Forms", lang),    value: expiredForms, color: "#dc2626", bg: "#fef2f2", hint: t("Past deadline", lang) },
     ];
 
     return (
@@ -1349,9 +1374,9 @@ export default function FormDataPage() {
         )}
 
         <PageHeader
-          breadcrumb={["Home", "Department", "Forms & Data Entry"]}
-          title="Forms & Data Entry Center"
-          description="Access all department forms, monitor deadlines, and manage records in one place."
+          breadcrumb={[t("Home", lang), t(moduleLabel, lang), t("Forms & Data Entry", lang)]}
+          title={t("Forms & Data Entry Center", lang)}
+          description={t("Access all department forms, monitor deadlines, and manage records in one place.", lang)}
         />
 
         {formsError && (
@@ -1379,30 +1404,30 @@ export default function FormDataPage() {
         <div style={{ ...tableCardStyle, flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
           <div style={{ padding: "12px 16px", borderBottom: "1px solid #eef2f6", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
             <div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: "#1e293b" }}>Available Forms</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "#1e293b" }}>{t("Available Forms", lang)}</div>
               <div style={{ fontSize: 11.5, color: "#94a3b8", marginTop: 1 }}>
-                {formsLoading ? "Loading…" : `${forms.length} form${forms.length !== 1 ? "s" : ""} accessible to your department`}
+                {formsLoading ? t("Loading…", lang) : `${forms.length} form${forms.length !== 1 ? "s" : ""} accessible to your department`}
               </div>
             </div>
           </div>
 
           {formsLoading ? (
-            <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "#94a3b8", fontSize: 13 }}>Loading forms…</div>
+            <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "#94a3b8", fontSize: 13 }}>{t("Loading forms…", lang)}</div>
           ) : forms.length === 0 ? (
             <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", color: "#94a3b8", padding: "24px" }}>
               <div style={{ width: 56, height: 56, borderRadius: 8, margin: "0 auto 16px", background: "#f1f5f9", border: "1px solid #e2e8f0", display: "flex", alignItems: "center", justifyContent: "center" }}>
                 <FileText size={26} strokeWidth={1.6} color="#94a3b8" />
               </div>
-              <div style={{ fontSize: 13.5, fontWeight: 600, color: "#64748b", marginBottom: 4 }}>No forms available</div>
-              <div style={{ fontSize: 12.5 }}>Your institution hasn't shared any forms with your department yet.</div>
+              <div style={{ fontSize: 13.5, fontWeight: 600, color: "#64748b", marginBottom: 4 }}>{t("No forms available", lang)}</div>
+              <div style={{ fontSize: 12.5 }}>{t("Your institution hasn't shared any forms with your department yet.", lang)}</div>
             </div>
           ) : (
             <div style={{ overflow: "auto", flex: 1, minHeight: 0 }}>
               <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 820 }}>
                 <thead>
                   <tr style={{ background: "#f8fafc" }}>
-                    {["Form", "Form Name & Description", "Deadline", "Status", "Actions"].map((h) => (
-                      <th key={h} style={{ padding: "8px 14px", textAlign: h === "Actions" ? "right" : "left", fontSize: 10.5, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.5, borderBottom: "1px solid #eef2f6", whiteSpace: "nowrap" }}>{h}</th>
+                    {[t("Form", lang), t("Form Name & Description", lang), t("Deadline", lang), t("Status", lang), t("Actions", lang)].map((h, i) => (
+                      <th key={i} style={{ padding: "8px 14px", textAlign: i === 4 ? "right" : "left", fontSize: 10.5, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.5, borderBottom: "1px solid #eef2f6", whiteSpace: "nowrap" }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
@@ -1411,20 +1436,20 @@ export default function FormDataPage() {
                     const expired = form.deadline_at && new Date(form.deadline_at).getTime() <= now;
                     const locked  = form.is_locked;
                     const statusBadge = locked
-                      ? { label: "LOCKED",  color: "#dc2626" }
+                      ? { label: t("LOCKED", lang),  color: "#dc2626" }
                       : expired
-                        ? { label: "EXPIRED", color: "#dc2626" }
-                        : { label: "OPEN",    color: "#16a34a" };
+                        ? { label: t("EXPIRED", lang), color: "#dc2626" }
+                        : { label: t("OPEN", lang),    color: "#16a34a" };
                     const deadlineText = form.deadline_at
                       ? new Date(form.deadline_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })
                       : "—";
                     let deadlineSubBadge = null;
                     if (form.deadline_at) {
                       if (expired) {
-                        deadlineSubBadge = { label: "EXPIRED", color: "#dc2626" };
+                        deadlineSubBadge = { label: t("EXPIRED", lang), color: "#dc2626" };
                       } else {
                         const daysLeft = Math.ceil((new Date(form.deadline_at).getTime() - now) / (24 * 3600 * 1000));
-                        deadlineSubBadge = { label: `${daysLeft} DAY${daysLeft !== 1 ? "S" : ""} LEFT`, color: daysLeft <= 3 ? "#d97706" : "#16a34a" };
+                        deadlineSubBadge = { label: `${daysLeft} ${lang === "hi" ? "दिन शेष" : `DAY${daysLeft !== 1 ? "S" : ""} LEFT`}`, color: daysLeft <= 3 ? "#d97706" : "#16a34a" };
                       }
                     }
                     return (
@@ -1466,7 +1491,7 @@ export default function FormDataPage() {
                             {canAssign && (
                               <button
                                 onClick={(e) => { e.stopPropagation(); setAssignForm(form); }}
-                                title="Assign contributors" aria-label="Assign contributors"
+                                title={t("Assign contributors", lang)} aria-label={t("Assign contributors", lang)}
                                 style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 30, height: 30, background: "#fff", color: ACCENT, border: `1px solid ${ACCENT}40`, borderRadius: 7, cursor: "pointer", transition: "background .15s, border-color .15s" }}
                                 onMouseEnter={(e) => { e.currentTarget.style.background = ACCENT + "12"; e.currentTarget.style.borderColor = ACCENT; }}
                                 onMouseLeave={(e) => { e.currentTarget.style.background = "#fff"; e.currentTarget.style.borderColor = ACCENT + "40"; }}
@@ -1480,7 +1505,7 @@ export default function FormDataPage() {
                               onMouseEnter={(e) => { e.currentTarget.style.background = ACCENT + "12"; e.currentTarget.style.borderColor = ACCENT; }}
                               onMouseLeave={(e) => { e.currentTarget.style.background = "#fff"; e.currentTarget.style.borderColor = ACCENT + "40"; }}
                             >
-                              Open <span style={{ fontSize: 12 }}>→</span>
+                              {t("Open", lang)} <span style={{ fontSize: 12 }}>→</span>
                             </button>
                           </div>
                         </td>
@@ -1563,10 +1588,10 @@ export default function FormDataPage() {
           <Lock size={18} color="#b91c1c" strokeWidth={2} style={{ flexShrink: 0 }} />
           <div>
             <div style={{ fontSize: 13, fontWeight: 700, color: "#b91c1c" }}>
-              This academic year is locked — view-only mode.
+              {t("This academic year is locked — view-only mode.", lang)}
             </div>
             <div style={{ fontSize: 12, color: "#dc2626", marginTop: 2 }}>
-              Adding, editing, deleting and importing are disabled. You can still view, search and export.
+              {t("Adding, editing, deleting and importing are disabled. You can still view, search and export.", lang)}
             </div>
           </div>
         </div>
@@ -1578,9 +1603,9 @@ export default function FormDataPage() {
       {/* ── Page Header ── */}
       <PageHeader
         breadcrumb={[
-          "Home",
-          "Department",
-          { label: "Forms & Data Entry", onClick: backToForms },
+          t("Home", lang),
+          t(moduleLabel, lang),
+          { label: t("Forms & Data Entry", lang), onClick: backToForms },
           formEntity?.form_name.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
         ]}
         title={
@@ -1588,7 +1613,7 @@ export default function FormDataPage() {
             {formEntity?.form_name.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
             {lockInfo.is_locked && (
               <span style={{ marginLeft: 10, fontSize: 13, fontWeight: 600, color: "#dc2626", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 6, padding: "2px 8px", verticalAlign: "middle", display: "inline-flex", alignItems: "center", gap: 5 }}>
-                <Lock size={13} strokeWidth={2.2} /> Locked
+                <Lock size={13} strokeWidth={2.2} /> {t("Locked", lang)}
               </span>
             )}
           </>
@@ -1596,10 +1621,10 @@ export default function FormDataPage() {
         description={
           <>
             {recsLoading
-              ? "Loading…"
+              ? t("Loading…", lang)
               : searchTerm
-                ? `${totalCount} matching record${totalCount !== 1 ? "s" : ""}`
-                : `${totalCount} record${totalCount !== 1 ? "s" : ""}`}
+                ? `${totalCount} ${t("matching record", lang)}${totalCount !== 1 ? "s" : ""}`
+                : `${totalCount} ${t("record", lang)}${totalCount !== 1 ? "s" : ""}`}
             {schema && <span style={{ marginLeft: 8, fontFamily: "monospace", fontSize: 11 }}>· {schema.year}</span>}
           </>
         }
@@ -1613,18 +1638,18 @@ export default function FormDataPage() {
             <button
               onClick={() => { if (!readOnly) setImportOpen(true); }}
               disabled={readOnly}
-              title={readOnly ? (lockInfo.is_locked ? "Form is locked" : "Switch to English to import") : ""}
+              title={readOnly ? (lockInfo.is_locked ? t("Form is locked", lang) : t("Switch to English to import", lang)) : ""}
               style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "9px 16px", borderRadius: 10, border: `1.5px solid ${readOnly ? "#e2e8f0" : ACCENT}`, background: readOnly ? "#f8fafc" : "#ecfeff", fontSize: 13, fontWeight: 600, color: readOnly ? "#94a3b8" : ACCENT, cursor: readOnly ? "not-allowed" : "pointer" }}
             >
-              <IcoUpload /> Import
+              <IcoUpload /> {t("Import", lang)}
             </button>
             <button
               onClick={() => { if (!readOnly) setEditTarget("new"); }}
               disabled={readOnly}
-              title={lockInfo.is_locked ? "Form is locked — contact your institution admin" : viewingTranslated ? "Switch to English (EN) to add records" : ""}
+              title={lockInfo.is_locked ? t("Form is locked — contact your institution admin", lang) : viewingTranslated ? t("Switch to English (EN) to add records", lang) : ""}
               style={{ display: "inline-flex", alignItems: "center", gap: 7, background: readOnly ? "#94a3b8" : ACCENT, color: "#fff", border: "none", borderRadius: 10, padding: "9px 18px", fontSize: 13, fontWeight: 700, cursor: readOnly ? "not-allowed" : "pointer", boxShadow: readOnly ? "none" : `0 2px 8px ${ACCENT}40` }}
             >
-              <IcoPlus /> Add Record
+              <IcoPlus /> {t("Add Record", lang)}
             </button>
           </div>
         }
@@ -1658,10 +1683,10 @@ export default function FormDataPage() {
         {(records.length > 0 || searchTerm) && (
           <div style={{ padding: "12px 20px", borderBottom: "1px solid #f1f5f9", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: "#1e293b" }}>
-              Records
+              {t("Records", lang)}
               {searchTerm && (
                 <span style={{ marginLeft: 8, fontSize: 12, fontWeight: 500, color: "#94a3b8" }}>
-                  · {totalCount} matching
+                  · {totalCount} {t("matching", lang)}
                 </span>
               )}
             </div>
@@ -1669,8 +1694,8 @@ export default function FormDataPage() {
               {/* Table / Cards view toggle — both reuse the same handlers */}
               <div style={{ display: "inline-flex", border: "1px solid #e2e8f0", borderRadius: 9, overflow: "hidden", background: "#fff" }}>
                 {[
-                  { id: "table", Icon: Table2, title: "Table view" },
-                  { id: "cards", Icon: LayoutGrid, title: "Card view" },
+                  { id: "table", Icon: Table2, title: t("Table view", lang) },
+                  { id: "cards", Icon: LayoutGrid, title: t("Card view", lang) },
                 ].map(({ id, Icon, title }) => {
                   const on = viewMode === id;
                   return (
@@ -1690,13 +1715,13 @@ export default function FormDataPage() {
                     value={searchInput}
                     onChange={(e) => setSearchInput(e.target.value)}
                     onKeyDown={(e) => { if (e.key === "Enter") commitSearch(); }}
-                    placeholder="Search records"
+                    placeholder={t("Search records", lang)}
                     style={{ width: "100%", padding: "7px 30px 7px 32px", fontSize: 13, color: "#1e293b", border: "1px solid #e2e8f0", borderRadius: 8, outline: "none", background: "#fff" }}
                   />
                   {searchInput && (
                     <button
                       onClick={() => { setSearchInput(""); commitSearch(""); }}
-                      title="Clear"
+                      title={t("Clear", lang)}
                       style={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", color: "#94a3b8", fontSize: 16, lineHeight: 1, cursor: "pointer", padding: "2px 6px" }}
                     >
                       ×
@@ -1705,10 +1730,10 @@ export default function FormDataPage() {
                 </div>
                 <button
                   onClick={() => commitSearch()}
-                  title="Search"
+                  title={t("Search", lang)}
                   style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", height: 34, padding: "0 14px", border: "none", borderRadius: 8, background: ACCENT, color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}
                 >
-                  Search
+                  {t("Search", lang)}
                 </button>
               </div>
             </div>
@@ -1717,22 +1742,22 @@ export default function FormDataPage() {
 
         {recsLoading && records.length === 0 ? (
           /* First load only — no previous rows to keep on screen. */
-          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "#94a3b8", fontSize: 13 }}>Loading records…</div>
+          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "#94a3b8", fontSize: 13 }}>{t("Loading records…", lang)}</div>
         ) : (records.length === 0 && !searchTerm) ? (
           <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", padding: "24px", color: "#94a3b8" }}>
             <div style={{ width: 56, height: 56, borderRadius: 8, margin: "0 auto 16px", background: "#f1f5f9", border: "1px solid #e2e8f0", display: "flex", alignItems: "center", justifyContent: "center" }}>
               <FilePlus size={26} strokeWidth={1.6} color="#94a3b8" />
             </div>
-            <div style={{ fontSize: 14, fontWeight: 600, color: "#64748b", marginBottom: 6 }}>No records yet</div>
-            <div style={{ fontSize: 13 }}>Click "Add Record" to create the first entry, or Import from a file.</div>
+            <div style={{ fontSize: 14, fontWeight: 600, color: "#64748b", marginBottom: 6 }}>{t("No records yet", lang)}</div>
+            <div style={{ fontSize: 13 }}>{t("Click \"Add Record\" to create the first entry, or Import from a file.", lang)}</div>
           </div>
         ) : records.length === 0 ? (
           <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", padding: "24px", color: "#94a3b8" }}>
             <div style={{ width: 56, height: 56, borderRadius: 8, margin: "0 auto 16px", background: "#f1f5f9", border: "1px solid #e2e8f0", display: "flex", alignItems: "center", justifyContent: "center" }}>
               <SearchX size={26} strokeWidth={1.6} color="#94a3b8" />
             </div>
-            <div style={{ fontSize: 14, fontWeight: 600, color: "#64748b", marginBottom: 6 }}>No matching records</div>
-            <div style={{ fontSize: 13 }}>Try a different search term or clear the search to see all records.</div>
+            <div style={{ fontSize: 14, fontWeight: 600, color: "#64748b", marginBottom: 6 }}>{t("No matching records", lang)}</div>
+            <div style={{ fontSize: 13 }}>{t("Try a different search term or clear the search to see all records.", lang)}</div>
           </div>
         ) : viewMode === "cards" ? (
           /* ── Cards view — reuses the exact same edit/delete/select handlers ── */
@@ -1877,7 +1902,7 @@ export default function FormDataPage() {
         {recsLoading && records.length > 0 && (
           <div style={{ position: "absolute", inset: 0, background: "rgba(255,255,255,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 2 }}>
             <span style={{ fontSize: 13, fontWeight: 600, color: "#64748b", background: "#fff", padding: "8px 16px", borderRadius: 8, border: "1px solid #e2e8f0", boxShadow: "0 2px 8px rgba(16,24,40,0.08)" }}>
-              Searching…
+              {t("Searching…", lang)}
             </span>
           </div>
         )}
@@ -1892,22 +1917,23 @@ export default function FormDataPage() {
             <div style={{ fontSize: 13, color: "#64748b" }}>
               {totalCount <= pageSize ? (
                 <>
-                  <strong style={{ color: "#1e293b" }}>{totalCount.toLocaleString()}</strong> record{totalCount !== 1 ? "s" : ""}
-                  {searchTerm && <span style={{ color: "#94a3b8", marginLeft: 4 }}>(matching)</span>}
+                  <strong style={{ color: "#1e293b" }}>{totalCount.toLocaleString()}</strong>{" "}
+                  {lang === "hi" ? "रिकॉर्ड" : `record${totalCount !== 1 ? "s" : ""}`}
+                  {searchTerm && <span style={{ color: "#94a3b8", marginLeft: 4 }}>({t("matching", lang)})</span>}
                 </>
               ) : (
                 <>
-                  Showing{" "}
+                  {t("Showing", lang)}{" "}
                   <strong style={{ color: "#1e293b" }}>
                     {(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, totalCount)}
                   </strong>{" "}
-                  of{" "}
+                  {t("of", lang)}{" "}
                   <strong style={{ color: "#1e293b" }}>{totalCount.toLocaleString()}</strong>
-                  {searchTerm && <span style={{ color: "#94a3b8", marginLeft: 4 }}>(matching)</span>}
+                  {searchTerm && <span style={{ color: "#94a3b8", marginLeft: 4 }}>({t("matching", lang)})</span>}
                 </>
               )}
               {selectedIds.size > 0 && (
-                <span style={{ marginLeft: 8, color: ACCENT, fontWeight: 700 }}>({selectedIds.size} selected)</span>
+                <span style={{ marginLeft: 8, color: ACCENT, fontWeight: 700 }}>({selectedIds.size} {t("selected", lang)})</span>
               )}
             </div>
           </div>
@@ -1917,7 +1943,7 @@ export default function FormDataPage() {
               <button onClick={() => { setCurrentPage(1); setSelectedIds(new Set()); }} disabled={currentPage === 1} title="First page"
                 style={{ ...pageBtn, opacity: currentPage === 1 ? 0.38 : 1, cursor: currentPage === 1 ? "default" : "pointer" }}>«</button>
               <button onClick={() => { setCurrentPage(p => Math.max(1, p - 1)); setSelectedIds(new Set()); }} disabled={currentPage === 1}
-                style={{ ...pageBtn, opacity: currentPage === 1 ? 0.38 : 1, cursor: currentPage === 1 ? "default" : "pointer" }}>‹ Prev</button>
+                style={{ ...pageBtn, opacity: currentPage === 1 ? 0.38 : 1, cursor: currentPage === 1 ? "default" : "pointer" }}>{lang === "hi" ? "‹ पिछला" : "‹ Prev"}</button>
               {Array.from({ length: totalPages }, (_, i) => i + 1)
                 .filter(p => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 1)
                 .reduce((acc, p, idx, arr) => { if (idx > 0 && p - arr[idx - 1] > 1) acc.push("ellipsis-" + p); acc.push(p); return acc; }, [])
@@ -1932,7 +1958,7 @@ export default function FormDataPage() {
                   )
                 )}
               <button onClick={() => { setCurrentPage(p => Math.min(totalPages, p + 1)); setSelectedIds(new Set()); }} disabled={currentPage === totalPages}
-                style={{ ...pageBtn, opacity: currentPage === totalPages ? 0.38 : 1, cursor: currentPage === totalPages ? "default" : "pointer" }}>Next ›</button>
+                style={{ ...pageBtn, opacity: currentPage === totalPages ? 0.38 : 1, cursor: currentPage === totalPages ? "default" : "pointer" }}>{lang === "hi" ? "अगला ›" : "Next ›"}</button>
               <button onClick={() => { setCurrentPage(totalPages); setSelectedIds(new Set()); }} disabled={currentPage === totalPages} title="Last page"
                 style={{ ...pageBtn, opacity: currentPage === totalPages ? 0.38 : 1, cursor: currentPage === totalPages ? "default" : "pointer" }}>»</button>
             </div>

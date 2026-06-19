@@ -3,6 +3,9 @@ import { useApi }  from "../../../hooks/useApi";
 import { useAuth } from "../../../store/AuthContext";
 import FormScreen  from "../../../components/shared/FormScreen";
 import { S, Toast, ConfirmDialog, isAuthError } from "../../../components/shared/formUtils";
+import { useLanguage } from "../../../i18n/LanguageContext";
+import { t } from "../../../i18n/translations";
+import PageHeader from "../../../ui/PageHeader";
 
 /* ─── Design tokens ────────────────────────────────────────────── */
 const C = {
@@ -404,6 +407,7 @@ const STATUS_TABS = [
 export default function ReportCyclePage() {
   const { apiFetch }   = useApi();
   const { user }       = useAuth();
+  const { lang }       = useLanguage();
 
   const [screen,   setScreen]   = useState("list"); // "list" | "create" | "edit"
   const [cycles,   setCycles]   = useState([]);
@@ -562,30 +566,25 @@ export default function ReportCyclePage() {
 
       <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}`}</style>
 
-      {/* ── Page header ── */}
-      <div style={{
-        display: "flex", alignItems: "flex-start",
-        justifyContent: "space-between", marginBottom: 24, gap: 16, flexWrap: "wrap",
-      }}>
-        <div>
-          <div style={{ fontSize: 20, fontWeight: 800, color: C.text }}>Reporting Cycles</div>
-          <div style={{ fontSize: 13, color: C.textSub, marginTop: 4 }}>
-            Each reporting cycle defines the period and outer deadline bounds for all reports under it.
-          </div>
-        </div>
-        <button
-          onClick={() => setScreen("create")}
-          style={{
-            display: "flex", alignItems: "center", gap: 7,
-            padding: "9px 18px", borderRadius: 10, border: "none",
-            background: C.primary, color: "#fff",
-            fontSize: 13, fontWeight: 700, cursor: "pointer",
-            boxShadow: "0 2px 8px rgba(37,99,235,0.25)",
-          }}
-        >
-          <span style={{ fontSize: 16, lineHeight: 1 }}>＋</span> New Cycle
-        </button>
-      </div>
+      <PageHeader
+        breadcrumb={[t("Home", lang), t("Institute", lang), t("Report Cycles", lang)]}
+        title={t("Report Cycles", lang)}
+        description={t("Each reporting cycle defines the period and outer deadline bounds for all reports under it.", lang)}
+        actions={
+          <button
+            onClick={() => setScreen("create")}
+            style={{
+              display: "flex", alignItems: "center", gap: 7,
+              padding: "9px 18px", borderRadius: 10, border: "none",
+              background: C.primary, color: "#fff",
+              fontSize: 13, fontWeight: 700, cursor: "pointer",
+              boxShadow: "0 2px 8px rgba(37,99,235,0.25)",
+            }}
+          >
+            <span style={{ fontSize: 16, lineHeight: 1 }}>＋</span> {t("New Cycle", lang)}
+          </button>
+        }
+      />
 
       {/* ── Stats ── */}
       <div style={{ display: "flex", gap: 14, marginBottom: 24, flexWrap: "wrap" }}>

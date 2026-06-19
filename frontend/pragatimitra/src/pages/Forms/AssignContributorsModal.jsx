@@ -2,6 +2,8 @@ import React, { useEffect, useState, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { X, UserPlus, Search, Check, UserCheck, Trash2 } from "lucide-react";
 import { useApi } from "../../hooks/useApi";
+import { useLanguage } from "../../i18n/LanguageContext";
+import { t } from "../../i18n/translations";
 
 const ACCENT = "#2563eb";
 
@@ -10,6 +12,7 @@ const ACCENT = "#2563eb";
    the selected academic year. Assignment only controls visibility. */
 export default function AssignContributorsModal({ form, year, departmentName, onClose, onAssigned, showToast }) {
   const { apiFetch } = useApi();
+  const { lang } = useLanguage();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [contributors, setContributors] = useState([]);
@@ -90,7 +93,7 @@ export default function AssignContributorsModal({ form, year, departmentName, on
         <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "18px 22px", borderBottom: "1px solid #e5e7eb" }}>
           <span style={{ width: 38, height: 38, borderRadius: 8, display: "inline-flex", alignItems: "center", justifyContent: "center", background: ACCENT + "14", color: ACCENT }}><UserPlus size={18} strokeWidth={1.9} /></span>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 15.5, fontWeight: 800, color: "#111827" }}>Assign Contributors</div>
+            <div style={{ fontSize: 15.5, fontWeight: 800, color: "#111827" }}>{t("Assign Contributors", lang)}</div>
             <div style={{ fontSize: 12.5, color: "#6B7280", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sub}</div>
           </div>
           <button onClick={onClose} aria-label="Close" style={{ background: "none", border: "none", cursor: "pointer", color: "#6B7280", padding: 6, borderRadius: 8, display: "inline-flex" }}><X size={18} /></button>
@@ -99,14 +102,14 @@ export default function AssignContributorsModal({ form, year, departmentName, on
         <div style={{ padding: "16px 22px", overflowY: "auto", flex: 1 }}>
           <div style={{ position: "relative", marginBottom: 12 }}>
             <Search size={15} style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", color: "#94a3b8" }} />
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search contributors…" style={{ width: "100%", height: 40, padding: "0 12px 0 34px", border: "1px solid #D1D5DB", borderRadius: 10, fontSize: 13, outline: "none", boxSizing: "border-box" }} />
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t("Search contributors…", lang)} style={{ width: "100%", height: 40, padding: "0 12px 0 34px", border: "1px solid #D1D5DB", borderRadius: 10, fontSize: 13, outline: "none", boxSizing: "border-box" }} />
           </div>
 
-          <div style={{ fontSize: 11, fontWeight: 700, color: "#6B7280", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8 }}>Department Contributors</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "#6B7280", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8 }}>{t("Department Contributors", lang)}</div>
           {loading ? (
-            <div style={{ padding: 16, textAlign: "center", color: "#94a3b8", fontSize: 13 }}>Loading…</div>
+            <div style={{ padding: 16, textAlign: "center", color: "#94a3b8", fontSize: 13 }}>{t("Loading…", lang)}</div>
           ) : available.length === 0 ? (
-            <div style={{ padding: 16, textAlign: "center", color: "#94a3b8", fontSize: 13 }}>{q ? "No matches." : "No more contributors to assign."}</div>
+            <div style={{ padding: 16, textAlign: "center", color: "#94a3b8", fontSize: 13 }}>{q ? t("No matches.", lang) : t("No more contributors to assign.", lang)}</div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 210, overflowY: "auto" }}>
               {available.map((c) => {
@@ -125,9 +128,9 @@ export default function AssignContributorsModal({ form, year, departmentName, on
             </div>
           )}
 
-          <div style={{ fontSize: 11, fontWeight: 700, color: "#6B7280", textTransform: "uppercase", letterSpacing: 0.5, margin: "18px 0 8px" }}>Assigned ({assigned.length})</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "#6B7280", textTransform: "uppercase", letterSpacing: 0.5, margin: "18px 0 8px" }}>{t("Assigned", lang)} ({assigned.length})</div>
           {assigned.length === 0 ? (
-            <div style={{ fontSize: 12.5, color: "#94a3b8" }}>No contributors assigned yet.</div>
+            <div style={{ fontSize: 12.5, color: "#94a3b8" }}>{t("No contributors assigned yet.", lang)}</div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               {assigned.map((a) => (
@@ -145,9 +148,9 @@ export default function AssignContributorsModal({ form, year, departmentName, on
         </div>
 
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, padding: "14px 22px", borderTop: "1px solid #e5e7eb", background: "#FAFBFC" }}>
-          <button onClick={onClose} disabled={saving} style={{ height: 40, padding: "0 18px", borderRadius: 9, border: "1px solid #D1D5DB", background: "#fff", color: "#374151", fontWeight: 600, fontSize: 13, cursor: "pointer" }}>Cancel</button>
+          <button onClick={onClose} disabled={saving} style={{ height: 40, padding: "0 18px", borderRadius: 9, border: "1px solid #D1D5DB", background: "#fff", color: "#374151", fontWeight: 600, fontSize: 13, cursor: "pointer" }}>{t("Cancel", lang)}</button>
           <button onClick={assign} disabled={saving || selected.size === 0} style={{ height: 40, padding: "0 20px", borderRadius: 9, border: "none", background: (saving || selected.size === 0) ? "#93c5fd" : ACCENT, color: "#fff", fontWeight: 700, fontSize: 13, cursor: (saving || selected.size === 0) ? "not-allowed" : "pointer" }}>
-            {saving ? "Assigning…" : `Assign${selected.size ? ` (${selected.size})` : ""}`}
+            {saving ? t("Assigning…", lang) : (selected.size ? `${t("Assign", lang)} (${selected.size})` : t("Assign", lang))}
           </button>
         </div>
       </div>

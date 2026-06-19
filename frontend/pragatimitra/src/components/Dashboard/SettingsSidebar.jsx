@@ -19,6 +19,8 @@ import AcademicYearPage           from "./settings/AcademicYearPage";
 import NodalOfficerPage           from "./settings/NodalOfficerPage";
 import InstituteNodalOfficerPage  from "./settings/InstituteNodalOfficerPage";
 import { useAuth }                from "../../store/AuthContext";
+import { useLanguage }            from "../../i18n/LanguageContext";
+import { t }                      from "../../i18n/translations";
 
 /* ── Icon resolver — same as AppShell ── */
 function DynIcon({ name, size = 17 }) {
@@ -87,6 +89,7 @@ export function flatSettingsItems(role) {
    "No page registered" fallback.
 ══════════════════════════════════════════════════════════════ */
 export function SettingsEmptyPage() {
+  const { lang } = useLanguage();
   return (
     <div style={{
       display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
@@ -94,8 +97,8 @@ export function SettingsEmptyPage() {
       fontFamily: "'Plus Jakarta Sans', sans-serif", color: "#94a3b8",
     }}>
       <Icons.Settings size={28} style={{ opacity: 0.5 }} />
-      <div style={{ fontSize: 15, fontWeight: 600, color: "#475569" }}>No settings available</div>
-      <div style={{ fontSize: 13 }}>There are no configurable settings for your role yet.</div>
+      <div style={{ fontSize: 15, fontWeight: 600, color: "#475569" }}>{t("No settings available", lang)}</div>
+      <div style={{ fontSize: 13 }}>{t("There are no configurable settings for your role yet.", lang)}</div>
     </div>
   );
 }
@@ -108,6 +111,7 @@ export function SettingsEmptyPage() {
 export default function SettingsSidebar({ activeId, onSelect, onBack }) {
   const [collapsed, setCollapsed] = useState(false);
   const { user } = useAuth();
+  const { lang } = useLanguage();
   const role = user?.roles?.[0]?.name;
   const settingsNav = buildSettingsNav(role);
 
@@ -130,7 +134,7 @@ export default function SettingsSidebar({ activeId, onSelect, onBack }) {
         {/* Back button — dark-theme tokens so it matches the dashboard sidebar */}
         <button
           onClick={onBack}
-          title="Back to dashboard"
+          title={t("Back to dashboard", lang)}
           style={{
             display: "flex", alignItems: "center", justifyContent: "center",
             width: 26, height: 26, borderRadius: 6,
@@ -156,7 +160,7 @@ export default function SettingsSidebar({ activeId, onSelect, onBack }) {
           whiteSpace: "nowrap",
           letterSpacing: "-0.2px",
         }}>
-          Settings
+          {t("Settings", lang)}
         </span>
       </div>
 
@@ -165,21 +169,21 @@ export default function SettingsSidebar({ activeId, onSelect, onBack }) {
         {settingsNav.map((group) => (
           <div key={group.group} className="sh-nav-group">
             {/* Group label — uses .sh-nav-group-label */}
-            <div className="sh-nav-group-label">{group.group}</div>
+            <div className="sh-nav-group-label">{t(group.group, lang)}</div>
 
             {group.items.map((item) => (
               <button
                 key={item.id}
                 className={`sh-nav-item${activeId === item.id ? " on" : ""}`}
                 onClick={() => onSelect(item.id)}
-                data-tip={collapsed ? item.label : undefined}
-                aria-label={item.label}
+                data-tip={collapsed ? t(item.label, lang) : undefined}
+                aria-label={t(item.label, lang)}
               >
                 <span style={{ flexShrink: 0 }}>
                   <DynIcon name={item.icon} size={17} />
                 </span>
                 {/* Label — uses .sh-nav-label so it fades on collapse */}
-                <span className="sh-nav-label">{item.label}</span>
+                <span className="sh-nav-label">{t(item.label, lang)}</span>
               </button>
             ))}
           </div>
@@ -199,7 +203,7 @@ export default function SettingsSidebar({ activeId, onSelect, onBack }) {
             <>
               <Icons.PanelLeftClose size={16} />
               <span style={{ fontSize: 12, marginLeft: 6, fontFamily: "var(--sh-font)" }}>
-                Collapse
+                {t("Collapse", lang)}
               </span>
             </>
           )}

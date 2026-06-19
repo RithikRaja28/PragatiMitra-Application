@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { useApi }      from "../../../hooks/useApi";
+import PageHeader      from "../../../ui/PageHeader";
 import { useAuth }     from "../../../store/AuthContext";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { t }           from "../../../i18n/translations";
@@ -358,30 +359,19 @@ export default function NodalOfficerPage() {
     <>
       {toast && <Toast message={toast.message} type={toast.type} />}
 
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 28, fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
-        <div>
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: `${ACCENT}14`, borderRadius: 8, padding: "4px 12px", marginBottom: 12 }}>
-            <div style={{ width: 7, height: 7, borderRadius: "50%", background: ACCENT }} />
-            <span style={{ fontSize: 11, fontWeight: 600, color: ACCENT, textTransform: "uppercase", letterSpacing: 1 }}>
-              {t("Settings · Nodal Officer", lang)}
-            </span>
-          </div>
-          <h1 style={{ fontSize: 22, fontWeight: 700, color: "#1e293b", letterSpacing: "-0.4px", marginBottom: 6 }}>
-            {t("Nodal Officer Delegation", lang)}
-          </h1>
-          <p style={{ color: "#94a3b8", fontSize: 14 }}>
-            {t("Delegate Nodal Officer responsibility within", lang)}{" "}
-            <span style={{ color: ACCENT, fontWeight: 600 }}>{departmentName || "—"}</span>
-            {" "}{t("per reporting year.", lang)}
-          </p>
-        </div>
-        <button
-          onClick={() => setFormView("add")}
-          style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "10px 20px", borderRadius: 10, border: "none", background: ACCENT, fontSize: 13, fontWeight: 700, color: "#fff", cursor: "pointer", flexShrink: 0, marginTop: 4 }}
-        >
-          {t("+ Add", lang)}
-        </button>
-      </div>
+      <PageHeader
+        breadcrumb={[t("Home", lang), t("Settings", lang), t("Nodal Officer", lang)]}
+        title={t("Nodal Officer Delegation", lang)}
+        description={<>{t("Delegate Nodal Officer responsibility within", lang)}{" "}<span style={{ color: ACCENT, fontWeight: 600 }}>{departmentName || "—"}</span>{" "}{t("per reporting year.", lang)}</>}
+        actions={
+          <button
+            onClick={() => setFormView("add")}
+            style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "10px 20px", borderRadius: 10, border: "none", background: ACCENT, fontSize: 13, fontWeight: 700, color: "#fff", cursor: "pointer", flexShrink: 0 }}
+          >
+            {t("+ Add", lang)}
+          </button>
+        }
+      />
 
       {loading ? <Spinner /> : error ? (
         <div style={{ padding: 24, background: "#fef2f2", borderRadius: 10, color: "#dc2626", fontSize: 13 }}>{error}</div>

@@ -799,7 +799,7 @@ export default function DepartmentManagementPage() {
           },
           {
             key: "created_at", header: t("Creation Date", lang), width: 180,
-            render: (dept) => <span style={{ fontSize: 12.5, color: "#64748b" }}>{t("Since", lang)} {formatDate(dept.created_at)}</span>,
+            render: (dept) => <span style={{ fontSize: 12.5, color: "#64748b" }}>{t("Since", lang)} {formatDate(dept.created_at, lang)}</span>,
           },
           {
             key: "member_count", header: t("Members", lang), width: 110,

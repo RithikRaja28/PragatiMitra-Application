@@ -178,8 +178,26 @@ export const translations = {
     /* ── shared sidebar footer ── */
     "Collapse":                "छोटा करें",
 
-    /* ── shared breadcrumb ── */
+    /* ── shared breadcrumb labels ── */
     "Home":                    "होम",
+    "Institute":               "संस्थान",
+    "Report Builder":          "रिपोर्ट बिल्डर",
+    "Report Cycles":           "रिपोर्ट चक्र",
+    "Workflow Templates":      "वर्कफ़्लो टेम्पलेट",
+    "Academic Year Management": "शैक्षणिक वर्ष प्रबंधन",
+    "Departments":             "विभाग",
+    "Review Dashboard":        "समीक्षा डैशबोर्ड",
+    "Collaborative Reports":   "सहयोगी रिपोर्ट",
+    "New Workflow":            "नया वर्कफ़्लो",
+    "New Cycle":               "नया चक्र",
+    "New Department":          "नया विभाग",
+    "New Report":              "नई रिपोर्ट",
+    "New User":                "नया उपयोगकर्ता",
+    "Sections awaiting your review — click a row to begin": "समीक्षा की प्रतीक्षा में अनुभाग — शुरू करने के लिए एक पंक्ति पर क्लिक करें",
+    "Each reporting cycle defines the period and outer deadline bounds for all reports under it.": "प्रत्येक रिपोर्टिंग चक्र इसके अंतर्गत सभी रिपोर्टों के लिए अवधि और बाहरी समय-सीमा परिभाषित करता है।",
+    "Reusable approval chains — assign any template to any report section. Different sections can use different workflows.": "पुन: उपयोग योग्य अनुमोदन श्रृंखलाएं — किसी भी टेम्पलेट को किसी भी रिपोर्ट अनुभाग में असाइन करें।",
+    "Create and manage institutional reports with section-level collaboration": "अनुभाग-स्तरीय सहयोग के साथ संस्थागत रिपोर्ट बनाएं और प्रबंधित करें",
+    "Welcome to PragatiMitra. Your assigned tasks and forms will appear here.": "PragatiMitra में आपका स्वागत है। आपके असाइन किए गए कार्य और फ़ॉर्म यहाँ दिखाई देंगे।",
 
     /* ── finance_officer: sidebar ── */
     "Finance":                 "वित्त",
@@ -745,6 +763,20 @@ export const translations = {
     "← Back to Dashboard":              "← डैशबोर्ड पर वापस",
     "Communication":                     "संचार",
     "Notification Templates":            "अधिसूचना टेम्पलेट",
+    "Configure email and in-app notifications per role and event.": "प्रत्येक भूमिका और घटना के लिए ईमेल और इन-ऐप अधिसूचनाएं कॉन्फ़िगर करें।",
+    "Super Admin":                       "सुपर व्यवस्थापक",
+    "Institute Admin":                   "संस्था व्यवस्थापक",
+    "System-Wide":                       "सिस्टम-व्यापी",
+    "No templates for this role yet.":   "इस भूमिका के लिए अभी कोई टेम्पलेट नहीं।",
+    "Loading templates…":                "टेम्पलेट लोड हो रहे हैं…",
+    "App":                               "ऐप",
+    "Subject":                           "विषय",
+    "Body":                              "मुख्य पाठ",
+    "Click Show to preview":             "पूर्वावलोकन देखने के लिए दिखाएं पर क्लिक करें",
+    "Keep under 100 characters.":        "100 अक्षरों से कम रखें।",
+    "Saved":                             "सहेजा गया",
+    "Close":                             "बंद करें",
+    "Available tokens — click to copy":  "उपलब्ध टोकन — कॉपी करने के लिए क्लिक करें",
     "Academic Year Management":          "शैक्षणिक वर्ष प्रबंधन",
 
     /* ════════════════════════════════════════════════════════════
@@ -807,6 +839,154 @@ export const translations = {
     "View history (coming soon)":        "इतिहास देखें (जल्द आएगा)",
     "Form":                              "फ़ॉर्म",
     "shared":                            "साझा",
+
+    /* ════════════════════════════════════════════════════════════
+       FORMS & DATA ENTRY CENTER (FormDataPage)
+    ════════════════════════════════════════════════════════════ */
+    "Forms & Data Entry":                 "फ़ॉर्म और डेटा प्रविष्टि",
+    "Forms & Data Entry Center":          "फ़ॉर्म और डेटा प्रविष्टि केंद्र",
+    "Access all department forms, monitor deadlines, and manage records in one place.": "सभी फ़ॉर्म एक्सेस करें, समय-सीमाओं पर नज़र रखें और रिकॉर्ड प्रबंधित करें।",
+    "Hospital":                          "अस्पताल",
+    "Total Forms":                        "कुल फ़ॉर्म",
+    "Active Forms":                       "सक्रिय फ़ॉर्म",
+    "Pending Deadline":                   "अंतिम तिथि शेष",
+    "Expired Forms":                      "समाप्त फ़ॉर्म",
+    "All accessible forms":               "सभी सुलभ फ़ॉर्म",
+    "Open for submissions":               "प्रस्तुति के लिए खुला",
+    "Due within 7 days":                  "7 दिनों के भीतर देय",
+    "Past deadline":                      "समय-सीमा बीत गई",
+    "Available Forms":                    "उपलब्ध फ़ॉर्म",
+    "No forms available":                 "कोई फ़ॉर्म उपलब्ध नहीं",
+    "Your institution hasn't shared any forms with your department yet.": "आपके संस्थान ने अभी तक आपके विभाग के साथ कोई फ़ॉर्म साझा नहीं किया है।",
+    "Form Name & Description":            "फ़ॉर्म नाम और विवरण",
+    "OPEN":                               "खुला",
+    "Assign contributors":                "योगदानकर्ता असाइन करें",
+    "Open →":                             "खोलें →",
+    "matching record":                    "मिलान रिकॉर्ड",
+    "record":                             "रिकॉर्ड",
+    "Form is locked":                     "फ़ॉर्म लॉक है",
+    "Switch to English to import":        "आयात करने के लिए अंग्रेज़ी में बदलें",
+    "Import":                             "आयात",
+    "Form is locked — contact your institution admin": "फ़ॉर्म लॉक है — अपने संस्थान व्यवस्थापक से संपर्क करें",
+    "Switch to English (EN) to add records": "रिकॉर्ड जोड़ने के लिए अंग्रेज़ी (EN) में बदलें",
+    "Records":                            "रिकॉर्ड",
+    "matching":                           "मिलान",
+    "Table view":                         "तालिका दृश्य",
+    "Card view":                          "कार्ड दृश्य",
+    "Search records":                     "रिकॉर्ड खोजें",
+    "Clear":                              "साफ़ करें",
+    "Loading records…":                   "रिकॉर्ड लोड हो रहे हैं…",
+    "Click \"Add Record\" to create the first entry, or Import from a file.": "पहली प्रविष्टि बनाने के लिए \"रिकॉर्ड जोड़ें\" पर क्लिक करें, या फ़ाइल से आयात करें।",
+    "No matching records":                "कोई मिलान रिकॉर्ड नहीं",
+    "Try a different search term or clear the search to see all records.": "एक अलग खोज शब्द आज़माएं या सभी रिकॉर्ड देखने के लिए खोज साफ़ करें।",
+    "This academic year is locked — view-only mode.": "यह शैक्षणिक वर्ष लॉक है — केवल देखने का मोड।",
+    "Adding, editing, deleting and importing are disabled. You can still view, search and export.": "जोड़ना, संपादन, हटाना और आयात अक्षम हैं। आप अभी भी देख, खोज और निर्यात कर सकते हैं।",
+    "Import complete!":                   "आयात पूर्ण!",
+    "Deleting…":                          "हटाया जा रहा है…",
+    "Delete Record?":                     "रिकॉर्ड हटाएं?",
+    "This record will be permanently deleted. This action cannot be undone.": "यह रिकॉर्ड स्थायी रूप से हटा दिया जाएगा। यह कार्रवाई पूर्ववत नहीं की जा सकती।",
+    "selected records. This action cannot be undone.": "चयनित रिकॉर्ड। यह कार्रवाई पूर्ववत नहीं की जा सकती।",
+    "You are about to permanently delete": "आप स्थायी रूप से हटाने वाले हैं",
+    "Tip: Use bulk delete to clean up failed imports before re-importing.": "सुझाव: पुनः आयात करने से पहले विफल आयातों को साफ़ करने के लिए बल्क डिलीट का उपयोग करें।",
+    "Delete Record":                      "रिकॉर्ड हटाएं",
+    "record(s) selected":                 "रिकॉर्ड चयनित",
+    "selected":                           "चयनित",
+    "Select all":                         "सभी चुनें",
+    "on this page":                       "इस पृष्ठ पर",
+    "Deselect all":                       "सभी अचयनित करें",
+    "Selected":                           "चयनित",
+    "Export as CSV":                      "CSV के रूप में निर्यात करें",
+    "Export as Excel":                    "Excel के रूप में निर्यात करें",
+    "Exporting…":                         "निर्यात हो रहा है…",
+    "Building":                           "बना रहा है",
+    "file…":                              "फ़ाइल…",
+    "Download will start automatically":  "डाउनलोड स्वचालित रूप से शुरू होगा",
+    "Sort:":                              "क्रमबद्ध करें:",
+    "Newest First":                       "नवीनतम पहले",
+    "Oldest First":                       "सबसे पुराना पहले",
+    "Rows per page":                      "प्रति पृष्ठ पंक्तियाँ",
+    "rows":                               "पंक्तियाँ",
+    "/ page":                             "/ पृष्ठ",
+    "Edit Record":                        "रिकॉर्ड संपादित करें",
+    "Update data and review translated values.": "डेटा अपडेट करें और अनुवादित मूल्यों की समीक्षा करें।",
+    "Fill in the details below.":         "नीचे विवरण भरें।",
+    "VIEW ONLY":                          "केवल देखें",
+    "Edit this record":                   "इस रिकॉर्ड को संपादित करें",
+    "Enter the details for a new record": "नए रिकॉर्ड के लिए विवरण दर्ज करें",
+    "Update Record":                      "रिकॉर्ड अपडेट करें",
+    "Saving…":                            "सहेजा जा रहा है…",
+    "Read Only":                          "केवल देखें",
+    "Translation updates after save.":    "सहेजने के बाद अनुवाद अपडेट होता है।",
+    "English (Editable)":                 "अंग्रेज़ी (संपादन योग्य)",
+    "Hindi (Editable)":                   "हिंदी (संपादन योग्य)",
+    "English Reference (Current)":        "अंग्रेज़ी संदर्भ (वर्तमान)",
+    "Hindi Reference (Current)":          "हिंदी संदर्भ (वर्तमान)",
+    "Import Records":                     "रिकॉर्ड आयात करें",
+    "Department (optional)":              "विभाग (वैकल्पिक)",
+    "Click to upload":                    "अपलोड करने के लिए क्लिक करें",
+    "or drag & drop":                     "या खींचें और छोड़ें",
+    "Need a template?":                   "टेम्पलेट चाहिए?",
+    "Download a sample with the correct columns.": "सही कॉलम के साथ एक नमूना डाउनलोड करें।",
+    "Duplicate Handling":                 "डुप्लिकेट हैंडलिंग",
+    "Skip duplicates":                    "डुप्लिकेट छोड़ें",
+    "Existing matching rows are left unchanged": "मौजूदा मिलान पंक्तियाँ अपरिवर्तित रहती हैं",
+    "Overwrite":                          "अधिलेखित करें",
+    "Existing matching rows are updated with new values": "मौजूदा मिलान पंक्तियाँ नए मूल्यों के साथ अपडेट की जाती हैं",
+    "Always insert new":                  "हमेशा नया डालें",
+    "Every row is inserted regardless of duplicates": "डुप्लिकेट की परवाह किए बिना हर पंक्ति डाली जाती है",
+    "Upload File":                        "फ़ाइल अपलोड करें",
+    "Map Columns":                        "कॉलम मैप करें",
+    "Result":                             "परिणाम",
+    "rows detected":                      "पंक्तियाँ मिलीं",
+    "of":                                 "में से",
+    "columns mapped":                     "कॉलम मैप किए गए",
+    "batches of":                         "के बैच",
+    "Schema Field":                       "स्कीमा फ़ील्ड",
+    "Your File Column":                   "आपकी फ़ाइल कॉलम",
+    "Saved as blank — upload file manually after import": "खाली के रूप में सहेजा गया — आयात के बाद फ़ाइल मैन्युअल रूप से अपलोड करें",
+    "skip":                               "छोड़ें",
+    "Importing…":                         "आयात हो रहा है…",
+    "Parsing…":                           "विश्लेषण हो रहा है…",
+    "Import Complete":                    "आयात पूर्ण",
+    "Imported":                           "आयातित",
+    "Skipped":                            "छोड़े गए",
+    "Failed":                             "विफल",
+    "Done":                               "हो गया",
+    "Importing records…":                 "रिकॉर्ड आयात हो रहे हैं…",
+    "Processed":                          "संसाधित",
+    "Remaining":                          "शेष",
+    "Please keep this window open":       "कृपया यह विंडो खुला रखें",
+    "Importing as Department Admin — data will be saved to your department only.": "विभाग व्यवस्थापक के रूप में आयात — डेटा केवल आपके विभाग में सहेजा जाएगा।",
+    "Importing as Institute Admin — you can tag data to a specific department below.": "संस्था व्यवस्थापक के रूप में आयात — नीचे किसी विशेष विभाग को डेटा टैग कर सकते हैं।",
+    "— All departments (institution-wide) —": "— सभी विभाग (संस्था-स्तरीय) —",
+    "Click to change":                    "बदलने के लिए क्लिक करें",
+    "Searching…":                         "खोजा जा रहा है…",
+    "Showing":                            "दिखा रहे हैं",
+
+    /* ── DomainDashboardPage (hospital / finance / academic) ── */
+    "Dashboard":                          "डैशबोर्ड",
+    "Hospital Dashboard":                 "अस्पताल डैशबोर्ड",
+    "Finance Dashboard":                  "वित्त डैशबोर्ड",
+    "Completed Records":                  "पूर्ण रिकॉर्ड",
+    "Submitted Records":                  "जमा किए गए रिकॉर्ड",
+    "Records":                            "रिकॉर्ड",
+    "records":                            "रिकॉर्ड",
+    "Assigned Users":                     "असाइन किए गए उपयोगकर्ता",
+    "Pending Deadlines":                  "लंबित समय-सीमाएं",
+    "Recent Activity":                    "हालिया गतिविधि",
+    "No recent activity yet.":            "अभी तक कोई हालिया गतिविधि नहीं।",
+    "Loading":                            "लोड हो रहा है",
+
+    /* ── AssignContributorsModal ── */
+    "Assign Contributors":                "योगदानकर्ता असाइन करें",
+    "Search contributors…":              "योगदानकर्ता खोजें…",
+    "Department Contributors":            "विभाग के योगदानकर्ता",
+    "No matches.":                        "कोई मिलान नहीं।",
+    "No more contributors to assign.":    "असाइन करने के लिए कोई और योगदानकर्ता नहीं।",
+    "No contributors assigned yet.":      "अभी कोई योगदानकर्ता असाइन नहीं।",
+    "No tasks assigned yet":              "अभी कोई कार्य असाइन नहीं",
+    "Your Department Admin will assign tasks and form sections to you. Check back after your admin has configured the current reporting year.": "आपके विभाग व्यवस्थापक आपको कार्य और फ़ॉर्म अनुभाग असाइन करेंगे। जब आपके व्यवस्थापक ने वर्तमान रिपोर्टिंग वर्ष कॉन्फ़िगर कर लिया हो, तब वापस देखें।",
+
     /* Wizard */
     "Start Year":                        "प्रारंभ वर्ष",
     "Next →":                            "आगे →",
@@ -902,6 +1082,9 @@ export const translations = {
     "(optional — overrides X-axis for grouping)": "(वैकल्पिक — समूहन के लिए X-अक्ष को ओवरराइड करता है)",
     "Leave empty to group by X-axis column. Set to group by a different field (e.g. department, year).":
                                            "X-अक्ष कॉलम द्वारा समूहन के लिए खाली छोड़ें। किसी अन्य फ़ील्ड (जैसे विभाग, वर्ष) द्वारा समूहन के लिए सेट करें।",
+    "— Use X-axis column —":              "— X-अक्ष कॉलम उपयोग करें —",
+    "Select a source table first to choose columns.": "कॉलम चुनने के लिए पहले स्रोत तालिका चुनें।",
+    "Click \"New KPI Chart\" to create your first chart.": "अपना पहला चार्ट बनाने के लिए \"नया KPI चार्ट\" पर क्लिक करें।",
     "Preview SQL pattern:":                "SQL पैटर्न पूर्वावलोकन:",
 
     // ── Chart type labels ──────────────────────────────────────────────────────
@@ -912,6 +1095,150 @@ export const translations = {
     "Pie":           "पाई",
     "Doughnut":      "डोनट",
     "Sum":           "योग",
+
+    /* ════════════════════════════════════════════════════════════
+       SUPER ADMIN OVERVIEW PAGE
+    ════════════════════════════════════════════════════════════ */
+    "Overview":              "अवलोकन",
+    "System Overview":       "सिस्टम अवलोकन",
+    "Platform-wide visibility across institutions, users, and governance.":
+                             "संस्थाओं, उपयोगकर्ताओं और शासन में प्लेटफ़ॉर्म-व्यापी दृश्यता।",
+    "Academic Years":        "शैक्षणिक वर्ष",
+    "Recent Institutions":   "हाल की संस्थाएं",
+    "Platform Health":       "प्लेटफ़ॉर्म स्वास्थ्य",
+    "API / Platform":        "API / प्लेटफ़ॉर्म",
+    "Mail":                  "मेल",
+    "Storage":               "भंडारण",
+    "Queue":                 "कतार",
+    "Translation":           "अनुवाद",
+    "Operational":           "चालू",
+    "Not monitored":         "निगरानी नहीं",
+    "Down":                  "डाउन",
+    "No recent activity recorded.": "कोई हालिया गतिविधि दर्ज नहीं।",
+    "No institutions yet.":  "अभी कोई संस्था नहीं।",
+    "Detailed service telemetry is not yet instrumented; only live API reachability is shown.":
+                             "विस्तृत सेवा टेलीमेट्री अभी तक सक्रिय नहीं है; केवल लाइव API पहुंच दिखाई गई है।",
+    "just now":              "अभी",
+
+    /* ════════════════════════════════════════════════════════════
+       NOTIFICATION BELL
+    ════════════════════════════════════════════════════════════ */
+    "Notifications":         "सूचनाएं",
+    "Mark all read":         "सभी पढ़ा हुआ चिह्नित करें",
+    "All caught up!":        "सब पढ़ लिया!",
+    "No notifications yet.": "अभी कोई सूचना नहीं।",
+
+    /* ════════════════════════════════════════════════════════════
+       SETTINGS SIDEBAR
+    ════════════════════════════════════════════════════════════ */
+    "Back to dashboard":     "डैशबोर्ड पर वापस",
+    "Institution":           "संस्था",
+    "Nodal Officer":         "नोडल अधिकारी",
+    "Administration":        "प्रशासन",
+    "No settings available": "कोई सेटिंग्स उपलब्ध नहीं",
+    "There are no configurable settings for your role yet.":
+                             "आपकी भूमिका के लिए अभी कोई कॉन्फ़िगर करने योग्य सेटिंग्स नहीं हैं।",
+
+    /* ════════════════════════════════════════════════════════════
+       FORM MANAGEMENT PAGE
+    ════════════════════════════════════════════════════════════ */
+    "Form Management":       "फ़ॉर्म प्रबंधन",
+    "Forms & Templates":     "फ़ॉर्म और टेम्पलेट",
+    "Design data collection forms and manage field schemas per institution.":
+                             "डेटा संग्रह फ़ॉर्म डिज़ाइन करें और प्रति संस्था फ़ील्ड स्कीमा प्रबंधित करें।",
+    "New Form":              "नया फ़ॉर्म",
+    "Shared Templates":      "साझा टेम्पलेट",
+    "Forms available across institutions — adopt and customise for your needs":
+                             "संस्थाओं में उपलब्ध फ़ॉर्म — अपनी जरूरतों के लिए अपनाएं और अनुकूलित करें",
+    "No shared templates":   "कोई साझा टेम्पलेट नहीं",
+    "Shared forms from other institutions will appear here":
+                             "अन्य संस्थाओं के साझा फ़ॉर्म यहाँ दिखेंगे",
+    "Form Name":             "फ़ॉर्म नाम",
+    "Institutions Using":    "उपयोग करने वाली संस्थाएं",
+    "Created":               "बनाया",
+    "Shared template":       "साझा टेम्पलेट",
+    "Use Template":          "टेम्पलेट उपयोग करें",
+    "All Forms":             "सभी फ़ॉर्म",
+    "Your Institution's Forms": "आपकी संस्था के फ़ॉर्म",
+    "All registered form schemas across the platform":
+                             "प्लेटफ़ॉर्म पर सभी पंजीकृत फ़ॉर्म स्कीमा",
+    "Forms configured for your institution":
+                             "आपकी संस्था के लिए कॉन्फ़िगर किए गए फ़ॉर्म",
+    "No forms yet":          "अभी कोई फ़ॉर्म नहीं",
+    "Click \"New Form\" to create your first form schema":
+                             "\"नया फ़ॉर्म\" पर क्लिक करके पहला फ़ॉर्म स्कीमा बनाएं",
+    "Year":                  "वर्ष",
+    "Version":               "संस्करण",
+    "Shared":                "साझा",
+    "Lock Status":           "लॉक स्थिति",
+    "Private":               "निजी",
+    "Unlock":                "अनलॉक",
+    "Lock":                  "लॉक",
+    "Edit Schema":           "स्कीमा संपादित करें",
+    "Form saved successfully.": "फ़ॉर्म सफलतापूर्वक सहेजा गया।",
+
+    /* ════════════════════════════════════════════════════════════
+       KPI DASHBOARD PANEL
+    ════════════════════════════════════════════════════════════ */
+    "KPI Dashboard":         "KPI डैशबोर्ड",
+    "Loading KPI dashboard…": "KPI डैशबोर्ड लोड हो रहा है…",
+    "No KPI charts on dashboard yet": "डैशबोर्ड पर अभी कोई KPI चार्ट नहीं",
+    "Showing first 5,000 rows. Add an aggregation to see complete totals.":
+                             "पहली 5,000 पंक्तियाँ दिखा रहे हैं। पूर्ण योग देखने के लिए एकत्रीकरण जोड़ें।",
+    "Data source unavailable": "डेटा स्रोत अनुपलब्ध",
+    "No data available":     "कोई डेटा उपलब्ध नहीं",
+    "Source:":               "स्रोत:",
+    "No data":               "कोई डेटा नहीं",
+    "Error loading":         "लोड करने में त्रुटि",
+    "grouped dashboard card": "समूहीकृत डैशबोर्ड कार्ड",
+    "Updated":               "अपडेट किया",
+
+    /* ════════════════════════════════════════════════════════════
+       KPI SUMMARY CARDS
+    ════════════════════════════════════════════════════════════ */
+    "KPI Summary":           "KPI सारांश",
+    "Loading KPI summary…":  "KPI सारांश लोड हो रहा है…",
+    "Could not load KPI summary: ": "KPI सारांश लोड नहीं हो सका: ",
+    "No KPI summary cards yet. Create KPI charts and assign a Dashboard Category to show them here.":
+                             "अभी कोई KPI सारांश कार्ड नहीं। KPI चार्ट बनाएं और डैशबोर्ड श्रेणी असाइन करें।",
+
+    /* ════════════════════════════════════════════════════════════
+       COMMITTEES MANAGEMENT (remaining gaps)
+    ════════════════════════════════════════════════════════════ */
+    "Full name":             "पूर्ण नाम",
+    "Designation":           "पदनाम",
+    "Configure governing bodies, councils, and committees for each finance year.":
+                             "प्रत्येक वित्त वर्ष के लिए शासी निकायों, परिषदों और समितियों को कॉन्फ़िगर करें।",
+    "No committees match the current filters": "वर्तमान फ़िल्टर से मेल खाती कोई समिति नहीं",
+    "No committees yet":     "अभी कोई समिति नहीं",
+    "Click \"New Committee\" to add the first one.": "\"नई समिति\" पर क्लिक करके पहली जोड़ें।",
+    "Try adjusting the filters above.": "ऊपर दिए गए फ़िल्टर समायोजित करें।",
+
+    /* ════════════════════════════════════════════════════════════
+       INSTITUTE FORMS PAGE
+    ════════════════════════════════════════════════════════════ */
+    "Back to Dashboard":         "डैशबोर्ड पर वापस",
+    "Creation Date":             "निर्माण तिथि",
+    "Location":                  "स्थान",
+    "Committee":                 "समिति",
+    "Institution Forms":         "संस्था फ़ॉर्म",
+    "Manage every institutional form — visibility, deadlines, lifecycle and access — for the selected academic year.":
+                                 "चयनित शैक्षणिक वर्ष के लिए प्रत्येक संस्थागत फ़ॉर्म प्रबंधित करें — दृश्यता, समय-सीमा, जीवनचक्र और पहुंच।",
+    "Create New Form":           "नया फ़ॉर्म बनाएं",
+    "View Only":                 "केवल देखें",
+    "Visibility":                "दृश्यता",
+    "Academic year is locked":   "शैक्षणिक वर्ष लॉक है",
+    "Create a new form":         "नया फ़ॉर्म बनाएं",
+    "No academic year selected.": "कोई शैक्षणिक वर्ष नहीं चुना।",
+    "your institution only":     "केवल आपकी संस्था",
+    "Auto-locked after deadline.": "समय-सीमा के बाद स्वतः-लॉक।",
+    "Manually locked by admin.": "व्यवस्थापक द्वारा मैन्युअल रूप से लॉक।",
+    "Update Deadline Date":      "समय-सीमा तिथि अपडेट करें",
+    "Add Deadline Date":         "समय-सीमा तिथि जोड़ें",
+    "The form auto-locks for your institution after this date. Departments can still view records.":
+                                 "इस तिथि के बाद फ़ॉर्म आपकी संस्था के लिए स्वतः लॉक हो जाता है। विभाग अभी भी रिकॉर्ड देख सकते हैं।",
+    "Create a new form, or contact your super admin to share one with your institution.":
+                                 "नया फ़ॉर्म बनाएं, या अपने सुपर एडमिन से संपर्क करें कि वे आपकी संस्था के साथ एक फ़ॉर्म साझा करें।",
   },
 };
 

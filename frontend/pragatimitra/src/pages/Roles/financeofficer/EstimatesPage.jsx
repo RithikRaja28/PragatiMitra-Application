@@ -3,6 +3,7 @@ import { useNavigate, useLocation, Navigate } from "react-router-dom";
 import { Save, ClipboardList } from "lucide-react";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { t } from "../../../i18n/translations";
+import PageHeader from "../../../ui/PageHeader";
 
 const SLUG = "estimates";
 
@@ -305,20 +306,15 @@ export default function EstimatesPage() {
         </div>
       )}
 
-      {/* Header */}
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
-        <div>
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 6,
-            background: C.primaryLt, borderRadius: 6, padding: "3px 11px", marginBottom: 8 }}>
-            <span style={{ width: 6, height: 6, borderRadius: "50%", background: C.primary }} />
-            <span style={{ fontSize: 10, fontWeight: 700, color: C.primary, textTransform: "uppercase", letterSpacing: "0.08em" }}>{t("Finance Module", lang)}</span>
-          </div>
-          <h1 style={{ fontSize: 22, fontWeight: 700, color: C.text, margin: 0, letterSpacing: "-0.4px" }}>{t("Estimates", lang)}</h1>
-          <p style={{ fontSize: 13, color: C.textSub, margin: "4px 0 0" }}>Budget Estimate (BE) · Revised Estimate (RE) · Actual Expenditure (AE)</p>
-        </div>
-        <button onClick={() => setManagingSchemes(true)}
-          style={{ ...btn("outline"), fontSize: 11, padding: "8px 14px" }}>⚙ {t("Manage Schemes", lang)}</button>
-      </div>
+      <PageHeader
+        breadcrumb={[t("Home", lang), t("Finance", lang), t("Estimates", lang)]}
+        title={t("Estimates", lang)}
+        description="Budget Estimate (BE) · Revised Estimate (RE) · Actual Expenditure (AE)"
+        actions={
+          <button onClick={() => setManagingSchemes(true)}
+            style={{ ...btn("outline"), fontSize: 11, padding: "8px 14px" }}>⚙ {t("Manage Schemes", lang)}</button>
+        }
+      />
 
       {/* Tabs */}
       <div style={{ display: "flex", gap: 0, background: C.surface, border: `0.5px solid ${C.border}`,

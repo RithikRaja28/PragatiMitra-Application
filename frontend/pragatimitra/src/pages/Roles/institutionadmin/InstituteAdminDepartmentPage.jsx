@@ -3,6 +3,9 @@ import { useApi } from "../../../hooks/useApi";
 import { useAuth } from "../../../store/AuthContext";
 import FormScreen from "../../../components/shared/FormScreen";
 import { S, Toast, isAuthError, formatDate } from "../../../components/shared/formUtils";
+import { useLanguage } from "../../../i18n/LanguageContext";
+import { t } from "../../../i18n/translations";
+import PageHeader from "../../../ui/PageHeader";
 
 /* ─── Department Form ────────────────────────────────────────────
    Institution is always locked to the logged-in admin's institution.
@@ -341,6 +344,7 @@ function StyledSelect({ value, onChange, children, minWidth = 180 }) {
 export default function InstituteAdminDepartmentPage() {
   const { apiFetch } = useApi();
   const { user }     = useAuth();
+  const { lang }     = useLanguage();
 
   const institutionId   = user?.institutionId   || "";
   const institutionName = user?.institutionName || "Your Institution";
@@ -459,38 +463,11 @@ export default function InstituteAdminDepartmentPage() {
 
       {toast && <Toast message={toast.message} type={toast.type} />}
 
-      {/* ── Header ── */}
-      <div style={{
-        display: "flex", alignItems: "flex-start", justifyContent: "space-between",
-        marginBottom: 28, flexWrap: "wrap", gap: 16,
-      }}>
-        <div>
-          <div style={{
-            display: "inline-flex", alignItems: "center", gap: 8,
-            background: "#05966914", borderRadius: 8, padding: "4px 12px", marginBottom: 12,
-          }}>
-            <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#059669" }} />
-            <span style={{
-              fontSize: 11, fontWeight: 600, color: "#059669",
-              textTransform: "uppercase", letterSpacing: 1,
-            }}>
-              Dept Management
-            </span>
-          </div>
-          <h1 style={{
-            fontSize: 24, fontWeight: 700, color: "#1e293b",
-            letterSpacing: "-0.4px", marginBottom: 6,
-          }}>
-            Departments
-          </h1>
-          <p style={{ color: "#94a3b8", fontSize: 14 }}>
-            Manage departments in{" "}
-            <span style={{ color: "#059669", fontWeight: 600 }}>{institutionName}</span>.
-          </p>
-        </div>
-
-        {/* New Department button — only when institution is resolved */}
-        {institutionId && !loadError && (
+      <PageHeader
+        breadcrumb={[t("Home", lang), t("Institute", lang), t("Departments", lang)]}
+        title={t("Departments", lang)}
+        description={<>Manage departments in <span style={{ color: "#059669", fontWeight: 600 }}>{institutionName}</span>.</>}
+        actions={institutionId && !loadError && (
           <button
             onClick={() => setFormView({ mode: "create", entity: null })}
             style={{
@@ -501,10 +478,10 @@ export default function InstituteAdminDepartmentPage() {
             }}
           >
             <span style={{ fontSize: 18, lineHeight: 1 }}>+</span>
-            New Department
+            {t("New Department", lang)}
           </button>
         )}
-      </div>
+      />
 
       {/* Load error */}
       {loadError && (

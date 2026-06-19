@@ -4,6 +4,8 @@ import {
   UserPlus, KeyRound, ShieldAlert, RefreshCw,
 } from "lucide-react";
 import { useApi } from "../../hooks/useApi";
+import { useLanguage } from "../../i18n/LanguageContext";
+import { t } from "../../i18n/translations";
 
 /* ── Event metadata ── */
 const EVENT_META = {
@@ -14,12 +16,12 @@ const EVENT_META = {
 };
 const DEFAULT_META = { Icon: Bell, color: "#64748b", bg: "#f8fafc" };
 
-function timeAgo(iso) {
+function timeAgo(iso, lang = "en") {
   const s = Math.floor((Date.now() - new Date(iso)) / 1000);
-  if (s < 60)   return "just now";
-  if (s < 3600)  return `${Math.floor(s / 60)}m ago`;
-  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
-  return `${Math.floor(s / 86400)}d ago`;
+  if (s < 60)   return t("just now", lang);
+  if (s < 3600)  return lang === "hi" ? `${Math.floor(s / 60)}मि पहले` : `${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return lang === "hi" ? `${Math.floor(s / 3600)}घं पहले` : `${Math.floor(s / 3600)}h ago`;
+  return lang === "hi" ? `${Math.floor(s / 86400)}दि पहले` : `${Math.floor(s / 86400)}d ago`;
 }
 
 /* ── Skeleton row ── */
@@ -38,6 +40,7 @@ function SkeletonRow() {
 
 export default function NotificationBell() {
   const { apiFetch } = useApi();
+  const { lang } = useLanguage();
   const BASE = "/api/notification-templates/inbox";
 
   const [open,    setOpen]    = useState(false);
@@ -250,15 +253,15 @@ export default function NotificationBell() {
           {/* Header */}
           <div style={S.head}>
             <div style={S.headTitle}>
-              Notifications
-              {unread > 0 && <span style={S.chip}>{unread} new</span>}
+              {t("Notifications", lang)}
+              {unread > 0 && <span style={S.chip}>{lang === "hi" ? `${unread} नई` : `${unread} new`}</span>}
             </div>
             <button
               style={S.markAll}
               onClick={markAll}
               disabled={busy || unread === 0}
             >
-              <CheckCheck size={12} /> Mark all read
+              <CheckCheck size={12} /> {t("Mark all read", lang)}
             </button>
           </div>
 
@@ -269,10 +272,10 @@ export default function NotificationBell() {
             <div style={S.empty}>
               <div style={S.emptyRing}><Bell size={20} color="#94a3b8" /></div>
               <div style={{ fontSize: 13, fontWeight: 600, color: "#64748b", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
-                All caught up!
+                {t("All caught up!", lang)}
               </div>
               <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 3, fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
-                No notifications yet.
+                {t("No notifications yet.", lang)}
               </div>
             </div>
           ) : notifs.map((n, idx) => {
@@ -294,7 +297,7 @@ export default function NotificationBell() {
                 <div style={S.body}>
                   <div style={S.title(isUnread)}>{n.title}</div>
                   <div style={S.msg}>{n.message}</div>
-                  <div style={S.time}>{timeAgo(n.created_at)}</div>
+                  <div style={S.time}>{timeAgo(n.created_at, lang)}</div>
                 </div>
                 {isUnread
                   ? <div style={S.dot} />

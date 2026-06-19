@@ -2,6 +2,9 @@ import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate, useLocation, Navigate } from "react-router-dom";
 import { useAuth } from "../../../../store/AuthContext";
 import { useApi }  from "../../../../hooks/useApi";
+import { useLanguage } from "../../../../i18n/LanguageContext";
+import { t } from "../../../../i18n/translations";
+import PageHeader from "../../../../ui/PageHeader";
 import FormScreen              from "../../../../components/shared/FormScreen";
 import { S }                  from "../../../../components/shared/formUtils";
 import CollaborativeEditorPage   from "./CollaborativeEditorPage";
@@ -417,6 +420,7 @@ export default function ReportBuilderListPage() {
   const navFn    = useNavigate();
   const location = useLocation();
   const { user }     = useAuth();
+  const { lang }     = useLanguage();
   const { apiFetch } = useApi();
 
   const listPath  = `/${SLUG}`;
@@ -606,27 +610,11 @@ export default function ReportBuilderListPage() {
         @keyframes spin   { to { transform: rotate(360deg) } }
       `}</style>
 
-      {/* ── Header ── */}
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 24, gap: 16, flexWrap: "wrap" }}>
-        <div>
-          <div style={{
-            display: "inline-flex", alignItems: "center", gap: 6,
-            background: "#ede9fe", borderRadius: 8, padding: "3px 10px", marginBottom: 10,
-          }}>
-            <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#7c3aed" }} />
-            <span style={{ fontSize: 10, fontWeight: 700, color: "#7c3aed", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-              Report Builder
-            </span>
-          </div>
-          <div style={{ fontSize: 22, fontWeight: 800, color: "#1e293b", letterSpacing: "-0.3px", marginBottom: 4 }}>
-            Collaborative Reports
-          </div>
-          <div style={{ fontSize: 13, color: "#94a3b8" }}>
-            Create and manage institutional reports with section-level collaboration
-          </div>
-        </div>
-
-        {canCreate && (
+      <PageHeader
+        breadcrumb={[t("Home", lang), t("Report Builder", lang)]}
+        title={t("Collaborative Reports", lang)}
+        description={t("Create and manage institutional reports with section-level collaboration", lang)}
+        actions={canCreate && (
           <button
             onClick={() => navFn(`${listPath}/create`)}
             style={{
@@ -636,10 +624,10 @@ export default function ReportBuilderListPage() {
               boxShadow: "0 2px 10px rgba(124,58,237,0.28)",
             }}
           >
-            <span style={{ fontSize: 18, lineHeight: 1 }}>＋</span> New Report
+            <span style={{ fontSize: 18, lineHeight: 1 }}>＋</span> {t("New Report", lang)}
           </button>
         )}
-      </div>
+      />
 
       {/* ── Stat chips ── */}
       {!loading && reports.length > 0 && (

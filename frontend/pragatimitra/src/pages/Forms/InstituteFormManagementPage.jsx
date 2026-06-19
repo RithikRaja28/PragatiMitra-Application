@@ -9,6 +9,7 @@ import { useApi } from "../../hooks/useApi";
 import { useAuth } from "../../store/AuthContext";
 import { useAcademicYear } from "../../store/AcademicYearContext";
 import { useLanguage } from "../../i18n/LanguageContext";
+import { t } from "../../i18n/translations";
 import { Toast, isAuthError } from "../../components/shared/formUtils";
 import FormBuilderPage from "./FormBuilderPage";
 import InstituteFormRecordsPage from "./InstituteFormRecordsPage";
@@ -21,14 +22,16 @@ import {
 const STROKE = 1.75;
 
 /* ── Logic helpers (unchanged) ─────────────────────────────────── */
-function deadlineInfo(form) {
+function deadlineInfo(form, lang = "en") {
   if (!form.deadline_at) return { dateText: "—", tone: null, label: null };
   const d = new Date(form.deadline_at);
   const dateText = d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
   const msLeft = d.getTime() - Date.now();
-  if (msLeft <= 0) return { dateText, tone: "danger", label: "EXPIRED" };
+  if (msLeft <= 0) return { dateText, tone: "danger", label: t("EXPIRED", lang) };
   const daysLeft = Math.ceil(msLeft / (1000 * 60 * 60 * 24));
-  const label = `${daysLeft} DAY${daysLeft !== 1 ? "S" : ""} LEFT`;
+  const label = lang === "hi"
+    ? `${daysLeft} दिन बाकी`
+    : `${daysLeft} DAY${daysLeft !== 1 ? "S" : ""} LEFT`;
   return { dateText, tone: daysLeft <= 3 ? "warning" : "success", label };
 }
 
@@ -45,12 +48,13 @@ function titleOf(form_name) {
   return form_name.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-function institutionsLabel(form) {
+function institutionsLabel(form, lang = "en") {
   const names = form.institution_names || [];
   if (names.length === 1) return names[0];
-  if (names.length > 1) return `${names.length} institutions`;
+  if (names.length > 1) return lang === "hi" ? `${names.length} संस्थाएं` : `${names.length} institutions`;
   const count = (form.institute_access || []).length;
-  return count ? `${count} institution${count !== 1 ? "s" : ""}` : "—";
+  if (!count) return "—";
+  return lang === "hi" ? `${count} संस्था` : `${count} institution${count !== 1 ? "s" : ""}`;
 }
 
 async function downloadExport(formName, format, language, accessToken) {
@@ -73,6 +77,7 @@ async function downloadExport(formName, format, language, accessToken) {
 /* ── Deadline modal (logic unchanged, ui Modal shell) ──────────── */
 function DeadlineModal({ form, onClose, onSaved, showToast }) {
   const { apiFetch } = useApi();
+  const { lang } = useLanguage();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving]   = useState(false);
   const [current, setCurrent] = useState({ deadline_at: null, auto_locked: false, is_locked: false });
@@ -104,9 +109,9 @@ function DeadlineModal({ form, onClose, onSaved, showToast }) {
         method: "PUT", body: JSON.stringify({ deadline_at: deadlineIso }),
       });
       const data = await res.json();
-      if (data.success) { showToast(remove ? "Deadline removed." : "Deadline saved."); onSaved(); onClose(); }
-      else showToast(data.message || "Failed to save deadline.", "error");
-    } catch { showToast("Failed to save deadline.", "error"); }
+      if (data.success) { showToast(remove ? t("Deadline removed.", lang) : t("Deadline saved.", lang)); onSaved(); onClose(); }
+      else showToast(data.message || t("Failed to save deadline.", lang), "error");
+    } catch { showToast(t("Failed to save deadline.", lang), "error"); }
     finally { setSaving(false); }
   }
 
@@ -119,21 +124,21 @@ function DeadlineModal({ form, onClose, onSaved, showToast }) {
     <Modal
       open onClose={onClose} width={480}
       icon={<CalendarClock size={18} strokeWidth={STROKE} />}
-      title="Manage Deadline" subtitle={`${formTitle} · your institution only`}
+      title={t("Manage Deadline", lang)} subtitle={`${formTitle} · ${t("your institution only", lang)}`}
       footer={
         <>
           <Button variant="outlineDanger" style={{ marginRight: "auto" }} disabled={saving || !hasDeadline} onClick={() => save(true)}>
-            Remove Deadline
+            {t("Remove Deadline", lang)}
           </Button>
-          <Button variant="secondary" disabled={saving} onClick={onClose}>Cancel</Button>
+          <Button variant="secondary" disabled={saving} onClick={onClose}>{t("Cancel", lang)}</Button>
           <Button variant="primary" loading={saving} disabled={saving || !dateVal} onClick={() => save(false)}>
-            {hasDeadline ? "Update" : "Save"}
+            {hasDeadline ? t("Update", lang) : t("Save", lang)}
           </Button>
         </>
       }
     >
       {loading ? (
-        <div style={{ textAlign: "center", padding: 24, color: color.muted, fontSize: 13 }}>Loading…</div>
+        <div style={{ textAlign: "center", padding: 24, color: color.muted, fontSize: 13 }}>{t("Loading…", lang)}</div>
       ) : (
         <>
           <div style={{
@@ -142,22 +147,22 @@ function DeadlineModal({ form, onClose, onSaved, showToast }) {
             borderRadius: 10, padding: "12px 16px", marginBottom: 18,
           }}>
             <div style={{ fontSize: 11, fontWeight: 700, color: color.muted, textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 4 }}>
-              Current Status
+              {t("Current Status", lang)}
             </div>
             <div style={{ fontSize: 14, fontWeight: 700, color: hasDeadline ? (expired ? "#B91C1C" : "#1D4ED8") : color.muted }}>
               {hasDeadline
-                ? `Deadline: ${new Date(current.deadline_at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}${expired ? " · Expired" : ""}`
-                : "No deadline set"}
+                ? `${t("Deadline:", lang)} ${new Date(current.deadline_at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}${expired ? ` · ${t("Expired", lang)}` : ""}`
+                : t("No deadline set", lang)}
             </div>
             {current.is_locked && (
               <div style={{ fontSize: 12, color: color.danger, marginTop: 4 }}>
-                {current.auto_locked ? "Auto-locked after deadline." : "Manually locked by admin."}
+                {current.auto_locked ? t("Auto-locked after deadline.", lang) : t("Manually locked by admin.", lang)}
               </div>
             )}
           </div>
 
           <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: color.muted, textTransform: "uppercase", letterSpacing: 0.7, marginBottom: 6 }}>
-            {hasDeadline ? "Update Deadline Date" : "Add Deadline Date"}
+            {hasDeadline ? t("Update Deadline Date", lang) : t("Add Deadline Date", lang)}
           </label>
           <input
             type="date" value={dateVal} min={todayStr}
@@ -165,7 +170,7 @@ function DeadlineModal({ form, onClose, onSaved, showToast }) {
             style={{ width: "100%", height: 44, padding: "0 12px", border: `1px solid ${color.borderStrong}`, borderRadius: 10, fontSize: 13, color: color.text, outline: "none", boxSizing: "border-box" }}
           />
           <div style={{ fontSize: 11.5, color: color.muted, marginTop: 6 }}>
-            The form auto-locks for your institution after this date. Departments can still view records.
+            {t("The form auto-locks for your institution after this date. Departments can still view records.", lang)}
           </div>
         </>
       )}
@@ -246,7 +251,7 @@ export default function InstituteFormManagementPage() {
   }, [forms, tab, search, yearAware]);
 
   async function setLifecycle(form, status) {
-    if (!academicYear) { showToast("No academic year selected.", "error"); return; }
+    if (!academicYear) { showToast(t("No academic year selected.", lang), "error"); return; }
     try {
       const res  = await apiFetch(
         `/api/academic-years/${encodeURIComponent(academicYear)}/forms/${form.id}/status`,
@@ -254,7 +259,7 @@ export default function InstituteFormManagementPage() {
       );
       const data = await res.json();
       if (data.success) {
-        showToast(`"${titleOf(form.form_name)}" ${status === "active" ? "activated" : "archived"} for ${academicYear}.`);
+        showToast(`"${titleOf(form.form_name)}" ${lang === "hi" ? (status === "active" ? "सक्रिय" : "संग्रहीत") : (status === "active" ? "activated" : "archived")} for ${academicYear}.`);
         load();
       } else showToast(data.message || "Failed to update status.", "error");
     } catch (err) { if (!isAuthError(err)) showToast("Failed to update status.", "error"); }
@@ -274,7 +279,9 @@ export default function InstituteFormManagementPage() {
               : f
           )
         );
-        showToast(`Form ${action === "lock" ? "locked" : "unlocked"} successfully.`);
+        showToast(lang === "hi"
+          ? `फ़ॉर्म ${action === "lock" ? "लॉक" : "अनलॉक"} सफलतापूर्वक किया गया।`
+          : `Form ${action === "lock" ? "locked" : "unlocked"} successfully.`);
       } else showToast(data.message || `Failed to ${action} form.`, "error");
     } catch { showToast(`Failed to ${action} form.`, "error"); }
     finally { setLockTogglingForm(null); }
@@ -309,26 +316,26 @@ export default function InstituteFormManagementPage() {
     const isActive = (form.lifecycle_status ?? "active") === "active";
     return (
       <div style={{ display: "inline-flex", alignItems: "center", gap: 6, justifyContent: "flex-end" }}>
-        <Button variant="secondary" iconOnly title="View records" icon={<Eye size={18} strokeWidth={STROKE} />} onClick={() => navigate(`${listPath}/records`, { state: { entity: form } })} />
-        <Button variant="secondary" iconOnly title={ayLocked ? "Academic year is locked" : "Manage form"} disabled={ayLocked} icon={<Settings2 size={18} strokeWidth={STROKE} />} onClick={() => navigate(`${listPath}/edit`, { state: { entity: form } })} />
+        <Button variant="secondary" iconOnly title={t("View records", lang)} icon={<Eye size={18} strokeWidth={STROKE} />} onClick={() => navigate(`${listPath}/records`, { state: { entity: form } })} />
+        <Button variant="secondary" iconOnly title={ayLocked ? t("Academic year is locked", lang) : t("Manage form", lang)} disabled={ayLocked} icon={<Settings2 size={18} strokeWidth={STROKE} />} onClick={() => navigate(`${listPath}/edit`, { state: { entity: form } })} />
         <Dropdown
           align="right" width={210}
           button={({ toggle }) => (
-            <Button variant="secondary" iconOnly title="More actions" icon={<MoreHorizontal size={18} strokeWidth={STROKE} />} onClick={toggle} />
+            <Button variant="secondary" iconOnly title={t("More actions", lang)} icon={<MoreHorizontal size={18} strokeWidth={STROKE} />} onClick={toggle} />
           )}
         >
-          <MenuLabel>Manage</MenuLabel>
-          <MenuItem icon={<CalendarClock size={16} strokeWidth={STROKE} />} disabled={ayLocked} onClick={() => setDeadlineForm(form)}>Deadline</MenuItem>
+          <MenuLabel>{t("Manage", lang)}</MenuLabel>
+          <MenuItem icon={<CalendarClock size={16} strokeWidth={STROKE} />} disabled={ayLocked} onClick={() => setDeadlineForm(form)}>{t("Deadline", lang)}</MenuItem>
           {yearAware && (isActive
-            ? <MenuItem icon={<Archive size={16} strokeWidth={STROKE} />} disabled={ayLocked} onClick={() => setLifecycle(form, "archived")}>Archive for {academicYear}</MenuItem>
-            : <MenuItem icon={<ArchiveRestore size={16} strokeWidth={STROKE} />} disabled={ayLocked} onClick={() => setLifecycle(form, "active")}>Activate for {academicYear}</MenuItem>
+            ? <MenuItem icon={<Archive size={16} strokeWidth={STROKE} />} disabled={ayLocked} onClick={() => setLifecycle(form, "archived")}>{t("Archive for", lang)} {academicYear}</MenuItem>
+            : <MenuItem icon={<ArchiveRestore size={16} strokeWidth={STROKE} />} disabled={ayLocked} onClick={() => setLifecycle(form, "active")}>{t("Activate for", lang)} {academicYear}</MenuItem>
           )}
           {form.is_locked
-            ? <MenuItem icon={<Unlock size={16} strokeWidth={STROKE} />} disabled={ayLocked || lockTogglingForm === form.form_name} onClick={() => handleToggleLock(form)}>Unlock form</MenuItem>
-            : <MenuItem icon={<Lock size={16} strokeWidth={STROKE} />} disabled={ayLocked || lockTogglingForm === form.form_name} onClick={() => handleToggleLock(form)}>Lock form</MenuItem>}
-          <MenuLabel>Export</MenuLabel>
-          <MenuItem icon={<FileCsv size={16} strokeWidth={STROKE} />} onClick={() => downloadExport(form.form_name, "csv", lang, accessToken)}>Download CSV</MenuItem>
-          <MenuItem icon={<FileSpreadsheet size={16} strokeWidth={STROKE} />} onClick={() => downloadExport(form.form_name, "xlsx", lang, accessToken)}>Download Excel</MenuItem>
+            ? <MenuItem icon={<Unlock size={16} strokeWidth={STROKE} />} disabled={ayLocked || lockTogglingForm === form.form_name} onClick={() => handleToggleLock(form)}>{t("Unlock form", lang)}</MenuItem>
+            : <MenuItem icon={<Lock size={16} strokeWidth={STROKE} />} disabled={ayLocked || lockTogglingForm === form.form_name} onClick={() => handleToggleLock(form)}>{t("Lock form", lang)}</MenuItem>}
+          <MenuLabel>{t("Export", lang)}</MenuLabel>
+          <MenuItem icon={<FileCsv size={16} strokeWidth={STROKE} />} onClick={() => downloadExport(form.form_name, "csv", lang, accessToken)}>{t("Download CSV", lang)}</MenuItem>
+          <MenuItem icon={<FileSpreadsheet size={16} strokeWidth={STROKE} />} onClick={() => downloadExport(form.form_name, "xlsx", lang, accessToken)}>{t("Download Excel", lang)}</MenuItem>
         </Dropdown>
       </div>
     );
@@ -336,7 +343,7 @@ export default function InstituteFormManagementPage() {
 
   const columns = [
     {
-      key: "form", header: "Form Name", width: 320,
+      key: "form", header: t("Form Name", lang), width: 320,
       render: (form) => (
         <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
           <div style={{ width: 34, height: 34, borderRadius: 9, flexShrink: 0, background: color.primarySoft, color: color.primary, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 800, letterSpacing: 0.3 }}>
@@ -354,16 +361,16 @@ export default function InstituteFormManagementPage() {
       ),
     },
     {
-      key: "visibility", header: "Visibility", width: 120,
+      key: "visibility", header: t("Visibility", lang), width: 120,
       render: (form) => form.share_table
-        ? <Badge tone="info" icon={<Share2 size={12} strokeWidth={STROKE} />}>Shared</Badge>
-        : <Badge tone="neutral" icon={<ShieldCheck size={12} strokeWidth={STROKE} />}>Private</Badge>,
+        ? <Badge tone="info" icon={<Share2 size={12} strokeWidth={STROKE} />}>{t("Shared", lang)}</Badge>
+        : <Badge tone="neutral" icon={<ShieldCheck size={12} strokeWidth={STROKE} />}>{t("Private", lang)}</Badge>,
     },
-    { key: "institutions", header: "Institutions", ellipsis: true, width: 160, render: (form) => <span style={{ color: color.muted }}>{institutionsLabel(form)}</span> },
+    { key: "institutions", header: t("Institutions", lang), ellipsis: true, width: 160, render: (form) => <span style={{ color: color.muted }}>{institutionsLabel(form, lang)}</span> },
     {
-      key: "deadline", header: "Deadline", width: 150,
+      key: "deadline", header: t("Deadline", lang), width: 150,
       render: (form) => {
-        const d = deadlineInfo(form);
+        const d = deadlineInfo(form, lang);
         return (
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             <span style={{ fontSize: 13, color: color.text, fontWeight: 600 }}>{d.dateText}</span>
@@ -373,10 +380,10 @@ export default function InstituteFormManagementPage() {
       },
     },
     {
-      key: "access", header: "Access", width: 110,
+      key: "access", header: t("Access", lang), width: 110,
       render: (form) => form.is_locked
-        ? <Badge tone="danger" icon={<Lock size={11} strokeWidth={STROKE} />}>Locked</Badge>
-        : <Badge tone="success">Open</Badge>,
+        ? <Badge tone="danger" icon={<Lock size={11} strokeWidth={STROKE} />}>{t("Locked", lang)}</Badge>
+        : <Badge tone="success">{t("Open", lang)}</Badge>,
     },
     { key: "actions", header: "", align: "right", width: 150, render: renderActions },
   ];
@@ -403,19 +410,19 @@ export default function InstituteFormManagementPage() {
       )}
 
       <PageHeader
-        breadcrumb={["Home", "Forms", "Institution Forms"]}
-        title="Institution Forms"
-        description="Manage every institutional form — visibility, deadlines, lifecycle and access — for the selected academic year."
+        breadcrumb={[t("Home", lang), t("Forms", lang), t("Institution Forms", lang)]}
+        title={t("Institution Forms", lang)}
+        description={t("Manage every institutional form — visibility, deadlines, lifecycle and access — for the selected academic year.", lang)}
         actions={
           <>
-            {ayLocked && <Badge tone="danger" icon={<Lock size={12} strokeWidth={STROKE} />}>View Only</Badge>}
-            <Button variant="secondary" icon={<RefreshCw size={18} strokeWidth={STROKE} />} onClick={load}>Refresh</Button>
+            {ayLocked && <Badge tone="danger" icon={<Lock size={12} strokeWidth={STROKE} />}>{t("View Only", lang)}</Badge>}
+            <Button variant="secondary" icon={<RefreshCw size={18} strokeWidth={STROKE} />} onClick={load}>{t("Refresh", lang)}</Button>
             <Button
               variant="primary" icon={<Plus size={18} strokeWidth={STROKE} />} disabled={ayLocked}
-              title={ayLocked ? "Academic year is locked" : "Create a new form"}
-              onClick={() => { if (ayLocked) { showToast("This academic year is locked. You can only view records.", "error"); return; } navigate(`${listPath}/create`); }}
+              title={ayLocked ? t("Academic year is locked", lang) : t("Create a new form", lang)}
+              onClick={() => { if (ayLocked) { showToast(lang === "hi" ? "यह शैक्षणिक वर्ष लॉक है। आप केवल रिकॉर्ड देख सकते हैं।" : "This academic year is locked. You can only view records.", "error"); return; } navigate(`${listPath}/create`); }}
             >
-              Create New Form
+              {t("Create New Form", lang)}
             </Button>
           </>
         }
@@ -438,7 +445,7 @@ export default function InstituteFormManagementPage() {
             <div style={{ position: "relative", flex: "0 1 280px", maxWidth: 280 }}>
               <Search size={16} strokeWidth={STROKE} style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", color: color.muted }} />
               <input
-                value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search forms…"
+                value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t("Search forms…", lang)}
                 style={{ width: "100%", height: 40, padding: "0 12px 0 34px", border: `1px solid ${color.border}`, borderRadius: 10, fontSize: 13, color: color.text, outline: "none", boxSizing: "border-box", background: color.surface }}
               />
             </div>
@@ -447,8 +454,8 @@ export default function InstituteFormManagementPage() {
                 <Badge tone="primary" icon={<CalendarClock size={12} strokeWidth={STROKE} />}>{academicYear}</Badge>
               )}
               <div style={{ display: "inline-flex", border: `1px solid ${color.border}`, borderRadius: 10, padding: 3, gap: 2, background: color.hover }}>
-                {tabBtn("active", "Active")}
-                {tabBtn("archived", "Archived")}
+                {tabBtn("active", t("Active", lang))}
+                {tabBtn("archived", t("Archived", lang))}
               </div>
             </div>
           </>
@@ -456,14 +463,14 @@ export default function InstituteFormManagementPage() {
         empty={
           <EmptyState
             icon={searching ? <Search size={26} strokeWidth={1.5} /> : tab === "archived" ? <Archive size={26} strokeWidth={1.5} /> : <FilePlus size={26} strokeWidth={1.5} />}
-            title={searching ? "No forms match your search" : tab === "archived" ? "No archived forms" : "No forms available"}
+            title={searching ? t("No forms match your search", lang) : tab === "archived" ? t("No archived forms", lang) : t("No forms available", lang)}
             description={
-              searching ? "Try a different name or clear the search."
-                : tab === "archived" ? "Forms archived for this academic year will appear here."
-                : "Create a new form, or contact your super admin to share one with your institution."
+              searching ? t("Try a different name or clear the search.", lang)
+                : tab === "archived" ? t("Forms archived for this academic year will appear here.", lang)
+                : t("Create a new form, or contact your super admin to share one with your institution.", lang)
             }
             action={!searching && tab === "active" && !ayLocked
-              ? <Button variant="primary" icon={<Plus size={18} strokeWidth={STROKE} />} onClick={() => navigate(`${listPath}/create`)}>Create New Form</Button>
+              ? <Button variant="primary" icon={<Plus size={18} strokeWidth={STROKE} />} onClick={() => navigate(`${listPath}/create`)}>{t("Create New Form", lang)}</Button>
               : undefined}
           />
         }
