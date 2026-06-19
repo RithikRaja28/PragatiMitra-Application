@@ -543,6 +543,28 @@ router.post("/:formName/import/execute-chunk", async (req, res) => {
       });
     }
 
+    /* N-2 — honor the PER-YEAR deadline lock (form_year_deadlines) exactly like the
+       record-save path's getLockBlock, so import and manual entry resolve the SAME
+       lock state. The form-wide lock is already checked above; this closes the gap
+       where a year whose deadline has auto-locked it still accepted imported rows. */
+    {
+      const { rows: yd } = await pool.query(
+        `SELECT is_locked, auto_locked, deadline_at FROM form_year_deadlines
+          WHERE form_name = $1 AND institution_id = $2 AND academic_year = $3`,
+        [formName, ctx.institutionId, Number(formYear)]
+      );
+      if (yd[0]?.is_locked) {
+        const expired = yd[0].auto_locked
+          || (yd[0].deadline_at && new Date(yd[0].deadline_at).getTime() <= Date.now());
+        return res.status(403).json({
+          success: false,
+          message: expired
+            ? "This form deadline has expired for your institution. Import is disabled."
+            : "This form is currently locked by the institution admin. Import is disabled.",
+        });
+      }
+    }
+
     /* Academic-year lock — checks the SELECTED year (header), blocks import.
        Bug 13 — re-evaluated on EVERY chunk (was chunk 0 only) so a year lock /
        archive / deadline that lands mid-import stops the remaining chunks at once. */
