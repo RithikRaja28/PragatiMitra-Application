@@ -325,36 +325,6 @@ router.put("/:id/records/:recordId", async (req, res) => {
     );
     if (!rows.length) return res.status(404).json({ success: false, message: "Record not found." });
 
-    if (editedLanguage === "en" && form.translate_enabled !== false) {
-      setImmediate(async () => {
-        try {
-          await ensureSourceRowIdColumn(pool, table);
-          const hiData = await translateRow(data, fieldModes);
-          let hidx = 1;
-          const hiSet = [...fieldCols.map((c) => `${c} = $${hidx++}`), "updated_at = now()"];
-          const hiVals = [...fieldCols.map((c) => hiData[c] ?? null), req.params.recordId];
-          const upd = await pool.query(`UPDATE ${table} SET ${hiSet.join(", ")} WHERE source_row_id = $${hidx}`, hiVals);
-
-          /* Bug 12 — recovery: if no Hindi mirror exists (create-time translation
-             failed, or translation was enabled only after creation), create it now
-             from the updated English row so the EN↔HI pair is restored. */
-          if (upd.rowCount === 0) {
-            const enRow = rows[0];
-            const hiCols = ["form_name", "department_id", "institution_id", "academic_year", "role_name", "schema_id", "language", "created_by", "source_row_id", ...fieldCols];
-            const hiAllVals = [
-              enRow.form_name, enRow.department_id, enRow.institution_id, enRow.academic_year, enRow.role_name,
-              enRow.schema_id, "hi", enRow.created_by ?? req.user.userId ?? null, enRow.id,
-              ...fieldCols.map((c) => hiData[c] ?? null),
-            ];
-            const ph = hiAllVals.map((_, i) => `$${i + 1}`).join(", ");
-            await pool.query(`INSERT INTO ${table} (${hiCols.join(", ")}) VALUES (${ph})`, hiAllVals);
-          }
-        } catch (e) {
-          logger.error(`Dept Hindi row update failed for ${table}`, { stack: e.stack });
-        }
-      });
-    }
-
     return res.json({ success: true, record: rows[0], message: "Record updated successfully." });
   } catch (err) {
     logger.error("PUT /api/department-form-data/:id/records/:recordId", { stack: err.stack });

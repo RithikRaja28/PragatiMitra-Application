@@ -9,13 +9,13 @@ import { useAuth } from "../../../../store/AuthContext";
 import { useShell } from "../../../../components/Dashboard/shellContext";
 import { BlockEditor, AddBlockMenu, DEFAULT_CONTENT, BLOCK_ICONS } from "./BlockEditors";
 
-/* ─── colour tokens (matches CreateReportWizardPage) ───────────────────── */
+/* ─── colour tokens — matches app-wide theme (#2563eb blue) ────────────── */
 const C = {
-  primary: "#4f46e5", primaryDk: "#3730a3", primaryLt: "#eef2ff", primaryMid: "#818cf8",
-  success: "#16a34a", successLt: "#f0fdf4",
-  danger:  "#dc2626", dangerLt:  "#fef2f2",
-  warning: "#d97706", warningLt: "#fffbeb",
-  text:    "#0f172a", textSub: "#64748b", textMuted: "#94a3b8",
+  primary: "#2563eb", primaryDk: "#1d4ed8", primaryLt: "#eff6ff", primaryMid: "#93c5fd",
+  success: "#16a34a", successLt: "#dcfce7",
+  danger:  "#ef4444", dangerLt:  "#fef2f2",
+  warning: "#d97706", warningLt: "#fef3c7",
+  text:    "#1e293b", textSub: "#64748b", textMuted: "#94a3b8",
   border:  "#e2e8f0", bg: "#f8fafc", surface: "#fff",
 };
 const inp = {
@@ -171,7 +171,7 @@ function NavBar({ onBack, onNext, busy, showBack = true, nextLabel = "Next →" 
           padding: "9px 28px", background: busy ? C.primaryMid : C.primary,
           border: "none", borderRadius: 9, cursor: busy ? "not-allowed" : "pointer",
           fontSize: 13, fontWeight: 700, color: "#fff", fontFamily: "inherit",
-          boxShadow: "0 2px 6px rgba(79,70,229,0.3)", minWidth: 140,
+          boxShadow: "0 2px 6px rgba(37,99,235,0.3)", minWidth: 140,
         }}>{busy ? "Saving…" : nextLabel}</button>
       )}
     </div>
@@ -247,8 +247,8 @@ function Step1Details({ name, setName, desc, setDesc, reportType, setReportType,
 ═══════════════════════════════════════════════════════════════════════════ */
 
 /* ── SectionRow (recursive) ─────────────────────────────────────────────── */
-function SectionRow({ sec, depth, selectedId, onSelect, onRename, onAddSub, onDelete, immutable, blockCount }) {
-  const [editing, setEditing]     = useState(false);
+function SectionRow({ sec, depth, sectionIndex, subIndex, selectedId, onSelect, onRename, onAddSub, onDelete, immutable, blockCount }) {
+  const [editing,    setEditing]    = useState(false);
   const [localTitle, setLocalTitle] = useState(sec.title);
   const inputRef = useRef(null);
   useEffect(() => { setLocalTitle(sec.title); }, [sec.title]);
@@ -256,85 +256,154 @@ function SectionRow({ sec, depth, selectedId, onSelect, onRename, onAddSub, onDe
 
   const isSelected = sec.id === selectedId;
   const bc = blockCount?.[sec.id] ?? 0;
+  const isRoot = depth === 0;
+
+  /* label: "1" for root, "1.1" for sub */
+  const numLabel = isRoot
+    ? String((sectionIndex ?? 0) + 1)
+    : `${(sectionIndex ?? 0) + 1}.${(subIndex ?? 0) + 1}`;
 
   return (
     <>
-      <div
-        onClick={() => onSelect(sec)}
-        style={{
-          display: "flex", alignItems: "center", gap: 6,
-          padding: `7px 10px 7px ${12 + depth * 18}px`,
-          background: isSelected ? "#ede9fe" : "transparent",
-          borderLeft: `3px solid ${isSelected ? C.primary : "transparent"}`,
-          cursor: "pointer", transition: "background 0.1s",
-        }}
-        onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = "#f5f3ff"; }}
-        onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = "transparent"; }}
-      >
-        {/* index badge */}
-        {depth === 0 ? (
+      {/* connector line indent for subsections */}
+      <div style={{ position: "relative" }}>
+        {!isRoot && (
           <div style={{
-            width: 20, height: 20, borderRadius: 5, flexShrink: 0, fontSize: 9, fontWeight: 700,
+            position: "absolute", left: 20, top: 0, bottom: 0,
+            width: 1, background: C.primaryMid, opacity: 0.5,
+          }} />
+        )}
+
+        <div
+          onClick={() => onSelect(sec)}
+          style={{
+            display: "flex", alignItems: "center", gap: 8,
+            padding: isRoot ? "9px 10px 9px 10px" : "7px 10px 7px 36px",
+            background: isSelected
+              ? C.primaryLt
+              : "transparent",
+            borderLeft: `3px solid ${isSelected ? C.primary : "transparent"}`,
+            cursor: "pointer", transition: "background 0.12s",
+            borderBottom: `1px solid ${C.border}`,
+          }}
+          onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = "#f0f7ff"; }}
+          onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = "transparent"; }}
+        >
+          {/* number badge */}
+          <div style={{
+            minWidth: isRoot ? 24 : 28, height: isRoot ? 24 : 20,
+            borderRadius: isRoot ? 6 : 5,
+            flexShrink: 0, fontSize: isRoot ? 10 : 9, fontWeight: 800,
             display: "flex", alignItems: "center", justifyContent: "center",
-            background: isSelected ? C.primary : C.primaryLt, color: isSelected ? "#fff" : C.primary,
-          }}>{sec.order_index || "·"}</div>
-        ) : (
-          <span style={{ color: "#c4b5fd", fontSize: 10, flexShrink: 0 }}>↳</span>
-        )}
+            background: isSelected ? C.primary : (isRoot ? C.primaryLt : "#dbeafe"),
+            color: isSelected ? "#fff" : C.primary,
+            border: `1px solid ${isSelected ? C.primary : C.primaryMid}`,
+          }}>{numLabel}</div>
 
-        {editing ? (
-          <input
-            ref={inputRef}
-            value={localTitle}
-            onClick={e => e.stopPropagation()}
-            onChange={e => setLocalTitle(e.target.value)}
-            onBlur={() => {
-              setEditing(false);
-              const t = localTitle.trim();
-              if (t && t !== sec.title) onRename(sec.id, t);
-              else setLocalTitle(sec.title);
-            }}
-            onKeyDown={e => {
-              if (e.key === "Enter")  e.target.blur();
-              if (e.key === "Escape") { setLocalTitle(sec.title); setEditing(false); }
-            }}
-            style={{ flex: 1, border: `1.5px solid ${C.primary}`, borderRadius: 5, padding: "2px 7px", fontSize: 12, outline: "none", fontFamily: "inherit" }}
-          />
-        ) : (
-          <span
-            style={{ flex: 1, fontSize: 12, fontWeight: depth === 0 ? 600 : 400, color: isSelected ? "#4c1d95" : C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
-            onDoubleClick={e => { e.stopPropagation(); if (!immutable) setEditing(true); }}
-            title={immutable ? sec.title : "Double-click to rename"}
-          >{sec.title}</span>
-        )}
+          {/* title or rename input */}
+          {editing ? (
+            <input
+              ref={inputRef}
+              value={localTitle}
+              onClick={e => e.stopPropagation()}
+              onChange={e => setLocalTitle(e.target.value)}
+              onBlur={() => {
+                setEditing(false);
+                const t = localTitle.trim();
+                if (t && t !== sec.title) onRename(sec.id, t);
+                else setLocalTitle(sec.title);
+              }}
+              onKeyDown={e => {
+                if (e.key === "Enter")  e.target.blur();
+                if (e.key === "Escape") { setLocalTitle(sec.title); setEditing(false); }
+              }}
+              style={{
+                flex: 1, border: `1.5px solid ${C.primary}`, borderRadius: 6,
+                padding: "3px 8px", fontSize: 12, outline: "none", fontFamily: "inherit",
+                background: "#fff", color: C.text,
+              }}
+            />
+          ) : (
+            <span style={{
+              flex: 1, fontSize: isRoot ? 12 : 11,
+              fontWeight: isRoot ? 700 : 500,
+              color: isSelected ? C.primaryDk : C.text,
+              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+              lineHeight: 1.3,
+            }}>
+              {sec.title}
+            </span>
+          )}
 
-        {/* block count badge */}
-        {bc > 0 && (
-          <span style={{ fontSize: 9, padding: "1px 5px", background: isSelected ? "#c4b5fd" : "#e0e7ff", color: isSelected ? "#4c1d95" : C.primary, borderRadius: 10, fontWeight: 700, flexShrink: 0 }}>
-            {bc}
-          </span>
-        )}
+          {/* block count badge */}
+          {bc > 0 && (
+            <span style={{
+              fontSize: 9, padding: "2px 6px",
+              background: isSelected ? C.primaryMid : "#dbeafe",
+              color: isSelected ? C.primaryDk : C.primary,
+              borderRadius: 10, fontWeight: 700, flexShrink: 0,
+            }}>
+              {bc} {bc === 1 ? "block" : "blocks"}
+            </span>
+          )}
 
-        {/* action buttons */}
-        {!editing && !immutable && (
-          <div style={{ display: "flex", gap: 1, flexShrink: 0 }} onClick={e => e.stopPropagation()}>
-            {depth === 0 && (
-              <button title="Add subsection" onClick={() => onAddSub(sec.id)}
-                style={{ border: "none", background: "none", cursor: "pointer", color: "#c4b5fd", fontSize: 14, padding: "0 3px", lineHeight: 1 }}
-                onMouseEnter={e => (e.currentTarget.style.color = C.primary)}
-                onMouseLeave={e => (e.currentTarget.style.color = "#c4b5fd")}
-              >+</button>
-            )}
-            <button title="Delete" onClick={() => onDelete(sec.id)}
-              style={{ border: "none", background: "none", cursor: "pointer", color: "#e2e8f0", fontSize: 12, padding: "0 3px", lineHeight: 1 }}
-              onMouseEnter={e => (e.currentTarget.style.color = C.danger)}
-              onMouseLeave={e => (e.currentTarget.style.color = "#e2e8f0")}
-            >✕</button>
-          </div>
-        )}
+          {/* action buttons — always visible, no hover-to-discover */}
+          {!editing && !immutable && (
+            <div style={{ display: "flex", gap: 4, flexShrink: 0 }} onClick={e => e.stopPropagation()}>
+              {/* rename */}
+              <button
+                title="Rename"
+                onClick={() => setEditing(true)}
+                style={{
+                  width: 22, height: 22, borderRadius: 5, border: `1px solid ${C.border}`,
+                  background: "#fff", cursor: "pointer", color: C.textSub,
+                  display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10,
+                  transition: "border-color 0.12s, color 0.12s",
+                }}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = C.primary; e.currentTarget.style.color = C.primary; }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.color = C.textSub; }}
+              >✎</button>
+
+              {/* add subsection (root sections only) */}
+              {isRoot && (
+                <button
+                  title="Add subsection"
+                  onClick={() => onAddSub(sec.id)}
+                  style={{
+                    height: 22, padding: "0 7px", borderRadius: 5,
+                    border: `1px solid ${C.border}`,
+                    background: "#fff", cursor: "pointer",
+                    color: C.textSub, fontSize: 9, fontWeight: 700,
+                    display: "flex", alignItems: "center", gap: 2,
+                    transition: "border-color 0.12s, color 0.12s, background 0.12s",
+                    whiteSpace: "nowrap",
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.borderColor = "#16a34a"; e.currentTarget.style.color = "#16a34a"; e.currentTarget.style.background = "#f0fdf4"; }}
+                  onMouseLeave={e => { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.color = C.textSub; e.currentTarget.style.background = "#fff"; }}
+                >＋ Sub</button>
+              )}
+
+              {/* delete */}
+              <button
+                title="Delete"
+                onClick={() => onDelete(sec.id)}
+                style={{
+                  width: 22, height: 22, borderRadius: 5, border: `1px solid ${C.border}`,
+                  background: "#fff", cursor: "pointer", color: C.textSub,
+                  display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11,
+                  transition: "border-color 0.12s, color 0.12s, background 0.12s",
+                }}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = "#fca5a5"; e.currentTarget.style.color = C.danger; e.currentTarget.style.background = "#fef2f2"; }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.color = C.textSub; e.currentTarget.style.background = "#fff"; }}
+              >✕</button>
+            </div>
+          )}
+        </div>
       </div>
-      {sec.subsections?.map(sub => (
+
+      {sec.subsections?.map((sub, si) => (
         <SectionRow key={sub.id} sec={sub} depth={depth + 1}
+          sectionIndex={sectionIndex} subIndex={si}
           selectedId={selectedId} onSelect={onSelect} onRename={onRename}
           onAddSub={onAddSub} onDelete={onDelete} immutable={immutable}
           blockCount={blockCount}
@@ -378,10 +447,14 @@ function BlockRow({ blk, onContentChange, onToggleRequired, onDelete, immutable 
               {blk.is_required ? "Make optional" : "Mark required"}
             </button>
             <button onClick={() => onDelete(blk.id)} title="Delete block"
-              style={{ border: "none", background: "none", cursor: "pointer", color: "#e2e8f0", fontSize: 15, lineHeight: 1, padding: 0 }}
-              onMouseEnter={e => (e.currentTarget.style.color = C.danger)}
-              onMouseLeave={e => (e.currentTarget.style.color = "#e2e8f0")}
-            >✕</button>
+              style={{
+                padding: "3px 10px", borderRadius: 6, border: `1px solid ${C.border}`,
+                cursor: "pointer", fontFamily: "inherit", fontSize: 10, fontWeight: 600,
+                background: C.surface, color: C.danger, transition: "background 0.12s, border-color 0.12s",
+              }}
+              onMouseEnter={e => { e.currentTarget.style.background = "#fef2f2"; e.currentTarget.style.borderColor = "#fca5a5"; }}
+              onMouseLeave={e => { e.currentTarget.style.background = C.surface; e.currentTarget.style.borderColor = C.border; }}
+            >Delete</button>
           </div>
         )}
       </div>
@@ -405,100 +478,223 @@ function Step2Structure({
   onAddBlock, onUpdateBlock, onToggleRequired, onDeleteBlock,
   onBack, onNext,
 }) {
-  // block count per section (for badges in tree)
   const blockCount = {};
   for (const s of sections) blockCount[s.id] = (s.blocks || []).length;
 
+  const rootSections = tree; // already filtered/sorted
+
   return (
     <div>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
+      {/* heading */}
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 16, gap: 16 }}>
         <div>
-          <h2 style={{ fontSize: 20, fontWeight: 700, color: C.text, margin: "0 0 4px" }}>Structure &amp; Blocks</h2>
-          <p style={{ fontSize: 13, color: C.textSub, margin: 0 }}>
+          <h2 style={{ fontSize: 18, fontWeight: 800, color: C.text, margin: "0 0 4px" }}>Structure &amp; Blocks</h2>
+          <p style={{ fontSize: 12, color: C.textSub, margin: 0 }}>
             {immutable
               ? "This template is ACTIVE — structure is read-only."
-              : "Build the section tree on the left, then click a section to add blocks on the right. All changes auto-save."}
+              : "Add sections, then click a section to add content blocks on the right. Use ＋ Sub to add subsections."}
           </p>
         </div>
         <SaveBadge label={savingLabel} />
       </div>
-      <hr style={{ border: "none", borderTop: `1px solid ${C.border}`, marginBottom: 20 }} />
 
+      {/* How-to guide strip */}
+      {!immutable && (
+        <div style={{
+          display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap",
+        }}>
+          {[
+            { n: "1", t: "Add sections on the left" },
+            { n: "2", t: "Click ✎ to rename, ＋ Sub to nest" },
+            { n: "3", t: "Click a section to add blocks →" },
+          ].map(h => (
+            <div key={h.n} style={{
+              display: "flex", alignItems: "center", gap: 7,
+              padding: "6px 12px", borderRadius: 8,
+              background: C.primaryLt, border: `1px solid ${C.primaryMid}`,
+              fontSize: 11, color: C.primaryDk, fontWeight: 500,
+              flex: "1 1 auto",
+            }}>
+              <div style={{
+                width: 18, height: 18, borderRadius: 5, background: C.primary, color: "#fff",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: 9, fontWeight: 800, flexShrink: 0,
+              }}>{h.n}</div>
+              {h.t}
+            </div>
+          ))}
+        </div>
+      )}
+
+      <hr style={{ border: "none", borderTop: `1px solid ${C.border}`, marginBottom: 16 }} />
 
       {/* Split panel */}
-      <div style={{ display: "flex", gap: 0, border: `1px solid ${C.border}`, borderRadius: 12, overflow: "hidden", height: 560 }}>
+      <div style={{
+        display: "flex", gap: 0, border: `1px solid ${C.border}`,
+        borderRadius: 12, overflow: "hidden",
+        height: sections.length === 0 ? 400 : 560,
+      }}>
 
         {/* ── LEFT: Section Tree ── */}
-        <div style={{ width: 280, borderRight: `1px solid ${C.border}`, background: C.bg, display: "flex", flexDirection: "column", flexShrink: 0 }}>
+        <div style={{
+          width: 300, borderRight: `1px solid ${C.border}`,
+          background: C.bg, display: "flex", flexDirection: "column", flexShrink: 0,
+        }}>
           {/* tree header */}
-          <div style={{ padding: "12px 14px", borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-            <div>
+          <div style={{
+            padding: "11px 12px", borderBottom: `1px solid ${C.border}`,
+            display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8,
+            background: C.surface,
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
               <span style={{ fontSize: 12, fontWeight: 700, color: C.text }}>Sections</span>
-              <span style={{ fontSize: 10, color: C.textMuted, marginLeft: 6 }}>{sections.length}</span>
+              {sections.length > 0 && (
+                <span style={{
+                  fontSize: 10, padding: "1px 6px", borderRadius: 10,
+                  background: C.primaryLt, color: C.primary, fontWeight: 700,
+                }}>{sections.length}</span>
+              )}
             </div>
             {!immutable && (
-              <button onClick={() => onAddSection(null)} style={{
-                fontSize: 11, fontWeight: 700, padding: "4px 11px",
-                background: C.primary, color: "#fff", border: "none", borderRadius: 7, cursor: "pointer",
-                fontFamily: "inherit",
-              }}>+ Section</button>
+              <button
+                onClick={() => onAddSection(null)}
+                style={{
+                  fontSize: 11, fontWeight: 700, padding: "5px 12px",
+                  background: C.primary, color: "#fff", border: "none",
+                  borderRadius: 7, cursor: "pointer", fontFamily: "inherit",
+                  display: "flex", alignItems: "center", gap: 5,
+                }}
+              >
+                <span style={{ fontSize: 13 }}>＋</span> Section
+              </button>
             )}
           </div>
 
           {/* tree body */}
-          <div style={{ flex: 1, overflowY: "auto", padding: "6px 2px 6px 0" }}>
+          <div style={{ flex: 1, overflowY: "auto" }}>
             {tree.length === 0 ? (
-              <div style={{ padding: "36px 16px", textAlign: "center" }}>
-                <div style={{ fontSize: 28, marginBottom: 10 }}>🗂</div>
-                <div style={{ fontSize: 12, fontWeight: 600, color: C.text, marginBottom: 4 }}>No sections yet</div>
-                <div style={{ fontSize: 11, color: C.textSub }}>Click + Section to start building.</div>
+              /* empty state */
+              <div style={{ padding: "32px 16px", textAlign: "center" }}>
+                <div style={{
+                  width: 52, height: 52, borderRadius: 12, background: C.primaryLt,
+                  margin: "0 auto 14px",
+                  display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22,
+                }}>🗂</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 6 }}>
+                  No sections yet
+                </div>
+                <div style={{ fontSize: 11, color: C.textSub, lineHeight: 1.6, marginBottom: 16 }}>
+                  Sections are the main chapters.<br />
+                  Subsections break each chapter down further.
+                </div>
+                {!immutable && (
+                  <button
+                    onClick={() => onAddSection(null)}
+                    style={{
+                      padding: "7px 16px", background: C.primary, color: "#fff",
+                      border: "none", borderRadius: 8, cursor: "pointer",
+                      fontSize: 11, fontWeight: 700, fontFamily: "inherit",
+                    }}
+                  >＋ Add First Section</button>
+                )}
               </div>
-            ) : tree.map(sec => (
-              <SectionRow key={sec.id} sec={sec} depth={0}
-                selectedId={selectedSec?.id}
-                onSelect={setSelectedSec}
-                onRename={onRenameSection}
-                onAddSub={onAddSection}
-                onDelete={onDeleteSection}
-                immutable={immutable}
-                blockCount={blockCount}
-              />
-            ))}
+            ) : (
+              <>
+                {rootSections.map((sec, si) => (
+                  <SectionRow
+                    key={sec.id}
+                    sec={sec}
+                    depth={0}
+                    sectionIndex={si}
+                    selectedId={selectedSec?.id}
+                    onSelect={setSelectedSec}
+                    onRename={onRenameSection}
+                    onAddSub={onAddSection}
+                    onDelete={onDeleteSection}
+                    immutable={immutable}
+                    blockCount={blockCount}
+                  />
+                ))}
+
+                {/* ghost "Add section" at bottom of list */}
+                {!immutable && (
+                  <button
+                    onClick={() => onAddSection(null)}
+                    style={{
+                      width: "100%", padding: "10px 0",
+                      border: "none", borderTop: `1px dashed ${C.border}`,
+                      background: "transparent",
+                      fontSize: 11, fontWeight: 700, color: C.textSub,
+                      cursor: "pointer", fontFamily: "inherit",
+                      display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
+                      transition: "color 0.12s, background 0.12s",
+                    }}
+                    onMouseEnter={e => { e.currentTarget.style.color = C.primary; e.currentTarget.style.background = C.primaryLt; }}
+                    onMouseLeave={e => { e.currentTarget.style.color = C.textSub; e.currentTarget.style.background = "transparent"; }}
+                  >
+                    <span style={{ fontSize: 13 }}>＋</span> Add Another Section
+                  </button>
+                )}
+              </>
+            )}
           </div>
         </div>
 
         {/* ── RIGHT: Block Editor ── */}
         <div style={{ flex: 1, display: "flex", flexDirection: "column", background: C.surface, overflow: "hidden" }}>
           {!selectedSec ? (
-            <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 10 }}>
-              <div style={{ width: 56, height: 56, borderRadius: 14, background: C.primaryLt,
-                display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26 }}>📄</div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>Select a section</div>
-              <div style={{ fontSize: 12, color: C.textSub }}>Click any section on the left to edit its blocks.</div>
+            <div style={{
+              flex: 1, display: "flex", alignItems: "center", justifyContent: "center",
+              flexDirection: "column", gap: 10, padding: 24,
+            }}>
+              <div style={{
+                width: 56, height: 56, borderRadius: 14, background: C.primaryLt,
+                display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26,
+              }}>📄</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>
+                {tree.length === 0 ? "Add a section first" : "Select a section"}
+              </div>
+              <div style={{ fontSize: 12, color: C.textSub, textAlign: "center", maxWidth: 240, lineHeight: 1.6 }}>
+                {tree.length === 0
+                  ? "Use the ＋ Section button on the left to create your first section."
+                  : "Click any section or subsection on the left to manage its content blocks here."}
+              </div>
             </div>
           ) : (
             <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-              {/* section header */}
-              <div style={{ padding: "12px 18px", borderBottom: `1px solid ${C.border}`, background: C.bg, display: "flex", alignItems: "center", gap: 10 }}>
-                <div style={{ width: 28, height: 28, borderRadius: 7, background: C.primaryLt,
-                  display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13 }}>
+              {/* selected section header */}
+              <div style={{
+                padding: "11px 16px", borderBottom: `1px solid ${C.border}`,
+                background: C.primaryLt, display: "flex", alignItems: "center", gap: 10,
+              }}>
+                <div style={{
+                  width: 30, height: 30, borderRadius: 8, background: C.primary,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 13, color: "#fff", fontWeight: 800, flexShrink: 0,
+                }}>
                   📋
                 </div>
-                <div>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{selectedSec.title}</div>
-                  <div style={{ fontSize: 11, color: C.textMuted, marginTop: 1 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{
+                    fontSize: 13, fontWeight: 700, color: C.primaryDk,
+                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                  }}>{selectedSec.title}</div>
+                  <div style={{ fontSize: 10, color: C.primary, marginTop: 1 }}>
                     {blocks.length} block{blocks.length !== 1 ? "s" : ""}
-                    {blocks.filter(b => b.is_required).length > 0 &&
-                      ` · ${blocks.filter(b => b.is_required).length} required`}
+                    {blocks.filter(b => b.is_required).length > 0
+                      && ` · ${blocks.filter(b => b.is_required).length} required`}
                   </div>
                 </div>
               </div>
 
               {/* blocks list */}
-              <div style={{ flex: 1, overflowY: "auto", padding: "16px 18px" }}>
+              <div style={{ flex: 1, overflowY: "auto", padding: "14px 16px" }}>
                 {blocks.length === 0 && (
-                  <div style={{ textAlign: "center", padding: "28px 0 16px", color: C.textMuted, fontSize: 12 }}>
-                    {immutable ? "No blocks in this section." : "No blocks yet — add one below."}
+                  <div style={{
+                    textAlign: "center", padding: "24px 0 12px",
+                    color: C.textMuted, fontSize: 12,
+                  }}>
+                    {immutable ? "No blocks in this section." : "No content blocks yet — add one below to define what contributors will fill in."}
                   </div>
                 )}
                 {blocks.map(blk => (
@@ -510,7 +706,11 @@ function Step2Structure({
                   />
                 ))}
                 {!immutable && (
-                  <div style={{ marginTop: 8, padding: "12px 14px", background: C.bg, border: `1px dashed ${C.border}`, borderRadius: 10 }}>
+                  <div style={{
+                    marginTop: 8, padding: "12px 14px",
+                    background: C.bg, border: `1.5px dashed ${C.border}`,
+                    borderRadius: 10,
+                  }}>
                     <AddBlockMenu onAdd={onAddBlock} />
                   </div>
                 )}
@@ -529,7 +729,7 @@ function Step2Structure({
         <button onClick={onNext} style={{
           padding: "9px 28px", background: C.primary, border: "none", borderRadius: 9, cursor: "pointer",
           fontSize: 13, fontWeight: 700, color: "#fff", fontFamily: "inherit",
-          boxShadow: "0 2px 6px rgba(79,70,229,0.3)",
+          boxShadow: "0 2px 6px rgba(37,99,235,0.3)",
         }}>Review →</button>
       </div>
     </div>
@@ -663,7 +863,7 @@ function Step3Review({ name, desc, reportType, version, sections, tmplStatus, pu
           <button onClick={onPublish} disabled={busy} style={{
             padding: "9px 28px", background: busy ? C.primaryMid : C.primary, border: "none", borderRadius: 9,
             cursor: busy ? "not-allowed" : "pointer", fontSize: 13, fontWeight: 700, color: "#fff",
-            fontFamily: "inherit", boxShadow: "0 2px 8px rgba(79,70,229,0.3)",
+            fontFamily: "inherit", boxShadow: "0 2px 8px rgba(37,99,235,0.3)",
           }}>{busy ? "Publishing…" : "Publish Template →"}</button>
         </div>
       </div>

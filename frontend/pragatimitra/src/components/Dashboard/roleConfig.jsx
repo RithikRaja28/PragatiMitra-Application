@@ -127,13 +127,15 @@ const FORM_DATA_SUB = [
 ];
 
 const KPI_INSTITUTE_SUB = [
-  { path: "kpi-management/create", element: <InstituteKpiPage /> },
-  { path: "kpi-management/edit",   element: <InstituteKpiPage /> },
+  { path: "kpi-management/create",  element: <InstituteKpiPage /> },
+  { path: "kpi-management/edit",    element: <InstituteKpiPage /> },
+  { path: "kpi-management/preview", element: <InstituteKpiPage /> },
 ];
 
 const KPI_DEPT_SUB = [
-  { path: "kpi-management/create", element: <DeptKpiPage /> },
-  { path: "kpi-management/edit",   element: <DeptKpiPage /> },
+  { path: "kpi-management/create",  element: <DeptKpiPage /> },
+  { path: "kpi-management/edit",    element: <DeptKpiPage /> },
+  { path: "kpi-management/preview", element: <DeptKpiPage /> },
 ];
 
 /* ══════════════════════════════════════════════════════════════
@@ -692,10 +694,23 @@ export const ROLE_CONFIG = {
           { id: "pc-templates", label: "Templates", icon: "LayoutList", permission: null, slug: "templates" },
         ],
       },
+      {
+        group: "Workflow",
+        items: [
+          {
+            id: "pc-workflow-templates",
+            label: "Workflow Templates",
+            icon: "GitBranch",
+            permission: null,
+            slug: "workflow-templates",
+          },
+        ],
+      },
     ],
     pages: {
-      "pc-sections":        <MyAssignedSectionsPage />,
-      "pc-templates": <TemplateListPage />,
+      "pc-sections":           <MyAssignedSectionsPage />,
+      "pc-templates":          <TemplateListPage />,
+      "pc-workflow-templates": <WorkflowTemplatePage />,
     },
     defaultPage: "pc-sections",
     user: { name: "Publication Cell", initials: "PC", org: "PragatiMitra" },

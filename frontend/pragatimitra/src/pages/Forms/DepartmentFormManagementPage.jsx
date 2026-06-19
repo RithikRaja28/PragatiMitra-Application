@@ -121,6 +121,7 @@ export default function DepartmentFormManagementPage() {
   const { apiFetch } = useApi();
   const { accessToken } = useAuth();
   const { selectedYear, academicYear } = useAcademicYear() || {};
+  const { lang } = useLanguage();
 
   const isCreate  = location.pathname.endsWith("/create");
   const isEdit    = location.pathname.endsWith("/edit");
@@ -205,9 +206,9 @@ export default function DepartmentFormManagementPage() {
   function renderActions(form) {
     return (
       <div style={{ display: "inline-flex", alignItems: "center", gap: 6, justifyContent: "flex-end" }}>
-        <Button variant="secondary" iconOnly title={t("View records", lang)} icon={<Eye size={18} strokeWidth={STROKE} />} onClick={() => openRecords(form)} />
+        <Button variant="secondary" iconOnly title={t("View records", lang)} icon={<Eye size={18} strokeWidth={STROKE} />} onClick={() => navigate(`${listPath}/records`, { state: { entity: form } })} />
         <Button variant="secondary" iconOnly title={t("Manage deadline", lang)} icon={<CalendarClock size={18} strokeWidth={STROKE} />} onClick={() => setDeadlineForm(form)} />
-        <Button variant="secondary" iconOnly title={t("Manage form", lang)} icon={<Settings2 size={18} strokeWidth={STROKE} />} onClick={() => openManage(form)} />
+        <Button variant="secondary" iconOnly title={t("Manage form", lang)} icon={<Settings2 size={18} strokeWidth={STROKE} />} onClick={() => navigate(`${listPath}/edit`, { state: { entity: form } })} />
         <Dropdown align="right" width={200} button={({ toggle }) => (<Button variant="secondary" iconOnly title={t("Export", lang)} icon={<Download size={18} strokeWidth={STROKE} />} onClick={toggle} />)}>
           <MenuLabel>{t("Export", lang)}</MenuLabel>
           <MenuItem icon={<FileCsv size={16} strokeWidth={STROKE} />} onClick={() => downloadDeptExport(form.id, "csv", accessToken, selectedYear)}>{t("Download CSV", lang)}</MenuItem>
@@ -284,25 +285,11 @@ export default function DepartmentFormManagementPage() {
         title={t("Department Forms", lang)}
         description={t("Create and manage your department's own forms — deadlines, lifecycle and lock — for the selected academic year.", lang)}
         actions={
-          <>
-            <Button variant="secondary" icon={<RefreshCw size={18} strokeWidth={STROKE} />} onClick={load}>Refresh</Button>
-            <Button variant="secondary" icon={<CalendarCog size={18} strokeWidth={STROKE} />} onClick={() => setCarryOpen(true)}>Set Up Year</Button>
-            <Button variant="primary" icon={<Plus size={18} strokeWidth={STROKE} />} onClick={() => navigate(`${listPath}/create`)}>Create Form</Button>
-          </>
+          <Button variant="primary" icon={<Plus size={18} strokeWidth={STROKE} />} onClick={() => navigate(`${listPath}/create`)}>{t("Create Form", lang)}</Button>
         }
       />
 
-      {carryOpen && (
-        <CarryForwardModal
-          year={selectedYear}
-          yearLabel={academicYear || (selectedYear != null ? `${selectedYear}–${selectedYear + 1}` : "")}
-          onClose={() => setCarryOpen(false)}
-          onDone={(msg) => { setCarryOpen(false); showToast(msg); load(); }}
-          showToast={showToast}
-        />
-      )}
-
-      {error && <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 12, padding: "12px 16px", fontSize: 13, color: "#B91C1C", marginBottom: 20 }}>{error}</div>}
+      {error &&<div style={{ background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 12, padding: "12px 16px", fontSize: 13, color: "#B91C1C", marginBottom: 20 }}>{error}</div>}
 
       <DataTable
         fill
@@ -334,7 +321,7 @@ export default function DepartmentFormManagementPage() {
             icon={searching ? <Search size={26} strokeWidth={1.5} /> : tab === "archived" ? <Archive size={26} strokeWidth={1.5} /> : <FilePlus size={26} strokeWidth={1.5} />}
             title={searching ? t("No forms match your search", lang) : tab === "archived" ? t("No archived forms", lang) : t("No department forms yet", lang)}
             description={searching ? t("Try a different name or clear the search.", lang) : tab === "archived" ? t("Forms archived for this academic year will appear here.", lang) : t("Create your department's first form for this academic year.", lang)}
-            action={!searching && tab === "active" ? <Button variant="primary" icon={<Plus size={18} strokeWidth={STROKE} />} onClick={openCreate}>{t("Create Form", lang)}</Button> : undefined}
+            action={!searching && tab === "active" ? <Button variant="primary" icon={<Plus size={18} strokeWidth={STROKE} />} onClick={() => navigate(`${listPath}/create`)}>{t("Create Form", lang)}</Button> : undefined}
           />
         }
       />

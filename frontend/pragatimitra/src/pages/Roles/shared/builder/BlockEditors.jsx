@@ -1278,32 +1278,41 @@ export const DEFAULT_CONTENT = {
 
 /* ── Add-block strip ──────────────────────────────────────────────────── */
 const BLOCK_MENU = [
-  { type: "PARAGRAPH",  icon: "P",   label: "Text" },
-  { type: "HEADING",    icon: "H",   label: "Heading" },
-  { type: "TABLE",      icon: "Tbl", label: "Table" },
-  { type: "LIST",       icon: "Lst", label: "List" },
-  { type: "IMAGE",      icon: "Img", label: "Image" },
-  { type: "IMAGE_GRID", icon: "Grd", label: "Image Grid" },
-  { type: "DIVIDER",    icon: "--",  label: "Divider" },
-  { type: "FILE",       icon: "Fil", label: "File" },
-  { type: "KPI",        icon: "KPI", label: "KPI Chart" },
+  { type: "PARAGRAPH",  icon: "P",   label: "Text",       hint: "Rich text paragraph — fill in with formatted text (font, size, color, alignment, bold/italic etc.)" },
+  { type: "HEADING",    icon: "H",   label: "Heading",    hint: "A section heading line — choose H1/H2/H3 and type the heading text." },
+  { type: "TABLE",      icon: "Tbl", label: "Table",      hint: "A grid of rows and columns — fill in headers and cell values, or import from a form." },
+  { type: "LIST",       icon: "Lst", label: "List",       hint: "A bulleted or numbered list — add one item per line." },
+  { type: "IMAGE",      icon: "Img", label: "Image",      hint: "A single image — upload or paste a URL, set width/alignment, add a caption." },
+  { type: "IMAGE_GRID", icon: "Grd", label: "Image Grid", hint: "Multiple images side by side — upload up to 4 images, each with its own caption." },
+  { type: "DIVIDER",    icon: "--",  label: "Divider",    hint: "A plain horizontal line used to visually separate content — no data to fill in." },
+  { type: "FILE",       icon: "Fil", label: "File",       hint: "A downloadable file attachment — provide a file name/label and its URL or path." },
 ];
 
 export function AddBlockMenu({ onAdd }) {
+  const [hovered, setHovered] = useState(null);
+  const active = BLOCK_MENU.find(t => t.type === hovered);
+
   return (
     <div>
       <div style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 8 }}>Add block</div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
         {BLOCK_MENU.map((t) => (
           <button key={t.type} onClick={() => onAdd(t.type)}
+            title={t.hint}
+            onMouseEnter={(e) => { setHovered(t.type); e.currentTarget.style.borderColor = "#7c3aed"; e.currentTarget.style.color = "#7c3aed"; e.currentTarget.style.background = "#faf5ff"; }}
+            onMouseLeave={(e) => { setHovered(null); e.currentTarget.style.borderColor = "#e2e8f0"; e.currentTarget.style.color = "#64748b"; e.currentTarget.style.background = "#fff"; }}
             style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 11px", border: "1px dashed #e2e8f0", borderRadius: 6, background: "#fff", fontSize: 12, color: "#64748b", cursor: "pointer", whiteSpace: "nowrap", transition: "all 0.15s" }}
-            onMouseEnter={(e) => { e.currentTarget.style.borderColor = "#7c3aed"; e.currentTarget.style.color = "#7c3aed"; e.currentTarget.style.background = "#faf5ff"; }}
-            onMouseLeave={(e) => { e.currentTarget.style.borderColor = "#e2e8f0"; e.currentTarget.style.color = "#64748b"; e.currentTarget.style.background = "#fff"; }}
           >
             <span style={{ fontSize: 11, fontWeight: 700 }}>{t.icon}</span>
             {t.label}
           </button>
         ))}
+      </div>
+      <div style={{
+        marginTop: 8, minHeight: 16, fontSize: 11, color: "#7c3aed",
+        fontStyle: active ? "normal" : "italic",
+      }}>
+        {active ? active.hint : "Hover a block type to see what it's for."}
       </div>
     </div>
   );

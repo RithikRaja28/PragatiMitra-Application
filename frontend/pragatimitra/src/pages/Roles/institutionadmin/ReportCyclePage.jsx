@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useApi }  from "../../../hooks/useApi";
 import { useAuth } from "../../../store/AuthContext";
 import FormScreen  from "../../../components/shared/FormScreen";
-import { S, Toast, isAuthError } from "../../../components/shared/formUtils";
+import { S, Toast, ConfirmDialog, isAuthError } from "../../../components/shared/formUtils";
 
 /* ─── Design tokens ────────────────────────────────────────────── */
 const C = {
@@ -103,6 +103,15 @@ function SkeletonRow() {
   );
 }
 
+/* ─── Year option generator ─────────────────────────────────────── */
+function generateYearOptions() {
+  const cur = new Date().getFullYear();
+  const opts = [];
+  for (let y = cur - 3; y <= cur + 5; y++) opts.push(`${y}-${y + 1}`);
+  return opts;
+}
+const YEAR_OPTIONS = generateYearOptions();
+
 /* ─── CycleForm ─────────────────────────────────────────────────── */
 function CycleForm({ mode, entity, onCreated, onSaved, onBack }) {
   const { apiFetch } = useApi();
@@ -133,31 +142,50 @@ function CycleForm({ mode, entity, onCreated, onSaved, onBack }) {
   useEffect(() => { nameRef.current?.focus(); }, []);
 
   function set(key, value) {
-    setForm(f => ({ ...f, [key]: value }));
     if (fieldErrors[key]) setFieldErrors(e => ({ ...e, [key]: "" }));
     if (submitError) setSubmitError("");
 
-    // Auto-fill reporting_year when start_date changes
-    if (key === "start_date" && value && !isEdit) {
+    // Auto-suggest reporting_year when start_date changes and year is still blank
+    if (key === "start_date" && value) {
       const yr = new Date(value).getFullYear();
-      setForm(f => ({ ...f, start_date: value, reporting_year: f.reporting_year || `${yr}-${yr+1}` }));
+      const suggested = `${yr}-${yr + 1}`;
+      setForm(f => ({
+        ...f,
+        start_date: value,
+        reporting_year: f.reporting_year || suggested,
+      }));
       return;
     }
+
+    setForm(f => ({ ...f, [key]: value }));
   }
 
   function validate() {
     const errs = {};
-    if (!form.name.trim())   errs.name       = "Cycle name is required.";
-    if (!form.start_date)    errs.start_date  = "Start date is required.";
-    if (!form.end_date)      errs.end_date    = "End date is required.";
-    if (form.start_date && form.end_date && form.end_date < form.start_date)
+    if (!form.name.trim()) errs.name = "Cycle name is required.";
+    if (!form.start_date)  errs.start_date = "Start date is required.";
+    if (!form.end_date)    errs.end_date = "End date is required.";
+
+    const sd  = form.start_date;           // "YYYY-MM-DD"
+    const ed  = form.end_date;             // "YYYY-MM-DD"
+    const sub = form.submission_deadline;  // "YYYY-MM-DDTHH:MM" or ""
+    const rev = form.review_deadline;
+    const app = form.approval_deadline;
+
+    if (sd && ed && ed < sd)
       errs.end_date = "End date must be on or after the start date.";
-    if (form.submission_deadline && form.review_deadline &&
-        form.review_deadline < form.submission_deadline)
-      errs.review_deadline = "Review deadline must be after submission deadline.";
-    if (form.review_deadline && form.approval_deadline &&
-        form.approval_deadline < form.review_deadline)
-      errs.approval_deadline = "Approval deadline must be after review deadline.";
+
+    // Deadline chain: start < submission < review < approval < end
+    if (sd && sub && sub.slice(0, 10) < sd)
+      errs.submission_deadline = "Submission deadline must be after the start date.";
+    if (sub && rev && rev < sub)
+      errs.review_deadline = "Review deadline must be after the submission deadline.";
+    if (rev && app && app < rev)
+      errs.approval_deadline = "Approval deadline must be after the review deadline.";
+    if (app && ed && app.slice(0, 10) > ed)
+      errs.approval_deadline = (errs.approval_deadline ? errs.approval_deadline + " " : "") +
+        "Approval deadline must be on or before the end date.";
+
     setFieldErrors(errs);
     return Object.keys(errs).length === 0;
   }
@@ -256,17 +284,19 @@ function CycleForm({ mode, entity, onCreated, onSaved, onBack }) {
 
       <div>
         <label style={S.label}>Reporting Year</label>
-        <input
-          type="text"
-          placeholder="e.g. 2025-2026"
+        <select
           value={form.reporting_year}
           onChange={e => set("reporting_year", e.target.value)}
           disabled={submitting}
-          maxLength={20}
-          style={S.input(false)}
-        />
+          style={S.select(false)}
+        >
+          <option value="">— Select year —</option>
+          {YEAR_OPTIONS.map(y => (
+            <option key={y} value={y}>{y}</option>
+          ))}
+        </select>
         <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 4 }}>
-          Used as the label for this cycle. Auto-suggested from the start date.
+          Auto-suggested from the start date. Covers the academic year this cycle belongs to.
         </div>
       </div>
 
@@ -381,7 +411,8 @@ export default function ReportCyclePage() {
   const [tab,      setTab]      = useState("ALL");
   const [editItem, setEditItem] = useState(null);
   const [toast,    setToast]    = useState(null);
-  const [actioning, setActioning] = useState(null); // cycle id being closed/archived
+  const [actioning, setActioning] = useState(null); // cycle id being actioned
+  const [confirm,  setConfirm]  = useState(null);  // ConfirmDialog props | null
 
   const toastTimer = useRef(null);
   function showToast(message, type = "success") {
@@ -409,28 +440,80 @@ export default function ReportCyclePage() {
   useEffect(() => { fetchCycles(); }, [fetchCycles]);
 
   /* ── Status transition ────────────────────────────────────── */
-  async function handleClose(cycle) {
-    if (!window.confirm(`Close cycle "${cycle.name}"?\n\nThis is a one-way action. Closed cycles cannot be made active again.`)) return;
-    setActioning(cycle.id);
-    try {
-      const res  = await apiFetch(`/api/builder/cycles/${cycle.id}/close`, { method: "PATCH" });
-      const data = await res.json();
-      if (data.success) { showToast("Cycle closed successfully."); fetchCycles(); }
-      else showToast(data.message || "Failed to close cycle.", "error");
-    } catch { showToast("Network error.", "error"); }
-    finally { setActioning(null); }
+  function handleClose(cycle) {
+    setConfirm({
+      title: "Close this cycle?",
+      message: `"${cycle.name}" will be moved to CLOSED status. You can reactivate it later if needed.`,
+      variant: "warning",
+      confirmLabel: "Close Cycle",
+      onConfirm: async () => {
+        setActioning(cycle.id);
+        try {
+          const res  = await apiFetch(`/api/builder/cycles/${cycle.id}/close`, { method: "PATCH" });
+          const data = await res.json();
+          if (data.success) { showToast("Cycle closed successfully."); fetchCycles(); }
+          else showToast(data.message || "Failed to close cycle.", "error");
+        } catch { showToast("Network error.", "error"); }
+        finally { setActioning(null); }
+      },
+    });
   }
 
-  async function handleArchive(cycle) {
-    if (!window.confirm(`Archive cycle "${cycle.name}"?\n\nArchived cycles are read-only and hidden from the default list.`)) return;
-    setActioning(cycle.id);
-    try {
-      const res  = await apiFetch(`/api/builder/cycles/${cycle.id}/archive`, { method: "PATCH" });
-      const data = await res.json();
-      if (data.success) { showToast("Cycle archived."); fetchCycles(); }
-      else showToast(data.message || "Failed to archive cycle.", "error");
-    } catch { showToast("Network error.", "error"); }
-    finally { setActioning(null); }
+  function handleArchive(cycle) {
+    setConfirm({
+      title: "Archive this cycle?",
+      message: `"${cycle.name}" will become read-only and hidden from the default list.`,
+      variant: "warning",
+      confirmLabel: "Archive",
+      onConfirm: async () => {
+        setActioning(cycle.id);
+        try {
+          const res  = await apiFetch(`/api/builder/cycles/${cycle.id}/archive`, { method: "PATCH" });
+          const data = await res.json();
+          if (data.success) { showToast("Cycle archived."); fetchCycles(); }
+          else showToast(data.message || "Failed to archive cycle.", "error");
+        } catch { showToast("Network error.", "error"); }
+        finally { setActioning(null); }
+      },
+    });
+  }
+
+  function handleReactivate(cycle) {
+    setConfirm({
+      title: "Reactivate this cycle?",
+      message: `"${cycle.name}" will be moved back to ACTIVE status.`,
+      variant: "default",
+      confirmLabel: "Reactivate",
+      onConfirm: async () => {
+        setActioning(cycle.id);
+        try {
+          const res  = await apiFetch(`/api/builder/cycles/${cycle.id}/reactivate`, { method: "PATCH" });
+          const data = await res.json();
+          if (data.success) { showToast("Cycle reactivated."); fetchCycles(); }
+          else showToast(data.message || "Failed to reactivate cycle.", "error");
+        } catch { showToast("Network error.", "error"); }
+        finally { setActioning(null); }
+      },
+    });
+  }
+
+  function handleDelete(cycle) {
+    setConfirm({
+      title: "Delete this cycle?",
+      message: `"${cycle.name}" will be permanently deleted. This cannot be undone. Cycles with existing reports cannot be deleted.`,
+      variant: "danger",
+      confirmLabel: "Delete",
+      onConfirm: async () => {
+        setActioning(cycle.id);
+        try {
+          const res  = await apiFetch(`/api/builder/cycles/${cycle.id}`, { method: "DELETE" });
+          const data = await res.json();
+          if (data.success) { showToast("Cycle deleted."); fetchCycles(); }
+          else showToast(data.message || "Failed to delete cycle.", "error");
+        } catch { showToast("Network error.", "error"); }
+        finally { setActioning(null); }
+      },
+    });
   }
 
   /* ── Form callbacks ───────────────────────────────────────── */
@@ -470,6 +553,12 @@ export default function ReportCyclePage() {
       background: C.bg, minHeight: "100%", padding: 28,
     }}>
       {toast && <Toast message={toast.message} type={toast.type} />}
+      {confirm && (
+        <ConfirmDialog
+          {...confirm}
+          onCancel={() => setConfirm(null)}
+        />
+      )}
 
       <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}`}</style>
 
@@ -670,7 +759,7 @@ export default function ReportCyclePage() {
                               Edit
                             </button>
 
-                            {/* Close — only for ACTIVE */}
+                            {/* Close — ACTIVE only */}
                             {cycle.status === "ACTIVE" && (
                               <button
                                 onClick={() => handleClose(cycle)}
@@ -680,15 +769,31 @@ export default function ReportCyclePage() {
                                   border: "1px solid #fde68a", background: "#fffbeb",
                                   fontSize: 11, fontWeight: 600, color: C.amber,
                                   cursor: isActioning ? "not-allowed" : "pointer",
-                                  opacity: isActioning ? 0.6 : 1,
-                                  whiteSpace: "nowrap",
+                                  opacity: isActioning ? 0.6 : 1, whiteSpace: "nowrap",
                                 }}
                               >
                                 {isActioning ? "…" : "Close"}
                               </button>
                             )}
 
-                            {/* Archive — only for CLOSED */}
+                            {/* Reactivate — CLOSED only (toggle back to ACTIVE) */}
+                            {cycle.status === "CLOSED" && (
+                              <button
+                                onClick={() => handleReactivate(cycle)}
+                                disabled={isActioning}
+                                style={{
+                                  padding: "5px 12px", borderRadius: 7,
+                                  border: "1px solid #bbf7d0", background: "#f0fdf4",
+                                  fontSize: 11, fontWeight: 600, color: C.success,
+                                  cursor: isActioning ? "not-allowed" : "pointer",
+                                  opacity: isActioning ? 0.6 : 1, whiteSpace: "nowrap",
+                                }}
+                              >
+                                {isActioning ? "…" : "Reactivate"}
+                              </button>
+                            )}
+
+                            {/* Archive — CLOSED only */}
                             {cycle.status === "CLOSED" && (
                               <button
                                 onClick={() => handleArchive(cycle)}
@@ -698,13 +803,27 @@ export default function ReportCyclePage() {
                                   border: "1px solid #e2e8f0", background: "#f8fafc",
                                   fontSize: 11, fontWeight: 600, color: "#64748b",
                                   cursor: isActioning ? "not-allowed" : "pointer",
-                                  opacity: isActioning ? 0.6 : 1,
-                                  whiteSpace: "nowrap",
+                                  opacity: isActioning ? 0.6 : 1, whiteSpace: "nowrap",
                                 }}
                               >
                                 {isActioning ? "…" : "Archive"}
                               </button>
                             )}
+
+                            {/* Delete — no reports required */}
+                            <button
+                              onClick={() => handleDelete(cycle)}
+                              disabled={isActioning}
+                              style={{
+                                padding: "5px 12px", borderRadius: 7,
+                                border: "1px solid #fecaca", background: "#fef2f2",
+                                fontSize: 11, fontWeight: 600, color: C.danger,
+                                cursor: isActioning ? "not-allowed" : "pointer",
+                                opacity: isActioning ? 0.6 : 1, whiteSpace: "nowrap",
+                              }}
+                            >
+                              {isActioning ? "…" : "Delete"}
+                            </button>
                           </div>
                         </td>
                       </tr>
@@ -724,7 +843,7 @@ export default function ReportCyclePage() {
           }}>
             <span>{cycles.length} cycle{cycles.length !== 1 ? "s" : ""} shown</span>
             <span>
-              ACTIVE → CLOSED → ARCHIVED (one-way transitions)
+              ACTIVE ⇌ CLOSED → ARCHIVED · Delete only if no reports exist
             </span>
           </div>
         )}

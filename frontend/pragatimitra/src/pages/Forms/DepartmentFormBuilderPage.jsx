@@ -305,7 +305,7 @@ export default function DepartmentFormBuilderPage({ mode, initialData, onDone, o
                   </div>
                 )}
                 {fields.map((f, i) => (
-                  <FieldRow key={f._key} field={f} index={i} total={fields.length} languages={languages} onChange={updateField} onRemove={removeField} onMove={moveField} isEdit={isEdit} />
+                  <FieldRow key={f._key} field={f} index={i} total={fields.length} onChange={updateField} onRemove={removeField} onMove={moveField} isEdit={isEdit} />
                 ))}
                 <Button variant="secondary" icon={<Plus size={16} />} fullWidth onClick={() => setFields((p) => [...p, blankField()])}>{t("Add Field", lang)}</Button>
                 {error && <div style={{ marginTop: 14, background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 8, padding: "10px 14px", fontSize: 13, color: "#B91C1C" }}>{error}</div>}

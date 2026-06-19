@@ -229,6 +229,67 @@ router.patch("/:id/archive", requireRole(["super_admin", "institute_admin"]), as
   }
 });
 
+/* ── PATCH /:id/reactivate ── reactivate a closed cycle ────────────────────── */
+router.patch("/:id/reactivate", requireRole(["super_admin", "institute_admin"]), async (req, res) => {
+  const pool = req.app.locals.pool;
+  try {
+    const { id } = req.params;
+    if (!isUUID(id)) return res.status(400).json({ success: false, message: "Invalid cycle id" });
+
+    const { rows } = await pool.query(
+      `UPDATE public.reporting_cycles
+       SET status = 'ACTIVE', closed_at = NULL, closed_by = NULL, updated_by = $1
+       WHERE id = $2 AND status = 'CLOSED' RETURNING *`,
+      [req.user.userId, id]
+    );
+    if (!rows.length) return res.status(404).json({ success: false, message: "Cycle not found or not CLOSED" });
+
+    await writeAuditLog(req, {
+      actionType: "CYCLE_REACTIVATED", entityType: "CYCLE", entityId: id,
+      status: "SUCCESS", message: `Cycle reactivated`,
+    });
+
+    return res.json({ success: true, data: rows[0] });
+  } catch (err) {
+    logger.error("cycles PATCH /:id/reactivate", { ...getLogContext(req), err: err.message });
+    return res.status(500).json({ success: false, message: "Failed to reactivate cycle" });
+  }
+});
+
+/* ── DELETE /:id ── delete a cycle ─────────────────────────────────────────── */
+router.delete("/:id", requireRole(["super_admin", "institute_admin"]), async (req, res) => {
+  const pool = req.app.locals.pool;
+  try {
+    const { id } = req.params;
+    if (!isUUID(id)) return res.status(400).json({ success: false, message: "Invalid cycle id" });
+
+    const instId = callerInstitution(req);
+
+    // Block deletion if reports exist under this cycle
+    const { rows: rpts } = await pool.query(
+      `SELECT COUNT(*) FROM public.reports WHERE cycle_id = $1 AND deleted_at IS NULL`, [id]
+    );
+    if (Number(rpts[0].count) > 0)
+      return res.status(409).json({ success: false, message: "Cannot delete a cycle that has reports. Archive it instead." });
+
+    const { rows } = await pool.query(
+      `DELETE FROM public.reporting_cycles WHERE id = $1 AND institution_id = $2 RETURNING id, name`,
+      [id, instId]
+    );
+    if (!rows.length) return res.status(404).json({ success: false, message: "Cycle not found" });
+
+    await writeAuditLog(req, {
+      actionType: "CYCLE_DELETED", entityType: "CYCLE", entityId: id,
+      status: "SUCCESS", message: `Cycle "${rows[0].name}" deleted`,
+    });
+
+    return res.json({ success: true, message: "Cycle deleted" });
+  } catch (err) {
+    logger.error("cycles DELETE /:id", { ...getLogContext(req), err: err.message });
+    return res.status(500).json({ success: false, message: "Failed to delete cycle" });
+  }
+});
+
 /* ── GET /:id/departments ── list dept deadline overrides ───────────────────── */
 router.get("/:id/departments", async (req, res) => {
   const pool = req.app.locals.pool;

@@ -25,6 +25,14 @@ const loginLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+const superAdminLoginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  message: { success: false, message: "Too many login attempts. Try again after 15 minutes." },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 const refreshLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 30,
@@ -360,6 +368,230 @@ router.post("/login", loginLimiter, async (req, res) => {
 
   } catch (err) {
     logger.error("POST /api/auth/login failed", { ...getLogContext(req), stack: err.stack });
+    return res.status(500).json({ success: false, message: "An internal server error occurred." });
+  }
+});
+
+/* ── POST /api/auth/super-admin/register ──
+   Creates a new super admin account.
+   Protected by SUPER_ADMIN_SETUP_KEY from .env so only authorised
+   personnel (who know the key) can register a super admin account. ── */
+router.post("/super-admin/register", superAdminLoginLimiter, async (req, res) => {
+  const pool = req.app.locals.pool;
+  const { fullName, email, password, setupKey } = req.body;
+
+  // Validate setup key first — fail fast before touching the DB
+  const expectedKey = process.env.SUPER_ADMIN_SETUP_KEY;
+  if (!expectedKey || setupKey !== expectedKey)
+    return res.status(403).json({ success: false, message: "Invalid setup key." });
+
+  if (!fullName || typeof fullName !== "string" || !fullName.trim())
+    return res.status(400).json({ success: false, message: "Full name is required." });
+  if (!email || typeof email !== "string")
+    return res.status(400).json({ success: false, message: "Email is required." });
+  if (!password || typeof password !== "string")
+    return res.status(400).json({ success: false, message: "Password is required." });
+  if (password.length < 8)
+    return res.status(400).json({ success: false, message: "Password must be at least 8 characters." });
+
+  const normalizedEmail = email.trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail))
+    return res.status(400).json({ success: false, message: "Invalid email format." });
+
+  try {
+    // Check email is not already taken
+    const { rows: existing } = await pool.query(
+      "SELECT id FROM users WHERE LOWER(email) = $1",
+      [normalizedEmail]
+    );
+    if (existing.length)
+      return res.status(409).json({ success: false, message: "An account with this email already exists." });
+
+    // Resolve super_admin role
+    const { rows: roleRows } = await pool.query(
+      "SELECT id FROM roles WHERE name = 'super_admin' LIMIT 1"
+    );
+    if (!roleRows.length)
+      return res.status(500).json({ success: false, message: "Super admin role not configured." });
+
+    const superAdminRoleId = roleRows[0].id;
+    const passwordHash     = await bcrypt.hash(password, 12);
+
+    const client = await pool.connect();
+    let newUserId;
+    try {
+      await client.query("BEGIN");
+
+      const { rows: [{ id }] } = await client.query(
+        `INSERT INTO users
+           (full_name, email, password_hash, account_status, must_change_password, is_temporary_password)
+         VALUES ($1, $2, $3, 'ACTIVE', false, false)
+         RETURNING id`,
+        [fullName.trim(), normalizedEmail, passwordHash]
+      );
+      newUserId = id;
+
+      await client.query(
+        "INSERT INTO user_roles (user_id, role_id, assigned_by) VALUES ($1, $2, $1)",
+        [newUserId, superAdminRoleId]
+      );
+
+      await client.query("COMMIT");
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
+
+    await writeAuditLog(req, {
+      actionType:     "SUPER_ADMIN_REGISTERED",
+      entityType:     "USER",
+      entityId:       newUserId,
+      overrideUserId: newUserId,
+      status:         "SUCCESS",
+      message:        `Super admin account created for ${normalizedEmail}`,
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: "Super admin account created successfully. You can now sign in.",
+    });
+
+  } catch (err) {
+    logger.error("POST /api/auth/super-admin/register failed", { ...getLogContext(req), stack: err.stack });
+    return res.status(500).json({ success: false, message: "An internal server error occurred." });
+  }
+});
+
+/* ── POST /api/auth/super-admin/login ── */
+router.post("/super-admin/login", superAdminLoginLimiter, async (req, res) => {
+  const pool = req.app.locals.pool;
+  const { email, password } = req.body;
+
+  if (!email || typeof email !== "string")
+    return res.status(400).json({ success: false, message: "Email is required." });
+  if (!password || typeof password !== "string")
+    return res.status(400).json({ success: false, message: "Password is required." });
+
+  const normalizedEmail = email.trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail))
+    return res.status(400).json({ success: false, message: "Invalid email format." });
+
+  try {
+    const user = await fetchUser(
+      pool,
+      "WHERE LOWER(u.email) = $1 AND u.account_status != 'DELETED'",
+      [normalizedEmail]
+    );
+
+    if (!user) {
+      await writeAuditLog(req, {
+        actionType: "SUPER_ADMIN_LOGIN_FAILED",
+        entityType: "SESSION",
+        status:     "FAILURE",
+        message:    `Super admin portal login attempt for unknown email: ${normalizedEmail}`,
+        metadata:   { reason: "user_not_found", attempted_email: normalizedEmail },
+      });
+      return res.status(401).json({ success: false, message: "Invalid email or password." });
+    }
+
+    if (user.account_status !== "ACTIVE") {
+      await writeAuditLog(req, {
+        actionType:     "SUPER_ADMIN_LOGIN_FAILED",
+        entityType:     "SESSION",
+        entityId:       user.id,
+        overrideUserId: user.id,
+        status:         "FAILURE",
+        message:        `Super admin portal login blocked for ${user.email} — account ${user.account_status}`,
+        metadata:       { reason: "account_not_active", account_status: user.account_status },
+      });
+      return res.status(403).json({
+        success: false,
+        message: user.account_status === "INACTIVE"
+          ? "Your account is inactive. Contact your administrator."
+          : "Your account has been suspended. Contact your administrator.",
+      });
+    }
+
+    const passwordMatch = await bcrypt.compare(password, user.password_hash);
+
+    if (!passwordMatch) {
+      await writeAuditLog(req, {
+        actionType:     "SUPER_ADMIN_LOGIN_FAILED",
+        entityType:     "SESSION",
+        entityId:       user.id,
+        overrideUserId: user.id,
+        status:         "FAILURE",
+        message:        `Failed super admin portal login for ${user.email} — incorrect password`,
+        metadata:       { reason: "invalid_password" },
+      });
+      return res.status(401).json({ success: false, message: "Invalid email or password." });
+    }
+
+    // Role gate: must have super_admin before any session is created
+    const isSuperAdmin = (user.roles || []).some((r) => (r?.name || r) === "super_admin");
+
+    if (!isSuperAdmin) {
+      await writeAuditLog(req, {
+        actionType:     "SUPER_ADMIN_LOGIN_FAILED",
+        entityType:     "SESSION",
+        entityId:       user.id,
+        overrideUserId: user.id,
+        status:         "FAILURE",
+        message:        `Unauthorized super admin portal access by ${user.email} (insufficient role)`,
+        metadata:       {
+          reason:       "insufficient_role",
+          actual_roles: (user.roles || []).map((r) => r.name),
+        },
+      });
+      return res.status(403).json({
+        success: false,
+        message: "Access denied. This portal is restricted to Super Administrators.",
+      });
+    }
+
+    // Single session: wipe all previous sessions for this user
+    await pool.query("DELETE FROM sessions WHERE user_id = $1", [user.id]);
+
+    const rawRefreshToken = generateRefreshToken();
+    const expiresAt       = new Date(Date.now() + REFRESH_TOKEN_TTL_MS);
+
+    const { rows: [{ id: sessionId }] } = await pool.query(
+      `INSERT INTO sessions (user_id, token_hash, expires_at)
+       VALUES ($1, $2, $3)
+       RETURNING id`,
+      [user.id, hashToken(rawRefreshToken), expiresAt]
+    );
+
+    await pool.query("UPDATE users SET last_login_at = now() WHERE id = $1", [user.id]);
+
+    await enrichWithNodalOfficerRole(pool, user);
+
+    await writeAuditLog(req, {
+      actionType:     "SUPER_ADMIN_LOGIN_SUCCESS",
+      entityType:     "SESSION",
+      entityId:       user.id,
+      overrideUserId: user.id,
+      status:         "SUCCESS",
+      message:        `Super admin ${user.full_name} (${user.email}) signed in via super admin portal`,
+      metadata:       {
+        session_id: sessionId,
+        roles:      (user.roles || []).map((r) => r.name),
+      },
+    });
+
+    res.cookie("pm_refresh", rawRefreshToken, cookieOptions());
+
+    return res.status(200).json({
+      success:     true,
+      message:     "Login successful.",
+      accessToken: signAccessToken(buildAccessPayload(user, sessionId)),
+      user:        buildUserObject(user),
+    });
+
+  } catch (err) {
+    logger.error("POST /api/auth/super-admin/login failed", { ...getLogContext(req), stack: err.stack });
     return res.status(500).json({ success: false, message: "An internal server error occurred." });
   }
 });

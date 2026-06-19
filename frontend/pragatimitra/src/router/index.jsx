@@ -116,8 +116,10 @@ function collectRouteSlugs() {
 }
 
 /* ── Lazy page imports ── */
-const Login          = lazy(() => import("../pages/Login/Login"));
-const ChangePassword = lazy(() => import("../pages/ChangePassword/ChangePassword"));
+const Login            = lazy(() => import("../pages/Login/Login"));
+const SuperAdminLogin  = lazy(() => import("../pages/Login/SuperAdminLogin"));
+const SuperAdminSignup = lazy(() => import("../pages/Login/SuperAdminSignup"));
+const ChangePassword   = lazy(() => import("../pages/ChangePassword/ChangePassword"));
 const NotFound       = lazy(() => import("../pages/NotFound"));
 const Unauthorized   = lazy(() => Promise.resolve({ default: () => <div style={{ padding: 40 }}><h2>403 — Access Denied</h2></div> }));
 
@@ -130,7 +132,9 @@ const router = createBrowserRouter([
   {
     element: <AuthLayout />,
     children: [
-      { path: "login", element: <Login /> },
+      { path: "login",        element: <Login /> },
+      { path: "admin-login",  element: <SuperAdminLogin /> },
+      { path: "admin-signup", element: <SuperAdminSignup /> },
     ],
   },
 
