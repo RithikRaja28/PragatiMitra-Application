@@ -368,6 +368,22 @@ async function generateDocx(report, sections, outPath, opts) {
     TextWrappingType, TextWrappingSide,
   } = docx;
 
+  // When a background image is present, ensure text stays readable against any image color
+  const hasBg = !!report.bg_image_url;
+  const C = {
+    primary:   "1F3864",
+    secondary: "2E4A7A",
+    tertiary:  "374151",
+    body:      hasBg ? "000000" : "111827",
+    gray:      hasBg ? "374151" : "6B7280",
+    lightGray: hasBg ? "374151" : "9CA3AF",
+    tblHead:   "D0CECE",
+    tblAlt:    "F9FAFB",
+    divider:   "9CA3AF",
+    border:    "D1D5DB",
+    link:      "1D4ED8",
+  };
+
   const sectionNumbers = opts.include_numbering ? buildSectionNumbers(sections) : new Map();
 
   /* ── Inline style → formatting properties ── */
@@ -1137,22 +1153,30 @@ async function generateDocx(report, sections, outPath, opts) {
     ],
   });
 
-  // ── Footer: logo (if available) on left + page numbers on right ──
+  // ── Footer: institution name left · page number center · logo right ──
+  const centerTabPos = Math.round(TabStopPosition.MAX / 2);
   const docFooter = new Footer({
     children: [
       new Paragraph({
         children: [
-          // Logo image replaces plain institution name when available
-          ...(logoBuf
-            ? (() => { try { return [new ImageRun({ data: logoBuf, transformation: { width: 72, height: 27 } })]; } catch { return []; } })()
-            : [new TextRun({ text: report.institution_name || "", size: 15, color: C.lightGray })]
-          ),
+          // Left: institution name
+          new TextRun({ text: report.institution_name || "", size: 15, color: C.lightGray }),
+          // Tab to center
           new TextRun({ text: "\t", size: 15 }),
-          new TextRun({ children: [PageNumber.CURRENT], size: 15, color: C.lightGray }),
-          new TextRun({ text: " / ", size: 15, color: C.lightGray }),
-          new TextRun({ children: [PageNumber.TOTAL_PAGES], size: 15, color: C.lightGray }),
+          // Center: page number only (just "1", "2" — no total)
+          new TextRun({ children: [PageNumber.CURRENT], size: 18, bold: true, color: C.lightGray }),
+          // Tab to right
+          new TextRun({ text: "\t", size: 15 }),
+          // Right: logo image (bigger) or fallback empty
+          ...(logoBuf
+            ? (() => { try { return [new ImageRun({ data: logoBuf, transformation: { width: 96, height: 36 } })]; } catch { return []; } })()
+            : []
+          ),
         ],
-        tabStops: [{ type: TabStopType.RIGHT, position: TabStopPosition.MAX }],
+        tabStops: [
+          { type: TabStopType.CENTER, position: centerTabPos },
+          { type: TabStopType.RIGHT,  position: TabStopPosition.MAX },
+        ],
         border: { top: { color: C.border, space: 1, style: BorderStyle.SINGLE, size: 2 } },
         spacing: { before: 0 },
       }),
@@ -1170,8 +1194,7 @@ async function generateDocx(report, sections, outPath, opts) {
         properties: {
           page: { margin: { top: 0, right: 0, bottom: 0, left: 0 } },
         },
-        headers: {},
-        footers: {},
+        // Omit headers/footers entirely so the cover page has none
         children: [
           new Paragraph({
             children: [new ImageRun({ data: coverBuf, transformation: { width: 794, height: 1122 } })],
@@ -1180,7 +1203,9 @@ async function generateDocx(report, sections, outPath, opts) {
           }),
         ],
       });
-    } catch { /* skip broken cover */ }
+    } catch (e) {
+      logger.error("compile DOCX cover section", { err: e.message });
+    }
   }
 
   docSections.push({
@@ -1254,14 +1279,18 @@ async function generatePdf(report, sections, outPath, opts) {
           <span>${escHtml(report.title || "")}</span>
         </div>`,
       footerTemplate: `
-        <div style="font-size:8px;font-family:'Times New Roman',Times,serif;color:#9ca3af;
+        <div style="font-size:8px;font-family:'Times New Roman',Times,serif;color:#374151;
                     width:100%;padding:4px 25mm 6px;box-sizing:border-box;
-                    display:flex;justify-content:space-between;align-items:center;border-top:1px solid #e5e7eb;">
-          ${logoDataUrl
-            ? `<img src="${logoDataUrl}" style="height:18px;max-width:110px;object-fit:contain;display:block;">`
-            : `<span>${escHtml(report.institution_name || "")}</span>`
-          }
-          <span><span class="pageNumber"></span> / <span class="totalPages"></span></span>
+                    display:grid;grid-template-columns:1fr auto 1fr;align-items:center;
+                    border-top:1px solid #e5e7eb;">
+          <span style="text-align:left;">${escHtml(report.institution_name || "")}</span>
+          <span style="text-align:center;font-weight:700;font-size:9px;" class="pageNumber"></span>
+          <span style="text-align:right;">
+            ${logoDataUrl
+              ? `<img src="${logoDataUrl}" style="height:24px;max-width:130px;object-fit:contain;vertical-align:middle;">`
+              : ""
+            }
+          </span>
         </div>`,
       margin: { top: "22mm", bottom: "22mm", left: "20mm", right: "20mm" },
     });
@@ -1277,6 +1306,7 @@ async function generatePdf(report, sections, outPath, opts) {
 
 function buildHtml(report, sections, opts, assets = {}) {
   const { logoDataUrl = null, bgDataUrl = null, coverDataUrl = null } = assets;
+  const hasBg = !!(bgDataUrl || report.bg_image_url);
   const sectionNumbers = opts.include_numbering ? buildSectionNumbers(sections) : new Map();
 
   /* ── Block → HTML, matching WordBlock component ── */
@@ -1561,6 +1591,19 @@ hr.divider { border: none; border-top: 1px solid #9ca3af; margin: 10px 0 12px; }
   .section[style*="page-break-before"] { page-break-before: always; }
   .toc-page { page-break-after: always; }
 }
+${hasBg ? `
+/* ── Background image: ensure all text is dark enough to be readable ── */
+body, .para, .blk-list, .kpi-simple, .data-tbl td,
+.sec-desc, .img-cap, .kpi-cap, .file-blk {
+  color: #111827 !important;
+}
+.sec-h1  { color: #000 !important; }
+.sec-h2  { color: #1a1a1a !important; }
+.sec-h3  { color: #222 !important; }
+.ch1     { color: #000 !important; }
+.ch2     { color: #111 !important; }
+.ch3     { color: #222 !important; }
+` : ""}
 </style>
 </head>
 <body style="position:relative;">
