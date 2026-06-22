@@ -84,8 +84,9 @@ export function WordBlock({ block }) {
     }
 
     case "TABLE": {
-      const headers = c.headers || [];
-      const rows    = c.rows    || [];
+      const isFormImport = c.source === "form_import";
+      const headers = isFormImport ? (c.columns || []).map(col => col.label || col.key) : (c.headers || []);
+      const rows    = c.rows || [];
       const cell    = { border: "1px solid #9ca3af", padding: "4px 7px", fontFamily: DOC_FONT, fontSize: 10, color: "#111827", verticalAlign: "top" };
       return (
         <div style={{ margin: "8px 0 12px", overflowX: "auto" }}>
@@ -102,9 +103,14 @@ export function WordBlock({ block }) {
             <tbody>
               {rows.map((row, ri) => (
                 <tr key={ri} style={{ background: ri % 2 === 0 ? "#fff" : "#f9fafb" }}>
-                  {row.map((val, ci) => (
-                    <td key={ci} style={cell}>{val}</td>
-                  ))}
+                  {isFormImport
+                    ? (c.columns || []).map((col, ci) => (
+                        <td key={ci} style={cell}>{row?.[col.key] != null ? String(row[col.key]) : ""}</td>
+                      ))
+                    : (Array.isArray(row) ? row : []).map((val, ci) => (
+                        <td key={ci} style={cell}>{val}</td>
+                      ))
+                  }
                 </tr>
               ))}
             </tbody>
@@ -120,6 +126,59 @@ export function WordBlock({ block }) {
         <Tag style={{ fontFamily: DOC_FONT, fontSize: 11, color: "#111827", paddingLeft: 20, lineHeight: 1.75, margin: "4px 0 10px" }}>
           {items.map((it, i) => <li key={i} style={{ marginBottom: 2 }}>{it}</li>)}
         </Tag>
+      );
+    }
+
+    case "KPI": {
+      const opts      = c.compile_options || {};
+      const showChart = opts.show_chart      !== false;
+      const showTable = opts.show_data_table !== false;
+      const data      = c.data || {};
+      const columns   = data.columns || [];
+      const series    = data.series  || [];
+      const totals    = data.totals  || [];
+      const cell = { border: "1px solid #9ca3af", padding: "4px 7px", fontFamily: DOC_FONT, fontSize: 10, color: "#111827", verticalAlign: "top" };
+      return (
+        <div style={{ margin: "8px 0 12px" }}>
+          {showChart && c.svg_data && (
+            <div style={{ overflow: "hidden", lineHeight: 0 }} dangerouslySetInnerHTML={{ __html: c.svg_data }} />
+          )}
+          {showTable && columns.length > 0 && (
+            <table style={{ borderCollapse: "collapse", width: "100%", marginTop: 8 }}>
+              <thead>
+                <tr>
+                  <th style={{ ...cell, background: "#D0CECE", fontWeight: 700, textAlign: "left" }}>Series</th>
+                  {columns.map((col, i) => (
+                    <th key={i} style={{ ...cell, background: "#D0CECE", fontWeight: 700, textAlign: "right" }}>{col}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {series.map((s, si) => (
+                  <tr key={si} style={{ background: si % 2 === 0 ? "#fff" : "#f9fafb" }}>
+                    <td style={{ ...cell, fontWeight: 600 }}>{s.display_name || s.name}</td>
+                    {(s.values || []).map((v, vi) => (
+                      <td key={vi} style={{ ...cell, textAlign: "right" }}>{v}</td>
+                    ))}
+                  </tr>
+                ))}
+                {totals.length > 0 && (
+                  <tr>
+                    <td style={{ ...cell, fontWeight: 700 }}>Total</td>
+                    {totals.map((v, vi) => (
+                      <td key={vi} style={{ ...cell, textAlign: "right", fontWeight: 700 }}>{v}</td>
+                    ))}
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          )}
+          {opts.caption && (
+            <div style={{ fontFamily: DOC_FONT, fontSize: 9, color: "#6b7280", textAlign: "center", marginTop: 4, fontStyle: "italic" }}>
+              {opts.caption}
+            </div>
+          )}
+        </div>
       );
     }
 
