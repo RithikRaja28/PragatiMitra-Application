@@ -2,17 +2,19 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useApi } from "../../../hooks/useApi";
 import { useAuth } from "../../../store/AuthContext";
 import FormScreen from "../../../components/shared/FormScreen";
-import PageHeader from "../../../ui/PageHeader";
-import { Button } from "../../../ui";
-import { Plus } from "lucide-react";
+import {
+  PageHeader, Button, Badge, EmptyState,
+  DataTable, Dropdown, MenuItem,
+} from "../../../ui";
+import { Building, Pencil, Power, PowerOff, MoreHorizontal, Plus } from "lucide-react";
 import { S, Toast, isAuthError, formatDate } from "../../../components/shared/formUtils";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { t } from "../../../i18n/translations";
 
 /* ─── Department Form ────────────────────────────────────────────
    Institution is always locked to the logged-in admin's institution.
-   Create mode → locked institution display, no dropdown.
-   Edit mode   → status selector, identical to Super Admin version.
+   Create mode → locked institution display.
+   Edit mode   → status selector.
 ─────────────────────────────────────────────────────────────── */
 function DepartmentForm({
   mode,
@@ -24,12 +26,13 @@ function DepartmentForm({
   onBack,
 }) {
   const { apiFetch } = useApi();
+  const { lang } = useLanguage();
   const isEdit = mode === "edit";
 
   const [form, setForm] = useState(
     isEdit
-      ? { name: entity.name || "", code: entity.code || "", status: entity.status || "ACTIVE" }
-      : { name: "", code: "" }
+      ? { name: entity.name || "", name_hi: entity.name_hi || "", code: entity.code || "", status: entity.status || "ACTIVE" }
+      : { name: "", name_hi: "", code: "" }
   );
   const [fieldErrors, setFieldErrors] = useState({});
   const [submitError, setSubmitError] = useState("");
@@ -46,8 +49,8 @@ function DepartmentForm({
 
   function clientValidate() {
     const errs = {};
-    if (!form.name.trim()) errs.name = "Department name is required.";
-    if (!form.code.trim()) errs.code = "Department code is required.";
+    if (!form.name.trim()) errs.name = t("Department name is required.", lang);
+    if (!form.code.trim()) errs.code = t("Department code is required.", lang);
     else if (!/^[A-Za-z0-9_-]+$/.test(form.code.trim()))
       errs.code = "Only letters, digits, hyphens, and underscores allowed.";
     if (isEdit && !["ACTIVE", "INACTIVE"].includes(form.status))
@@ -66,15 +69,17 @@ function DepartmentForm({
         ? await apiFetch(`/api/departments/${entity.department_id}`, {
             method: "PUT",
             body: JSON.stringify({
-              name:   form.name.trim(),
-              code:   form.code.trim().toUpperCase(),
-              status: form.status,
+              name:    form.name.trim(),
+              name_hi: form.name_hi.trim() || undefined,
+              code:    form.code.trim().toUpperCase(),
+              status:  form.status,
             }),
           })
         : await apiFetch("/api/departments", {
             method: "POST",
             body: JSON.stringify({
               name:           form.name.trim(),
+              name_hi:        form.name_hi.trim() || undefined,
               code:           form.code.trim().toUpperCase(),
               institution_id: institutionId,
             }),
@@ -100,40 +105,30 @@ function DepartmentForm({
 
   return (
     <FormScreen
-      pageTitle="Departments"
-      formTitle={isEdit ? "Edit Department" : "New Department"}
-      formSubtitle={
-        isEdit
-          ? "Update name, code, or status."
-          : "Fill in the details below to add a department."
-      }
-      icon={isEdit ? "✏️" : "🏛️"}
+      pageTitle={t("Departments", lang)}
+      formTitle={isEdit ? t("Edit Department", lang) : t("New Department", lang)}
+      formSubtitle={isEdit ? "Update name, code, or status." : "Fill in the details below to add a department."}
+      icon={isEdit ? <Pencil size={20} color="#d97706" strokeWidth={2} /> : <Building size={20} color="#2563eb" strokeWidth={2} />}
       iconBg={isEdit ? "#fef3c7" : "#eff6ff"}
       onBack={onBack}
       onSubmit={handleSubmit}
       submitting={submitting}
-      submitLabel={isEdit ? "Save Changes" : "Create Department"}
+      submitLabel={isEdit ? t("Save Changes", lang) : t("Create Department", lang)}
       submitError={submitError}
     >
       {/* Institution — locked read-only display (create mode only) */}
       {!isEdit && (
         <div>
-          <label style={S.label}>Institution</label>
+          <label style={S.label}>{t("Institution", lang)}</label>
           <div style={{
             ...S.input(false),
             display: "flex", alignItems: "center", gap: 8,
             background: "#f8fafc", color: "#475569",
             cursor: "not-allowed", userSelect: "none",
           }}>
-            <span style={{
-              width: 8, height: 8, borderRadius: "50%",
-              background: "#059669", flexShrink: 0,
-            }} />
+            <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#059669", flexShrink: 0 }} />
             {institutionName || "—"}
-            <span style={{
-              marginLeft: "auto", fontSize: 10, fontWeight: 600,
-              color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.5,
-            }}>
+            <span style={{ marginLeft: "auto", fontSize: 10, fontWeight: 600, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.5 }}>
               Your institution
             </span>
           </div>
@@ -142,7 +137,7 @@ function DepartmentForm({
 
       {/* Name */}
       <div>
-        <label style={S.label}>Department Name</label>
+        <label style={S.label}>{t("Department Name", lang)}</label>
         <input
           ref={nameRef}
           type="text"
@@ -156,9 +151,26 @@ function DepartmentForm({
         {fieldErrors.name && <div style={S.errorText}>{fieldErrors.name}</div>}
       </div>
 
+      {/* Hindi name */}
+      <div>
+        <label style={S.label}>विभाग का नाम (हिंदी)</label>
+        <input
+          type="text"
+          placeholder="e.g. कंप्यूटर विज्ञान"
+          value={form.name_hi}
+          onChange={(e) => set("name_hi", e.target.value)}
+          disabled={submitting}
+          maxLength={120}
+          style={{ ...S.input(false), fontFamily: "inherit" }}
+        />
+        <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 4 }}>
+          Optional — used in Hindi exports.
+        </div>
+      </div>
+
       {/* Code */}
       <div>
-        <label style={S.label}>Department Code</label>
+        <label style={S.label}>{t("Department Code", lang)}</label>
         <input
           type="text"
           placeholder="e.g. CS or COMP_SCI"
@@ -172,7 +184,7 @@ function DepartmentForm({
           <div style={S.errorText}>{fieldErrors.code}</div>
         ) : (
           <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 4 }}>
-            Auto-uppercased. Letters, digits, hyphens, underscores only.
+            {t("Auto-uppercased.", lang)} Letters, digits, hyphens, underscores only.
           </div>
         )}
       </div>
@@ -180,15 +192,15 @@ function DepartmentForm({
       {/* Status (edit only) */}
       {isEdit && (
         <div>
-          <label style={S.label}>Status</label>
+          <label style={S.label}>{t("Status", lang)}</label>
           <select
             value={form.status}
             onChange={(e) => set("status", e.target.value)}
             disabled={submitting}
             style={S.select(!!fieldErrors.status)}
           >
-            <option value="ACTIVE">Active</option>
-            <option value="INACTIVE">Inactive</option>
+            <option value="ACTIVE">{t("Active", lang)}</option>
+            <option value="INACTIVE">{t("Inactive", lang)}</option>
           </select>
           {fieldErrors.status && <div style={S.errorText}>{fieldErrors.status}</div>}
           {goingInactive && (
@@ -206,139 +218,58 @@ function DepartmentForm({
   );
 }
 
-/* ─── Department Card ────────────────────────────────────────── */
-function DepartmentCard({ dept, onEdit, onToggleStatus, isToggling }) {
-  const isActive = dept.status === "ACTIVE";
-  return (
-    <div style={{
-      background: "#fff",
-      border: `1px solid ${isActive ? "rgba(0,0,0,0.07)" : "#f1f5f9"}`,
-      borderRadius: 14, padding: "22px 24px",
-      boxShadow: "0 1px 4px rgba(0,0,0,0.05)",
-      opacity: isActive ? 1 : 0.72,
-      display: "flex", flexDirection: "column",
-    }}>
-      {/* Top row */}
-      <div style={{
-        display: "flex", alignItems: "flex-start",
-        justifyContent: "space-between", marginBottom: 14,
-      }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div style={{
-            width: 42, height: 42, borderRadius: 11,
-            background: isActive ? "#eff6ff" : "#f1f5f9",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: 10, fontWeight: 800,
-            color: isActive ? "#2563eb" : "#94a3b8",
-            letterSpacing: 0.5, fontFamily: "monospace",
-          }}>
-            {dept.code || "—"}
-          </div>
-          <div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: "#1e293b" }}>{dept.name}</div>
-            <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>
-              Since {formatDate(dept.created_at)}
-            </div>
-          </div>
-        </div>
-        <span style={{
-          padding: "3px 10px", borderRadius: 20, fontSize: 11, fontWeight: 600,
-          background: isActive ? "#d1fae5" : "#f1f5f9",
-          color: isActive ? "#065f46" : "#94a3b8",
-          whiteSpace: "nowrap", flexShrink: 0, marginLeft: 8,
-        }}>
-          {isActive ? "Active" : "Inactive"}
-        </span>
-      </div>
-
-      {/* Stats */}
-      <div style={{
-        display: "flex", gap: 16, marginBottom: 16,
-        padding: "12px 14px", background: "#f8fafc",
-        borderRadius: 10, flex: 1,
-      }}>
-        <div>
-          <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 2 }}>Members</div>
-          <div style={{ fontSize: 20, fontWeight: 700, color: "#1e293b" }}>
-            {Number(dept.member_count)}
-          </div>
-        </div>
-        <div style={{ width: 1, background: "#e2e8f0" }} />
-        <div>
-          <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 2 }}>Code</div>
-          <div style={{ fontSize: 13, fontWeight: 600, color: "#1e293b", fontFamily: "monospace" }}>
-            {dept.code || "—"}
-          </div>
-        </div>
-      </div>
-
-      {/* Actions */}
-      <div style={{ display: "flex", gap: 8 }}>
-        <button
-          onClick={() => onEdit(dept)}
-          style={{
-            flex: 1, padding: "8px 0", borderRadius: 8,
-            border: "1.5px solid #e2e8f0", background: "#fff",
-            fontSize: 12, fontWeight: 600, color: "#2563eb", cursor: "pointer",
-          }}
-          title="Edit department"
-        >
-          Edit
-        </button>
-        <button
-          onClick={() => onToggleStatus(dept)}
-          disabled={isToggling}
-          style={{
-            flex: 1, padding: "8px 0", borderRadius: 8,
-            border: "1.5px solid",
-            borderColor: isActive ? "#fee2e2" : "#bbf7d0",
-            background: "#fff", fontSize: 12, fontWeight: 600,
-            color: isActive ? "#dc2626" : "#059669",
-            cursor: isToggling ? "not-allowed" : "pointer",
-            opacity: isToggling ? 0.6 : 1,
-          }}
-          title={isActive ? "Deactivate department" : "Activate department"}
-        >
-          {isToggling ? "…" : isActive ? "Deactivate" : "Activate"}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-/* ─── Skeleton card ──────────────────────────────────────────── */
-function SkeletonCard() {
-  return (
-    <div style={{
-      background: "#fff", border: "1px solid rgba(0,0,0,0.07)",
-      borderRadius: 14, padding: "22px 24px",
-    }}>
-      {[55, 100, 70, 40].map((w, i) => (
-        <div key={i} style={{
-          height: i === 1 ? 56 : 14, width: `${w}%`,
-          background: "#f1f5f9", borderRadius: 8, marginBottom: 14,
-          animation: "pulse 1.4s ease-in-out infinite",
-        }} />
-      ))}
-    </div>
-  );
-}
-
-/* ─── Status filter select ───────────────────────────────────── */
+/* ─── Styled select (filter bar only) ───────────────────────── */
 function StyledSelect({ value, onChange, children, minWidth = 180 }) {
   return (
     <select
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      style={{
-        padding: "8px 12px", border: "1.5px solid #e2e8f0",
-        borderRadius: 9, fontSize: 13, fontWeight: 500,
-        color: "#1e293b", background: "#fff",
-        outline: "none", cursor: "pointer", minWidth,
-      }}
+      style={{ ...S.select(false), width: "auto", minWidth }}
     >
       {children}
     </select>
+  );
+}
+
+/* ─── Pagination ─────────────────────────────────────────────── */
+function Pagination({ page, pageSize, total, onPage, onPageSize }) {
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const from = total === 0 ? 0 : (page - 1) * pageSize + 1;
+  const to   = Math.min(page * pageSize, total);
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 20, flexWrap: "wrap", gap: 12 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span style={{ fontSize: 13, color: "#64748b" }}>Rows per page:</span>
+        <select
+          value={pageSize}
+          onChange={(e) => onPageSize(Number(e.target.value))}
+          style={{ padding: "4px 8px", borderRadius: 7, border: "1.5px solid #e2e8f0", fontSize: 13, color: "#1e293b", background: "#fff", cursor: "pointer" }}
+        >
+          {[10, 25, 100, 500].map((n) => <option key={n} value={n}>{n}</option>)}
+        </select>
+      </div>
+
+      <div style={{ fontSize: 13, color: "#64748b" }}>
+        {total === 0 ? "No results" : `${from}–${to} of ${total}`}
+      </div>
+
+      <div style={{ display: "flex", gap: 6 }}>
+        {[
+          { label: "← Prev", disabled: page <= 1, onClick: () => onPage(page - 1) },
+          { label: "Next →", disabled: page >= totalPages, onClick: () => onPage(page + 1) },
+        ].map(({ label, disabled, onClick }) => (
+          <button key={label} onClick={onClick} disabled={disabled} style={{
+            padding: "6px 14px", borderRadius: 8, border: "1.5px solid #e2e8f0",
+            background: "#fff", fontSize: 13, fontWeight: 600,
+            color: disabled ? "#cbd5e1" : "#1e293b",
+            cursor: disabled ? "not-allowed" : "pointer",
+          }}>
+            {label}
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -359,17 +290,19 @@ export default function InstituteAdminDepartmentPage() {
   const [formView,   setFormView]   = useState(null);
   const [togglingId, setTogglingId] = useState(null);
 
-  const [toast,     setToast]    = useState(null);
-  const toastTimer               = useRef(null);
+  const [page,     setPage]     = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+
+  const [toast,     setToast]  = useState(null);
+  const toastTimer             = useRef(null);
 
   const showToast = useCallback((message, type = "success") => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
     setToast({ message, type });
-    toastTimer.current = setTimeout(
-      () => setToast(null),
-      type === "error" ? 5500 : 3000
-    );
+    toastTimer.current = setTimeout(() => setToast(null), type === "error" ? 5500 : 3000);
   }, []);
+
+  useEffect(() => { setPage(1); }, [statusFilter]);
 
   /* ── Load departments for this institution ── */
   const fetchDepartments = useCallback(async () => {
@@ -386,9 +319,7 @@ export default function InstituteAdminDepartmentPage() {
         setLoadError(data.message || "Failed to load departments.");
       }
     } catch (err) {
-      if (!isAuthError(err)) {
-        setLoadError("Failed to load departments. Please refresh the page.");
-      }
+      if (!isAuthError(err)) setLoadError("Failed to load departments. Please refresh the page.");
     } finally {
       setLoadingDepts(false);
     }
@@ -403,7 +334,7 @@ export default function InstituteAdminDepartmentPage() {
     try {
       const res = await apiFetch(`/api/departments/${dept.department_id}`, {
         method: "PUT",
-        body: JSON.stringify({ name: dept.name, code: dept.code, status: nextStatus }),
+        body: JSON.stringify({ name: dept.name, name_hi: dept.name_hi || undefined, code: dept.code, status: nextStatus }),
       });
       const data = await res.json();
       if (data.success) {
@@ -411,10 +342,7 @@ export default function InstituteAdminDepartmentPage() {
         fetchDepartments();
       } else {
         showToast(
-          data.message ||
-            (nextStatus === "INACTIVE"
-              ? "Failed to deactivate department."
-              : "Failed to activate department."),
+          data.message || (nextStatus === "INACTIVE" ? "Failed to deactivate department." : "Failed to activate department."),
           "error"
         );
       }
@@ -426,30 +354,24 @@ export default function InstituteAdminDepartmentPage() {
   }
 
   /* ── Callbacks from DepartmentForm ── */
-  function handleCreated(message) {
-    setFormView(null);
-    showToast(message, "success");
-    fetchDepartments();
-  }
-
-  function handleSaved(message) {
-    setFormView(null);
-    showToast(message, "success");
-    fetchDepartments();
-  }
+  function handleCreated(message) { setFormView(null); showToast(message, "success"); fetchDepartments(); }
+  function handleSaved(message)   { setFormView(null); showToast(message, "success"); fetchDepartments(); }
 
   /* ── Render form screen ── */
   if (formView) {
     return (
-      <DepartmentForm
-        mode={formView.mode}
-        entity={formView.entity}
-        institutionId={institutionId}
-        institutionName={institutionName}
-        onCreated={handleCreated}
-        onSaved={handleSaved}
-        onBack={() => setFormView(null)}
-      />
+      <>
+        {toast && <Toast message={toast.message} type={toast.type} />}
+        <DepartmentForm
+          mode={formView.mode}
+          entity={formView.entity}
+          institutionId={institutionId}
+          institutionName={institutionName}
+          onCreated={handleCreated}
+          onSaved={handleSaved}
+          onBack={() => setFormView(null)}
+        />
+      </>
     );
   }
 
@@ -459,18 +381,21 @@ export default function InstituteAdminDepartmentPage() {
       ? departments
       : departments.filter((d) => d.status === statusFilter);
 
+  const totalPages = Math.max(1, Math.ceil(filteredDepts.length / pageSize));
+  const safePage   = Math.min(page, totalPages);
+  const paginated  = filteredDepts.slice((safePage - 1) * pageSize, safePage * pageSize);
+
   return (
     <div style={{ padding: "32px 36px", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
-      <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.42}}`}</style>
-
       {toast && <Toast message={toast.message} type={toast.type} />}
 
+      {/* ── Header ── */}
       <PageHeader
         breadcrumb={[t("Home", lang), t("Institute", lang), t("Departments", lang)]}
         title={t("Departments", lang)}
         description={<>Manage departments in <span style={{ color: "#059669", fontWeight: 600 }}>{institutionName}</span>.</>}
         actions={institutionId && !loadError && (
-          <Button variant="primary" icon={<Plus size={18} strokeWidth={2.2} />} onClick={() => setFormView({ mode: "create", entity: null })}>
+          <Button variant="primary" icon={<Plus size={17} strokeWidth={2} />} onClick={() => setFormView({ mode: "create", entity: null })}>
             {t("New Department", lang)}
           </Button>
         )}
@@ -478,24 +403,17 @@ export default function InstituteAdminDepartmentPage() {
 
       {/* Load error */}
       {loadError && (
-        <div style={{
-          background: "#fef2f2", border: "1px solid #fecaca",
-          borderRadius: 12, padding: "16px 20px",
-          color: "#b91c1c", fontSize: 14, marginBottom: 24,
-        }}>
+        <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 12, padding: "16px 20px", color: "#b91c1c", fontSize: 14, marginBottom: 24 }}>
           {loadError}
         </div>
       )}
 
       {/* ── Filter bar ── */}
       {!loadError && (
-        <div style={{
-          display: "flex", alignItems: "center", justifyContent: "space-between",
-          marginBottom: 20, flexWrap: "wrap", gap: 12,
-        }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
           <div style={{ fontSize: 13, color: "#64748b" }}>
             {loadingDepts ? (
-              "Loading departments…"
+              t("Loading departments…", lang)
             ) : (
               <>
                 <strong style={{ color: "#1e293b" }}>{filteredDepts.length}</strong>{" "}
@@ -509,52 +427,105 @@ export default function InstituteAdminDepartmentPage() {
           </div>
 
           <StyledSelect value={statusFilter} onChange={setStatusFilter} minWidth={150}>
-            <option value="ALL">All Statuses</option>
-            <option value="ACTIVE">Active</option>
-            <option value="INACTIVE">Inactive</option>
+            <option value="ALL">{t("All Statuses", lang)}</option>
+            <option value="ACTIVE">{t("Active", lang)}</option>
+            <option value="INACTIVE">{t("Inactive", lang)}</option>
           </StyledSelect>
         </div>
       )}
 
-      {/* ── Cards grid ── */}
-      <div style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
-        gap: 16,
-      }}>
-        {loadingDepts ? (
-          Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)
-        ) : filteredDepts.length > 0 ? (
-          filteredDepts.map((dept) => (
-            <DepartmentCard
-              key={dept.department_id}
-              dept={dept}
-              onEdit={(d) => setFormView({ mode: "edit", entity: d })}
-              onToggleStatus={handleToggleStatus}
-              isToggling={togglingId === dept.department_id}
-            />
-          ))
-        ) : (
-          !loadError && (
-            <div style={{
-              gridColumn: "1 / -1", textAlign: "center",
-              padding: "64px 0", color: "#94a3b8",
-            }}>
-              <div style={{ fontSize: 36, marginBottom: 12 }}>🏛️</div>
-              <div style={{ fontSize: 15, fontWeight: 600, color: "#64748b", marginBottom: 6 }}>
-                {statusFilter !== "ALL"
-                  ? `No ${statusFilter.toLowerCase()} departments`
-                  : "No departments yet"}
-              </div>
-              <div style={{ fontSize: 13 }}>
-                {statusFilter === "ALL"
-                  ? 'Click "New Department" to add the first one.'
-                  : 'Try switching the filter to "All Statuses".'}
-              </div>
-            </div>
-          )
-        )}
-      </div>
+      {/* ── Departments table ── */}
+      <DataTable
+        minWidth={880}
+        loading={loadingDepts}
+        rows={paginated}
+        rowKey="department_id"
+        columns={[
+          {
+            key: "code", header: t("Code", lang), width: 120,
+            render: (dept) => (
+              <span style={{ fontFamily: "monospace", fontSize: 12.5, fontWeight: 600, color: dept.status === "ACTIVE" ? "#2563eb" : "#94a3b8" }}>
+                {dept.code || "—"}
+              </span>
+            ),
+          },
+          {
+            key: "name", header: t("Department Name", lang), ellipsis: true,
+            render: (dept) => <span style={{ fontSize: 13.5, fontWeight: 700, color: "#1e293b" }}>{dept.name}</span>,
+          },
+          {
+            key: "created_at", header: t("Creation Date", lang), width: 180,
+            render: (dept) => <span style={{ fontSize: 12.5, color: "#64748b" }}>{t("Since", lang)} {formatDate(dept.created_at, lang)}</span>,
+          },
+          {
+            key: "member_count", header: t("Members", lang), width: 110,
+            render: (dept) => <span style={{ fontSize: 13.5, fontWeight: 600, color: "#1e293b" }}>{Number(dept.member_count)}</span>,
+          },
+          {
+            key: "status", header: t("Status", lang), width: 120,
+            render: (dept) => (
+              <Badge tone={dept.status === "ACTIVE" ? "success" : "neutral"}>
+                {dept.status === "ACTIVE" ? t("Active", lang) : t("Inactive", lang)}
+              </Badge>
+            ),
+          },
+          {
+            key: "actions", header: t("Actions", lang), align: "right", width: 90,
+            render: (dept) => {
+              const isActive = dept.status === "ACTIVE";
+              const busy = togglingId === dept.department_id;
+              return (
+                <Dropdown
+                  align="right"
+                  width={200}
+                  button={({ toggle }) => (
+                    <Button variant="ghost" iconOnly icon={<MoreHorizontal size={18} strokeWidth={2} />} onClick={toggle} aria-label="Row actions" />
+                  )}
+                >
+                  <MenuItem icon={<Pencil size={16} strokeWidth={1.9} />} onClick={() => setFormView({ mode: "edit", entity: dept })}>
+                    {t("Edit", lang)}
+                  </MenuItem>
+                  {isActive ? (
+                    <MenuItem icon={<PowerOff size={16} strokeWidth={1.9} />} danger disabled={busy} onClick={() => handleToggleStatus(dept)}>
+                      {busy ? "…" : t("Deactivate", lang)}
+                    </MenuItem>
+                  ) : (
+                    <MenuItem icon={<Power size={16} strokeWidth={1.9} />} disabled={busy} onClick={() => handleToggleStatus(dept)}>
+                      {busy ? "…" : t("Activate", lang)}
+                    </MenuItem>
+                  )}
+                </Dropdown>
+              );
+            },
+          },
+        ]}
+        empty={
+          <EmptyState
+            icon={<Building size={26} strokeWidth={1.6} />}
+            title={statusFilter !== "ALL" ? `No ${statusFilter.toLowerCase()} departments` : t("No departments yet", lang)}
+            description={
+              statusFilter === "ALL"
+                ? t('Click "New Department" to add the first one.', lang)
+                : t('Try switching the filter to "All Statuses".', lang)
+            }
+            action={statusFilter === "ALL" && institutionId && !loadError
+              ? <Button variant="primary" icon={<Plus size={16} strokeWidth={2} />} onClick={() => setFormView({ mode: "create", entity: null })}>{t("New Department", lang)}</Button>
+              : undefined
+            }
+          />
+        }
+      />
+
+      {/* ── Pagination ── */}
+      {!loadingDepts && filteredDepts.length > pageSize && (
+        <Pagination
+          page={safePage}
+          pageSize={pageSize}
+          total={filteredDepts.length}
+          onPage={setPage}
+          onPageSize={(n) => { setPageSize(n); setPage(1); }}
+        />
+      )}
     </div>
   );
 }

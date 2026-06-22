@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { useAuth } from "../../store/AuthContext";
 import { useLanguage } from "../../i18n/LanguageContext";
 import { t } from "../../i18n/translations";
+import { useAcademicYear } from "../../store/AcademicYearContext";
 
 const API = "http://localhost:5000/api/kpi";
 
@@ -651,20 +652,25 @@ function EmptyState() {
 
 // ─── Panel header ─────────────────────────────────────────────────────────────
 
-function PanelHeader({ total, fetchedAt, onRefresh }) {
+function PanelHeader({ total, fetchedAt, onRefresh, academicYear }) {
   const { lang } = useLanguage();
   return (
     <div style={{
       display:"flex", alignItems:"center", justifyContent:"space-between",
       paddingBottom:4,
     }}>
-      <div>
+      <div style={{ display:"flex", alignItems:"center", gap:10 }}>
         <span style={{ fontSize:13, fontWeight:700, color:"#0f172a" }}>
           {t("KPI Dashboard", lang)}
         </span>
-        <span style={{ marginLeft:8, fontSize:12, color:"#94a3b8" }}>
+        <span style={{ fontSize:12, color:"#94a3b8" }}>
           {lang === "hi" ? `${total} चार्ट` : `${total} chart${total > 1 ? "s" : ""}`}
         </span>
+        {academicYear && (
+          <span style={{ fontSize:11, fontWeight:700, color:"#1e40af", background:"#eff6ff", border:"1.5px solid #bfdbfe", borderRadius:6, padding:"2px 8px" }}>
+            {academicYear}
+          </span>
+        )}
       </div>
       <div style={{ display:"flex", alignItems:"center", gap:12 }}>
         {fetchedAt && (
@@ -698,6 +704,7 @@ function PanelHeader({ total, fetchedAt, onRefresh }) {
 export default function KpiDashboardPanel({ scope = "institute" }) {
   const { accessToken } = useAuth();
   const { lang } = useLanguage();
+  const { academicYear } = useAcademicYear() || {};
   const [singles,   setSingles]   = useState([]);
   const [groups,    setGroups]    = useState([]);
   const [loading,   setLoading]   = useState(true);
@@ -709,7 +716,8 @@ export default function KpiDashboardPanel({ scope = "institute" }) {
     try {
       const headers = { "Content-Type": "application/json" };
       if (accessToken) headers["Authorization"] = `Bearer ${accessToken}`;
-      const res  = await fetch(`${API}/dashboard-charts?lang=${lang}&scope=${scope}`, { headers, credentials:"include" });
+      const yearQs = academicYear ? `&year=${encodeURIComponent(academicYear)}` : "";
+      const res  = await fetch(`${API}/dashboard-charts?lang=${lang}&scope=${scope}${yearQs}`, { headers, credentials:"include" });
       const json = await res.json();
       if (!json.ok) throw new Error(json.error || "Failed to load KPI charts");
       setSingles(json.singles || []);
@@ -720,7 +728,7 @@ export default function KpiDashboardPanel({ scope = "institute" }) {
     } finally {
       setLoading(false);
     }
-  }, [accessToken, lang, scope]); // re-fetch when language or scope changes
+  }, [accessToken, lang, scope, academicYear]); // re-fetch when language, scope, or year changes
 
   useEffect(() => { load(); }, [load]);
 
@@ -757,7 +765,7 @@ export default function KpiDashboardPanel({ scope = "institute" }) {
 
   return (
     <div style={{ display:"flex", flexDirection:"column", gap:20 }}>
-      <PanelHeader total={total} fetchedAt={fetchedAt} onRefresh={load} />
+      <PanelHeader total={total} fetchedAt={fetchedAt} onRefresh={load} academicYear={academicYear} />
 
       {/* Group cards first */}
       {groups.map((g, gi) => (

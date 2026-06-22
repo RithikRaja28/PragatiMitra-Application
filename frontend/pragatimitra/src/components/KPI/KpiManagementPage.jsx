@@ -1,11 +1,13 @@
 "use client";
 import { useEffect, useRef, useState, useCallback } from "react";
-import { Trash2 } from "lucide-react";
+import { Trash2, Eye, Edit2, Download, Search, RefreshCw, Plus } from "lucide-react";
 import Modal from "../../ui/Modal";
 import Button from "../../ui/Button";
 import PageHeader from "../../ui/PageHeader";
+import { color, DataTable, Badge, EmptyState } from "../../ui";
 import { useNavigate, useLocation, Navigate } from "react-router-dom";
 import { useAuth } from "../../store/AuthContext";
+import { useAcademicYear } from "../../store/AcademicYearContext";
 import FormScreen from "../shared/FormScreen";
 import { S } from "../shared/formUtils";
 import { Select } from "../shared/ui";
@@ -17,8 +19,6 @@ const SLUG = "kpi-management";
 // ─── API ──────────────────────────────────────────────────────────────────────
 const API = "http://localhost:5000/api/kpi";
 
-const API_BASE = "http://localhost:5000/api";
-
 function makeApiFetch(token) {
   return async (path, opts = {}) => {
     const headers = { "Content-Type": "application/json" };
@@ -26,17 +26,6 @@ function makeApiFetch(token) {
     const res  = await fetch(`${API}${path}`, { headers, credentials: "include", ...opts });
     const json = await res.json();
     if (!res.ok || !json.ok) throw new Error(json.error || `HTTP ${res.status}`);
-    return json;
-  };
-}
-
-// Authenticated fetch for non-KPI endpoints (e.g. /api/academic-years)
-function makeBaseFetch(token) {
-  return async (path, opts = {}) => {
-    const headers = { "Content-Type": "application/json" };
-    if (token) headers["Authorization"] = `Bearer ${token}`;
-    const res  = await fetch(`${API_BASE}${path}`, { headers, credentials: "include", ...opts });
-    const json = await res.json().catch(() => ({}));
     return json;
   };
 }
@@ -75,6 +64,14 @@ const fmtDate = ts => ts
   ? new Date(ts).toLocaleDateString("en-IN", { day:"2-digit", month:"short", year:"numeric" })
   : "—";
 const fmtNum = n => Number(n||0).toLocaleString();
+
+function formatTableName(name) {
+  if (!name) return "";
+  return name
+    .replace(/_records$/i, "")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, c => c.toUpperCase());
+}
 
 // ─── Column label translation helpers ────────────────────────────────────────
 // colLabels: { [column_name]: { label_en, label_hi } } — from /tables/:t/columns
@@ -291,7 +288,7 @@ function ReusePrompt({ existing, apiFetch, notify, onReused, onCreateNew }) {
 }
 
 // ─── KPI Form (used in both Create and Edit views) ───────────────────────────
-function KpiForm({ cfg, tables, tabStatus, existingConfigs, scope, onBack, onSaved, notify, apiFetch, onRetryTables, academicYears, ayLoading, onColsLoaded = () => {} }) {
+function KpiForm({ cfg, tables, tabStatus, existingConfigs, scope, onBack, onSaved, notify, apiFetch, onRetryTables, currentAcademicYear, onColsLoaded = () => {} }) {
   const { lang } = useLanguage();
   const isEdit = !!cfg?.id;
 
@@ -308,12 +305,12 @@ function KpiForm({ cfg, tables, tabStatus, existingConfigs, scope, onBack, onSav
   const [chartType,       setChartType]       = useState(cfg?.chart_type              || "bar");
   const [aggregationType, setAggregationType] = useState(cfg?.aggregation_type        || "none");
   const [groupByCol,      setGroupByCol]      = useState(cfg?.group_by_column         || "");
-  const [academicYear,    setAcademicYear]    = useState(cfg?.academic_year           || "");
   const [tabSearch,       setTabSearch]       = useState("");
   const [cols,            setCols]            = useState([]);
   const [colsLoading,     setColsLoading]     = useState(false);
   const [submitError,     setSubmitError]     = useState("");
   const [submitting,      setSubmitting]      = useState(false);
+  const academicYear = currentAcademicYear || cfg?.academic_year || "";
   // "prompt" → show reuse dialog | "new" → user chose to create new | null → no conflict
   const [reuseState,      setReuseState]      = useState(null);
   // Tracks the selTable value from the previous effect run.
@@ -463,32 +460,21 @@ function KpiForm({ cfg, tables, tabStatus, existingConfigs, scope, onBack, onSav
         </div>
       </div>
 
-      {/* ── Academic Year ── */}
+      {/* ── Academic Year (from top header — read-only) ── */}
       <div>
         <label style={S.label}>{t("Academic Year", lang)}</label>
-        {ayLoading ? (
-          cfg?.academic_year
-            ? <div style={{ display:"flex", alignItems:"center", gap:10, padding:"9px 14px", background:"#eff6ff", border:"1.5px solid #bfdbfe", borderRadius:9 }}>
-                <span style={{ fontSize:13, fontWeight:600, color:"#1e40af", flex:1 }}>{cfg.academic_year}</span>
-                <span style={{ fontSize:11, color:"#94a3b8" }}>{t("Loading options…", lang)}</span>
-              </div>
-            : <div style={{ fontSize:12, color:"#94a3b8", padding:"8px 0" }}>{t("Loading academic years…", lang)}</div>
-        ) : academicYears.length === 0 ? (
-          <div style={{ padding:"10px 14px", background:"#fef3c7", border:"1px solid #fbbf24", borderRadius:8, fontSize:12, color:"#92400e" }}>
-            {t("No academic years configured. Go to Settings → Academic Year to add them.", lang)}
+        {academicYear ? (
+          <div style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 14px", background:"#eff6ff", border:"1.5px solid #bfdbfe", borderRadius:9 }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2.5" strokeLinecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            <span style={{ fontSize:13, fontWeight:700, color:"#1e40af", flex:1 }}>{academicYear}</span>
           </div>
         ) : (
-          <select style={S.select(false)} value={academicYear} onChange={e=>setAcademicYear(e.target.value)} disabled={submitting}>
-            <option value="">{t("— Select academic year —", lang)}</option>
-            {/* Include saved year as an option even if it was removed from Settings */}
-            {academicYear && !academicYears.includes(academicYear) && (
-              <option key={academicYear} value={academicYear}>{academicYear}</option>
-            )}
-            {academicYears.map(y => <option key={y} value={y}>{y}</option>)}
-          </select>
+          <div style={{ padding:"10px 14px", background:"#fef3c7", border:"1px solid #fbbf24", borderRadius:8, fontSize:12, color:"#92400e" }}>
+            {t("No academic year selected. Please select one from the top header.", lang)}
+          </div>
         )}
         <div style={{ fontSize:11, color:"#94a3b8", marginTop:4 }}>
-          {t("Academic year this KPI belongs to — sourced from Academic Year Settings", lang)}
+          {t("Academic year is controlled by the top header selector — same as the Form Module.", lang)}
         </div>
       </div>
 
@@ -617,7 +603,10 @@ function KpiForm({ cfg, tables, tabStatus, existingConfigs, scope, onBack, onSav
                 }}>
                   {selTable===tbl.table_name && <div style={{ width:7, height:7, borderRadius:"50%", background:"#2563eb" }}/>}
                 </div>
-                <span style={{ fontSize:13, fontWeight:500, flex:1, color:"#1e293b" }}>{tbl.table_name}</span>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ fontSize:13, fontWeight:500, color:"#1e293b" }}>{formatTableName(tbl.table_name)}</div>
+                  <div style={{ fontSize:11, color:"#94a3b8", marginTop:1, fontFamily:"monospace" }}>{tbl.table_name}</div>
+                </div>
               </div>
             ))}
           </div>
@@ -817,102 +806,12 @@ function KpiForm({ cfg, tables, tabStatus, existingConfigs, scope, onBack, onSav
   );
 }
 
-// ─── KPI Card ─────────────────────────────────────────────────────────────────
+// ─── KPI palette ──────────────────────────────────────────────────────────────
 const ICON_PALETTES = [
   { bg:"#eff6ff", color:"#1d4ed8" }, { bg:"#ecfdf5", color:"#027a48" },
   { bg:"#f5f3ff", color:"#6d28d9" }, { bg:"#fff7ed", color:"#c2410c" },
   { bg:"#f0f9ff", color:"#0369a1" }, { bg:"#fdf2f8", color:"#9d174d" },
 ];
-
-function KpiCard({ cfg, idx, isActive, generating, onEdit, onPreview, onDelete }) {
-  const { lang } = useLanguage();
-  const isExported = !!cfg.svg_id;
-  const p = ICON_PALETTES[idx % ICON_PALETTES.length];
-  return (
-    <div style={{
-      background:"#fff", border:`1px solid ${isActive?"#2563eb":"rgba(0,0,0,0.07)"}`,
-      borderRadius:14, padding:"22px 24px", boxShadow: isActive?"0 0 0 2px #bfdbfe":"0 1px 4px rgba(0,0,0,0.05)",
-      display:"flex", flexDirection:"column", gap:0,
-      outline: isActive?"2px solid #2563eb":undefined, outlineOffset:2,
-    }}>
-      {/* Top row */}
-      <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", marginBottom:14 }}>
-        <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-          <div style={{ width:42, height:42, borderRadius:11, background:p.bg, display:"flex", alignItems:"center", justifyContent:"center", fontSize:10, fontWeight:800, color:p.color, letterSpacing:.5, fontFamily:"monospace", flexShrink:0 }}>
-            {cfg.table_name?.substring(0,4).toUpperCase()||"KPI"}
-          </div>
-          <div>
-            <div style={{ fontSize:14, fontWeight:700, color:"#1e293b" }}>{cfgTitle(cfg, lang)}</div>
-            <div style={{ fontSize:11, color:"#94a3b8", marginTop:2 }}>{t("Since", lang)} {fmtDate(cfg.created_at)}</div>
-          </div>
-        </div>
-        <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:4, flexShrink:0 }}>
-          <span style={{
-            padding:"3px 10px", borderRadius:20, fontSize:11, fontWeight:600, whiteSpace:"nowrap",
-            background: isExported?"#d1fae5":"#f1f5f9",
-            color: isExported?"#065f46":"#94a3b8",
-          }}>
-            {isExported ? t("Exported", lang) : t("Draft", lang)}
-          </span>
-          {cfg.show_on_dashboard && (
-            <span style={{ padding:"2px 8px", borderRadius:10, fontSize:10, fontWeight:600, background:"#eff6ff", color:"#1d4ed8", border:"1px solid #bfdbfe" }}>
-              {cfg.dashboard_display_type==="group" ? `${t("Group:", lang)} ${cfg.dashboard_group_name||"?"}` : t("Dashboard", lang)}
-            </span>
-          )}
-        </div>
-      </div>
-
-      {/* Stats */}
-      <div style={{ display:"flex", gap:12, padding:"12px 14px", background:"#f8fafc", borderRadius:10, marginBottom:16, flexWrap:"wrap" }}>
-        <div>
-          <div style={{ fontSize:11, color:"#94a3b8", marginBottom:2 }}>{t("Series", lang)}</div>
-          <div style={{ fontSize:20, fontWeight:700, color:"#1e293b" }}>{(cfg.y_cols||[]).length}</div>
-        </div>
-        <div style={{ width:1, background:"#e2e8f0" }}/>
-        <div>
-          <div style={{ fontSize:11, color:"#94a3b8", marginBottom:2 }}>{t("Table", lang)}</div>
-          <div style={{ fontSize:12, fontWeight:600, color:"#1e293b", fontFamily:"monospace" }}>{cfg.table_name}</div>
-        </div>
-        <div style={{ width:1, background:"#e2e8f0" }}/>
-        <div>
-          <div style={{ fontSize:11, color:"#94a3b8", marginBottom:2 }}>{t("Type", lang)}</div>
-          <div style={{ fontSize:12, fontWeight:600, color:"#1e293b" }}>{cfg.chart_type}</div>
-        </div>
-        {cfg.academic_year && (
-          <>
-            <div style={{ width:1, background:"#e2e8f0" }}/>
-            <div>
-              <div style={{ fontSize:11, color:"#94a3b8", marginBottom:2 }}>AY</div>
-              <div style={{ fontSize:12, fontWeight:600, color:"#1d4ed8" }}>{cfg.academic_year}</div>
-            </div>
-          </>
-        )}
-        {cfg.aggregation_type && cfg.aggregation_type !== "none" && (
-          <>
-            <div style={{ width:1, background:"#e2e8f0" }}/>
-            <div>
-              <div style={{ fontSize:11, color:"#94a3b8", marginBottom:2 }}>Agg</div>
-              <div style={{ fontSize:12, fontWeight:600, color:"#7c3aed" }}>{cfg.aggregation_type.toUpperCase()}</div>
-            </div>
-          </>
-        )}
-      </div>
-
-      {/* Actions */}
-      <div style={{ display:"flex", gap:8 }}>
-        <button onClick={()=>onEdit(cfg)} style={{ flex:1, padding:"8px 0", borderRadius:8, border:"1.5px solid #e2e8f0", background:"#fff", fontSize:12, fontWeight:600, color:"#2563eb", cursor:"pointer" }}>
-          {t("Edit", lang)}
-        </button>
-        <button onClick={()=>onPreview(cfg)} disabled={generating} style={{ flex:1, padding:"8px 0", borderRadius:8, border:"1.5px solid #e2e8f0", background:"#fff", fontSize:12, fontWeight:600, color:"#059669", cursor:generating?"not-allowed":"pointer", opacity:generating?0.6:1 }}>
-          {t("Preview", lang)}
-        </button>
-        <button onClick={()=>onDelete(cfg)} style={{ flex:1, padding:"8px 0", borderRadius:8, border:"1.5px solid #fecaca", background:"#fef2f2", fontSize:12, fontWeight:600, color:"#dc2626", cursor:"pointer" }}>
-          {t("Delete", lang)}
-        </button>
-      </div>
-    </div>
-  );
-}
 
 // ─── Delete confirm modal — built on the shared design-system Modal/Button so it
 //     matches every other module (squared corners, app font, danger accent) ─────
@@ -952,6 +851,7 @@ export default function KpiManagementPage({ scope = "institute" }) {
   const location = useLocation();
   const { accessToken } = useAuth();
   const apiFetch = useCallback(makeApiFetch(accessToken), [accessToken]); // eslint-disable-line
+  const { academicYear } = useAcademicYear() || {};
 
   // colLabels: column_name → { label_en, label_hi } — populated when KpiForm loads a table
   const [colLabels, setColLabels] = useState({});
@@ -991,6 +891,7 @@ export default function KpiManagementPage({ scope = "institute" }) {
   const [generating, setGenerating] = useState(false);
   const [exporting,  setExporting]  = useState(false);
   const [statusFilter,setStatusFilter] = useState("all");
+  const [listSearch,  setListSearch]   = useState("");
 
   // ── Delete confirmation ──
   const [deleteTarget, setDeleteTarget] = useState(null); // cfg pending deletion
@@ -1034,26 +935,12 @@ export default function KpiManagementPage({ scope = "institute" }) {
 
   const loadConfigs = useCallback(()=>{
     setCfgsLoading(true);
-    apiFetch(`/configs?scope=${scope}`)
+    const yearQs = academicYear ? `&year=${encodeURIComponent(academicYear)}` : "";
+    apiFetch(`/configs?scope=${scope}${yearQs}`)
       .then(r=>{ setConfigs(r.data); setCfgsLoading(false); })
       .catch(()=>setCfgsLoading(false));
-  },[apiFetch, scope]);
+  },[apiFetch, scope, academicYear]);
   useEffect(()=>{ loadConfigs(); },[loadConfigs]);
-
-  // ── Academic Years (sourced exclusively from Settings → Academic Year) ──
-  const [academicYears, setAcademicYears] = useState([]);
-  const [ayLoading,     setAyLoading]     = useState(true);
-  useEffect(()=>{
-    const baseFetch = makeBaseFetch(accessToken);
-    setAyLoading(true);
-    baseFetch("/academic-years")
-      .then(json => {
-        const rows = json.years || json.data || [];
-        setAcademicYears(rows.map(r => r.academic_year || r.year_label || r.year || r).filter(Boolean));
-      })
-      .catch(() => setAcademicYears([]))
-      .finally(() => setAyLoading(false));
-  },[accessToken]); // eslint-disable-line
 
   // ECharts ref callback
   const chartRefCb = useCallback(el=>{
@@ -1164,10 +1051,15 @@ export default function KpiManagementPage({ scope = "institute" }) {
     if (activeCfgRef.current) regenerate(activeCfgRef.current);
   },[lang]); // eslint-disable-line
 
-  const filtered = configs.filter(c=>{
-    if (statusFilter==="exported") return !!c.svg_id;
-    if (statusFilter==="draft")    return !c.svg_id;
+  const filtered = configs.filter(c => {
+    if (statusFilter === "exported") return !!c.svg_id;
+    if (statusFilter === "draft")    return !c.svg_id;
     return true;
+  }).filter(c => {
+    if (!listSearch.trim()) return true;
+    const q = listSearch.trim().toLowerCase();
+    return cfgTitle(c, lang).toLowerCase().includes(q) ||
+      formatTableName(c.table_name).toLowerCase().includes(q);
   });
 
   // ── Form views ──────────────────────────────────────────────────────────────
@@ -1185,8 +1077,7 @@ export default function KpiManagementPage({ scope = "institute" }) {
         notify={notify}
         apiFetch={apiFetch}
         onRetryTables={loadTables}
-        academicYears={academicYears}
-        ayLoading={ayLoading}
+        currentAcademicYear={academicYear}
         onColsLoaded={onColsLoaded}
       />
     );
@@ -1204,7 +1095,7 @@ export default function KpiManagementPage({ scope = "institute" }) {
             ? [t("Home", lang), t("Department", lang), { label: t("KPI Charts", lang), onClick: () => navFn(listPath) }, cfgTitle(previewCfg, lang)]
             : [t("Home", lang), t("Institute", lang), { label: t("KPI Charts", lang), onClick: () => navFn(listPath) }, cfgTitle(previewCfg, lang)]}
           title={cfgTitle(previewCfg, lang)}
-          description={previewCfg.table_name}
+          description={formatTableName(previewCfg.table_name)}
         />
 
         {!ready ? (
@@ -1220,7 +1111,7 @@ export default function KpiManagementPage({ scope = "institute" }) {
             <div>
               <div style={{ fontSize:16, fontWeight:700, color:"#1e293b" }}>{cfgTitle(activeCfg, lang)}</div>
               <div style={{ fontSize:12, color:"#94a3b8", marginTop:2 }}>
-                {activeCfg.table_name} · {chartX.length} {t("periods", lang)} · {chartSeries.length} {t("series", lang)}
+                {formatTableName(activeCfg.table_name)} · {chartX.length} {t("periods", lang)} · {chartSeries.length} {t("series", lang)}
                 {rowCount!=null && <> · {rowCount} {t("rows", lang)}</>}
                 {activeCfg.academic_year && <> · <span style={{ color:"#1d4ed8", fontWeight:600 }}>{activeCfg.academic_year}</span></>}
                 {activeCfg.aggregation_type && activeCfg.aggregation_type !== "none" && <> · <span style={{ color:"#7c3aed", fontWeight:600 }}>{activeCfg.aggregation_type.toUpperCase()}</span></>}
@@ -1244,6 +1135,48 @@ export default function KpiManagementPage({ scope = "institute" }) {
                 </button>
               ))}
             </div>
+          </div>
+
+          {/* KPI metadata strip */}
+          <div style={{ padding: "12px 24px", borderBottom: "1px solid #f1f5f9", display: "flex", gap: 28, flexWrap: "wrap", background: "#fafbff" }}>
+            <div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 3 }}>{t("Source Form", lang)}</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: "#1e293b" }}>{formatTableName(activeCfg.table_name)}</div>
+            </div>
+            {activeCfg.academic_year && (
+              <div>
+                <div style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 3 }}>{t("Academic Year", lang)}</div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: "#1d4ed8" }}>{activeCfg.academic_year}</div>
+              </div>
+            )}
+            <div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 3 }}>{t("Chart Type", lang)}</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: "#1e293b" }}>{CHART_TYPES.find(c => c.value === chartType)?.label || chartType}</div>
+            </div>
+            {activeCfg.x_col && (
+              <div>
+                <div style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 3 }}>X-Axis</div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: "#1e293b", fontFamily: "monospace" }}>{activeCfg.x_col}</div>
+              </div>
+            )}
+            {activeCfg.y_cols?.length > 0 && (
+              <div>
+                <div style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 3 }}>Y-Axis</div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: "#1e293b", fontFamily: "monospace" }}>{activeCfg.y_cols.join(", ")}</div>
+              </div>
+            )}
+            <div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 3 }}>{t("Dashboard", lang)}</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: activeCfg.show_on_dashboard ? "#059669" : "#94a3b8" }}>
+                {activeCfg.show_on_dashboard ? t("Enabled", lang) : t("Disabled", lang)}
+              </div>
+            </div>
+            {activeCfg.aggregation_type && activeCfg.aggregation_type !== "none" && (
+              <div>
+                <div style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 3 }}>{t("Aggregation", lang)}</div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: "#7c3aed" }}>{activeCfg.aggregation_type.toUpperCase()}</div>
+              </div>
+            )}
           </div>
 
           {/* Legend */}
@@ -1348,91 +1281,163 @@ export default function KpiManagementPage({ scope = "institute" }) {
   }
 
   // ── List view ────────────────────────────────────────────────────────────────
+  const STROKE = 1.75;
   const kpiBreadcrumb = scope === "department"
     ? [t("Home", lang), t("Department", lang), t("KPI Charts", lang)]
     : [t("Home", lang), t("Institute", lang), t("KPI Charts", lang)];
 
+  const listColumns = [
+    {
+      key: "kpi",
+      header: t("KPI Name", lang),
+      width: 300,
+      render: (cfg, rowIndex) => {
+        const p = ICON_PALETTES[rowIndex % ICON_PALETTES.length];
+        return (
+          <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+            <div style={{ width: 34, height: 34, borderRadius: 9, flexShrink: 0, background: p.bg, color: p.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800, letterSpacing: 0.3, fontFamily: "monospace" }}>
+              {(cfg.table_name || "KPI").slice(0, 2).toUpperCase()}
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <div className="ui-ellipsis" style={{ fontSize: 13.5, fontWeight: 700, color: color.text }} title={cfgTitle(cfg, lang)}>
+                {cfgTitle(cfg, lang)}
+              </div>
+              <div style={{ fontSize: 11.5, color: color.muted, marginTop: 1 }}>
+                {t("Since", lang)} {fmtDate(cfg.created_at)}
+              </div>
+            </div>
+          </div>
+        );
+      },
+    },
+    {
+      key: "source",
+      header: t("Source Form", lang),
+      width: 180,
+      render: (cfg) => (
+        <span style={{ fontSize: 13, color: color.text, fontWeight: 500 }}>
+          {formatTableName(cfg.table_name)}
+        </span>
+      ),
+    },
+    {
+      key: "year",
+      header: t("Academic Year", lang),
+      width: 150,
+      render: (cfg) => cfg.academic_year
+        ? <Badge tone="primary">{cfg.academic_year}</Badge>
+        : <span style={{ color: color.muted }}>—</span>,
+    },
+    {
+      key: "status",
+      header: t("Status", lang),
+      width: 110,
+      render: (cfg) => cfg.svg_id
+        ? <Badge tone="success">{t("Exported", lang)}</Badge>
+        : <Badge tone="neutral">{t("Draft", lang)}</Badge>,
+    },
+    {
+      key: "actions",
+      header: "",
+      align: "right",
+      width: 170,
+      render: (cfg) => (
+        <div style={{ display: "inline-flex", alignItems: "center", gap: 6, justifyContent: "flex-end" }}>
+          <Button variant="secondary" iconOnly title={t("Preview", lang)} icon={<Eye size={16} strokeWidth={STROKE} />} onClick={() => navFn(`${listPath}/preview`, { state: { entity: cfg } })} />
+          <Button variant="secondary" iconOnly title={t("Edit", lang)} icon={<Edit2 size={16} strokeWidth={STROKE} />} onClick={() => navFn(`${listPath}/edit`, { state: { entity: cfg } })} />
+          <Button variant="secondary" iconOnly title={t("Export", lang)} icon={<Download size={16} strokeWidth={STROKE} />} onClick={() => navFn(`${listPath}/preview`, { state: { entity: cfg } })} />
+          <Button variant="outlineDanger" iconOnly title={t("Delete", lang)} icon={<Trash2 size={16} strokeWidth={STROKE} />} onClick={() => requestDelete(cfg)} />
+        </div>
+      ),
+    },
+  ];
+
   return (
-    <div style={{ padding:"32px 36px", fontFamily:"'Plus Jakarta Sans',sans-serif", minHeight:"100%" }}>
-
-      <PageHeader
-        breadcrumb={kpiBreadcrumb}
-        title={t("KPI Charts", lang)}
-        description={scopeDesc}
-      />
-
-      {/* Action row */}
-      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:12, marginBottom:20 }}>
-        <div style={{ display:"flex", gap:6 }}>
-          {[
-            { val:"all",      label:`${t("All", lang)} (${configs.length})` },
-            { val:"draft",    label:t("Draft", lang) },
-            { val:"exported", label:t("Exported", lang) },
-          ].map(f=>(
-            <button key={f.val} onClick={()=>setStatusFilter(f.val)} style={{
-              padding:"7px 14px", borderRadius:8, fontSize:12.5, fontWeight:600, cursor:"pointer",
-              border:`1.5px solid ${statusFilter===f.val?"#2563eb":"#e2e8f0"}`,
-              background: statusFilter===f.val?"#eff6ff":"#fff",
-              color: statusFilter===f.val?"#2563eb":"#64748b",
-            }}>
-              {f.label}
-            </button>
-          ))}
-        </div>
-        <div style={{ display:"flex", gap:10 }}>
-          <button onClick={loadConfigs} style={{ display:"inline-flex", alignItems:"center", gap:6, padding:"9px 16px", borderRadius:10, border:"1.5px solid #e2e8f0", background:"#fff", fontSize:13, fontWeight:600, color:"#475569", cursor:"pointer" }}>
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.95"/></svg>
-            {t("Refresh", lang)}
-          </button>
-          <button onClick={()=>navFn(`${listPath}/create`)} style={{ display:"inline-flex", alignItems:"center", gap:6, padding:"9px 18px", borderRadius:10, border:"none", background:"#2563eb", color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer", boxShadow:"0 2px 8px rgba(37,99,235,.3)" }}>
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            {t("New KPI Chart", lang)}
-          </button>
-        </div>
-      </div>
-
-      {/* Card grid */}
-      {cfgsLoading ? (
-        <div style={{ textAlign:"center", padding:"48px", color:"#94a3b8", fontSize:14 }}>{t("Loading configurations…", lang)}</div>
-      ) : filtered.length===0 ? (
-        <div style={{ textAlign:"center", padding:"64px 24px", color:"#94a3b8" }}>
-          <div style={{ fontSize:14, fontWeight:600, color:"#64748b", marginBottom:4 }}>{t("No KPI charts yet", lang)}</div>
-          <div style={{ fontSize:13 }}>{t('Click "New KPI Chart" to create your first chart.', lang)}</div>
-        </div>
-      ) : (
-        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))", gap:20, marginBottom:24 }}>
-          {filtered.map((cfg,idx)=>(
-            <KpiCard key={cfg.id} cfg={cfg} idx={idx}
-              isActive={activeCfg?.id===cfg.id}
-              generating={generating}
-              onEdit={c=>navFn(`${listPath}/edit`, { state: { entity: c } })}
-              onPreview={c=>navFn(`${listPath}/preview`, { state: { entity: c } })}
-              onDelete={requestDelete}
-            />
-          ))}
-        </div>
-      )}
-
-      {/* Toast */}
+    <div style={{ padding: "24px 32px", fontFamily: "'Plus Jakarta Sans', sans-serif", minHeight: "100%", maxWidth: 1600, margin: "0 auto", background: "transparent" }}>
       {toast.msg && (
         <div style={{
-          position:"fixed", bottom:24, right:24, zIndex:9999,
-          padding:"12px 18px", borderRadius:8, fontSize:13.5, fontWeight:500,
-          background: toast.err?"#fef2f2":"#101828",
-          color: toast.err?"#b91c1c":"#fff",
-          border: toast.err?"1px solid #fecaca":"none",
-          boxShadow:"0 4px 20px rgba(0,0,0,.16)", maxWidth:380,
+          position: "fixed", bottom: 24, right: 24, zIndex: 9999,
+          padding: "12px 18px", borderRadius: 8, fontSize: 13.5, fontWeight: 500,
+          background: toast.err ? "#fef2f2" : "#101828",
+          color: toast.err ? "#b91c1c" : "#fff",
+          border: toast.err ? "1px solid #fecaca" : "none",
+          boxShadow: "0 4px 20px rgba(0,0,0,.16)", maxWidth: 380,
         }}>
           {toast.msg}
         </div>
       )}
 
-      {/* Delete confirmation */}
+      <PageHeader
+        breadcrumb={kpiBreadcrumb}
+        title={t("KPI Charts", lang)}
+        description={scopeDesc}
+        actions={
+          <>
+            <Button variant="secondary" icon={<RefreshCw size={16} strokeWidth={STROKE} />} onClick={loadConfigs}>{t("Refresh", lang)}</Button>
+            <Button variant="primary" icon={<Plus size={16} strokeWidth={STROKE} />} onClick={() => navFn(`${listPath}/create`)}>{t("New KPI Chart", lang)}</Button>
+          </>
+        }
+      />
+
+      <DataTable
+        columns={listColumns}
+        rows={filtered}
+        rowKey={(c) => c.id}
+        loading={cfgsLoading}
+        minWidth={900}
+        toolbar={
+          <>
+            <div style={{ position: "relative", flex: "0 1 280px", maxWidth: 280 }}>
+              <Search size={16} strokeWidth={STROKE} style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", color: color.muted, pointerEvents: "none" }} />
+              <input
+                value={listSearch} onChange={(e) => setListSearch(e.target.value)}
+                placeholder={t("Search KPI charts…", lang)}
+                style={{ width: "100%", height: 40, padding: "0 12px 0 34px", border: `1px solid ${color.border}`, borderRadius: 10, fontSize: 13, color: color.text, outline: "none", boxSizing: "border-box", background: color.surface }}
+              />
+            </div>
+            <div style={{ display: "inline-flex", border: `1px solid ${color.border}`, borderRadius: 10, padding: 3, gap: 2, background: color.hover }}>
+              {[
+                { val: "all",      label: `${t("All", lang)} (${configs.length})` },
+                { val: "draft",    label: t("Draft", lang) },
+                { val: "exported", label: t("Exported", lang) },
+              ].map(f => {
+                const on = statusFilter === f.val;
+                return (
+                  <button key={f.val} onClick={() => setStatusFilter(f.val)} className="ui-focusable"
+                    style={{ border: "none", borderRadius: 8, padding: "7px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer",
+                             background: on ? color.surface : "transparent", color: on ? color.text : color.muted,
+                             boxShadow: on ? "0 1px 2px rgba(16,24,40,0.08)" : "none" }}>
+                    {f.label}
+                  </button>
+                );
+              })}
+            </div>
+            {academicYear && (
+              <Badge tone="primary">{academicYear}</Badge>
+            )}
+          </>
+        }
+        empty={
+          <EmptyState
+            icon={listSearch.trim() ? <Search size={26} strokeWidth={1.5} /> : <Plus size={26} strokeWidth={1.5} />}
+            title={listSearch.trim() ? t("No KPI charts match your search", lang) : t("No KPI charts yet", lang)}
+            description={
+              listSearch.trim()
+                ? t("Try a different name or clear the search.", lang)
+                : t('Click "New KPI Chart" to create your first chart.', lang)
+            }
+            action={!listSearch.trim()
+              ? <Button variant="primary" icon={<Plus size={16} strokeWidth={STROKE} />} onClick={() => navFn(`${listPath}/create`)}>{t("New KPI Chart", lang)}</Button>
+              : undefined}
+          />
+        }
+      />
+
       {deleteTarget && (
         <KpiDeleteModal
           cfg={deleteTarget}
           deleting={deleting}
-          onClose={()=>{ if (!deleting) setDeleteTarget(null); }}
+          onClose={() => { if (!deleting) setDeleteTarget(null); }}
           onConfirm={confirmDelete}
         />
       )}
