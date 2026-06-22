@@ -368,20 +368,20 @@ async function generateDocx(report, sections, outPath, opts) {
     TextWrappingType, TextWrappingSide,
   } = docx;
 
-  // When a background image is present, ensure text stays readable against any image color
+  // When a background image is present, switch to white text so it shows over the image
   const hasBg = !!report.bg_image_url;
   const C = {
-    primary:   "1F3864",
-    secondary: "2E4A7A",
-    tertiary:  "374151",
-    body:      hasBg ? "000000" : "111827",
-    gray:      hasBg ? "374151" : "6B7280",
-    lightGray: hasBg ? "374151" : "9CA3AF",
-    tblHead:   "D0CECE",
-    tblAlt:    "F9FAFB",
-    divider:   "9CA3AF",
-    border:    "D1D5DB",
-    link:      "1D4ED8",
+    primary:   hasBg ? "FFFFFF" : "1F3864",
+    secondary: hasBg ? "F0F0F0" : "2E4A7A",
+    tertiary:  hasBg ? "E0E0E0" : "374151",
+    body:      hasBg ? "FFFFFF" : "111827",
+    gray:      hasBg ? "DDDDDD" : "6B7280",
+    lightGray: hasBg ? "CCCCCC" : "9CA3AF",
+    tblHead:   hasBg ? "444444" : "D0CECE",
+    tblAlt:    hasBg ? "222222" : "F9FAFB",
+    divider:   hasBg ? "AAAAAA" : "9CA3AF",
+    border:    hasBg ? "888888" : "D1D5DB",
+    link:      hasBg ? "93C5FD" : "1D4ED8",
   };
 
   const sectionNumbers = opts.include_numbering ? buildSectionNumbers(sections) : new Map();
@@ -1592,17 +1592,22 @@ hr.divider { border: none; border-top: 1px solid #9ca3af; margin: 10px 0 12px; }
   .toc-page { page-break-after: always; }
 }
 ${hasBg ? `
-/* ── Background image: ensure all text is dark enough to be readable ── */
-body, .para, .blk-list, .kpi-simple, .data-tbl td,
-.sec-desc, .img-cap, .kpi-cap, .file-blk {
-  color: #111827 !important;
+/* ── Background image: white text so content is visible over the image ── */
+body, .page-wrapper,
+.para, .blk-list, .kpi-simple, .sec-desc, .img-cap, .kpi-cap, .file-blk,
+.data-tbl td, .data-tbl th, .title-main, .title-sub,
+.toc-label, .toc-pg {
+  color: #ffffff !important;
 }
-.sec-h1  { color: #000 !important; }
-.sec-h2  { color: #1a1a1a !important; }
-.sec-h3  { color: #222 !important; }
-.ch1     { color: #000 !important; }
-.ch2     { color: #111 !important; }
-.ch3     { color: #222 !important; }
+.sec-h1, .sec-h2, .sec-h3, .ch1, .ch2, .ch3 {
+  color: #ffffff !important;
+  border-color: rgba(255,255,255,0.4) !important;
+}
+.sec-h1 { border-bottom-color: rgba(255,255,255,0.5) !important; }
+.ch1    { border-bottom-color: rgba(255,255,255,0.4) !important; }
+.toc-dots { border-bottom-color: rgba(255,255,255,0.4) !important; }
+.data-tbl tr.alt td { background: rgba(255,255,255,0.07) !important; }
+.data-tbl th        { background: rgba(255,255,255,0.15) !important; }
 ` : ""}
 </style>
 </head>
