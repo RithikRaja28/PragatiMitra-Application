@@ -26,6 +26,7 @@ const { verifyToken, requireRole } = require("../middleware/auth");
 const logger = require("../utils/logger");
 const { formatAcademicYear, parseStartYear, ensureFormArchivedIfUnclassified } = require("../services/academicYearService");
 const { enqueueEmail } = require("../services/mailService");
+const { writeAuditLog } = require("../utils/audit");
 
 const router = express.Router();
 router.use(verifyToken);
@@ -271,6 +272,25 @@ router.post("/", requireRole(MANAGE_ROLES), async (req, res) => {
 
     await client.query("COMMIT");
 
+    await writeAuditLog(req, {
+      actionType: "ACADEMIC_YEAR_CREATED",
+      entityType: "ACADEMIC_YEAR",
+      entityId:   masterRows[0]?.id || null,
+      newValue: {
+        academic_year:  academicYear,
+        start_year:     Number(startYear),
+        active:         !!makeCurrent,
+        active_forms:   active.length,
+        archived_forms: archived.length,
+      },
+      status:  "SUCCESS",
+      message: `Academic year ${academicYear} created with ${active.length} active form(s) and ${archived.length} archived form(s)`,
+      metadata: {
+        institution_id: institutionId,
+        make_current:   !!makeCurrent,
+      },
+    });
+
     // Enqueue activation emails to all department HODs / Nodal Officers.
     // Returns immediately; worker delivers each email asynchronously with retry.
     setImmediate(async () => {
@@ -342,7 +362,25 @@ router.patch("/:academicYear/lock", requireRole(MANAGE_ROLES), async (req, res) 
     if (!institutionId)
       return res.status(400).json({ success: false, message: "Institution ID required." });
 
-    const { rowCount } = await pool.query(
+    // Pre-fetch the current state so we know the real oldValue and can skip
+    // the DB write entirely when the state is already what was requested.
+    const { rows: currentRows } = await pool.query(
+      `SELECT id, COALESCE(is_locked, false) AS is_locked
+       FROM academic_year_master
+       WHERE institution_id = $1 AND academic_year = $2`,
+      [institutionId, academicYear]
+    );
+    if (!currentRows.length)
+      return res.status(404).json({ success: false, message: "Academic year not found." });
+
+    const wasLocked = currentRows[0].is_locked;
+    const masterId  = currentRows[0].id;
+
+    // Idempotent: state already matches the request — no DB write, no audit entry.
+    if (wasLocked === locked)
+      return res.json({ success: true, academicYear, is_locked: locked });
+
+    await pool.query(
       `UPDATE academic_year_master
        SET is_locked = $3,
            locked_at = CASE WHEN $3 THEN now() ELSE NULL END,
@@ -350,8 +388,18 @@ router.patch("/:academicYear/lock", requireRole(MANAGE_ROLES), async (req, res) 
        WHERE institution_id = $1 AND academic_year = $2`,
       [institutionId, academicYear, locked, req.user.userId || null]
     );
-    if (!rowCount)
-      return res.status(404).json({ success: false, message: "Academic year not found." });
+
+    await writeAuditLog(req, {
+      actionType:    locked ? "ACADEMIC_YEAR_LOCKED" : "ACADEMIC_YEAR_UNLOCKED",
+      entityType:    "ACADEMIC_YEAR",
+      entityId:      masterId,
+      oldValue:      { is_locked: wasLocked },
+      newValue:      { is_locked: locked },
+      changedFields: ["is_locked"],
+      status:        "SUCCESS",
+      message:       `Academic year ${academicYear} ${locked ? "locked" : "unlocked"}`,
+      metadata:      { institution_id: institutionId, academic_year: academicYear },
+    });
 
     return res.json({ success: true, academicYear, is_locked: locked });
   } catch (err) {
@@ -373,7 +421,25 @@ router.patch("/:academicYear/archive", requireRole(MANAGE_ROLES), async (req, re
     if (!institutionId)
       return res.status(400).json({ success: false, message: "Institution ID required." });
 
-    const { rowCount } = await pool.query(
+    // Pre-fetch the current state so we know the real oldValue and can skip
+    // the DB write entirely when the state is already what was requested.
+    const { rows: currentRows } = await pool.query(
+      `SELECT id, COALESCE(is_archived, false) AS is_archived
+       FROM academic_year_master
+       WHERE institution_id = $1 AND academic_year = $2`,
+      [institutionId, academicYear]
+    );
+    if (!currentRows.length)
+      return res.status(404).json({ success: false, message: "Academic year not found." });
+
+    const wasArchived = currentRows[0].is_archived;
+    const masterId    = currentRows[0].id;
+
+    // Idempotent: state already matches the request — no DB write, no audit entry.
+    if (wasArchived === archived)
+      return res.json({ success: true, academicYear, is_archived: archived });
+
+    await pool.query(
       `UPDATE academic_year_master
        SET is_archived = $3,
            archived_at = CASE WHEN $3 THEN now() ELSE NULL END,
@@ -382,8 +448,18 @@ router.patch("/:academicYear/archive", requireRole(MANAGE_ROLES), async (req, re
        WHERE institution_id = $1 AND academic_year = $2`,
       [institutionId, academicYear, archived, req.user.userId || null]
     );
-    if (!rowCount)
-      return res.status(404).json({ success: false, message: "Academic year not found." });
+
+    await writeAuditLog(req, {
+      actionType:    archived ? "ACADEMIC_YEAR_ARCHIVED" : "ACADEMIC_YEAR_UNARCHIVED",
+      entityType:    "ACADEMIC_YEAR",
+      entityId:      masterId,
+      oldValue:      { is_archived: wasArchived },
+      newValue:      { is_archived: archived },
+      changedFields: ["is_archived"],
+      status:        "SUCCESS",
+      message:       `Academic year ${academicYear} ${archived ? "archived" : "unarchived"}`,
+      metadata:      { institution_id: institutionId, academic_year: academicYear },
+    });
 
     return res.json({ success: true, academicYear, is_archived: archived });
   } catch (err) {
@@ -527,6 +603,16 @@ router.patch("/:academicYear/forms/:formId/status", requireRole(MANAGE_ROLES), a
       [institutionId, academicYear, req.user.userId || null]
     );
 
+    // Read the form's current classification before mutating so we can capture oldValue in the audit log.
+    const configBefore = await getConfig(pool, institutionId, academicYear);
+    const fid = String(formId);
+    let oldStatus = "archived";
+    if (configBefore) {
+      if (idList(configBefore.disabled).includes(fid))             oldStatus = "disabled";
+      else if (idList(configBefore.active_forms_json).includes(fid)) oldStatus = "active";
+      else if (idList(configBefore.archived_forms_json).includes(fid)) oldStatus = "archived";
+    }
+
     await applyStatus(client, institutionId, academicYear, String(formId), status);
 
     // Shared distribution (Snapshot ownership model): the publisher controls ONLY
@@ -553,6 +639,24 @@ router.patch("/:academicYear/forms/:formId/status", requireRole(MANAGE_ROLES), a
     }
 
     await client.query("COMMIT");
+
+    await writeAuditLog(req, {
+      actionType:    "FORM_LIFECYCLE_CHANGED",
+      entityType:    "FORM",
+      entityId:      formId,
+      oldValue:      { status: oldStatus },
+      newValue:      { status },
+      changedFields: ["status"],
+      status:        "SUCCESS",
+      message:       `Form "${form.form_name}" lifecycle changed from "${oldStatus}" to "${status}" for academic year ${academicYear}`,
+      metadata: {
+        institution_id: institutionId,
+        academic_year:  academicYear,
+        form_name:      form.form_name,
+        form_id:        String(formId),
+      },
+    });
+
     return res.json({ success: true, academicYear, formId: String(formId), status });
   } catch (err) {
     await client.query("ROLLBACK").catch(() => {});
@@ -614,6 +718,16 @@ router.patch("/:academicYear/activate", requireRole(MANAGE_ROLES), async (req, r
     );
     if (!rowCount)
       return res.status(404).json({ success: false, message: "No academic years to activate." });
+
+    await writeAuditLog(req, {
+      actionType: "ACADEMIC_YEAR_ACTIVATED",
+      entityType: "ACADEMIC_YEAR",
+      entityId:   null,
+      newValue:   { active_year: academicYear },
+      status:     "SUCCESS",
+      message:    `Academic year ${academicYear} set as the current active year`,
+      metadata:   { institution_id: institutionId },
+    });
 
     return res.json({ success: true, current: academicYear });
   } catch (err) {

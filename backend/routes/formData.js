@@ -687,7 +687,7 @@ router.post("/:formName/records", async (req, res) => {
 router.put("/:formName/records/:id", async (req, res) => {
   const pool = req.app.locals.pool;
   const { formName, id } = req.params;
-  const { data } = req.body;
+  const { data, updated_at } = req.body;
 
   if (!validateFormName(formName))
     return res.status(400).json({ success: false, message: "Invalid form name." });
@@ -751,6 +751,14 @@ router.put("/:formName/records/:id", async (req, res) => {
       whereVals.push(ctx.departmentId);
     }
 
+    // Optimistic concurrency: when the client sends the updated_at it loaded, add
+    // it to the WHERE so a concurrent save by another session causes a 0-row result
+    // rather than silently overwriting their change.
+    if (updated_at) {
+      whereClause += ` AND updated_at = $${idx++}`;
+      whereVals.push(new Date(updated_at));
+    }
+
     const vals = [...fieldCols.map((col) => data[col] ?? null), ...whereVals];
 
     const { rows } = await pool.query(
@@ -758,8 +766,23 @@ router.put("/:formName/records/:id", async (req, res) => {
       vals
     );
 
-    if (!rows.length)
+    if (!rows.length) {
+      // Distinguish a genuine 404 from a concurrency conflict.
+      if (updated_at) {
+        const { rows: still } = await pool.query(
+          `SELECT 1 FROM ${formName}_records WHERE id = $1 AND institution_id = $2 LIMIT 1`,
+          [id, ctx.institutionId]
+        );
+        if (still.length) {
+          return res.status(409).json({
+            success: false,
+            conflict: true,
+            message: "This record was modified by another user. Please refresh and try again.",
+          });
+        }
+      }
       return res.status(404).json({ success: false, message: "Record not found." });
+    }
 
     await writeAuditLog(req, {
       actionType: "FORM_DATA_UPDATED",

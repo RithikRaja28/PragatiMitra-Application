@@ -1240,7 +1240,7 @@ export default function FormDataPage() {
     const editing = editTarget && editTarget !== "new" ? editTarget : null;
     try {
       const res = editing
-        ? await apiFetch(`/api/form-data/${formEntity.form_name}/records/${editing.id}`, { method: "PUT",  body: JSON.stringify({ data: formData }) })
+        ? await apiFetch(`/api/form-data/${formEntity.form_name}/records/${editing.id}`, { method: "PUT",  body: JSON.stringify({ data: formData, updated_at: editing.updated_at ?? null }) })
         : await apiFetch(`/api/form-data/${formEntity.form_name}/records`,                { method: "POST", body: JSON.stringify({ data: formData }) });
       const data = await res.json();
       if (data.success) {
@@ -1248,6 +1248,9 @@ export default function FormDataPage() {
         loadRecords(formEntity);
         return { success: true, message: data.message };
       }
+      // Conflict: another session saved this record after it was opened. Refresh
+      // the list in the background so the user sees the latest data on Back.
+      if (res.status === 409 || data.conflict) loadRecords(formEntity);
       return { success: false, message: data.message || "Failed to save record." };
     } catch (err) {
       if (!isAuthError(err)) return { success: false, message: "Network error. Please try again." };

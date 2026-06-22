@@ -2,6 +2,9 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import {
   Bell, CheckCheck, Check,
   UserPlus, KeyRound, ShieldAlert, RefreshCw,
+  Building2, Landmark, Users2, Shield, UserCog,
+  Calendar, UserCheck, UserMinus, FileText, Clock,
+  UploadCloud,
 } from "lucide-react";
 import { useApi } from "../../hooks/useApi";
 import { useLanguage } from "../../i18n/LanguageContext";
@@ -9,10 +12,38 @@ import { t } from "../../i18n/translations";
 
 /* ── Event metadata ── */
 const EVENT_META = {
-  user_created:        { Icon: UserPlus,    color: "#2563eb", bg: "#eff6ff" },
-  password_reset:      { Icon: KeyRound,    color: "#7c3aed", bg: "#f5f3ff" },
-  account_suspended:   { Icon: ShieldAlert, color: "#dc2626", bg: "#fef2f2" },
-  account_reactivated: { Icon: RefreshCw,   color: "#059669", bg: "#f0fdf4" },
+  // User lifecycle
+  user_created:            { Icon: UserPlus,    color: "#2563eb", bg: "#eff6ff" },
+  account_suspended:       { Icon: ShieldAlert, color: "#dc2626", bg: "#fef2f2" },
+  account_reactivated:     { Icon: RefreshCw,   color: "#059669", bg: "#f0fdf4" },
+  user_role_updated:       { Icon: UserCog,     color: "#7c3aed", bg: "#f5f3ff" },
+  import_completed:        { Icon: UploadCloud, color: "#0891b2", bg: "#ecfeff" },
+  // Security
+  password_reset:          { Icon: KeyRound,    color: "#7c3aed", bg: "#f5f3ff" },
+  // Departments
+  department_created:      { Icon: Building2,   color: "#2563eb", bg: "#eff6ff" },
+  department_activated:    { Icon: Building2,   color: "#059669", bg: "#f0fdf4" },
+  department_deactivated:  { Icon: Building2,   color: "#dc2626", bg: "#fef2f2" },
+  // Institutions
+  institution_created:     { Icon: Landmark,    color: "#2563eb", bg: "#eff6ff" },
+  institution_activated:   { Icon: Landmark,    color: "#059669", bg: "#f0fdf4" },
+  institution_deactivated: { Icon: Landmark,    color: "#dc2626", bg: "#fef2f2" },
+  // Committees
+  committee_created:       { Icon: Users2,      color: "#2563eb", bg: "#eff6ff" },
+  committee_activated:     { Icon: Users2,      color: "#059669", bg: "#f0fdf4" },
+  committee_deactivated:   { Icon: Users2,      color: "#dc2626", bg: "#fef2f2" },
+  // Roles
+  role_created:            { Icon: Shield,      color: "#0891b2", bg: "#ecfeff" },
+  // Academic year
+  academic_year_activated: { Icon: Calendar,    color: "#059669", bg: "#f0fdf4" },
+  // Nodal officer
+  nodal_officer_assigned:  { Icon: UserCheck,   color: "#2563eb", bg: "#eff6ff" },
+  nodal_officer_activated: { Icon: UserCheck,   color: "#059669", bg: "#f0fdf4" },
+  nodal_officer_removed:   { Icon: UserMinus,   color: "#dc2626", bg: "#fef2f2" },
+  // Forms
+  institute_form_created:  { Icon: FileText,    color: "#7c3aed", bg: "#f5f3ff" },
+  department_form_created: { Icon: FileText,    color: "#0891b2", bg: "#ecfeff" },
+  form_deadline_reminder:  { Icon: Clock,       color: "#f59e0b", bg: "#fffbeb" },
 };
 const DEFAULT_META = { Icon: Bell, color: "#64748b", bg: "#f8fafc" };
 
@@ -218,6 +249,46 @@ export default function NotificationBell() {
       display: "flex", alignItems: "center", justifyContent: "center",
       margin: "0 auto 10px",
     },
+    sectionLabel: {
+      padding: "5px 16px 4px",
+      fontFamily: "'Plus Jakarta Sans', sans-serif",
+      fontSize: 10, fontWeight: 700, color: "#94a3b8",
+      letterSpacing: "0.06em", textTransform: "uppercase",
+      background: "#fafbfc", borderBottom: "1px solid #f1f5f9",
+    },
+  };
+
+  /* ── Derived section arrays (recalculated on every render) ── */
+  const unreadNotifs = notifs.filter(n => !n.is_read);
+  const readNotifs   = notifs.filter(n =>  n.is_read);
+
+  /* ── Shared row renderer ── */
+  const renderRow = (n, isLast) => {
+    const meta     = EVENT_META[n.event_id] || DEFAULT_META;
+    const isUnread = !n.is_read;
+    return (
+      <button
+        key={n.id}
+        style={{ ...S.row(isUnread), borderBottom: isLast ? "none" : "1px solid #f1f5f9" }}
+        onClick={() => markRead(n)}
+        onMouseEnter={e => { e.currentTarget.style.background = isUnread ? "#e8f1fe" : "#f8fafc"; }}
+        onMouseLeave={e => { e.currentTarget.style.background = isUnread ? "#f0f7ff" : "transparent"; }}
+      >
+        {isUnread && <div style={S.unreadBar} />}
+        <div style={S.ico(meta.bg)}>
+          <meta.Icon size={16} color={meta.color} />
+        </div>
+        <div style={S.body}>
+          <div style={S.title(isUnread)}>{n.title}</div>
+          <div style={S.msg}>{n.message}</div>
+          <div style={S.time}>{timeAgo(n.created_at, lang)}</div>
+        </div>
+        {isUnread
+          ? <div style={S.dot} />
+          : <Check size={12} color="#94a3b8" style={{ flexShrink: 0, marginTop: 4 }} />
+        }
+      </button>
+    );
   };
 
   return (
@@ -278,34 +349,24 @@ export default function NotificationBell() {
                 {t("No notifications yet.", lang)}
               </div>
             </div>
-          ) : notifs.map((n, idx) => {
-            const meta    = EVENT_META[n.event_id] || DEFAULT_META;
-            const isUnread = !n.is_read;
-            const isLast  = idx === notifs.length - 1;
-            return (
-              <button
-                key={n.id}
-                style={{ ...S.row(isUnread), borderBottom: isLast ? "none" : "1px solid #f1f5f9" }}
-                onClick={() => markRead(n)}
-                onMouseEnter={e => { e.currentTarget.style.background = isUnread ? "#e8f1fe" : "#f8fafc"; }}
-                onMouseLeave={e => { e.currentTarget.style.background = isUnread ? "#f0f7ff" : "transparent"; }}
-              >
-                {isUnread && <div style={S.unreadBar} />}
-                <div style={S.ico(meta.bg)}>
-                  <meta.Icon size={16} color={meta.color} />
-                </div>
-                <div style={S.body}>
-                  <div style={S.title(isUnread)}>{n.title}</div>
-                  <div style={S.msg}>{n.message}</div>
-                  <div style={S.time}>{timeAgo(n.created_at, lang)}</div>
-                </div>
-                {isUnread
-                  ? <div style={S.dot} />
-                  : <Check size={12} color="#94a3b8" style={{ flexShrink: 0, marginTop: 4 }} />
-                }
-              </button>
-            );
-          })}
+          ) : (
+            <>
+              {unreadNotifs.length > 0 && (
+                <>
+                  <div style={S.sectionLabel}>{lang === "hi" ? "नए" : "New"}</div>
+                  {unreadNotifs.map((n, i) =>
+                    renderRow(n, readNotifs.length === 0 && i === unreadNotifs.length - 1)
+                  )}
+                </>
+              )}
+              {readNotifs.length > 0 && (
+                <>
+                  <div style={S.sectionLabel}>{lang === "hi" ? "पढ़े गए" : "Read"}</div>
+                  {readNotifs.map((n, i) => renderRow(n, i === readNotifs.length - 1))}
+                </>
+              )}
+            </>
+          )}
         </div>
       )}
     </div>

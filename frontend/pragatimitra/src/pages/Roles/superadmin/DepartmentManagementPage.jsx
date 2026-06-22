@@ -327,31 +327,42 @@ function StyledSelect({ value, onChange, children, minWidth = 180 }) {
 
 /* ─── Icon-only, viewport-aware export menu (shared Dropdown) ─── */
 function ExportMenu({ selectedInstitutionId }) {
-  function triggerDownload(url) {
-    const a = document.createElement("a");
-    a.href = url;
-    a.target = "_blank";
-    a.rel = "noopener noreferrer";
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+  const { apiFetch } = useApi();
+  const [loading, setLoading] = useState(false);
+
+  async function fetchAndDownload(path, filename) {
+    setLoading(true);
+    try {
+      const res  = await apiFetch(path);
+      const blob = await res.blob();
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement("a");
+      a.href     = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      // apiFetch handles 401 (auto-logout); other errors are silently ignored
+    } finally {
+      setLoading(false);
+    }
   }
 
-  const exportUrl = selectedInstitutionId
-    ? `${API_BASE}/api/departments/export?institution_id=${selectedInstitutionId}`
-    : `${API_BASE}/api/departments/export`;
+  const exportPath = selectedInstitutionId
+    ? `/api/departments/export?institution_id=${selectedInstitutionId}`
+    : `/api/departments/export`;
 
   return (
     <Dropdown
       align="right"
       width={240}
       button={({ toggle }) => (
-        <Button variant="secondary" iconOnly icon={<Download size={18} strokeWidth={1.9} />} onClick={toggle} aria-label="Export" title="Export" />
+        <Button variant="secondary" iconOnly loading={loading} icon={<Download size={18} strokeWidth={1.9} />} onClick={toggle} aria-label="Export" title="Export" />
       )}
     >
       <MenuLabel>Export</MenuLabel>
-      <MenuItem icon={<FileSpreadsheet size={16} strokeWidth={1.9} />} onClick={() => triggerDownload(exportUrl)}>Export Departments (.xlsx)</MenuItem>
-      <MenuItem icon={<FileText size={16} strokeWidth={1.9} />} onClick={() => triggerDownload(`${API_BASE}/api/departments/export/sample`)}>Download Import Template</MenuItem>
+      <MenuItem icon={<FileSpreadsheet size={16} strokeWidth={1.9} />} onClick={() => fetchAndDownload(exportPath, "departments_export.xlsx")}>Export Departments (.xlsx)</MenuItem>
+      <MenuItem icon={<FileText size={16} strokeWidth={1.9} />} onClick={() => fetchAndDownload("/api/departments/export/sample", "departments_import_template.xlsx")}>Download Import Template</MenuItem>
     </Dropdown>
   );
 }

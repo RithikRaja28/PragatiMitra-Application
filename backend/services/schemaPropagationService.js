@@ -205,6 +205,53 @@ async function ensureSchemaExists(pool, formName) {
   return { created };
 }
 
+/* One-time backfill: create v1 publish snapshots for shared forms that predate the
+   snapshot feature (i.e. were created before publishSchemaSnapshot was called on
+   POST /api/forms). Without this, late-onboarding institutions would clone the
+   creator's current (possibly drifted) schema instead of the original published one.
+
+   Uses DISTINCT ON to select the CANONICAL (oldest) schema row per form — the same
+   row that ensureSchemaExists uses as its clone source — and freezes it as version 1.
+   publishSchemaSnapshot's INSERT WHERE NOT EXISTS guard makes this fully idempotent. */
+async function backfillLegacySnapshots(pool) {
+  try {
+    const { rows: legacy } = await pool.query(`
+      SELECT DISTINCT ON (tl.id)
+        tl.id         AS source_form_id,
+        tl.form_name,
+        cfs.schema,
+        cfs.used_column_names,
+        cfs.created_by
+      FROM table_list tl
+      JOIN custom_field_schemas cfs
+        ON cfs.form_name = tl.form_name AND cfs.is_active = true
+      WHERE tl.share_table = true
+        AND NOT EXISTS (
+          SELECT 1 FROM shared_form_snapshots sfs
+          WHERE sfs.source_form_id = tl.id
+        )
+      ORDER BY tl.id, cfs.created_at ASC NULLS LAST
+    `);
+
+    let created = 0;
+    for (const row of legacy) {
+      await publishSchemaSnapshot(pool, {
+        sourceFormId:    row.source_form_id,
+        formName:        row.form_name,
+        schema:          row.schema,
+        usedColumnNames: row.used_column_names,
+        createdBy:       row.created_by,
+      });
+      created++;
+    }
+    if (created) logger.info(`schema propagation: backfilled v1 snapshot(s) for ${created} legacy shared form(s)`);
+    return created;
+  } catch (e) {
+    logger.error("backfillLegacySnapshots failed", { stack: e.stack });
+    return 0;
+  }
+}
+
 /* One-time / on-boot repair across all forms that have multiple institutions in
    institute_access. Idempotent — skips anything already present. */
 async function propagateAllSharedSchemas(pool) {
@@ -212,6 +259,7 @@ async function propagateAllSharedSchemas(pool) {
     await ensureSchemaPropagationLog(pool);
     await ensureSchemaProvenanceColumns(pool); // clones below write provenance
     await ensureSharedFormSnapshotTable(pool); // immutable publish snapshots
+    await backfillLegacySnapshots(pool);       // freeze legacy forms before propagating
     const { rows } = await pool.query(
       `SELECT form_name FROM table_list
         WHERE COALESCE(array_length(institute_access, 1), 0) > 1
@@ -273,6 +321,7 @@ module.exports = {
   ensureSharedFormSnapshotTable,
   publishSchemaSnapshot,
   getOriginalSnapshot,
+  backfillLegacySnapshots,
   ensureSchemaExists,
   propagateAllSharedSchemas,
   resolveInstitutionSharedForms,

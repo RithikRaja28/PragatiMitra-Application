@@ -18,12 +18,24 @@ router.get("/inbox", verifyToken, async (req, res) => {
   const pool   = req.app.locals.pool;
   const userId = req.user.userId;
   try {
+    /* Return ALL unread notifications + the 3 most-recent read notifications,
+       with unread sorted first so the UI can render two distinct sections without
+       a second round-trip. The UNION ALL form lets each branch have its own
+       ORDER BY / LIMIT before the outer sort. */
     const { rows } = await pool.query(
-      `SELECT id, title, message, is_read, created_at
-       FROM notifications
-       WHERE user_id = $1
-       ORDER BY created_at DESC
-       LIMIT 3`,
+      `SELECT * FROM (
+         (SELECT id, event_id, title, message, is_read, created_at
+          FROM notifications
+          WHERE user_id = $1 AND is_read = false
+          ORDER BY created_at DESC)
+         UNION ALL
+         (SELECT id, event_id, title, message, is_read, created_at
+          FROM notifications
+          WHERE user_id = $1 AND is_read = true
+          ORDER BY created_at DESC
+          LIMIT 3)
+       ) n
+       ORDER BY is_read ASC, created_at DESC`,
       [userId]
     );
     return res.json({ success: true, notifications: rows });

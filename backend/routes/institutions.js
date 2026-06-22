@@ -461,6 +461,15 @@ router.get("/export", requireRole(["super_admin"]), async (req, res) => {
     XLSX.utils.book_append_sheet(wb, ws, "Institutions");
     const ts = new Date().toISOString().slice(0, 10);
 
+    writeAuditLog(req, {
+      actionType: "INST_EXPORTED",
+      entityType: "INSTITUTION",
+      entityId:   null,
+      newValue:   { record_count: rows.length, format },
+      status:     "SUCCESS",
+      message:    `Exported ${rows.length} institution(s) to ${format.toUpperCase()}`,
+    });
+
     if (format === "xlsx") {
       const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
       res.setHeader("Content-Disposition", `attachment; filename="institutions_${ts}.xlsx"`);
@@ -936,7 +945,8 @@ async function setLifecycleState(req, res, { targetStatus, deletedAt, okMessage,
   try {
     await ensureLifecycleColumns(pool);
     const { rows: existingRows } = await pool.query(
-      `SELECT institution_id, institution_name, status, deleted_at FROM institutions WHERE institution_id = $1`,
+      `SELECT institution_id, institution_name, code, email_domain, address_line1, city, state, pincode, status, deleted_at
+       FROM institutions WHERE institution_id = $1`,
       [institutionId]
     );
     if (!existingRows.length) return res.status(404).json({ success: false, message: "Institution not found." });
@@ -962,10 +972,22 @@ async function setLifecycleState(req, res, { targetStatus, deletedAt, okMessage,
       actionType: action,
       entityType: "INSTITUTION",
       entityId:   updated.institution_id,
-      oldValue:   { status: existing.status, deleted_at: existing.deleted_at },
-      newValue:   { status: updated.status,  deleted_at: updated.deleted_at },
+      oldValue: {
+        institution_name: existing.institution_name,
+        code:             existing.code,
+        email_domain:     existing.email_domain,
+        address_line1:    existing.address_line1,
+        city:             existing.city,
+        state:            existing.state,
+        pincode:          existing.pincode,
+        status:           existing.status,
+        deleted_at:       existing.deleted_at,
+      },
+      newValue: { status: updated.status, deleted_at: updated.deleted_at },
+      changedFields: ["status"],
       status:     "SUCCESS",
       message:    `Institution "${updated.institution_name}" ${okMessage}`,
+      metadata:   { performed_by: req.user?.userId || null },
     });
 
     return res.json({ success: true, message: `Institution "${updated.institution_name}" ${okMessage}.`, data: updated });

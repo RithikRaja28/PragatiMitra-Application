@@ -834,6 +834,12 @@ router.patch("/:id/archive", requireRole(WRITE_ROLES), requireActiveDepartment, 
     if (error) return res.status(404).json({ success: false, message: error });
     const year = resolveYear(req);
 
+    const { rows: ymBefore } = await pool.query(
+      `SELECT is_archived FROM department_form_year_mapping WHERE department_form_id = $1 AND academic_year = $2`,
+      [form.id, year]
+    );
+    const oldArchived = ymBefore[0]?.is_archived ?? false;
+
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
@@ -853,10 +859,15 @@ router.patch("/:id/archive", requireRole(WRITE_ROLES), requireActiveDepartment, 
     }
 
     await writeAuditLog(req, {
-      actionType: archived ? "ARCHIVE_DEPARTMENT_FORM" : "ACTIVATE_DEPARTMENT_FORM",
-      entityType: "department_form",
-      entityId: form.id,
-      newValue: { form_name: form.form_name, academic_year: year, is_archived: archived },
+      actionType:    archived ? "DEPARTMENT_FORM_ARCHIVED" : "DEPARTMENT_FORM_UNARCHIVED",
+      entityType:    "DEPARTMENT_FORM",
+      entityId:      form.id,
+      oldValue:      { form_name: form.form_name, academic_year: year, is_archived: oldArchived },
+      newValue:      { form_name: form.form_name, academic_year: year, is_archived: archived },
+      changedFields: ["is_archived"],
+      status:        "SUCCESS",
+      message:       `Department form "${form.form_name}" ${archived ? "archived" : "unarchived"} for academic year ${year}`,
+      metadata:      { department_id: form.department_id, changed_by: req.user.userId },
     }).catch(() => {});
 
     return res.json({ success: true, message: `Form "${form.form_name}" ${archived ? "archived" : "activated"} for ${year}–${year + 1}.` });

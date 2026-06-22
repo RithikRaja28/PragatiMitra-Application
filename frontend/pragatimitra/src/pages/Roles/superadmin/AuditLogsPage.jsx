@@ -72,6 +72,7 @@ const ACTION_META = {
   DEPT_UPDATED:             { label: "Updated",             bg: "#dbeafe", color: "#1d4ed8" },
   DEPT_DELETED:             { label: "Deleted",             bg: "#fee2e2", color: "#b91c1c" },
   DEPT_DEACTIVATED:         { label: "Deactivated",         bg: "#fef3c7", color: "#d97706" },
+  DEPT_BULK_IMPORTED:       { label: "Bulk Imported",       bg: "#ede9fe", color: "#6d28d9" },
   DEPARTMENT_CREATED:       { label: "Created",             bg: "#dcfce7", color: "#15803d" },
   DEPARTMENT_UPDATED:       { label: "Updated",             bg: "#dbeafe", color: "#1d4ed8" },
   DEPARTMENT_DELETED:       { label: "Deleted",             bg: "#fee2e2", color: "#b91c1c" },
@@ -80,6 +81,7 @@ const ACTION_META = {
   INST_CREATED:             { label: "Created",             bg: "#dcfce7", color: "#15803d" },
   INST_UPDATED:             { label: "Updated",             bg: "#dbeafe", color: "#1d4ed8" },
   INST_DELETED:             { label: "Deleted",             bg: "#fee2e2", color: "#b91c1c" },
+  INSTITUTIONS_BULK_IMPORTED: { label: "Bulk Imported",     bg: "#ede9fe", color: "#6d28d9" },
   INSTITUTION_CREATED:      { label: "Created",             bg: "#dcfce7", color: "#15803d" },
   INSTITUTION_UPDATED:      { label: "Updated",             bg: "#dbeafe", color: "#1d4ed8" },
   INSTITUTION_DELETED:      { label: "Deleted",             bg: "#fee2e2", color: "#b91c1c" },
@@ -125,20 +127,38 @@ const ACTION_META = {
   // ── KPI ───────────────────────────────────────────────────────
   KPI_CREATED:              { label: "KPI Created",         bg: "#dcfce7", color: "#059669" },
 
+  // ── Workflow ──────────────────────────────────────────────────
+  WORKFLOW_CREATED:         { label: "Created",             bg: "#dcfce7", color: "#15803d" },
+  WORKFLOW_UPDATED:         { label: "Updated",             bg: "#dbeafe", color: "#1d4ed8" },
+  WORKFLOW_DELETED:         { label: "Deleted",             bg: "#fee2e2", color: "#b91c1c" },
+  WORKFLOW_STEP_ADDED:      { label: "Step Added",          bg: "#dcfce7", color: "#15803d" },
+  WORKFLOW_STEP_UPDATED:    { label: "Step Updated",        bg: "#dbeafe", color: "#1d4ed8" },
+  WORKFLOW_STEP_DELETED:    { label: "Step Removed",        bg: "#fee2e2", color: "#b91c1c" },
+  WORKFLOW_DEFAULT_SET:     { label: "Set as Default",      bg: "#fef3c7", color: "#d97706" },
+
+  // ── Academic Year ─────────────────────────────────────────────
+  ACADEMIC_YEAR_LOCKED:     { label: "Locked",              bg: "#fef3c7", color: "#d97706" },
+  ACADEMIC_YEAR_UNLOCKED:   { label: "Unlocked",            bg: "#d1fae5", color: "#065f46" },
+  ACADEMIC_YEAR_ARCHIVED:   { label: "Archived",            bg: "#fee2e2", color: "#b91c1c" },
+  ACADEMIC_YEAR_UNARCHIVED: { label: "Unarchived",          bg: "#dcfce7", color: "#15803d" },
+
   DEFAULT:                  { label: "Event",               bg: "#f1f5f9", color: "#64748b" },
 };
 
 const TYPE_META = {
-  USER:        { label: "User",        bg: "#ede9fe", color: "#6d28d9" },
-  DEPARTMENT:  { label: "Department",  bg: "#d1fae5", color: "#065f46" },
-  INSTITUTION: { label: "Institution", bg: "#dbeafe", color: "#1d4ed8" },
-  ROLE:        { label: "Role",        bg: "#fef3c7", color: "#d97706" },
-  COMMITTEE:   { label: "Committee",   bg: "#fff1f2", color: "#be123c" },
-  SESSION:     { label: "Session",     bg: "#e0f2fe", color: "#0369a1" },
-  FORM:        { label: "Form",        bg: "#cffafe", color: "#0e7490" },
-  FORM_DATA:   { label: "Form Data",   bg: "#f3e8ff", color: "#7c3aed" },
-  FORM_LOCK:   { label: "Form Lock",   bg: "#fef3c7", color: "#d97706" },
-  KPI:         { label: "KPI",         bg: "#d1fae5", color: "#059669" },
+  USER:          { label: "User",          bg: "#ede9fe", color: "#6d28d9" },
+  DEPARTMENT:    { label: "Department",    bg: "#d1fae5", color: "#065f46" },
+  INSTITUTION:   { label: "Institution",   bg: "#dbeafe", color: "#1d4ed8" },
+  ROLE:          { label: "Role",          bg: "#fef3c7", color: "#d97706" },
+  COMMITTEE:     { label: "Committee",     bg: "#fff1f2", color: "#be123c" },
+  SESSION:       { label: "Session",       bg: "#e0f2fe", color: "#0369a1" },
+  FORM:          { label: "Form",          bg: "#cffafe", color: "#0e7490" },
+  FORM_DATA:     { label: "Form Data",     bg: "#f3e8ff", color: "#7c3aed" },
+  FORM_LOCK:     { label: "Form Lock",     bg: "#fef3c7", color: "#d97706" },
+  FORM_ASSIGNMENT: { label: "Assignment",  bg: "#e0f2fe", color: "#0369a1" },
+  KPI:           { label: "KPI",           bg: "#d1fae5", color: "#059669" },
+  WORKFLOW:      { label: "Workflow",      bg: "#f3e8ff", color: "#7c3aed" },
+  ACADEMIC_YEAR: { label: "Academic Year", bg: "#fef9c3", color: "#a16207" },
 };
 
 const ENTITY_ICON = { USER: User, DEPARTMENT: Building, INSTITUTION: Landmark, ROLE: Shield, COMMITTEE: FileText, SESSION: Lock, FORM: FileText, FORM_DATA: FileText, FORM_LOCK: Lock, KPI: FileText };
@@ -450,13 +470,13 @@ function SessionDetail({ log }) {
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   IMPORT / EXPORT DETAIL PANEL — NEW
-   Renders for USERS_BULK_IMPORTED and USERS_EXPORTED
+   IMPORT / EXPORT DETAIL PANEL
+   Renders for bulk import / export action types
 ═══════════════════════════════════════════════════════════════ */
 function ImportExportDetail({ log }) {
   const { action_type, new_value, metadata } = log;
 
-  // ── Bulk import ───────────────────────────────────────────────
+  // ── User bulk import ──────────────────────────────────────────
   if (action_type === "USERS_BULK_IMPORTED") {
     const v = new_value || {};
     const stats = [
@@ -467,6 +487,28 @@ function ImportExportDetail({ log }) {
     ];
     return (
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))", gap: 10 }}>
+        {stats.map(({ label, value, color, bg }) => (
+          <div key={label} style={{ background: bg, border: `1px solid ${color}33`, borderRadius: 10, padding: "12px 14px", textAlign: "center" }}>
+            <div style={{ fontSize: 24, fontWeight: 700, color, lineHeight: 1 }}>{value}</div>
+            <div style={{ fontSize: 11, color: "#64748b", marginTop: 5, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.5 }}>{label}</div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  // ── Department / Institution bulk import ──────────────────────
+  if (action_type === "DEPT_BULK_IMPORTED" || action_type === "INSTITUTIONS_BULK_IMPORTED") {
+    const v = new_value || {};
+    const stats = [
+      { label: "Total",    value: v.total    ?? "—", color: "#1d4ed8", bg: "#dbeafe" },
+      { label: "Created",  value: v.inserted ?? v.imported ?? "—", color: "#15803d", bg: "#dcfce7" },
+      { label: "Updated",  value: v.updated  ?? "—", color: "#0e7490", bg: "#cffafe" },
+      { label: "Skipped",  value: v.skipped  ?? "—", color: "#d97706", bg: "#fef3c7" },
+      { label: "Failed",   value: v.failed   ?? "—", color: "#b91c1c", bg: "#fee2e2" },
+    ];
+    return (
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(110px, 1fr))", gap: 10 }}>
         {stats.map(({ label, value, color, bg }) => (
           <div key={label} style={{ background: bg, border: `1px solid ${color}33`, borderRadius: 10, padding: "12px 14px", textAlign: "center" }}>
             <div style={{ fontSize: 24, fontWeight: 700, color, lineHeight: 1 }}>{value}</div>
@@ -755,7 +797,7 @@ function ExpandedDetailPanel({ log }) {
   // ── Route to the correct detail renderer ─────────────────────
   let changeContent;
   const isSessionAction      = log.entity_type === "SESSION";
-  const isImportExportAction = ["USERS_BULK_IMPORTED", "USERS_EXPORTED"].includes(log.action_type);
+  const isImportExportAction = ["USERS_BULK_IMPORTED", "USERS_EXPORTED", "DEPT_BULK_IMPORTED", "INSTITUTIONS_BULK_IMPORTED"].includes(log.action_type);
   const isCommitteeAction    = log.action_type?.startsWith("COMMITTEE_");
 
   if (isSessionAction) {

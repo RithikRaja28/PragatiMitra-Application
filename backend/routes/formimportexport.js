@@ -1,5 +1,6 @@
 "use strict";
 
+const { randomUUID } = require("crypto");
 const express  = require("express");
 const multer   = require("multer");
 const XLSX     = require("xlsx");     // used for import parsing only
@@ -402,20 +403,32 @@ router.post("/:formName/import/parse", handleUpload, async (req, res) => {
       wb = XLSX.read(req.file.buffer, { type: "buffer" });
     }
 
-    const ws   = wb.Sheets[wb.SheetNames[0]];
+    const ws = wb.Sheets[wb.SheetNames[0]];
+
+    /* ── Row limit check BEFORE sheet_to_json (HIGH-5) ──────────────────────
+       XLSX.utils.sheet_to_json allocates the entire dataset as JS objects before
+       we can check its length. A crafted 50 k-row file (~5 MB on disk) expands to
+       ~400 MB in heap, potentially crashing the process.
+       `ws['!ref']` gives the worksheet's dimension range (e.g. "A1:Z10501") without
+       parsing cell values.  decode_range().e.r is the 0-based last-row index; since
+       row 0 is the header, e.r equals the data-row count. */
+    if (!ws || !ws["!ref"])
+      return res.status(400).json({ success: false, message: "File is empty or has no data rows." });
+    const sheetRange    = XLSX.utils.decode_range(ws["!ref"]);
+    const estimatedRows = sheetRange.e.r; // header is row 0; data rows = e.r
+    if (estimatedRows > 10500)
+      return res.status(400).json({ success: false, message: "File has more than 10,500 rows. Please split into smaller batches." });
+
     const rows = XLSX.utils.sheet_to_json(ws, { defval: "" });
 
     if (!rows.length)
       return res.status(400).json({ success: false, message: "File is empty or has no data rows." });
 
-    /* ── LIMIT: 10,500 rows ── */
-    if (rows.length > 10500)
-      return res.status(400).json({ success: false, message: "File has more than 10,500 rows. Please split into smaller batches." });
-
     const fileColumns = Object.keys(rows[0]);
 
     return res.json({
-      success:      true,
+      success:         true,
+      importSessionId: randomUUID(), // CRIT-2: opaque token sent back with every chunk
       fileColumns,
       schemaFields: fields.map((f) => ({
         col:      dbCol(f.column_name),
@@ -466,6 +479,7 @@ router.post("/:formName/import/execute-chunk", async (req, res) => {
     year,
     language = "en",
     departmentId,
+    importSessionId = null, // CRIT-2: opaque UUID from parse response; null = old clients
   } = req.body;
 
   if (!validateFormName(formName))
@@ -489,17 +503,40 @@ router.post("/:formName/import/execute-chunk", async (req, res) => {
       ? ctx.departmentId
       : (departmentId || null);
 
-    /* Bug 13 — re-check the manual form lock on EVERY chunk (not just chunk 0) so
-       locking the form mid-import stops the remaining chunks immediately. Chunks
-       already committed are preserved (no rollback). The few extra lightweight
-       reads per chunk are the cost of making the lock take effect continuously. */
+    /* Bug 13 — re-check the manual form lock on EVERY chunk so locking the form
+       mid-import stops remaining chunks immediately.
+       CRIT-2 fix: when the lock fires on chunk > 0, committed rows from earlier
+       chunks are deleted (using import_session_id stored on every inserted row)
+       so the import never leaves a partial dataset behind. Clients that don't send
+       importSessionId (old frontend) keep the original 403 / preserve behaviour. */
     {
       const { rows: lockRows } = await pool.query(
         `SELECT is_locked FROM form_lock_config WHERE form_name = $1 AND institution_id = $2`,
         [formName, ctx.institutionId]
       );
-      if (lockRows[0]?.is_locked)
+      if (lockRows[0]?.is_locked) {
+        if (importSessionId && Number(chunkIndex) > 0) {
+          // Roll back all rows committed by earlier chunks in this import session.
+          // Runs against both English and Hindi rows (Hindi mirrors carry the same
+          // import_session_id). Fire-and-forget: a cleanup failure is logged but
+          // does not change the 409 response the client receives.
+          pool.query(
+            `DELETE FROM ${formName}_records
+               WHERE import_session_id = $1 AND institution_id = $2`,
+            [importSessionId, ctx.institutionId]
+          ).catch((e) =>
+            logger.error("import session rollback failed", {
+              importSessionId, formName, error: e.message,
+            })
+          );
+          return res.status(409).json({
+            success:     false,
+            rolledBack:  true,
+            message:     "The form was locked during import. All rows committed in earlier chunks have been rolled back.",
+          });
+        }
         return res.status(403).json({ success: false, message: "This form is locked. Import is disabled." });
+      }
     }
 
     /* ── M-2 fix — ONE resolved academic year drives BOTH the schema lookup and the
@@ -606,10 +643,15 @@ router.post("/:formName/import/execute-chunk", async (req, res) => {
     try {
       await client.query("BEGIN");
 
-      /* Ensure source_row_id column exists (needed for Hindi linking) */
+      /* Ensure source_row_id and import_session_id columns exist. */
       await client.query(
         `ALTER TABLE ${recordsTable} ADD COLUMN IF NOT EXISTS source_row_id UUID`
       );
+      if (importSessionId) {
+        await client.query(
+          `ALTER TABLE ${recordsTable} ADD COLUMN IF NOT EXISTS import_session_id UUID`
+        );
+      }
 
       /* Bug 14 — batched duplicate detection. The previous code ran ONE SELECT per
          row (10k rows → 10k sequential scans, the dominant import cost). Instead we
@@ -656,6 +698,8 @@ router.post("/:formName/import/execute-chunk", async (req, res) => {
       const seenInChunk = new Map();  // intra-chunk key → inserted id
       const stdCols = ["form_name", "institution_id", "department_id", "year", "schema_id", "language"];
       const stdVals = [formName, ctx.institutionId, resolvedDeptId, formYear, schemaRow.id, language];
+      // CRIT-2: tag every row with the session ID so a mid-import lock can DELETE them.
+      if (importSessionId) { stdCols.push("import_session_id"); stdVals.push(importSessionId); }
       const allCols = [...stdCols, ...fieldCols];
 
       for (let ord = 0; ord < prepared.length; ord++) {
@@ -721,6 +765,8 @@ router.post("/:formName/import/execute-chunk", async (req, res) => {
                 const hiData  = await translateRow(rowData, fieldModes);
                 const hiCols  = ["form_name", "institution_id", "department_id", "year", "schema_id", "language", "source_row_id", ...fieldCols];
                 const hiVals  = [formName, ctx.institutionId, resolvedDeptId, formYear, schemaRow.id, "hi", srcId, ...fieldCols.map(c => hiData[c] ?? null)];
+                // Carry the session ID so a rollback DELETE also removes Hindi mirrors.
+                if (importSessionId) { hiCols.push("import_session_id"); hiVals.push(importSessionId); }
                 const hiPh    = hiVals.map((_, i) => `$${i + 1}`).join(", ");
                 await pool.query(`INSERT INTO ${recordsTable} (${hiCols.join(", ")}) VALUES (${hiPh})`, hiVals);
                 lastErr = null;

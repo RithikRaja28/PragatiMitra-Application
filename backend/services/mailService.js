@@ -883,6 +883,48 @@ async function sendAcademicYearActivatedEmail(pool, { full_name, email, institut
   }
 }
 
+/* ── Bulk import completed — notifies the admin who triggered the import ── */
+async function sendImportCompletedEmail(pool, { full_name, email, imported, skipped, failed, total, login_url, userId }) {
+  const tmpl   = await getTemplateFromDB(pool, "import_completed");
+  const tokens = baseTokens({
+    UserName:  full_name, FULL_NAME: full_name,
+    Email:     email,     EMAIL:     email,
+    IMPORTED:  String(imported),
+    SKIPPED:   String(skipped),
+    FAILED:    String(failed),
+    TOTAL:     String(total),
+    LoginURL:  login_url || process.env.APP_LOGIN_URL || "http://localhost:5173/login",
+    LOGIN_URL: login_url || process.env.APP_LOGIN_URL || "http://localhost:5173/login",
+  });
+
+  if (tmpl.email_enabled) {
+    const subject   = resolveTokens(tmpl.email_subject, tokens);
+    const introText = resolveTokens(tmpl.email_body,    tokens);
+    await sendMail({ to: email, subject, html: loadNotificationLayout({
+      ...tokens,
+      HEADER_BADGE:    "Import Complete",
+      HEADER_TITLE:    "Bulk User Import Completed",
+      HEADER_SUBTITLE: "Your import has been processed",
+      INTRO_TEXT:      introText,
+      DETAILS_HTML:    _detailsTable([
+        ["Imported", String(imported)],
+        ["Skipped",  String(skipped)],
+        ["Failed",   String(failed)],
+        ["Total",    String(total)],
+      ]),
+      CTA_HTML: _ctaButton(tokens.LOGIN_URL, "View Users →"),
+    }) });
+  }
+  if (tmpl.app_enabled) {
+    const uid = await resolveUserId(pool, userId, email);
+    await insertNotification(pool, {
+      userId: uid, eventId: "import_completed",
+      title:   resolveTokens(tmpl.email_subject, tokens),
+      message: resolveTokens(tmpl.app_message,   tokens),
+    });
+  }
+}
+
 /* ═══════════════════════════════════════════════════════════════════
    EMAIL QUEUE  —  producer + worker
    Follows the same pattern as formDeadlineService:
@@ -1094,6 +1136,16 @@ async function _dispatchJob(pool, job) {
         login_url:        payload.login_url,
         userId,
       });
+    case "import_completed":
+      return sendImportCompletedEmail(pool, {
+        full_name:  payload.full_name,  email,
+        imported:   payload.imported,
+        skipped:    payload.skipped,
+        failed:     payload.failed,
+        total:      payload.total,
+        login_url:  payload.login_url,
+        userId,
+      });
     default:
       throw new Error(`emailWorker: unknown event_id "${event_id}"`);
   }
@@ -1152,6 +1204,18 @@ async function _processNext(pool) {
       [job.id]
     );
     logger.info(`emailWorker: sent  event=${job.event_id} to=${job.recipient_email} id=${job.id}`);
+
+    // Audit trail — fire-and-forget so a logging failure never blocks delivery.
+    pool.query(
+      `INSERT INTO public.audit_logs
+         (action_type, entity_type, entity_id, status, message, metadata)
+       VALUES ('EMAIL_SENT', 'EMAIL_QUEUE', $1, 'SUCCESS', $2, $3)`,
+      [
+        job.id,
+        `Email sent: ${job.event_id} to ${job.recipient_email}`,
+        JSON.stringify({ event_id: job.event_id, recipient: job.recipient_email }),
+      ]
+    ).catch((e) => logger.error("Failed to write EMAIL_SENT audit log", { error: e.message }));
   } catch (err) {
     const failedAttempts = job.attempts + 1; // already incremented above
     const exhausted      = failedAttempts >= job.max_attempts;
@@ -1174,6 +1238,20 @@ async function _processNext(pool) {
       `attempt=${failedAttempts}/${job.max_attempts}` +
       `${exhausted ? " (exhausted)" : ` — retry in ${delaySec}s`}: ${err.message}`
     );
+
+    // Write to audit_logs only when all retries are exhausted (terminal failure).
+    if (exhausted) {
+      pool.query(
+        `INSERT INTO public.audit_logs
+           (action_type, entity_type, entity_id, status, message, metadata)
+         VALUES ('EMAIL_FAILED', 'EMAIL_QUEUE', $1, 'FAILURE', $2, $3)`,
+        [
+          job.id,
+          `Email permanently failed: ${job.event_id} to ${job.recipient_email}`,
+          JSON.stringify({ event_id: job.event_id, recipient: job.recipient_email, error: err.message }),
+        ]
+      ).catch((e) => logger.error("Failed to write EMAIL_FAILED audit log", { error: e.message }));
+    }
   }
 
   return true;
@@ -1223,6 +1301,7 @@ module.exports = {
   sendInstituteFormCreatedEmail,
   sendDepartmentFormCreatedEmail,
   sendDeadlineReminderEmail,
+  sendImportCompletedEmail,
   /* Queue interface */
   enqueueEmail,
   startEmailWorker,

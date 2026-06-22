@@ -7,6 +7,22 @@ const translate = new Translate({
   keyFilename: path.join(__dirname, "../config/pragatimitra-497416-6a889477f089.json"),
 });
 
+// 5-second hard deadline for every Google Translate API call.
+// The callers' existing catch blocks already fall back to phonetic/original on any
+// rejection, so a timeout is indistinguishable from a network error to them.
+const TRANSLATE_TIMEOUT_MS = 5000;
+function withTranslateTimeout(apiCall) {
+  return Promise.race([
+    apiCall,
+    new Promise((_, reject) =>
+      setTimeout(
+        () => reject(new Error("Google Translate API timed out after 5 s")),
+        TRANSLATE_TIMEOUT_MS
+      )
+    ),
+  ]);
+}
+
 // Caches (all persist for process lifetime):
 //   wordCache      — individual word → Hindi   (transliteration path)
 //   phraseCache    — full phrase → Hindi        (transliteration path)
@@ -340,7 +356,7 @@ async function transliteratePhrase(phrase) {
     // Normal words → Google Translate (one batch call)
     if (normals.length > 0) {
       try {
-        const [results] = await translate.translate(normals, "hi");
+        const [results] = await withTranslateTimeout(translate.translate(normals, "hi"));
         const arr = Array.isArray(results) ? results : [results];
         normals.forEach((w, i) => {
           const translated = arr[i] || "";
@@ -374,25 +390,31 @@ async function transliteratePhrase(phrase) {
  *
  *   "I am walking to college" → "मैं कॉलेज जा रहा हूँ"
  *
- * Cached at the sentence level so repeated values across bulk inserts never
- * trigger extra API calls. On API failure or a non-Devanagari result the
- * original text is returned unchanged.
+ * When Google Translate is unavailable or times out, the function falls back
+ * to word-by-word phonetic transliteration so callers ALWAYS receive Hindi
+ * script — never the English source text. Successful Google translations are
+ * cached at the sentence level; phonetic fallbacks are NOT cached here so the
+ * API is retried on the next request once it recovers.
  */
 async function translateSentence(sentence) {
   const trimmed = sentence.trim();
   if (sentenceCache.has(trimmed)) return sentenceCache.get(trimmed);
 
-  let hindi = trimmed;
   try {
-    const [result] = await translate.translate(trimmed, "hi");
+    const [result] = await withTranslateTimeout(translate.translate(trimmed, "hi"));
     const out = Array.isArray(result) ? result[0] : result;
-    if (out && DEVANAGARI_RE.test(out)) hindi = out;
+    if (out && DEVANAGARI_RE.test(out)) {
+      sentenceCache.set(trimmed, out);
+      return out;
+    }
   } catch {
-    // keep original on failure
+    // fall through to phonetic
   }
 
-  sentenceCache.set(trimmed, hindi);
-  return hindi;
+  // Google Translate unavailable, timed out, or returned non-Devanagari.
+  // Use word-by-word phonetic so no English ever appears in Hindi columns.
+  // Not cached at sentence level: next call will retry Google Translate.
+  return transliteratePhrase(trimmed);
 }
 
 /**

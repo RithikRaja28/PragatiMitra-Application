@@ -3,6 +3,7 @@
 const express = require("express");
 const { verifyToken, requireRole } = require("../middleware/auth");
 const { enqueueEmail } = require("../services/mailService");
+const { writeAuditLog } = require("../utils/audit");
 const logger = require("../utils/logger");
 const { getLogContext } = logger;
 
@@ -152,6 +153,25 @@ router.post("/", verifyToken, requireRole(ALLOWED_ROLES), async (req, res) => {
 
     const assignment = rows[0];
 
+    await writeAuditLog(req, {
+      actionType: "NODAL_OFFICER_ASSIGNED",
+      entityType: "NODAL_OFFICER_ASSIGNMENT",
+      entityId:   assignment.id,
+      newValue: {
+        user_id:        user_id,
+        institution_id: institutionId,
+        department_id:  insertDeptId,
+        reporting_year: reporting_year,
+        is_active:      true,
+      },
+      status:  "SUCCESS",
+      message: `Nodal Officer assigned for reporting year ${reporting_year}`,
+      metadata: {
+        assigned_by: userId,
+        scope:       insertDeptId ? "department" : "institution",
+      },
+    });
+
     // Enqueue assignment notification to the assigned officer (fire-and-forget).
     setImmediate(async () => {
       try {
@@ -270,6 +290,26 @@ router.put("/:id", verifyToken, requireRole(ALLOWED_ROLES), async (req, res) => 
       vals
     );
 
+    const changedFields = [];
+    if (user_id !== undefined) changedFields.push("user_id");
+    if (is_active !== undefined) changedFields.push("is_active");
+
+    await writeAuditLog(req, {
+      actionType:    "NODAL_OFFICER_UPDATED",
+      entityType:    "NODAL_OFFICER_ASSIGNMENT",
+      entityId:      assignment.id,
+      oldValue:      Object.fromEntries(changedFields.map((f) => [f, assignment[f]])),
+      newValue:      Object.fromEntries(changedFields.map((f) => [f, updated[0][f]])),
+      changedFields,
+      status:        "SUCCESS",
+      message:       `Nodal Officer assignment for reporting year ${assignment.reporting_year} updated`,
+      metadata: {
+        institution_id: assignment.institution_id,
+        department_id:  assignment.department_id,
+        reporting_year: assignment.reporting_year,
+      },
+    });
+
     // Enqueue activation notification when a previously inactive assignment is re-enabled.
     if (is_active === true && assignment.is_active === false) {
       setImmediate(async () => {
@@ -383,29 +423,26 @@ router.delete("/:id", verifyToken, requireRole(ALLOWED_ROLES), async (req, res) 
 
     await pool.query("DELETE FROM nodal_officer_assignments WHERE id = $1", [id]);
 
-    // Enqueue removal notification to the officer whose assignment was deleted.
-    setImmediate(async () => {
-      try {
-        const { rows: userRows } = await pool.query(
-          `SELECT full_name, email FROM users WHERE id = $1`,
-          [assignment.user_id]
-        );
-        if (!userRows.length) return;
-
-        await enqueueEmail(pool, {
-          eventId:         "nodal_officer_removed",
-          recipientEmail:  userRows[0].email,
-          recipientUserId: assignment.user_id,
-          payload: {
-            full_name:      userRows[0].full_name,
-            reporting_year: assignment.reporting_year,
-          },
-        });
-        logger.info(`Enqueued nodal_officer_removed email to ${userRows[0].email} for ${assignment.reporting_year} (DELETE)`);
-      } catch (err) {
-        logger.error("Failed to enqueue nodal_officer_removed email (DELETE)", { stack: err.stack });
-      }
+    await writeAuditLog(req, {
+      actionType: "NODAL_OFFICER_REVOKED",
+      entityType: "NODAL_OFFICER_ASSIGNMENT",
+      entityId:   assignment.id,
+      oldValue: {
+        user_id:        assignment.user_id,
+        institution_id: assignment.institution_id,
+        department_id:  assignment.department_id,
+        reporting_year: assignment.reporting_year,
+        is_active:      assignment.is_active,
+      },
+      status:  "SUCCESS",
+      message: `Nodal Officer assignment for reporting year ${assignment.reporting_year} revoked`,
+      metadata: {
+        revoked_by: req.user.userId,
+      },
     });
+
+    // nodal_officer_removed email is sent exclusively by the PATCH /deactivate path;
+    // hard-delete does not re-send to avoid a duplicate notification.
 
     /* NOA removed → invalidate the user's sessions so the effective department
        falls back to their HOME department on the next request (TC-14). Best-effort. */

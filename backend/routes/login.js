@@ -795,6 +795,16 @@ router.post("/change-password", verifyToken, async (req, res) => {
 
     const user = await fetchUser(pool, "WHERE u.id = $1", [req.user.userId]);
 
+    await writeAuditLog(req, {
+      actionType:    "PASSWORD_CHANGED",
+      entityType:    "USER",
+      entityId:      user.id,
+      changedFields: ["password"],
+      status:        "SUCCESS",
+      message:       `User "${user.full_name}" (${user.email}) changed their account password`,
+      metadata:      { was_temporary_password: dbUser.is_temporary_password },
+    });
+
     return res.json({
       success: true,
       message: "Password changed successfully.",
@@ -835,7 +845,7 @@ router.post("/forgot-password", forgotPasswordLimiter, async (req, res) => {
         actionType: "PASSWORD_RESET_REQUESTED",
         entityType: "USER",
         entityId:   null,
-        status:     "INFO",
+        status:     "FAILURE",
         message:    `Reset requested for ${normalizedEmail} — not found or inactive`,
         metadata:   { email: normalizedEmail },
       });

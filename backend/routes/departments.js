@@ -455,6 +455,21 @@ router.post("/import/execute", async (req, res) => {
       errors: errorRows.length,
     });
 
+    await writeAuditLog(req, {
+      actionType: "DEPT_BULK_IMPORTED",
+      entityType: "DEPARTMENT",
+      entityId:   null,
+      newValue: {
+        inserted: insertDone,
+        updated:  updateDone,
+        skipped,
+        failed:   errorRows.length,
+        total:    data.length,
+      },
+      status:  "SUCCESS",
+      message: `Bulk import: ${insertDone} department(s) created, ${updateDone} updated, ${skipped} skipped, ${errorRows.length} failed`,
+    });
+
     send({
       complete:  true,
       imported:  insertDone,
@@ -529,6 +544,17 @@ router.get("/export", async (req, res) => {
       "attachment; filename=departments_export.xlsx"
     );
     await workbook.xlsx.write(res);
+
+    writeAuditLog(req, {
+      actionType: "DEPT_EXPORTED",
+      entityType: "DEPARTMENT",
+      entityId:   null,
+      newValue:   { record_count: rows.length, format: "xlsx" },
+      status:     "SUCCESS",
+      message:    `Exported ${rows.length} department(s) to XLSX`,
+      metadata:   isUUID(institution_id) ? { institution_id } : {},
+    });
+
     res.end();
   } catch (err) {
     logger.error("GET /api/departments/export failed", {
@@ -1125,7 +1151,7 @@ router.patch(
       const { rows: deptRows } = await pool.query(
         `SELECT department_id, name, code, status
          FROM   departments
-         WHERE  department_id = $1 AND institution_id = $2`,
+         WHERE  department_id = $1 AND institution_id = $2 AND status != 'DELETED'`,
         [departmentId, institution_id]
       );
 
@@ -1158,7 +1184,7 @@ router.patch(
         actionType:    "DEPT_DEACTIVATED",
         entityType:    "DEPARTMENT",
         entityId:      departmentId,
-        oldValue:      { status: "ACTIVE" },
+        oldValue:      { status: dept.status },
         newValue:      { status: "INACTIVE" },
         changedFields: ["status"],
         status:        "SUCCESS",
@@ -1209,6 +1235,70 @@ router.patch(
     } catch (err) {
       logger.error("PATCH /api/departments/:id/status failed", { ...getLogContext(req), stack: err.stack });
       return res.status(500).json({ success: false, message: "Failed to deactivate department." });
+    }
+  }
+);
+
+/* ── DELETE /api/departments/:id ── soft-delete (status = 'DELETED') ─── */
+router.delete(
+  "/:id",
+  requireRole(["super_admin", "institute_admin"]),
+  async (req, res) => {
+    const pool = req.app.locals.pool;
+    const departmentId = req.params.id;
+
+    const institution_id = isOnlyInstAdmin(req)
+      ? req.user.institutionId
+      : req.body.institution_id;
+
+    if (!isUUID(departmentId)) {
+      return res.status(400).json({ success: false, message: "Invalid department ID." });
+    }
+    if (!isUUID(institution_id)) {
+      return res.status(400).json({ success: false, message: "A valid institution_id is required." });
+    }
+
+    try {
+      const { rows: existingRows } = await pool.query(
+        `SELECT d.department_id, d.name, d.code, d.status, d.institution_id,
+                i.institution_name
+         FROM   departments d
+         LEFT JOIN institutions i ON i.institution_id = d.institution_id
+         WHERE  d.department_id = $1 AND d.institution_id = $2 AND d.status != 'DELETED'`,
+        [departmentId, institution_id]
+      );
+      if (!existingRows.length)
+        return res.status(404).json({ success: false, message: "Department not found." });
+
+      const existing = existingRows[0];
+
+      await pool.query(
+        `UPDATE departments SET status = 'DELETED', updated_at = now(), updated_by = $2 WHERE department_id = $1`,
+        [departmentId, req.user.userId]
+      );
+
+      await writeAuditLog(req, {
+        actionType:    "DEPARTMENT_DELETED",
+        entityType:    "DEPARTMENT",
+        entityId:      departmentId,
+        oldValue: {
+          name:             existing.name,
+          code:             existing.code,
+          status:           existing.status,
+          institution_id:   existing.institution_id,
+          institution_name: existing.institution_name,
+        },
+        newValue:      { status: "DELETED" },
+        changedFields: ["status"],
+        status:        "SUCCESS",
+        message:       `Department "${existing.name}" (${existing.code}) deleted`,
+        metadata:      { deleted_by: req.user.userId },
+      });
+
+      return res.json({ success: true, message: `Department "${existing.name}" has been deleted.` });
+    } catch (err) {
+      logger.error("DELETE /api/departments/:id failed", { ...getLogContext(req), stack: err.stack });
+      return res.status(500).json({ success: false, message: "Failed to delete department." });
     }
   }
 );

@@ -186,13 +186,34 @@ router.put("/:id", requireRole(["super_admin", "institute_admin", "publication_c
     if (!isUUID(id)) return res.status(400).json({ success: false, message: "Invalid id" });
 
     const { name, description } = req.body;
+
+    const { rows: oldRows } = await pool.query(
+      `SELECT name, description FROM public.workflow_templates WHERE id = $1`, [id]
+    );
+    if (!oldRows.length) return res.status(404).json({ success: false, message: "Workflow not found" });
+    const old = oldRows[0];
+
     const { rows } = await pool.query(
       `UPDATE public.workflow_templates
        SET name = COALESCE($1, name), description = COALESCE($2, description), updated_at = NOW()
        WHERE id = $3 RETURNING *`,
       [name?.trim() || null, description ?? null, id]
     );
-    if (!rows.length) return res.status(404).json({ success: false, message: "Workflow not found" });
+
+    const changedFields = [];
+    if (rows[0].name !== old.name) changedFields.push("name");
+    if (rows[0].description !== old.description) changedFields.push("description");
+
+    await writeAuditLog(req, {
+      actionType: "WORKFLOW_UPDATED",
+      entityType: "WORKFLOW",
+      entityId: id,
+      oldValue: { name: old.name, description: old.description },
+      newValue: { name: rows[0].name, description: rows[0].description },
+      changedFields,
+      status: "SUCCESS",
+      message: `Workflow "${rows[0].name}" updated`,
+    });
 
     return res.json({ success: true, data: rows[0] });
   } catch (err) {
@@ -219,7 +240,23 @@ router.delete("/:id", requireRole(["super_admin", "institute_admin", "publicatio
         message: `Cannot delete: ${usageRows[0].count} section(s) use this workflow`,
       });
 
+    // Fetch name before deleting for the audit snapshot
+    const { rows: tmplRows } = await pool.query(
+      `SELECT name, description FROM public.workflow_templates WHERE id = $1`, [id]
+    );
+    const template = tmplRows[0] || null;
+
     await pool.query(`DELETE FROM public.workflow_templates WHERE id = $1`, [id]);
+
+    await writeAuditLog(req, {
+      actionType: "WORKFLOW_DELETED",
+      entityType: "WORKFLOW",
+      entityId:   id,
+      oldValue:   template ? { name: template.name, description: template.description } : null,
+      status:     "SUCCESS",
+      message:    template ? `Workflow "${template.name}" deleted` : `Workflow ${id} deleted`,
+    });
+
     return res.json({ success: true, message: "Workflow deleted" });
   } catch (err) {
     logger.error("workflows DELETE /:id", { ...getLogContext(req), err: err.message });
@@ -251,6 +288,16 @@ router.post("/:id/steps", requireRole(["super_admin", "institute_admin", "public
        isUUID(approver_department_id) ? approver_department_id : null]
     );
 
+    await writeAuditLog(req, {
+      actionType: "WORKFLOW_STEP_ADDED",
+      entityType: "WORKFLOW",
+      entityId:   id,
+      newValue:   { step_name: rows[0].step_name, step_order: rows[0].step_order, approver_role: rows[0].approver_role },
+      status:     "SUCCESS",
+      message:    `Step "${rows[0].step_name}" added to workflow`,
+      metadata:   { step_id: rows[0].id, template_id: id },
+    });
+
     return res.status(201).json({ success: true, data: rows[0] });
   } catch (err) {
     logger.error("workflows POST /:id/steps", { ...getLogContext(req), err: err.message });
@@ -266,6 +313,15 @@ router.put("/:id/steps/:stepId", requireRole(["super_admin", "institute_admin", 
     if (!isUUID(id) || !isUUID(stepId)) return res.status(400).json({ success: false, message: "Invalid id" });
 
     const { step_name, step_order, approver_role, approver_user_id, approver_department_id } = req.body;
+
+    const { rows: oldRows } = await pool.query(
+      `SELECT step_name, step_order, approver_role, approver_user_id, approver_department_id
+       FROM public.workflow_steps WHERE id = $1 AND template_id = $2`,
+      [stepId, id]
+    );
+    if (!oldRows.length) return res.status(404).json({ success: false, message: "Step not found" });
+    const old = oldRows[0];
+
     const { rows } = await pool.query(
       `UPDATE public.workflow_steps
        SET step_name              = COALESCE($1, step_name),
@@ -280,7 +336,23 @@ router.put("/:id/steps/:stepId", requireRole(["super_admin", "institute_admin", 
        isUUID(approver_department_id) ? approver_department_id : null,
        stepId, id]
     );
-    if (!rows.length) return res.status(404).json({ success: false, message: "Step not found" });
+
+    const changedFields = [];
+    if (rows[0].step_name !== old.step_name) changedFields.push("step_name");
+    if (rows[0].step_order !== old.step_order) changedFields.push("step_order");
+    if (rows[0].approver_role !== old.approver_role) changedFields.push("approver_role");
+
+    await writeAuditLog(req, {
+      actionType: "WORKFLOW_STEP_UPDATED",
+      entityType: "WORKFLOW",
+      entityId:   id,
+      oldValue:   { step_name: old.step_name, step_order: old.step_order, approver_role: old.approver_role },
+      newValue:   { step_name: rows[0].step_name, step_order: rows[0].step_order, approver_role: rows[0].approver_role },
+      changedFields,
+      status:     "SUCCESS",
+      message:    `Step "${rows[0].step_name}" updated in workflow`,
+      metadata:   { step_id: stepId, template_id: id },
+    });
 
     return res.json({ success: true, data: rows[0] });
   } catch (err) {
@@ -296,7 +368,24 @@ router.delete("/:id/steps/:stepId", requireRole(["super_admin", "institute_admin
     const { id, stepId } = req.params;
     if (!isUUID(id) || !isUUID(stepId)) return res.status(400).json({ success: false, message: "Invalid id" });
 
+    const { rows: stepRows } = await pool.query(
+      `SELECT step_name, step_order FROM public.workflow_steps WHERE id = $1 AND template_id = $2`,
+      [stepId, id]
+    );
+    const step = stepRows[0] || null;
+
     await pool.query(`DELETE FROM public.workflow_steps WHERE id = $1 AND template_id = $2`, [stepId, id]);
+
+    await writeAuditLog(req, {
+      actionType: "WORKFLOW_STEP_DELETED",
+      entityType: "WORKFLOW",
+      entityId:   id,
+      oldValue:   step ? { step_name: step.step_name, step_order: step.step_order } : null,
+      status:     "SUCCESS",
+      message:    step ? `Step "${step.step_name}" removed from workflow` : `Step ${stepId} removed from workflow`,
+      metadata:   { step_id: stepId, template_id: id },
+    });
+
     return res.json({ success: true, message: "Step removed" });
   } catch (err) {
     logger.error("workflows DELETE step", { ...getLogContext(req), err: err.message });
@@ -312,6 +401,21 @@ router.patch("/:id/default", requireRole(["super_admin", "institute_admin", "pub
     if (!isUUID(id)) return res.status(400).json({ success: false, message: "Invalid id" });
 
     const instId = callerInstitution(req);
+
+    // Pre-fetch current default and the new default's name for the audit log
+    const [prevDefaultRes, newTmplRes] = await Promise.all([
+      pool.query(
+        `SELECT id, name FROM public.workflow_templates WHERE institution_id = $1 AND is_default = TRUE`,
+        [instId]
+      ),
+      pool.query(`SELECT name FROM public.workflow_templates WHERE id = $1`, [id]),
+    ]);
+    if (!newTmplRes.rows.length)
+      return res.status(404).json({ success: false, message: "Workflow not found" });
+
+    const prevDefault = prevDefaultRes.rows[0] || null;
+    const newName     = newTmplRes.rows[0].name;
+
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
@@ -324,6 +428,18 @@ router.patch("/:id/default", requireRole(["super_admin", "institute_admin", "pub
       await client.query("COMMIT");
     } catch (e) { await client.query("ROLLBACK"); throw e; }
     finally { client.release(); }
+
+    await writeAuditLog(req, {
+      actionType:    "WORKFLOW_DEFAULT_SET",
+      entityType:    "WORKFLOW",
+      entityId:      id,
+      oldValue:      prevDefault ? { id: prevDefault.id, name: prevDefault.name, is_default: true } : null,
+      newValue:      { id, name: newName, is_default: true },
+      changedFields: ["is_default"],
+      status:        "SUCCESS",
+      message:       `Workflow "${newName}" set as institution default`,
+      metadata:      { institution_id: instId },
+    });
 
     return res.json({ success: true, message: "Default workflow set" });
   } catch (err) {

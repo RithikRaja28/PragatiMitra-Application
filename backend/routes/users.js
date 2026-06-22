@@ -629,6 +629,28 @@ router.post(
         message:    `Bulk import: ${done} created/updated, ${skipped} skipped, ${errorRows.length} failed`,
       });
 
+      // Notify the admin who triggered the import with a summary email.
+      pool.query(`SELECT full_name, email FROM users WHERE id = $1`, [req.user.userId])
+        .then(({ rows: adminRows }) => {
+          if (!adminRows.length) return;
+          return enqueueEmail(pool, {
+            eventId:         "import_completed",
+            recipientEmail:  adminRows[0].email,
+            recipientUserId: req.user.userId,
+            payload: {
+              full_name: adminRows[0].full_name,
+              imported:  done,
+              skipped,
+              failed:    errorRows.length,
+              total:     data.length,
+              login_url: process.env.APP_LOGIN_URL || "http://localhost:5173/login",
+            },
+          });
+        })
+        .catch((err) =>
+          logger.error("Failed to enqueue import_completed email", { error: err.message })
+        );
+
       send({
         complete: true,
         imported: done,
@@ -1239,6 +1261,79 @@ router.put("/:id", verifyToken, requireRole(["super_admin", "institute_admin", "
         message: "This email is already in use by another account.",
       });
     logger.error("PUT /api/users/:id failed", { ...getLogContext(req), stack: err.stack });
+    return res.status(500).json({ success: false, message: "Internal server error." });
+  }
+});
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   DELETE /api/users/:id
+   Soft-deletes a user by setting account_status = 'DELETED'.
+   Kills all active sessions immediately and writes a USER_DELETED audit log
+   with a full snapshot of the user record before removal.
+───────────────────────────────────────────────────────────────────────────── */
+router.delete("/:id", verifyToken, requireRole(["super_admin"]), async (req, res) => {
+  const pool = req.app.locals.pool;
+  const { id } = req.params;
+
+  try {
+    // Fetch full user snapshot — including roles and associations — before mutating.
+    const { rows: existingRows } = await pool.query(
+      `SELECT
+         u.id, u.full_name, u.email, u.account_status,
+         u.institution_id, u.department_id, u.role_domain,
+         i.institution_name,
+         d.name AS department_name,
+         COALESCE(
+           (SELECT json_agg(r.name ORDER BY r.name)
+            FROM user_roles ur
+            JOIN roles r ON r.id = ur.role_id
+            WHERE ur.user_id = u.id AND ur.revoked_at IS NULL),
+           '[]'::json
+         ) AS role_names
+       FROM users u
+       LEFT JOIN institutions i ON i.institution_id = u.institution_id
+       LEFT JOIN departments  d ON d.department_id  = u.department_id
+       WHERE u.id = $1 AND u.account_status != 'DELETED'`,
+      [id]
+    );
+    if (!existingRows.length)
+      return res.status(404).json({ success: false, message: "User not found." });
+
+    const existing = existingRows[0];
+
+    await pool.query(
+      "UPDATE users SET account_status = 'DELETED' WHERE id = $1",
+      [id]
+    );
+
+    // Kill all active sessions so no existing tokens can be refreshed.
+    await pool.query("DELETE FROM sessions WHERE user_id = $1", [id]).catch(() => {});
+
+    await writeAuditLog(req, {
+      actionType:    "USER_DELETED",
+      entityType:    "USER",
+      entityId:      existing.id,
+      oldValue: {
+        full_name:        existing.full_name,
+        email:            existing.email,
+        account_status:   existing.account_status,
+        institution_id:   existing.institution_id,
+        institution_name: existing.institution_name,
+        department_id:    existing.department_id,
+        department_name:  existing.department_name,
+        role_domain:      existing.role_domain,
+        roles:            existing.role_names,
+      },
+      newValue:      { account_status: "DELETED" },
+      changedFields: ["account_status"],
+      status:        "SUCCESS",
+      message:       `User "${existing.full_name}" (${existing.email}) deleted`,
+      metadata:      { deleted_by: req.user.userId },
+    });
+
+    return res.json({ success: true, message: `User "${existing.full_name}" has been deleted.` });
+  } catch (err) {
+    logger.error("DELETE /api/users/:id failed", { ...getLogContext(req), stack: err.stack });
     return res.status(500).json({ success: false, message: "Internal server error." });
   }
 });

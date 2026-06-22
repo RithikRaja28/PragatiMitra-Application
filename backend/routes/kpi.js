@@ -1070,6 +1070,26 @@ router.post("/configs/:id/regenerate", async (req, res) => {
       [result.sql, cfg.id]
     );
 
+    await writeAuditLog(req, {
+      actionType: "KPI_REGENERATED",
+      entityType: "kpi",
+      entityId:   String(cfg.id),
+      newValue: {
+        title:         cfg.title,
+        row_count:     result.row_count,
+        fetched_at:    result.fetched_at,
+        academic_year: cfg.academic_year || null,
+      },
+      status:  "SUCCESS",
+      message: `KPI "${cfg.title}" regenerated`,
+      metadata: {
+        scope:         cfg.scope,
+        institute_id:  cfg.institute_id  || null,
+        department_id: cfg.department_id || null,
+        table_name:    cfg.table_name,
+      },
+    });
+
     res.json({
       ok: true,
       data: { config: cfg, x: result.x, series: result.series,

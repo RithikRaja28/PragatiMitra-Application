@@ -826,6 +826,21 @@ router.post(
 
         await client.query("COMMIT");
 
+        await writeAuditLog(req, {
+          actionType: "FORM_ADOPTED",
+          entityType: "FORM",
+          entityId:   tRows[0].id,
+          newValue: {
+            form_name:      form_name,
+            institution_id: institutionId,
+            year:           formYear,
+            schema_id:      sRows[0].id,
+          },
+          status:  "SUCCESS",
+          message: `Template "${form_name}" adopted for academic year ${formYear}`,
+          metadata: { schema_id: sRows[0].id, academic_year: formYear, adopted_by: req.user.userId },
+        });
+
         // Future auto-fix: ensure all institutions sharing this form have a schema (insert-only, non-blocking).
         ensureSchemaExists(pool, form_name).catch(() => {});
 

@@ -312,7 +312,7 @@ router.post("/", requireRole(ASSIGN_ROLES), async (req, res) => {
       entityId: form_id,
       newValue: { form_id, form_name: fname, academic_year: year, department_id: departmentId, count: created },
       message: `Form assigned to ${created} contributor(s) — "${fname}"`,
-    }).catch(() => {});
+    });
 
     return res.json({ success: true, message: `Assigned to ${created} contributor(s).`, assigned: created });
   } catch (err) {
@@ -326,12 +326,49 @@ router.delete("/:id", requireRole(ASSIGN_ROLES), async (req, res) => {
   const pool = req.app.locals.pool;
   try {
     const { departmentId } = await assignerContext(pool, req);
+
+    const { rows: assignRows } = await pool.query(
+      `SELECT fa.id, fa.form_id, fa.form_name, fa.institution_id, fa.department_id,
+              fa.academic_year, fa.assigned_to, fa.role,
+              u.full_name AS contributor_name, u.email AS contributor_email
+       FROM form_assignments fa
+       LEFT JOIN users u ON u.id = fa.assigned_to
+       WHERE fa.id = $1 AND fa.department_id = $2`,
+      [req.params.id, departmentId]
+    );
+    const assignment = assignRows[0] || null;
+
     const { rowCount } = await pool.query(
       `UPDATE form_assignments SET is_active = false, updated_at = now()
        WHERE id = $1 AND department_id = $2`,
       [req.params.id, departmentId]
     );
     if (!rowCount) return res.status(404).json({ success: false, message: "Assignment not found." });
+
+    await writeAuditLog(req, {
+      actionType:    "FORM_ASSIGNMENT_REVOKED",
+      entityType:    "FORM_ASSIGNMENT",
+      entityId:      req.params.id,
+      oldValue: assignment ? {
+        form_id:           assignment.form_id,
+        form_name:         assignment.form_name,
+        academic_year:     assignment.academic_year,
+        assigned_to:       assignment.assigned_to,
+        contributor_name:  assignment.contributor_name,
+        contributor_email: assignment.contributor_email,
+        department_id:     assignment.department_id,
+        institution_id:    assignment.institution_id,
+        is_active:         true,
+      } : null,
+      newValue:      { is_active: false },
+      changedFields: ["is_active"],
+      status:        "SUCCESS",
+      message:       assignment
+        ? `Form assignment revoked: "${assignment.form_name}" for contributor "${assignment.contributor_name}"`
+        : `Form assignment ${req.params.id} revoked`,
+      metadata:      { revoked_by: req.user.userId, academic_year: assignment?.academic_year },
+    });
+
     return res.json({ success: true, message: "Assignment removed." });
   } catch (err) {
     logger.error("DELETE /api/form-assignments/:id", { stack: err.stack });

@@ -426,7 +426,8 @@ pool.query(`
     'committee_created', 'committee_activated', 'committee_deactivated',
     'institute_form_created',
     'nodal_officer_assigned', 'nodal_officer_activated', 'nodal_officer_removed',
-    'department_form_created'
+    'department_form_created',
+    'import_completed'
   )
 `).catch((e) => logger.error("Failed to delete legacy notification templates", { stack: e.stack }));
 
@@ -468,6 +469,73 @@ pool.query(`
   WHERE event_id = 'password_reset'
     AND email_body LIKE '%30 minutes%'
 `).catch((e) => logger.error("Failed to fix password_reset template content", { stack: e.stack }));
+
+/* ── Fix department_created template: old DB body used {DepartmentName} (camelCase);
+   current mailService only provides {DEPARTMENT_NAME} (uppercase). ── */
+pool.query(`
+  UPDATE notification_templates
+  SET email_subject = 'New Department Added — {DEPARTMENT_NAME}',
+      email_body    = E'Hi {FULL_NAME},\n\nA new department has been added to {INSTITUTION_NAME} on {APP_NAME}.\n\nDepartment: {DEPARTMENT_NAME}\nCode: {DEPARTMENT_CODE}\n\nYou can now assign users and forms to this department.\n\n— {APP_NAME} Team',
+      app_message   = 'Department "{DEPARTMENT_NAME}" has been added to {INSTITUTION_NAME}.'
+  WHERE event_id = 'department_created'
+    AND (email_body LIKE '%{DepartmentName}%' OR email_body NOT LIKE '%{DEPARTMENT_NAME}%')
+`).catch((e) => logger.error("Failed to fix department_created template tokens", { stack: e.stack }));
+
+/* ── Seed core user/account templates — only present in db_schema dump; a fresh DB
+   install needs these rows to send welcome, suspension, and role-change emails. ── */
+pool.query(`
+  INSERT INTO notification_templates
+    (event_id, label, email_subject, email_body, app_message,
+     email_enabled, app_enabled, role_group, category)
+  VALUES
+    (
+      'user_created',
+      'User Created',
+      'Welcome to {APP_NAME} — Your Account is Ready',
+      E'Hi {FULL_NAME},\n\nAn account has been created for you on {APP_NAME}.\n\n  Email Address : {EMAIL}\n  Temp Password : {TEMPORARY_PASSWORD}\n\nFor security, you will be required to set a new password on your first login.\n\nIf you did not expect this email, please contact support.\n\n— {APP_NAME} Team',
+      'Welcome {FULL_NAME}! Your account on {APP_NAME} is ready. Tap to log in.',
+      true, true, 'system', 'User Management'
+    ),
+    (
+      'account_suspended',
+      'Account Suspended',
+      'Your {APP_NAME} Account Has Been Suspended',
+      E'Hi {FULL_NAME},\n\nYour account on {APP_NAME} has been suspended by an administrator.\n\nIf you believe this is a mistake, please contact your institution admin.\n\n— {APP_NAME} Team',
+      'Your {APP_NAME} account has been suspended. Contact your admin for assistance.',
+      true, true, 'system', 'Security'
+    ),
+    (
+      'account_reactivated',
+      'Account Reactivated',
+      'Your {APP_NAME} Account Is Active Again',
+      E'Hi {FULL_NAME},\n\nGreat news — your account on {APP_NAME} has been reactivated.\n\nYou can now log in at the link below.\n\n— {APP_NAME} Team',
+      'Your {APP_NAME} account has been reactivated. You can now log in.',
+      true, true, 'system', 'Security'
+    ),
+    (
+      'user_role_updated',
+      'User Role Updated',
+      'Your Role on {APP_NAME} Has Been Updated',
+      E'Hi {FULL_NAME},\n\nYour role on {APP_NAME} has been updated to {NewRole}.\n\nIf you have any questions, please contact your administrator.\n\n— {APP_NAME} Team',
+      'Your role on {APP_NAME} has been updated to {NewRole}.',
+      true, true, 'system', 'User Management'
+    ),
+    (
+      'import_completed',
+      'Bulk Import Completed',
+      'Bulk User Import Completed — {APP_NAME}',
+      E'Hi {FULL_NAME},\n\nYour bulk user import on {APP_NAME} has finished processing.\n\n  Imported : {IMPORTED}\n  Skipped  : {SKIPPED}\n  Failed   : {FAILED}\n  Total    : {TOTAL}\n\nPlease log in to review the imported users.\n\n— {APP_NAME} Team',
+      'Bulk import completed: {IMPORTED} imported, {SKIPPED} skipped, {FAILED} failed.',
+      true, true, 'system', 'User Management'
+    )
+  ON CONFLICT (event_id) DO NOTHING
+`).catch((e) => logger.error("Failed to seed core user/account templates", { stack: e.stack }));
+
+/* ── Enable in-app notification for password_reset ── */
+pool.query(`
+  UPDATE notification_templates SET app_enabled = true
+  WHERE event_id = 'password_reset' AND app_enabled = false
+`).catch((e) => logger.error("Failed to enable password_reset app notification", { stack: e.stack }));
 
 /* ── audit_logs: ensure columns added after initial table creation ── */
 pool.query(`ALTER TABLE public.audit_logs ADD COLUMN IF NOT EXISTS browser_name VARCHAR(50)`)
