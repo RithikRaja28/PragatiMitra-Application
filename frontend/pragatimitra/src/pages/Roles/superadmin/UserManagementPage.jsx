@@ -13,7 +13,6 @@ import { Button, Badge, EmptyState, DataTable, Dropdown, MenuItem, MenuLabel } f
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { t } from "../../../i18n/translations";
 import ImportWizard from "../../../components/shared/ImportWizard";
-import { API_BASE } from "../../../api/client";
 
 /* ── Constants & pure helpers ──────────────────────────────────── */
 const STATUS_OPTIONS = ["ACTIVE", "INACTIVE", "SUSPENDED"];

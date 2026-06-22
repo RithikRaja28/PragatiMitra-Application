@@ -11,7 +11,7 @@ import { useAcademicYear } from "../../store/AcademicYearContext";
 import { useLanguage } from "../../i18n/LanguageContext";
 import { t } from "../../i18n/translations";
 import { Toast, isAuthError } from "../../components/shared/formUtils";
-import { API_BASE } from "../../api/client";
+import api from "../../services/api";
 import FormBuilderPage from "./FormBuilderPage";
 import InstituteFormRecordsPage from "./InstituteFormRecordsPage";
 
@@ -59,9 +59,9 @@ function institutionsLabel(form, lang = "en") {
 }
 
 async function downloadExport(formName, format, language, accessToken) {
-  const res = await fetch(
-    `${API_BASE}/api/form-data/${formName}/export?format=${format}&language=${language}`,
-    { headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {} }
+  const res = await api.get(
+    `/api/form-data/${formName}/export?format=${format}&language=${language}`,
+    { token: accessToken }
   );
   if (!res.ok) return;
   const blob = await res.blob();

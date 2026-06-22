@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate }         from "react-router-dom";
 import { Mail, Lock, Eye, EyeOff, AlertCircle, ShieldCheck, Loader2, User, KeyRound, CheckCircle2 } from "lucide-react";
-import { authApi } from "../../api/services";
+import { authApi } from "../../services";
 
 function injectCSS(id, css) {
   if (typeof document === "undefined") return;

@@ -1,20 +1,20 @@
 /**
- * src/api/services/authApi.js
+ * src/services/authApi.js
  * ─────────────────────────────────────────────────────────────────────────
- * AUTH domain service. The HTTP layer for authentication endpoints.
+ * AUTH domain service — the HTTP layer for authentication endpoints.
  *
  * Pages call these methods and know only WHAT they want (log in, change
  * password); they never build a URL or know the host. Each method resolves its
- * URL from the single source of truth (src/api/client.js) and returns the raw
- * `fetch` Response, so existing call sites keep their exact response handling
+ * URL from the single source of truth (src/services/api.js) and returns the raw
+ * `fetch` Response, so call sites keep their exact response handling
  * (`await res.json()`, `res.ok`, error messages, loading) byte-for-byte.
  *
- * These are the UNAUTHENTICATED / session-bootstrap calls that cannot use the
- * authenticated apiFetch wrapper (they run before/around having an access token,
+ * These are the unauthenticated / session-bootstrap calls that cannot use the
+ * authenticated apiFetch wrapper (they run before/around having an access token
  * and rely on the httpOnly refresh cookie via `credentials: "include"`).
  * ───────────────────────────────────────────────────────────────────────── */
 
-import { apiUrl } from "../client";
+import { apiUrl } from "./api";
 
 const JSON_HEADERS = { "Content-Type": "application/json" };
 

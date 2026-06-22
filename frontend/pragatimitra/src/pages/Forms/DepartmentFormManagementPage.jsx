@@ -17,7 +17,7 @@ import { DateField, TimeField } from "./DateTimePicker";
 import { color, Button, PageHeader, Badge, EmptyState, Modal, Dropdown, MenuItem, MenuLabel, DataTable } from "../../ui";
 import { useLanguage } from "../../i18n/LanguageContext";
 import { t } from "../../i18n/translations";
-import { API_BASE } from "../../api/client";
+import api from "../../services/api";
 
 const STROKE = 1.75;
 
@@ -25,8 +25,8 @@ const STROKE = 1.75;
    mirrors the institution dynamic-form export so the experience is consistent. */
 async function downloadDeptExport(formId, format, accessToken, year) {
   const yq = year != null ? `&year=${year}` : "";
-  const res = await fetch(`${API_BASE}/api/department-form-data/${formId}/export?format=${format}${yq}`,
-    { headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {} });
+  const res = await api.get(`/api/department-form-data/${formId}/export?format=${format}${yq}`,
+    { token: accessToken });
   if (!res.ok) return;
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);

@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 import { useNavigate }         from "react-router-dom";
 import { useAuth, ROLE_ROUTES } from "../../store/AuthContext";
 import { Mail, Lock, Eye, EyeOff, AlertCircle, ShieldCheck, Loader2 } from "lucide-react";
-import { authApi } from "../../api/services";
+import { authApi } from "../../services";
 
 function injectCSS(id, css) {
   if (typeof document === "undefined") return;

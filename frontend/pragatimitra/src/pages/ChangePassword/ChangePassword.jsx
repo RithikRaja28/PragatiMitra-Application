@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Lock, Eye, EyeOff, AlertCircle, CheckCircle2, Loader2, ShieldCheck } from "lucide-react";
 import { useAuth, redirectByRole } from "../../store/AuthContext";
-import { authApi } from "../../api/services";
+import { authApi } from "../../services";
 
 function injectCSS(id, css) {
   if (typeof document === "undefined") return;

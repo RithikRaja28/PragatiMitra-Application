@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect, useRef, useCallback } from "react";
 import { getRoleDefaultSlug } from "../components/Dashboard/roleConfig";
-import { authApi } from "../api/services";
+import { authApi } from "../services";
 
 const IDLE_TIMEOUT     = 60 * 60 * 1000;
 const REFRESH_INTERVAL = 14 * 60 * 1000;

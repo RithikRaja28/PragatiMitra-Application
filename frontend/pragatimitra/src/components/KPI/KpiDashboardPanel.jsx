@@ -2,10 +2,10 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { useAuth } from "../../store/AuthContext";
 import { useLanguage } from "../../i18n/LanguageContext";
 import { t } from "../../i18n/translations";
-import { API_BASE } from "../../api/client";
+import api from "../../services/api";
 import { useAcademicYear } from "../../store/AcademicYearContext";
 
-const API = `${API_BASE}/api/kpi`;
+const API = api.apiUrl("/api/kpi");
 
 // Language-aware metadata helpers (mirrors KpiManagementPage)
 function cfgTitle(cfg, lang) {

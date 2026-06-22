@@ -3,7 +3,7 @@ import { FileText, FolderOpen, CheckCircle2, AlertTriangle, Upload } from "lucid
 import { useAuth } from "../../store/AuthContext";
 import { useApi } from "../../hooks/useApi";
 import { S as FS } from "./formUtils";
-import { API_BASE } from "../../api/client";
+import api from "../../services/api";
 
 const S = {
   ...FS,
@@ -523,9 +523,7 @@ export default function ImportWizard({
       fd.append("file",      file);
       fd.append("encoding",  settings.encoding);
       fd.append("delimiter", settings.delimiter);
-      const res  = await fetch(`${API_BASE}${apiPath}/import/parse`, {
-        method: "POST", headers: { Authorization: `Bearer ${accessToken}` }, body: fd,
-      });
+      const res  = await api.post(`${apiPath}/import/parse`, { token: accessToken, body: fd });
       const data = await res.json();
       if (!data.success) { setParseError(data.message || "Failed to parse file."); return; }
       setParsedData(data); setFileColumns(data.columns);
@@ -572,15 +570,14 @@ export default function ImportWizard({
     setImportProgress({ done: 0, total: 0 });
 
     try {
-      const res = await fetch(`${API_BASE}${apiPath}/import/execute`, {
-        method:  "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
-        body:    JSON.stringify({
+      const res = await api.post(`${apiPath}/import/execute`, {
+        token: accessToken,
+        json: {
           mapping,
           sessionId,
           duplicateHandling: settings.duplicateHandling,
           ...extraImportBody,
-        }),
+        },
       });
 
       if (!res.ok) {

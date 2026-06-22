@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { useAuth, redirectByRole, ROLE_ROUTES } from "../../store/AuthContext";
 import { Mail, Lock, Eye, EyeOff, AlertCircle, Info, Loader2, User, Building2, Landmark } from "lucide-react";
-import { authApi } from "../../api/services";
+import { authApi } from "../../services";
 
 /* ── Same injectCSS utility as AppShell ── */
 function injectCSS(id, css) {

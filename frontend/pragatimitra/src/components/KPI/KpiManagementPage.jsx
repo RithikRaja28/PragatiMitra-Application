@@ -13,12 +13,12 @@ import { S } from "../shared/formUtils";
 import { Select } from "../shared/ui";
 import { useLanguage } from "../../i18n/LanguageContext";
 import { t } from "../../i18n/translations";
-import { API_BASE as API_ROOT } from "../../api/client";
+import api from "../../services/api";
 
 const SLUG = "kpi-management";
 
 // ─── API ──────────────────────────────────────────────────────────────────────
-const API = `${API_ROOT}/api/kpi`;
+const API = api.apiUrl("/api/kpi");
 
 function makeApiFetch(token) {
   return async (path, opts = {}) => {

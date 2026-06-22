@@ -15,7 +15,7 @@ import { S, Toast, isAuthError, formatDate } from "../../components/shared/formU
 import PageHeader from "../../components/shared/PageHeader";
 import { tableCardStyle } from "../../components/shared/ui";
 import { Button, Input, Textarea, FieldLabel, Badge, DataTable, color } from "../../ui";
-import { API_BASE } from "../../api/client";
+import api from "../../services/api";
 
 const ACCENT = "#2563eb";
 const CHUNK_SIZE = 500;
@@ -99,10 +99,7 @@ function DocumentUploadField({ label, required, value, onChange, getToken }) {
     try {
       const token = getToken();
       const fd = new FormData(); fd.append("file", file);
-      const res = await fetch(`${API_BASE}/api/upload/document`, {
-        method: "POST", body: fd,
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
+      const res = await api.post("/api/upload/document", { token, body: fd });
       const data = await res.json();
       if (!data.success) throw new Error(data.error || "Upload failed.");
       /* Backend returns the S3 key; store it (not a URL) */
@@ -137,11 +134,7 @@ function DocumentCell({ fileKey, getToken, lang = "en" }) {
     setLoading(true);
     try {
       const token = getToken ? getToken() : null;
-      const res = await fetch(`${API_BASE}/api/upload/read-url`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-        body: JSON.stringify({ fileKey }),
-      });
+      const res = await api.post("/api/upload/read-url", { token, json: { fileKey } });
       const data = await res.json();
       if (data.readUrl) window.open(data.readUrl, "_blank", "noreferrer");
     } finally { setLoading(false); }
@@ -547,12 +540,9 @@ function FormImportWizard({ formName, onClose, onDone, apiFetch, getToken, selec
       const token = getToken();
       // Bug 7 — send the selected academic year (header + form field) so the backend
       // year-scoped assignment guard blocks parsing an import for an unassigned year.
-      const res = await fetch(`${API_BASE}/api/form-data/${formName}/import/parse`, {
-        method: "POST", body: fd,
-        headers: {
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          ...(selectedYear != null ? { "X-Academic-Year": String(selectedYear) } : {}),
-        },
+      const res = await api.post(`/api/form-data/${formName}/import/parse`, {
+        token, body: fd,
+        headers: selectedYear != null ? { "X-Academic-Year": String(selectedYear) } : {},
       });
       const data = await res.json();
       if (!data.success) { setParseError(data.message || "Parse failed."); return; }
@@ -600,14 +590,12 @@ function FormImportWizard({ formName, onClose, onDone, apiFetch, getToken, selec
   async function downloadSample(format) {
     try {
       const token = getToken();
-      const res = await fetch(`${API_BASE}/api/form-data/${formName}/export/sample?format=${format}`, {
-        headers: {
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          // Bug 7 — carry the selected academic year so the year-scoped assignment
-          // guard authorizes the contributor for THIS year (else it falls back to the
-          // calendar year and would wrongly block the sample for their assigned year).
-          ...(selectedYear != null ? { "X-Academic-Year": String(selectedYear) } : {}),
-        },
+      // Bug 7 — carry the selected academic year so the year-scoped assignment
+      // guard authorizes the contributor for THIS year (else it falls back to the
+      // calendar year and would wrongly block the sample for their assigned year).
+      const res = await api.get(`/api/form-data/${formName}/export/sample?format=${format}`, {
+        token,
+        headers: selectedYear != null ? { "X-Academic-Year": String(selectedYear) } : {},
       });
       if (!res.ok) return;
       const blob = await res.blob();
@@ -837,7 +825,7 @@ function ExportDropdown({ formName, accessToken, language = "en", selectedYear =
     setOpen(false); setExporting(key); setExportPercent(0);
     const interval = setInterval(() => setExportPercent(p => p < 80 ? p + Math.random() * 12 : p), 220);
     try {
-      const res = await fetch(`${API_BASE}${path}`, { headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {} });
+      const res = await api.get(path, { token: accessToken });
       clearInterval(interval);
       if (!res.ok) { setExporting(null); return; }
       setExportPercent(95);

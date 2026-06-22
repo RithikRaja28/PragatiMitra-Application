@@ -13,7 +13,6 @@ import PageHeader from "../../../components/shared/PageHeader";
 import { Button, Badge, EmptyState, DataTable, Dropdown, MenuItem, MenuLabel } from "../../../ui";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { t } from "../../../i18n/translations";
-import { API_BASE } from "../../../api/client";
 
 /* ─── Department Form (create + edit) ───────────────────────────
    Rendered as a full screen instead of an overlay modal.

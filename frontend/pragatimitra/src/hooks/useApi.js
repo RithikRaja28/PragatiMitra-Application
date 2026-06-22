@@ -1,6 +1,6 @@
 import { useCallback } from "react";
 import { useAuth } from "../store/AuthContext";
-import { API_BASE } from "../api/client";
+import { API_BASE } from "../services/api";
 
 export function useApi() {
   const { accessToken: token, logout, user } = useAuth();
