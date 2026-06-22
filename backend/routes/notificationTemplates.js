@@ -18,24 +18,22 @@ router.get("/inbox", verifyToken, async (req, res) => {
   const pool   = req.app.locals.pool;
   const userId = req.user.userId;
   try {
-    /* Return ALL unread notifications + the 3 most-recent read notifications,
-       with unread sorted first so the UI can render two distinct sections without
-       a second round-trip. The UNION ALL form lets each branch have its own
-       ORDER BY / LIMIT before the outer sort. */
     const { rows } = await pool.query(
       `SELECT * FROM (
-         (SELECT id, event_id, title, message, is_read, created_at
+         (SELECT id, type, title, body, entity_type, entity_id,
+                 (read_at IS NULL) AS is_unread, read_at, created_at
           FROM public.notifications
-          WHERE user_id = $1 AND is_read = false
+          WHERE user_id = $1 AND read_at IS NULL
           ORDER BY created_at DESC)
          UNION ALL
-         (SELECT id, event_id, title, message, is_read, created_at
+         (SELECT id, type, title, body, entity_type, entity_id,
+                 (read_at IS NULL) AS is_unread, read_at, created_at
           FROM public.notifications
-          WHERE user_id = $1 AND is_read = true
+          WHERE user_id = $1 AND read_at IS NOT NULL
           ORDER BY created_at DESC
           LIMIT 3)
        ) n
-       ORDER BY is_read ASC, created_at DESC`,
+       ORDER BY is_unread DESC, created_at DESC`,
       [userId]
     );
     return res.json({ success: true, notifications: rows });
@@ -52,7 +50,7 @@ router.get("/inbox/unread", verifyToken, async (req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT COUNT(*) AS cnt FROM public.notifications
-       WHERE user_id = $1 AND is_read = false`,
+       WHERE user_id = $1 AND read_at IS NULL`,
       [userId]
     );
     return res.json({ success: true, count: parseInt(rows[0].cnt, 10) });
@@ -68,7 +66,7 @@ router.put("/inbox/read-all", verifyToken, async (req, res) => {
   const userId = req.user.userId;
   try {
     await pool.query(
-      `UPDATE public.notifications SET is_read = true WHERE user_id = $1 AND is_read = false`,
+      `UPDATE public.notifications SET read_at = NOW() WHERE user_id = $1 AND read_at IS NULL`,
       [userId]
     );
     return res.json({ success: true });
@@ -82,15 +80,11 @@ router.put("/inbox/read-all", verifyToken, async (req, res) => {
 router.put("/inbox/:id/read", verifyToken, async (req, res) => {
   const pool   = req.app.locals.pool;
   const userId = req.user.userId;
-  const id     = parseInt(req.params.id, 10);
-
-  if (isNaN(id)) {
-    return res.status(400).json({ success: false, message: "Invalid notification id." });
-  }
+  const { id } = req.params;
 
   try {
     await pool.query(
-      `UPDATE public.notifications SET is_read = true WHERE id = $1 AND user_id = $2 AND is_read = false`,
+      `UPDATE public.notifications SET read_at = NOW() WHERE id = $1 AND user_id = $2 AND read_at IS NULL`,
       [id, userId]
     );
     return res.json({ success: true });

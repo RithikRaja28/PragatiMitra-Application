@@ -84,27 +84,48 @@ const ROLE_DESC = {
 };
 
 function AssignFormPage({ sectionId, sectionTitle, reportTitle, apiFetch, onBack, onAssigned }) {
-  const [assignments,  setAssignments]  = useState([]);
+  const [assignType,   setAssignType]   = useState("USER");   // "USER"|"ROLE"|"DEPT"
   const [allUsers,     setAllUsers]     = useState([]);
+  const [allDepts,     setAllDepts]     = useState([]);
+  const [allRoles,     setAllRoles]     = useState([]);
+  const [userAssigns,  setUserAssigns]  = useState([]);
+  const [roleAssigns,  setRoleAssigns]  = useState([]);
+  const [deptAssigns,  setDeptAssigns]  = useState([]);
+  /* user fields */
   const [search,       setSearch]       = useState("");
   const [selectedUser, setSelectedUser] = useState(null);
   const [role,         setRole]         = useState("CONTRIBUTOR");
-  const [saving,       setSaving]       = useState(false);
-  const [loadingUsers, setLoadingUsers] = useState(true);
-  const [submitErr,    setSubmitErr]    = useState("");
   const [showDropdown, setShowDropdown] = useState(false);
+  /* role/dept fields */
+  const [selRoleName,  setSelRoleName]  = useState("");
+  const [selDeptId,    setSelDeptId]    = useState("");
+  /* shared */
+  const [saving,       setSaving]       = useState(false);
+  const [loadingData,  setLoadingData]  = useState(true);
+  const [submitErr,    setSubmitErr]    = useState("");
   const searchRef   = useRef(null);
   const dropdownRef = useRef(null);
 
-  useEffect(() => {
+  const reload = () => {
+    setLoadingData(true);
     Promise.all([
       apiFetch(`/api/builder/assignments/section/${sectionId}`).then((r) => r.json()),
       apiFetch("/api/users").then((r) => r.json()),
-    ]).then(([assignData, usersData]) => {
-      if (assignData.success) setAssignments(assignData.data || []);
-      if (usersData.success)  setAllUsers(usersData.users || []);
-    }).catch(() => {}).finally(() => setLoadingUsers(false));
-  }, [sectionId]);
+      apiFetch("/api/departments").then((r) => r.json()),
+      apiFetch("/api/roles").then((r) => r.json()),
+    ]).then(([asgn, users, depts, roles]) => {
+      if (asgn.success) {
+        setUserAssigns(asgn.data?.users || []);
+        setRoleAssigns(asgn.data?.roles || []);
+        setDeptAssigns(asgn.data?.departments || []);
+      }
+      if (users.success)  setAllUsers(users.users || []);
+      if (depts.success)  setAllDepts(depts.data  || []);
+      if (roles.success)  setAllRoles(roles.data  || []);
+    }).catch(() => {}).finally(() => setLoadingData(false));
+  };
+
+  useEffect(() => { reload(); }, [sectionId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     function handler(e) {
@@ -117,155 +138,275 @@ function AssignFormPage({ sectionId, sectionTitle, reportTitle, apiFetch, onBack
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  const assignedIds   = new Set(assignments.map((a) => a.user_id));
-  const filteredUsers = allUsers.filter((u) => {
-    if (assignedIds.has(u.id)) return false;
+  const assignedUserIds = new Set(userAssigns.map((a) => a.user_id));
+  const filteredUsers   = allUsers.filter((u) => {
+    if (assignedUserIds.has(u.id)) return false;
     const q = search.toLowerCase();
     return !q || u.full_name?.toLowerCase().includes(q) || u.email?.toLowerCase().includes(q);
   });
 
   async function handleSubmit(e) {
     e.preventDefault();
-    if (!selectedUser) { setSubmitErr("Please select a user to assign"); return; }
     setSaving(true); setSubmitErr("");
     try {
-      const res  = await apiFetch(`/api/builder/assignments/section/${sectionId}`, {
-        method: "POST",
-        body:   JSON.stringify({ user_id: selectedUser.id, role }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.message);
-      setAssignments((prev) => [
-        ...prev.filter((a) => a.user_id !== selectedUser.id),
-        { ...json.data, full_name: selectedUser.full_name, email: selectedUser.email },
-      ]);
-      onAssigned && onAssigned(selectedUser.full_name, role);
-      setSelectedUser(null); setSearch("");
+      if (assignType === "USER") {
+        if (!selectedUser) throw new Error("Please select a user");
+        const res  = await apiFetch(`/api/builder/assignments/section/${sectionId}`, {
+          method: "POST",
+          body:   JSON.stringify({ assignee_type: "USER", user_id: selectedUser.id, role }),
+        });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.message);
+        setSelectedUser(null); setSearch("");
+        onAssigned && onAssigned(selectedUser.full_name, role);
+      } else if (assignType === "ROLE") {
+        if (!selRoleName) throw new Error("Please select a role");
+        const res  = await apiFetch(`/api/builder/assignments/section/${sectionId}`, {
+          method: "POST",
+          body:   JSON.stringify({ assignee_type: "ROLE", role_name: selRoleName }),
+        });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.message);
+        setSelRoleName("");
+      } else if (assignType === "DEPT") {
+        if (!selDeptId) throw new Error("Please select a department");
+        const res  = await apiFetch(`/api/builder/assignments/section/${sectionId}`, {
+          method: "POST",
+          body:   JSON.stringify({ assignee_type: "DEPARTMENT", department_id: selDeptId }),
+        });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.message);
+        setSelDeptId("");
+      }
+      reload();
     } catch (ex) { setSubmitErr(ex.message || "Failed to assign"); }
     finally { setSaving(false); }
   }
 
-  async function removeAssignment(assignId) {
+  async function removeUser(assignId) {
     try {
       const res = await apiFetch(`/api/builder/assignments/${assignId}`, { method: "DELETE" });
       if (!res.ok) { const j = await res.json(); throw new Error(j.message); }
-      setAssignments((prev) => prev.filter((a) => a.id !== assignId));
+      setUserAssigns((prev) => prev.filter((a) => a.id !== assignId));
     } catch (ex) { setSubmitErr(ex.message || "Failed to remove"); }
   }
+
+  async function removeWorkflow(swaId) {
+    try {
+      const res = await apiFetch(`/api/builder/assignments/workflow/${swaId}`, { method: "DELETE" });
+      if (!res.ok) { const j = await res.json(); throw new Error(j.message); }
+      reload();
+    } catch (ex) { setSubmitErr(ex.message || "Failed to remove"); }
+  }
+
+  const totalCount = userAssigns.length + roleAssigns.length + deptAssigns.length;
+
+  const typeBtn = (t, label) => (
+    <button type="button" onClick={() => { setAssignType(t); setSubmitErr(""); }}
+      style={{ flex: 1, padding: "8px 4px", border: "none", borderRadius: 8, cursor: "pointer", fontSize: 12, fontWeight: 700,
+               background: assignType === t ? "#7c3aed" : "#f1f5f9", color: assignType === t ? "#fff" : "#64748b" }}>
+      {label}
+    </button>
+  );
+
+  const submitLabel = saving ? "Assigning…"
+    : assignType === "USER" && selectedUser ? `Assign ${selectedUser.full_name}`
+    : assignType === "ROLE" && selRoleName ? `Assign ${selRoleName} role`
+    : assignType === "DEPT" && selDeptId ? `Assign department`
+    : "Assign";
 
   return (
     <FormScreen
       pageTitle={reportTitle || "Report"}
-      formTitle="Assign Team Members"
-      formSubtitle={sectionTitle ? `Section: ${sectionTitle}` : "Select a user and role"}
+      formTitle="Assign Section"
+      formSubtitle={sectionTitle ? `Section: ${sectionTitle}` : "Assign by user, role, or department"}
       icon="👥" iconBg="#ede9fe"
       onBack={onBack}
       onSubmit={handleSubmit}
       submitting={saving}
-      submitLabel={saving ? "Assigning…" : selectedUser ? `Assign ${selectedUser.full_name}` : "Assign Member"}
+      submitLabel={submitLabel}
       submitError={submitErr}
     >
-      {/* User search */}
+      {/* Type switcher */}
       <div>
-        <label style={S.label}>Team Member *</label>
-        {selectedUser ? (
-          <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 10, border: "2px solid #7c3aed", background: "#faf5ff" }}>
-            <div style={{ width: 36, height: 36, borderRadius: "50%", background: "#ede9fe", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 700, color: "#7c3aed", flexShrink: 0 }}>
-              {selectedUser.full_name?.[0]?.toUpperCase() || "?"}
-            </div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 14, fontWeight: 600, color: "#1e293b" }}>{selectedUser.full_name}</div>
-              <div style={{ fontSize: 12, color: "#94a3b8" }}>{selectedUser.email}</div>
-            </div>
-            <button type="button" onClick={() => { setSelectedUser(null); setSearch(""); setTimeout(() => searchRef.current?.focus(), 60); }}
-              style={{ background: "none", border: "none", cursor: "pointer", color: "#94a3b8", fontSize: 18 }}>✕</button>
-          </div>
-        ) : (
-          <div style={{ position: "relative" }}>
-            <input ref={searchRef} value={search}
-              onChange={(e) => { setSearch(e.target.value); setShowDropdown(true); }}
-              onFocus={() => setShowDropdown(true)}
-              placeholder="Search by name or email…"
-              style={S.input(false)} autoComplete="off" />
-            {showDropdown && (
-              <div ref={dropdownRef} style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10, boxShadow: "0 8px 28px rgba(0,0,0,0.10)", zIndex: 50, maxHeight: 210, overflowY: "auto" }}>
-                {loadingUsers && <div style={{ padding: "13px 16px", fontSize: 13, color: "#94a3b8", textAlign: "center" }}>Loading users…</div>}
-                {!loadingUsers && filteredUsers.length === 0 && <div style={{ padding: "13px 16px", fontSize: 13, color: "#94a3b8", textAlign: "center" }}>No matching users</div>}
-                {filteredUsers.slice(0, 25).map((u) => (
-                  <div key={u.id}
-                    onMouseDown={(e) => { e.preventDefault(); setSelectedUser(u); setSearch(""); setShowDropdown(false); }}
-                    style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", cursor: "pointer", borderBottom: "1px solid #f8fafc" }}
-                    onMouseEnter={(e) => (e.currentTarget.style.background = "#f8fafc")}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = "")}
-                  >
-                    <div style={{ width: 32, height: 32, borderRadius: "50%", background: "#ede9fe", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, color: "#7c3aed", flexShrink: 0 }}>
-                      {u.full_name?.[0]?.toUpperCase() || "?"}
-                    </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: "#1e293b" }}>{u.full_name}</div>
-                      <div style={{ fontSize: 11, color: "#94a3b8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.email}</div>
-                    </div>
+        <label style={S.label}>Assign Type</label>
+        <div style={{ display: "flex", gap: 6 }}>
+          {typeBtn("USER", "👤 User")}
+          {typeBtn("ROLE", "🏷 Role")}
+          {typeBtn("DEPT", "🏢 Department")}
+        </div>
+      </div>
+
+      {/* USER form */}
+      {assignType === "USER" && (
+        <>
+          <div>
+            <label style={S.label}>Team Member *</label>
+            {selectedUser ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 10, border: "2px solid #7c3aed", background: "#faf5ff" }}>
+                <div style={{ width: 36, height: 36, borderRadius: "50%", background: "#ede9fe", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 700, color: "#7c3aed", flexShrink: 0 }}>
+                  {selectedUser.full_name?.[0]?.toUpperCase() || "?"}
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: "#1e293b" }}>{selectedUser.full_name}</div>
+                  <div style={{ fontSize: 12, color: "#94a3b8" }}>{selectedUser.email}</div>
+                </div>
+                <button type="button" onClick={() => { setSelectedUser(null); setSearch(""); setTimeout(() => searchRef.current?.focus(), 60); }}
+                  style={{ background: "none", border: "none", cursor: "pointer", color: "#94a3b8", fontSize: 18 }}>✕</button>
+              </div>
+            ) : (
+              <div style={{ position: "relative" }}>
+                <input ref={searchRef} value={search}
+                  onChange={(e) => { setSearch(e.target.value); setShowDropdown(true); }}
+                  onFocus={() => setShowDropdown(true)}
+                  placeholder="Search by name or email…"
+                  style={S.input(false)} autoComplete="off" />
+                {showDropdown && (
+                  <div ref={dropdownRef} style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10, boxShadow: "0 8px 28px rgba(0,0,0,0.10)", zIndex: 50, maxHeight: 210, overflowY: "auto" }}>
+                    {loadingData && <div style={{ padding: "13px 16px", fontSize: 13, color: "#94a3b8", textAlign: "center" }}>Loading…</div>}
+                    {!loadingData && filteredUsers.length === 0 && <div style={{ padding: "13px 16px", fontSize: 13, color: "#94a3b8", textAlign: "center" }}>No matching users</div>}
+                    {filteredUsers.slice(0, 25).map((u) => (
+                      <div key={u.id}
+                        onMouseDown={(e) => { e.preventDefault(); setSelectedUser(u); setSearch(""); setShowDropdown(false); }}
+                        style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", cursor: "pointer", borderBottom: "1px solid #f8fafc" }}
+                        onMouseEnter={(e) => (e.currentTarget.style.background = "#f8fafc")}
+                        onMouseLeave={(e) => (e.currentTarget.style.background = "")}>
+                        <div style={{ width: 32, height: 32, borderRadius: "50%", background: "#ede9fe", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, color: "#7c3aed", flexShrink: 0 }}>
+                          {u.full_name?.[0]?.toUpperCase() || "?"}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: "#1e293b" }}>{u.full_name}</div>
+                          <div style={{ fontSize: 11, color: "#94a3b8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.email}</div>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                ))}
+                )}
               </div>
             )}
           </div>
-        )}
-      </div>
+          <div>
+            <label style={S.label}>Section Role</label>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {["OWNER", "CONTRIBUTOR", "REVIEWER"].map((r) => {
+                const rb = ROLE_BADGE[r]; const active = role === r;
+                return (
+                  <div key={r} onClick={() => setRole(r)} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", border: `1.5px solid ${active ? "#7c3aed" : "#e2e8f0"}`, borderRadius: 10, cursor: "pointer", background: active ? "#faf5ff" : "#fff" }}>
+                    <div style={{ width: 18, height: 18, borderRadius: "50%", flexShrink: 0, border: `2px solid ${active ? "#7c3aed" : "#cbd5e1"}`, background: active ? "#7c3aed" : "#fff", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      {active && <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#fff" }} />}
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.6, color: rb.color, background: rb.bg, padding: "2px 9px", borderRadius: 20 }}>{r}</span>
+                      <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>{ROLE_DESC[r]}</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </>
+      )}
 
-      {/* Role picker */}
-      <div>
-        <label style={S.label}>Role</label>
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {["OWNER", "CONTRIBUTOR", "REVIEWER"].map((r) => {
-            const rb = ROLE_BADGE[r]; const active = role === r;
-            return (
-              <div key={r} onClick={() => setRole(r)} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", border: `1.5px solid ${active ? "#7c3aed" : "#e2e8f0"}`, borderRadius: 10, cursor: "pointer", background: active ? "#faf5ff" : "#fff" }}>
-                <div style={{ width: 18, height: 18, borderRadius: "50%", flexShrink: 0, border: `2px solid ${active ? "#7c3aed" : "#cbd5e1"}`, background: active ? "#7c3aed" : "#fff", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  {active && <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#fff" }} />}
-                </div>
-                <div style={{ flex: 1 }}>
-                  <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.6, color: rb.color, background: rb.bg, padding: "2px 9px", borderRadius: 20 }}>{r}</span>
-                  <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>{ROLE_DESC[r]}</div>
-                </div>
-              </div>
-            );
-          })}
+      {/* ROLE form */}
+      {assignType === "ROLE" && (
+        <div>
+          <label style={S.label}>System Role *</label>
+          <select value={selRoleName} onChange={(e) => setSelRoleName(e.target.value)} style={S.input(false)}>
+            <option value="">— Select a role —</option>
+            {allRoles.map((r) => (
+              <option key={r.id || r.name} value={r.name}>{r.display_name || r.name}</option>
+            ))}
+          </select>
+          {selRoleName && (
+            <div style={{ marginTop: 8, fontSize: 12, color: "#64748b", background: "#f8fafc", padding: "8px 12px", borderRadius: 8 }}>
+              All members with role <strong>{selRoleName}</strong> will be able to access this section.
+            </div>
+          )}
         </div>
-      </div>
+      )}
+
+      {/* DEPT form */}
+      {assignType === "DEPT" && (
+        <div>
+          <label style={S.label}>Department *</label>
+          <select value={selDeptId} onChange={(e) => setSelDeptId(e.target.value)} style={S.input(false)}>
+            <option value="">— Select a department —</option>
+            {allDepts.map((d) => (
+              <option key={d.department_id || d.id} value={d.department_id || d.id}>{d.name || d.department_name}</option>
+            ))}
+          </select>
+          {selDeptId && (
+            <div style={{ marginTop: 8, fontSize: 12, color: "#64748b", background: "#f8fafc", padding: "8px 12px", borderRadius: 8 }}>
+              All members of this department will be able to access this section.
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Current assignments */}
       <div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
           <label style={{ ...S.label, marginBottom: 0 }}>Current Assignments</label>
-          <span style={{ padding: "1px 8px", background: "#f1f5f9", borderRadius: 20, fontSize: 11, color: "#64748b", fontWeight: 600 }}>{assignments.length}</span>
+          <span style={{ padding: "1px 8px", background: "#f1f5f9", borderRadius: 20, fontSize: 11, color: "#64748b", fontWeight: 600 }}>{totalCount}</span>
         </div>
-        {assignments.length === 0 ? (
+        {totalCount === 0 ? (
           <div style={{ padding: "24px", textAlign: "center", background: "#f8fafc", borderRadius: 10, border: "1px dashed #e2e8f0" }}>
             <div style={{ fontSize: 24, marginBottom: 6 }}>👥</div>
-            <div style={{ fontSize: 13, color: "#94a3b8" }}>No team members assigned yet</div>
+            <div style={{ fontSize: 13, color: "#94a3b8" }}>No assignments yet</div>
           </div>
         ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {assignments.map((a) => {
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {userAssigns.map((a) => {
               const rb = ROLE_BADGE[a.role] || ROLE_BADGE.CONTRIBUTOR;
               return (
-                <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 14px", borderRadius: 10, border: "1px solid #f1f5f9", background: "#fafafa" }}>
-                  <div style={{ width: 34, height: 34, borderRadius: "50%", background: "#ede9fe", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, color: "#7c3aed", flexShrink: 0 }}>
+                <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 10, border: "1px solid #f1f5f9", background: "#fafafa" }}>
+                  <div style={{ width: 32, height: 32, borderRadius: "50%", background: "#ede9fe", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, color: "#7c3aed", flexShrink: 0 }}>
                     {a.full_name?.[0]?.toUpperCase() || "?"}
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 13, fontWeight: 600, color: "#1e293b" }}>{a.full_name || "Unknown"}</div>
-                    <div style={{ fontSize: 11, color: "#94a3b8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.email}</div>
+                    <div style={{ fontSize: 11, color: "#94a3b8" }}>{a.email}</div>
                   </div>
-                  <span style={{ padding: "2px 9px", borderRadius: 20, fontSize: 10, fontWeight: 700, textTransform: "uppercase", background: rb.bg, color: rb.color, flexShrink: 0 }}>{a.role}</span>
-                  <button type="button" onClick={() => removeAssignment(a.id)}
-                    style={{ background: "none", border: "none", cursor: "pointer", color: "#cbd5e1", fontSize: 14, padding: "2px 5px", flexShrink: 0 }}
+                  <span style={{ padding: "2px 8px", borderRadius: 20, fontSize: 10, fontWeight: 700, textTransform: "uppercase", background: rb.bg, color: rb.color, flexShrink: 0 }}>{a.role}</span>
+                  <button type="button" onClick={() => removeUser(a.id)}
+                    style={{ background: "none", border: "none", cursor: "pointer", color: "#cbd5e1", fontSize: 14, flexShrink: 0 }}
                     onMouseEnter={(e) => (e.currentTarget.style.color = "#ef4444")}
                     onMouseLeave={(e) => (e.currentTarget.style.color = "#cbd5e1")}>✕</button>
                 </div>
               );
             })}
+            {roleAssigns.map((a) => (
+              <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 10, border: "1px solid #f1f5f9", background: "#fafafa" }}>
+                <div style={{ width: 32, height: 32, borderRadius: "50%", background: "#dbeafe", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, flexShrink: 0 }}>🏷</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: "#1e293b" }}>{a.role_name}</div>
+                  <div style={{ fontSize: 11, color: "#94a3b8" }}>Role assignment</div>
+                </div>
+                <span style={{ padding: "2px 8px", borderRadius: 20, fontSize: 10, fontWeight: 700, background: "#dbeafe", color: "#1d4ed8", flexShrink: 0 }}>ROLE</span>
+                <button type="button" onClick={() => removeWorkflow(a.id)}
+                  style={{ background: "none", border: "none", cursor: "pointer", color: "#cbd5e1", fontSize: 14, flexShrink: 0 }}
+                  onMouseEnter={(e) => (e.currentTarget.style.color = "#ef4444")}
+                  onMouseLeave={(e) => (e.currentTarget.style.color = "#cbd5e1")}>✕</button>
+              </div>
+            ))}
+            {deptAssigns.map((a) => (
+              <div key={a.department_id || a.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 10, border: "1px solid #f1f5f9", background: "#fafafa" }}>
+                <div style={{ width: 32, height: 32, borderRadius: "50%", background: "#d1fae5", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, flexShrink: 0 }}>🏢</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: "#1e293b" }}>{a.department_name || a.name}</div>
+                  <div style={{ fontSize: 11, color: "#94a3b8" }}>Department assignment</div>
+                </div>
+                <span style={{ padding: "2px 8px", borderRadius: 20, fontSize: 10, fontWeight: 700, background: "#d1fae5", color: "#15803d", flexShrink: 0 }}>DEPT</span>
+                <button type="button" onClick={() => {
+                  apiFetch(`/api/builder/assignments/section/${sectionId}/departments/${a.department_id}`, { method: "DELETE" })
+                    .then(r => r.ok && reload())
+                    .catch(() => {});
+                }}
+                  style={{ background: "none", border: "none", cursor: "pointer", color: "#cbd5e1", fontSize: 14, flexShrink: 0 }}
+                  onMouseEnter={(e) => (e.currentTarget.style.color = "#ef4444")}
+                  onMouseLeave={(e) => (e.currentTarget.style.color = "#cbd5e1")}>✕</button>
+              </div>
+            ))}
           </div>
         )}
       </div>
@@ -282,11 +423,60 @@ const EVT_STYLE = {
   REVISION_REQUIRED: { bg: "#fff7ed", color: "#c2410c" }, MANUAL: { bg: "#f1f5f9", color: "#64748b" },
 };
 
+/* ── Simple block renderer for snapshot preview ── */
+function SnapshotPreview({ blocks }) {
+  if (!blocks || !blocks.length) {
+    return <div style={{ fontSize: 13, color: "#94a3b8", fontStyle: "italic" }}>No content blocks in this snapshot.</div>;
+  }
+  return (
+    <div style={{ fontFamily: "'Times New Roman', Times, serif", fontSize: 13, lineHeight: 1.7, color: "#1e293b" }}>
+      {blocks.map((b, i) => {
+        const c = b.content || {};
+        switch (b.block_type) {
+          case "PARAGRAPH":
+            return <div key={i} style={{ marginBottom: 8 }} dangerouslySetInnerHTML={{ __html: c.html || c.text || "" }} />;
+          case "HEADING": {
+            const lvl = c.level || 2;
+            const fs = lvl === 1 ? 18 : lvl === 2 ? 15 : 13;
+            return <div key={i} style={{ fontWeight: 700, fontSize: fs, marginTop: 10, marginBottom: 4, color: "#1F3864", borderBottom: lvl === 1 ? "1.5px solid #1F3864" : "none", paddingBottom: lvl === 1 ? 3 : 0 }}>{c.text || ""}</div>;
+          }
+          case "LIST": {
+            const Tag = c.ordered ? "ol" : "ul";
+            return <Tag key={i} style={{ paddingLeft: 20, marginBottom: 8 }}>{(c.items || []).map((item, j) => <li key={j}>{item}</li>)}</Tag>;
+          }
+          case "DIVIDER":
+            return <hr key={i} style={{ border: "none", borderTop: "1px solid #e2e8f0", margin: "8px 0" }} />;
+          case "KPI":
+            return <div key={i} style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 6, padding: "8px 12px", marginBottom: 8, fontSize: 12 }}>
+              <strong>{c.kpi_title || c.label || "KPI"}:</strong> {String(c.value ?? c.kpi_value ?? "—")} {c.unit || ""}
+            </div>;
+          case "TABLE": {
+            const hdrs = c.headers || [];
+            if (!hdrs.length) return null;
+            return <table key={i} style={{ borderCollapse: "collapse", width: "100%", fontSize: 11, marginBottom: 8 }}>
+              <thead><tr>{hdrs.map((h, j) => <th key={j} style={{ background: "#e2e8f0", padding: "4px 8px", border: "1px solid #cbd5e1", textAlign: "left" }}>{h}</th>)}</tr></thead>
+              <tbody>{(c.rows || []).map((row, ri) => <tr key={ri}>{(Array.isArray(row) ? row : hdrs.map(() => "")).map((v, ci) => <td key={ci} style={{ border: "1px solid #e2e8f0", padding: "3px 8px" }}>{String(v ?? "")}</td>)}</tr>)}</tbody>
+            </table>;
+          }
+          case "IMAGE":
+            return <div key={i} style={{ margin: "8px 0", fontSize: 12, color: "#64748b" }}>
+              📷 {c.caption || c.url || "Image"}
+            </div>;
+          default:
+            return null;
+        }
+      })}
+    </div>
+  );
+}
+
 function VersionHistoryPage({ sectionId, sectionTitle, reportTitle, apiFetch, isAdmin, onBack, onRestored }) {
   const [versions,   setVersions]   = useState([]);
   const [loading,    setLoading]    = useState(true);
   const [restoring,  setRestoring]  = useState(null);
   const [restoreErr, setRestoreErr] = useState("");
+  const [viewSnap,   setViewSnap]   = useState(null);   // { vNum, section, blocks }
+  const [viewLoading,setViewLoading]= useState(false);
 
   useEffect(() => {
     setLoading(true);
@@ -295,6 +485,18 @@ function VersionHistoryPage({ sectionId, sectionTitle, reportTitle, apiFetch, is
       .then((d) => { if (d.success) setVersions(d.data || []); })
       .finally(() => setLoading(false));
   }, [sectionId]);
+
+  async function viewVersion(vNum) {
+    setViewLoading(true);
+    try {
+      const res  = await apiFetch(`/api/builder/versions/section/${sectionId}/${vNum}`);
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.message);
+      const snap = json.data?.snapshot || {};
+      setViewSnap({ vNum, section: snap.section || {}, blocks: snap.blocks || [] });
+    } catch (ex) { setRestoreErr(ex.message || "Failed to load snapshot"); }
+    finally { setViewLoading(false); }
+  }
 
   async function restore(vNum) {
     if (!window.confirm(`Restore to version ${vNum}? Current content will be archived first.`)) return;
@@ -305,6 +507,35 @@ function VersionHistoryPage({ sectionId, sectionTitle, reportTitle, apiFetch, is
       if (!res.ok) throw new Error(json.message);
       onRestored(); onBack();
     } catch (ex) { setRestoreErr(ex.message || "Restore failed"); setRestoring(null); }
+  }
+
+  /* ── Snapshot preview modal ── */
+  if (viewSnap) {
+    return (
+      <div style={{ padding: "32px 36px", fontFamily: "'Plus Jakarta Sans', sans-serif", minHeight: "100%" }}>
+        <button type="button" onClick={() => setViewSnap(null)} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "none", border: "none", fontSize: 13, fontWeight: 600, color: "#2563eb", cursor: "pointer", padding: 0, marginBottom: 20 }}>
+          ← Back to History
+        </button>
+        <div style={{ background: "#fff", borderRadius: 18, border: "1px solid rgba(0,0,0,0.07)", boxShadow: "0 2px 16px rgba(0,0,0,0.06)", overflow: "hidden" }}>
+          <div style={{ padding: "20px 28px 16px", borderBottom: "1px solid #f1f5f9", display: "flex", alignItems: "center", gap: 14 }}>
+            <div style={{ width: 40, height: 40, borderRadius: 10, background: "#fef3c7", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, flexShrink: 0 }}>📄</div>
+            <div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: "#1e293b" }}>Version {viewSnap.vNum} Preview</div>
+              {viewSnap.section?.title && <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 2 }}>Section: {viewSnap.section.title}</div>}
+            </div>
+            {isAdmin && (
+              <button onClick={() => { setViewSnap(null); restore(viewSnap.vNum); }} disabled={!!restoring}
+                style={{ marginLeft: "auto", padding: "7px 16px", border: "1.5px solid #7c3aed", borderRadius: 8, background: "#faf5ff", fontSize: 12, fontWeight: 600, color: "#7c3aed", cursor: restoring ? "not-allowed" : "pointer" }}>
+                Restore this version
+              </button>
+            )}
+          </div>
+          <div style={{ padding: "24px 28px" }}>
+            <SnapshotPreview blocks={viewSnap.blocks} />
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -347,12 +578,18 @@ function VersionHistoryPage({ sectionId, sectionTitle, reportTitle, apiFetch, is
                       </div>
                       <div style={{ fontSize: 13, color: "#475569", marginBottom: v.meta?.reason ? 4 : 0 }}>By <strong>{v.created_by_name || "System"}</strong></div>
                       {v.meta?.reason && <div style={{ fontSize: 12, color: "#64748b", marginTop: 4, padding: "6px 10px", background: "#f8fafc", borderRadius: 6, borderLeft: `3px solid ${es.color}` }}>{v.meta.reason}</div>}
-                      {isAdmin && v.event !== "RESTORED" && (
-                        <button onClick={() => restore(v.version_num)} disabled={!!restoring}
-                          style={{ marginTop: 10, padding: "6px 14px", border: "1.5px solid #e2e8f0", borderRadius: 8, background: restoring === v.version_num ? "#f8fafc" : "#fff", fontSize: 12, fontWeight: 600, color: "#7c3aed", cursor: restoring ? "not-allowed" : "pointer" }}>
-                          {restoring === v.version_num ? "Restoring…" : "Restore this version"}
+                      <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+                        <button onClick={() => viewVersion(v.version_num)} disabled={viewLoading}
+                          style={{ padding: "5px 13px", border: "1.5px solid #e2e8f0", borderRadius: 8, background: "#fff", fontSize: 12, fontWeight: 600, color: "#2563eb", cursor: viewLoading ? "not-allowed" : "pointer", opacity: viewLoading ? 0.7 : 1 }}>
+                          {viewLoading ? "Loading…" : "View"}
                         </button>
-                      )}
+                        {isAdmin && v.event !== "RESTORED" && (
+                          <button onClick={() => restore(v.version_num)} disabled={!!restoring}
+                            style={{ padding: "5px 13px", border: "1.5px solid #e2e8f0", borderRadius: 8, background: restoring === v.version_num ? "#f8fafc" : "#fff", fontSize: 12, fontWeight: 600, color: "#7c3aed", cursor: restoring ? "not-allowed" : "pointer" }}>
+                            {restoring === v.version_num ? "Restoring…" : "Restore"}
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 );

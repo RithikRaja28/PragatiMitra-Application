@@ -105,10 +105,11 @@ router.post(
       await createSectionSnapshot(pool, sectionId, "RESTORED", req.user.userId, null, restoreDesc);
 
       // Restore section metadata (keep id, report_id, parent_id — restore title, description, order_index)
+      // Always land on IN_PROGRESS so the section is editable after restore.
       await client.query(
         `UPDATE public.report_sections
          SET title = $1, description = $2, order_index = $3,
-             status = 'DRAFT', updated_by = $4, updated_at = NOW()
+             status = 'IN_PROGRESS', updated_by = $4, updated_at = NOW()
          WHERE id = $5`,
         [snapSection.title, snapSection.description, snapSection.order_index, req.user.userId, sectionId]
       );

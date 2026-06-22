@@ -1732,20 +1732,14 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
               </div>
             );
           })}
-          {/* Snapshot viewer */}
+          {/* Snapshot viewer note — preview is shown in right panel */}
           {viewingSnapshot && (
-            <div style={{ padding: "14px 20px", background: "#fdf4ff", borderTop: "2px solid #c4b5fd" }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: "#6d28d9", marginBottom: 10 }}>
-                Snapshot — Version {viewingSnapshot.version} (read-only preview)
-              </div>
-              {(viewingSnapshot.data?.snapshot?.blocks || []).map((b, i) => (
-                <div key={i} style={{ padding: "8px 12px", background: "#fff", borderRadius: 8, border: "1px solid #ede9fe", marginBottom: 8 }}>
-                  <div style={{ fontSize: 9, fontWeight: 800, color: "#818cf8", marginBottom: 4, textTransform: "uppercase" }}>{b.block_type}</div>
-                  <div style={{ fontSize: 11, color: "#374151", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
-                    {JSON.stringify(b.content, null, 2)}
-                  </div>
-                </div>
-              ))}
+            <div style={{ padding: "10px 20px", background: "#fdf4ff", borderTop: "2px solid #c4b5fd", display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ fontSize: 11, color: "#6d28d9", fontWeight: 700 }}>👁 Previewing v{viewingSnapshot.version} in the right panel</span>
+              <button onClick={() => setViewingSnapshot(null)}
+                style={{ marginLeft: "auto", padding: "3px 10px", borderRadius: 6, border: "1px solid #c4b5fd", background: "#fff", fontSize: 11, color: "#6d28d9", cursor: "pointer", fontWeight: 600 }}>
+                ← Back to current
+              </button>
             </div>
           )}
         </div>
@@ -1756,9 +1750,9 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
 
         {/* LEFT: editor */}
         <div style={{
-          flex: (hidePreview && !chatOpen) ? "1 1 100%" : "0 0 58%",
+          flex: (hidePreview && !chatOpen && !viewingSnapshot) ? "1 1 100%" : "0 0 58%",
           display: "flex", flexDirection: "column",
-          borderRight: (hidePreview && !chatOpen) ? "none" : "1px solid #e2e8f0",
+          borderRight: (hidePreview && !chatOpen && !viewingSnapshot) ? "none" : "1px solid #e2e8f0",
           overflow: "hidden", background: "#f8fafc",
           transition: "flex-basis 0.25s ease",
           minWidth: 0,
@@ -2363,7 +2357,7 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
         )}
 
         {/* RIGHT PANEL: shared container, cross-fades between Word preview and Comments */}
-        {(!hidePreview || chatOpen) && (
+        {(!hidePreview || chatOpen || viewingSnapshot) && (
           <div style={{
             flex: "0 0 42%",
             position: "relative",
@@ -2374,7 +2368,7 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
           }}>
 
             {/* Word preview layer — fades out when comments open */}
-            {!hidePreview && (
+            {(!hidePreview || viewingSnapshot) && (
               <div style={{
                 position: "absolute", inset: 0,
                 background: "#808080",
@@ -2384,10 +2378,48 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
                 transition: "opacity 0.22s ease, transform 0.22s ease",
                 pointerEvents: chatOpen ? "none" : "auto",
               }}>
+                {/* Snapshot banner */}
+                {viewingSnapshot && (
+                  <div style={{
+                    display: "flex", alignItems: "center", gap: 10, flexShrink: 0,
+                    padding: "8px 16px", background: "#4f46e5", color: "#fff",
+                    fontSize: 12, fontWeight: 600,
+                  }}>
+                    <span>📄 Version {viewingSnapshot.version} preview</span>
+                    <button onClick={() => setViewingSnapshot(null)}
+                      style={{ marginLeft: "auto", padding: "3px 12px", borderRadius: 6, border: "1.5px solid rgba(255,255,255,0.5)", background: "transparent", color: "#fff", fontSize: 11, cursor: "pointer", fontWeight: 600 }}>
+                      ← Back to current
+                    </button>
+                    {isAdmin && (
+                      <button
+                        onClick={async () => {
+                          const desc = window.prompt(`Restore description (optional):`, `Restored to version ${viewingSnapshot.version}`);
+                          if (desc === null) return;
+                          try {
+                            const res = await apiFetch(`/api/builder/versions/section/${sectionId}/${viewingSnapshot.version}/restore`, {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ description: desc || `Restored to version ${viewingSnapshot.version}` }),
+                            });
+                            const json = await res.json();
+                            if (json.success) {
+                              alert(`Restored to version ${viewingSnapshot.version}. Page will reload.`);
+                              window.location.reload();
+                            } else {
+                              alert(json.message || "Restore failed");
+                            }
+                          } catch { alert("Restore failed"); }
+                        }}
+                        style={{ padding: "3px 12px", borderRadius: 6, border: "none", background: "#fff", color: "#4f46e5", fontSize: 11, cursor: "pointer", fontWeight: 700 }}>
+                        Restore this version
+                      </button>
+                    )}
+                  </div>
+                )}
                 <WordDocumentPreview
                   reportMeta={reportMeta}
-                  section={section}
-                  blocks={blocks}
+                  section={viewingSnapshot ? (viewingSnapshot.data?.snapshot?.section || section) : section}
+                  blocks={viewingSnapshot ? (viewingSnapshot.data?.snapshot?.blocks || []) : blocks}
                   reportSections={reportSections}
                   currentSectionId={sectionId}
                   canvasRef={previewCanvasRef}
