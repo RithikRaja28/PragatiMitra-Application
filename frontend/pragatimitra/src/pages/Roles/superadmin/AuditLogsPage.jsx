@@ -5,8 +5,9 @@ import PageHeader from "../../../components/shared/PageHeader";
 import { tableCardStyle } from "../../../components/shared/ui";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { t } from "../../../i18n/translations";
+import { API_BASE } from "../../../api/client";
 
-const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+const BASE_URL = `${API_BASE}/api`;
 
 /* ═══════════════════════════════════════════════════════════════
    NAVIGATION CONFIG — category groups + per-entity chips

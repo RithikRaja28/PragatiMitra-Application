@@ -13,8 +13,7 @@ import { Button, Badge, EmptyState, DataTable, Dropdown, MenuItem, MenuLabel } f
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { t } from "../../../i18n/translations";
 import ImportWizard from "../../../components/shared/ImportWizard";
-
-const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
+import { API_BASE } from "../../../api/client";
 
 /* ── Constants & pure helpers ──────────────────────────────────── */
 const STATUS_OPTIONS = ["ACTIVE", "INACTIVE", "SUSPENDED"];

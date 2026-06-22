@@ -15,6 +15,7 @@ import { S, Toast, isAuthError, formatDate } from "../../components/shared/formU
 import PageHeader from "../../components/shared/PageHeader";
 import { tableCardStyle } from "../../components/shared/ui";
 import { Button, Input, Textarea, FieldLabel, Badge, DataTable, color } from "../../ui";
+import { API_BASE } from "../../api/client";
 
 const ACCENT = "#2563eb";
 const CHUNK_SIZE = 500;
@@ -96,7 +97,6 @@ function DocumentUploadField({ label, required, value, onChange, getToken }) {
     if (file.size > MAX_SIZE) { setErrMsg("File exceeds 10 MB."); setStatus("error"); return; }
     setStatus("uploading"); setErrMsg(""); setFileName(file.name);
     try {
-      const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
       const token = getToken();
       const fd = new FormData(); fd.append("file", file);
       const res = await fetch(`${API_BASE}/api/upload/document`, {
@@ -136,7 +136,6 @@ function DocumentCell({ fileKey, getToken, lang = "en" }) {
     if (isLegacyUrl) { window.open(fileKey, "_blank", "noreferrer"); return; }
     setLoading(true);
     try {
-      const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
       const token = getToken ? getToken() : null;
       const res = await fetch(`${API_BASE}/api/upload/read-url`, {
         method: "POST",
@@ -545,7 +544,6 @@ function FormImportWizard({ formName, onClose, onDone, apiFetch, getToken, selec
     try {
       const fd = new FormData(); fd.append("file", file);
       if (selectedYear != null) fd.append("year", selectedYear);
-      const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
       const token = getToken();
       // Bug 7 — send the selected academic year (header + form field) so the backend
       // year-scoped assignment guard blocks parsing an import for an unassigned year.
@@ -601,7 +599,6 @@ function FormImportWizard({ formName, onClose, onDone, apiFetch, getToken, selec
 
   async function downloadSample(format) {
     try {
-      const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
       const token = getToken();
       const res = await fetch(`${API_BASE}/api/form-data/${formName}/export/sample?format=${format}`, {
         headers: {
@@ -840,7 +837,6 @@ function ExportDropdown({ formName, accessToken, language = "en", selectedYear =
     setOpen(false); setExporting(key); setExportPercent(0);
     const interval = setInterval(() => setExportPercent(p => p < 80 ? p + Math.random() * 12 : p), 220);
     try {
-      const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
       const res = await fetch(`${API_BASE}${path}`, { headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {} });
       clearInterval(interval);
       if (!res.ok) { setExporting(null); return; }

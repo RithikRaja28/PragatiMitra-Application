@@ -13,8 +13,7 @@ import PageHeader from "../../../components/shared/PageHeader";
 import { Button, Badge, EmptyState, DataTable, Dropdown, MenuItem, MenuLabel } from "../../../ui";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { t } from "../../../i18n/translations";
-
-const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
+import { API_BASE } from "../../../api/client";
 
 /* ─── Department Form (create + edit) ───────────────────────────
    Rendered as a full screen instead of an overlay modal.

@@ -3,8 +3,7 @@ import { FileText, FolderOpen, CheckCircle2, AlertTriangle, Upload } from "lucid
 import { useAuth } from "../../store/AuthContext";
 import { useApi } from "../../hooks/useApi";
 import { S as FS } from "./formUtils";
-
-const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
+import { API_BASE } from "../../api/client";
 
 const S = {
   ...FS,

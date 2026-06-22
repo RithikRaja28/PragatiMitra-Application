@@ -106,6 +106,41 @@ function makeImageRun(d, maxDU = MAX_IMG_DU) {
   });
 }
 
+/** Rasterize an inline SVG markup string (e.g. a KPI chart export) to a PNG ArrayBuffer for docx embedding. */
+async function svgToPngData(svgMarkup, scale = 2) {
+  if (!svgMarkup) return null;
+  try {
+    const wMatch = svgMarkup.match(/width="(\d+(?:\.\d+)?)"/);
+    const hMatch = svgMarkup.match(/height="(\d+(?:\.\d+)?)"/);
+    const fallbackW = wMatch ? parseFloat(wMatch[1]) : 600;
+    const fallbackH = hMatch ? parseFloat(hMatch[1]) : 360;
+
+    const blob = new Blob([svgMarkup], { type: "image/svg+xml" });
+    const url  = URL.createObjectURL(blob);
+    const img  = new Image();
+    const dims = await new Promise((resolve, reject) => {
+      img.onload  = () => resolve({
+        width:  img.naturalWidth  || fallbackW,
+        height: img.naturalHeight || fallbackH,
+      });
+      img.onerror = () => reject(new Error("Cannot rasterize SVG"));
+      img.src     = url;
+    });
+
+    const canvas = document.createElement("canvas");
+    canvas.width  = Math.round(dims.width  * scale);
+    canvas.height = Math.round(dims.height * scale);
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    URL.revokeObjectURL(url);
+
+    const arrayBuffer = await new Promise(res => canvas.toBlob(b => b.arrayBuffer().then(res), "image/png"));
+    return { arrayBuffer, type: "png", naturalW: dims.width, naturalH: dims.height };
+  } catch {
+    return null;
+  }
+}
+
 function imgPlaceholder(caption, alt) {
   return new Paragraph({
     children: [new TextRun({ text: `[Image${caption||alt ? ": "+(caption||alt) : ""}]`, italics: true, color: COLOR_MUTED, font: FONT })],
@@ -314,7 +349,10 @@ async function blockToElements(block) {
     }
 
     case "TABLE": {
-      const headers = c.headers || [], rows = c.rows || [];
+      const isFormImport = c.source === "form_import";
+      const cols    = isFormImport ? (c.columns || []) : null;
+      const headers = isFormImport ? cols.map(col => col.label || col.key) : (c.headers || []);
+      const rows    = c.rows || [];
       const bd  = { style: BorderStyle.SINGLE, size: 4, color: "9CA3AF" };
       const bds = { top: bd, bottom: bd, left: bd, right: bd };
       const cm  = { top: 80, bottom: 80, left: 120, right: 120 };
@@ -325,16 +363,68 @@ async function blockToElements(block) {
             children: [new Paragraph({ children: [new TextRun({ text: h || "", bold: true, font: FONT })] })] })
         )}));
       }
-      rows.forEach((row, ri) => trs.push(new TableRow({ children: (Array.isArray(row) ? row : []).map(cell =>
-        new TableCell({ borders: bds, margins: cm,
-          shading: ri%2===1 ? { type: ShadingType.SOLID, color: "F9FAFB" } : undefined,
-          children: [new Paragraph({ children: [new TextRun({ text: String(cell ?? ""), font: FONT })] })] })
-      )})));
+      rows.forEach((row, ri) => {
+        const cells = isFormImport
+          ? cols.map(col => row?.[col.key])
+          : (Array.isArray(row) ? row : []);
+        trs.push(new TableRow({ children: cells.map(cell =>
+          new TableCell({ borders: bds, margins: cm,
+            shading: ri%2===1 ? { type: ShadingType.SOLID, color: "F9FAFB" } : undefined,
+            children: [new Paragraph({ children: [new TextRun({ text: String(cell ?? ""), font: FONT })] })] })
+        )}));
+      });
       if (!trs.length) return [];
       return [
         new Table({ rows: trs, width: { size: 100, type: WidthType.PERCENTAGE } }),
         new Paragraph({ children: [new TextRun({ text: "" })], ...SP(120, 120) }),
       ];
+    }
+
+    case "KPI": {
+      const opts      = c.compile_options || {};
+      const showChart = opts.show_chart      !== false;
+      const showTable = opts.show_data_table !== false;
+      const data      = c.data || {};
+      const columns   = data.columns || [];
+      const series    = data.series  || [];
+      const totals    = data.totals  || [];
+      const el = [];
+
+      if (showChart && c.svg_data) {
+        const d = await svgToPngData(c.svg_data);
+        el.push(d
+          ? new Paragraph({ children: [makeImageRun(d)], alignment: AlignmentType.CENTER, ...SP(80, 40) })
+          : imgPlaceholder(opts.caption, c.title));
+      }
+
+      if (showTable && columns.length) {
+        const bd  = { style: BorderStyle.SINGLE, size: 4, color: "9CA3AF" };
+        const bds = { top: bd, bottom: bd, left: bd, right: bd };
+        const cm  = { top: 80, bottom: 80, left: 120, right: 120 };
+        const trs = [new TableRow({ tableHeader: true, children: ["Series", ...columns].map(h =>
+          new TableCell({ borders: bds, margins: cm, shading: { type: ShadingType.SOLID, color: COLOR_TH_BG },
+            children: [new Paragraph({ children: [new TextRun({ text: String(h), bold: true, font: FONT })] })] })
+        )})];
+        series.forEach((s, si) => {
+          const cells = [s.display_name || s.name, ...(s.values || [])];
+          trs.push(new TableRow({ children: cells.map(cell =>
+            new TableCell({ borders: bds, margins: cm,
+              shading: si % 2 === 1 ? { type: ShadingType.SOLID, color: "F9FAFB" } : undefined,
+              children: [new Paragraph({ children: [new TextRun({ text: String(cell ?? ""), font: FONT })] })] })
+          )}));
+        });
+        if (totals.length) {
+          trs.push(new TableRow({ children: ["Total", ...totals].map(cell =>
+            new TableCell({ borders: bds, margins: cm,
+              children: [new Paragraph({ children: [new TextRun({ text: String(cell ?? ""), bold: true, font: FONT })] })] })
+          )}));
+        }
+        el.push(new Table({ rows: trs, width: { size: 100, type: WidthType.PERCENTAGE } }));
+      }
+
+      if (opts.caption) el.push(new Paragraph({ children: [new TextRun({ text: opts.caption, italics: true, color: COLOR_MUTED, font: FONT, size: PT(9) })], alignment: AlignmentType.CENTER, ...SP(0, 120) }));
+      el.push(new Paragraph({ children: [new TextRun({ text: "" })], ...SP(0, 120) }));
+      return el;
     }
 
     case "DIVIDER":
@@ -699,13 +789,36 @@ export function printSectionAsPdf(section, blocks, reportMeta) {
         return `<${tag} style="font-size:${c.fontSize || 11}pt">${items}</${tag}>`;
       }
       case "TABLE": {
-        const headers = c.headers || [];
-        const rows    = c.rows    || [];
+        const isFormImport = c.source === "form_import";
+        const cols    = isFormImport ? (c.columns || []) : null;
+        const headers = isFormImport ? cols.map(col => col.label || col.key) : (c.headers || []);
+        const rows    = c.rows || [];
         const thead   = headers.map(h => `<th>${h}</th>`).join("");
-        const tbody   = rows.map(r =>
-          `<tr>${(Array.isArray(r) ? r : []).map(cell => `<td>${cell ?? ""}</td>`).join("")}</tr>`
-        ).join("");
+        const tbody   = rows.map(r => {
+          const cells = isFormImport ? cols.map(col => r?.[col.key]) : (Array.isArray(r) ? r : []);
+          return `<tr>${cells.map(cell => `<td>${cell ?? ""}</td>`).join("")}</tr>`;
+        }).join("");
         return `<table><thead><tr>${thead}</tr></thead><tbody>${tbody}</tbody></table>`;
+      }
+      case "KPI": {
+        const opts      = c.compile_options || {};
+        const showChart = opts.show_chart      !== false;
+        const showTable = opts.show_data_table !== false;
+        const data      = c.data || {};
+        const columns   = data.columns || [];
+        const series    = data.series  || [];
+        const totals    = data.totals  || [];
+        const chartHtml = showChart && c.svg_data ? c.svg_data : "";
+        const theadHtml = `<th>Series</th>${columns.map(col => `<th>${col}</th>`).join("")}`;
+        const rowsHtml  = series.map(s =>
+          `<tr><td>${s.display_name || s.name}</td>${(s.values || []).map(v => `<td>${v}</td>`).join("")}</tr>`
+        ).join("");
+        const totalsHtml = totals.length
+          ? `<tr><td><strong>Total</strong></td>${totals.map(v => `<td><strong>${v}</strong></td>`).join("")}</tr>` : "";
+        const tableHtml = showTable && columns.length
+          ? `<table><thead><tr>${theadHtml}</tr></thead><tbody>${rowsHtml}${totalsHtml}</tbody></table>` : "";
+        const captionHtml = opts.caption ? `<p class="caption">${opts.caption}</p>` : "";
+        return `<div class="kpi-block">${chartHtml}${tableHtml}${captionHtml}</div>`;
       }
       case "DIVIDER":
         return "<hr/>";

@@ -2,8 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Lock, Eye, EyeOff, AlertCircle, CheckCircle2, Loader2, ShieldCheck } from "lucide-react";
 import { useAuth, redirectByRole } from "../../store/AuthContext";
-
-const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
+import { authApi } from "../../api/services";
 
 function injectCSS(id, css) {
   if (typeof document === "undefined") return;
@@ -292,14 +291,7 @@ export default function ChangePassword() {
     setSuccess("");
 
     try {
-      const res  = await fetch(`${API_BASE}/api/auth/change-password`, {
-        method:  "POST",
-        headers: {
-          "Content-Type":  "application/json",
-          Authorization:   `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({ currentPassword: current, newPassword: newPwd }),
-      });
+      const res  = await authApi.changePassword({ currentPassword: current, newPassword: newPwd }, accessToken);
       const data = await res.json();
 
       if (!data.success) {
