@@ -48,6 +48,12 @@ function toLocalDTInput(iso) {
   const pad = n => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
+function toLocalDateInput(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  const pad = n => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+}
 function localDTToISO(val) {
   if (!val) return null;
   return new Date(val).toISOString();
@@ -132,8 +138,8 @@ function CycleForm({ mode, entity, onCreated, onSaved, onBack }) {
     name:                entity.name                 || "",
     description:         entity.description          || "",
     reporting_year:      entity.reporting_year        || "",
-    start_date:          entity.start_date?.slice(0, 10) || "",
-    end_date:            entity.end_date?.slice(0, 10)   || "",
+    start_date:          toLocalDateInput(entity.start_date),
+    end_date:            toLocalDateInput(entity.end_date),
     submission_deadline: toLocalDTInput(entity.submission_deadline),
     review_deadline:     toLocalDTInput(entity.review_deadline),
     approval_deadline:   toLocalDTInput(entity.approval_deadline),
@@ -180,16 +186,13 @@ function CycleForm({ mode, entity, onCreated, onSaved, onBack }) {
     if (sd && ed && ed < sd)
       errs.end_date = "End date must be on or after the start date.";
 
-    // Deadline chain: start < submission < review < approval < end
+    // Deadline chain: submission < review < approval (deadlines may extend beyond end_date)
     if (sd && sub && sub.slice(0, 10) < sd)
       errs.submission_deadline = "Submission deadline must be after the start date.";
     if (sub && rev && rev < sub)
       errs.review_deadline = "Review deadline must be after the submission deadline.";
     if (rev && app && app < rev)
       errs.approval_deadline = "Approval deadline must be after the review deadline.";
-    if (app && ed && app.slice(0, 10) > ed)
-      errs.approval_deadline = (errs.approval_deadline ? errs.approval_deadline + " " : "") +
-        "Approval deadline must be on or before the end date.";
 
     setFieldErrors(errs);
     return Object.keys(errs).length === 0;

@@ -38,53 +38,65 @@ const primaryBtn = {
   padding: "8px 18px", background: C.primary, color: "#fff",
   border: "none", borderRadius: 7, cursor: "pointer", fontSize: 13, fontWeight: 600,
 };
-const outlineBtn = { ...primaryBtn, background: "transparent", color: C.primary, border: `1px solid ${C.primary}` };
-const dangerBtn  = { ...primaryBtn, background: C.danger };
+
+/* Build recursive tree from flat sections array */
+function buildTree(flat, parentId = null) {
+  return flat
+    .filter(s => (s.parent_id || null) === parentId)
+    .sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0))
+    .map(s => ({ ...s, children: buildTree(flat, s.id) }));
+}
+
+/* Flatten tree to a plain ordered array (preserves depth info) */
+function flattenTree(nodes, depth = 0) {
+  const result = [];
+  for (const n of nodes) {
+    result.push({ ...n, _depth: depth });
+    result.push(...flattenTree(n.children || [], depth + 1));
+  }
+  return result;
+}
 
 /* ═══════════════════════════════════════════════════════════════════════════ */
 export default function AssignSectionsPage({ reportId, onBack }) {
-  const { apiFetch }   = useApi();
+  const { apiFetch }       = useApi();
   const { user: authUser } = useAuth();
-  const [sections,    setSections]    = useState([]);
-  const [users,       setUsers]       = useState([]);
-  const [departments, setDepartments] = useState([]);
-  const [selected,    setSelected]    = useState(new Set()); // section ids
-  const [assignments, setAssignments] = useState({}); // sectionId → { users, departments }
-  const [loading,     setLoading]     = useState(true);
-  const [toast,       setToast]       = useState(null);
-  const [busy,        setBusy]        = useState(false);
+  const [flatSections, setFlatSections] = useState([]); // raw flat list from API
+  const [tree,         setTree]         = useState([]); // recursive tree
+  const [users,        setUsers]        = useState([]);
+  const [departments,  setDepartments]  = useState([]);
+  const [selected,     setSelected]     = useState(new Set());
+  const [assignments,  setAssignments]  = useState({});
+  const [loading,      setLoading]      = useState(true);
+  const [toast,        setToast]        = useState(null);
+  const [busy,         setBusy]         = useState(false);
 
   /* assignment form state */
-  const [assignUserId, setAssignUserId]   = useState("");
-  const [assignRole,   setAssignRole]     = useState("CONTRIBUTOR");
-  const [assignDeptId, setAssignDeptId]   = useState("");
-  const [assignDue,    setAssignDue]      = useState("");
-  const [userSearch,   setUserSearch]     = useState("");
-  const [activeTab,    setActiveTab]      = useState("user"); // 'user' | 'dept'
-  const [selSection,   setSelSection]     = useState(null); // sectionId being viewed
+  const [assignUserId, setAssignUserId] = useState("");
+  const [assignRole,   setAssignRole]   = useState("CONTRIBUTOR");
+  const [assignDeptId, setAssignDeptId] = useState("");
+  const [assignDue,    setAssignDue]    = useState("");
+  const [userSearch,   setUserSearch]   = useState("");
+  const [activeTab,    setActiveTab]    = useState("user");
+  const [selSection,   setSelSection]   = useState(null);
 
   /* ── load ── */
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const instId = authUser?.institutionId || authUser?.institution_id || "";
-      const deptUrl = instId
-        ? `/api/departments?institution_id=${instId}`
-        : "/api/departments";
+      const deptUrl = instId ? `/api/departments?institution_id=${instId}` : "/api/departments";
 
       const [repRes, userRes, deptRes] = await Promise.all([
         apiJson(apiFetch, `/api/builder/reports/${reportId}`),
         apiJson(apiFetch, "/api/users"),
         apiJson(apiFetch, deptUrl),
       ]);
-      const raw  = repRes.data?.sections || [];
-      const tree = raw.filter(s => !s.parent_id).map(r => ({
-        ...r,
-        children: raw.filter(c => c.parent_id === r.id).sort((a, b) => a.order_index - b.order_index),
-      }));
-      setSections(tree);
+
+      const raw = repRes.data?.sections || [];
+      setFlatSections(raw);
+      setTree(buildTree(raw));
       setUsers(userRes.users || userRes.data || []);
-      // departments API returns { data: [ { department_id, name, ... } ] }
       setDepartments(deptRes.data || []);
     } catch {
       setToast({ type: "error", message: "Failed to load data" });
@@ -101,43 +113,45 @@ export default function AssignSectionsPage({ reportId, onBack }) {
       const res = await apiJson(apiFetch, `/api/builder/assignments/section/${secId}`);
       setAssignments(p => ({ ...p, [secId]: res.data }));
     } catch {}
-  }, []);
+  }, [apiFetch]);
 
-  useEffect(() => {
-    if (selSection) loadAssignments(selSection);
-  }, [selSection, loadAssignments]);
+  useEffect(() => { if (selSection) loadAssignments(selSection); }, [selSection, loadAssignments]);
 
-  /* ── toggle selection ── */
+  /* ── selection helpers ── */
+  const getAllIds = useCallback(() => flattenTree(tree).map(s => s.id), [tree]);
+
   const toggle = (id) => setSelected(p => {
-    const n = new Set(p);
-    n.has(id) ? n.delete(id) : n.add(id);
-    return n;
+    const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n;
   });
 
   const toggleAll = () => {
-    const all = getAllSectionIds();
-    if (selected.size === all.length) setSelected(new Set());
-    else setSelected(new Set(all));
+    const all = getAllIds();
+    setSelected(selected.size === all.length ? new Set() : new Set(all));
   };
 
-  const getAllSectionIds = () => {
-    const ids = [];
-    for (const s of sections) { ids.push(s.id); for (const c of s.children || []) ids.push(c.id); }
-    return ids;
+  /* Select all children of a section recursively */
+  const toggleSubtree = (node) => {
+    const ids = flattenTree([node]).map(s => s.id);
+    const allSelected = ids.every(id => selected.has(id));
+    setSelected(prev => {
+      const n = new Set(prev);
+      if (allSelected) ids.forEach(id => n.delete(id));
+      else ids.forEach(id => n.add(id));
+      return n;
+    });
   };
 
-  /* ── assign single user to selected sections ── */
+  /* ── bulk assign ── */
   const handleBulkAssign = async () => {
     if (!selected.size) return setToast({ type: "error", message: "Select at least one section" });
     if (!assignUserId && !assignDeptId) return setToast({ type: "error", message: "Select a user or department" });
     setBusy(true);
     try {
-      const secIds = [...selected];
       await apiJson(apiFetch, `/api/builder/assignments/report/${reportId}/bulk`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          section_ids:   secIds,
+          section_ids:   [...selected],
           user_id:       assignUserId || undefined,
           department_id: assignDeptId || undefined,
           role:          assignRole,
@@ -146,9 +160,7 @@ export default function AssignSectionsPage({ reportId, onBack }) {
       });
       setToast({ type: "success", message: `Assigned to ${selected.size} section(s)` });
       setSelected(new Set());
-      setAssignUserId("");
-      setAssignDeptId("");
-      setAssignDue("");
+      setAssignUserId(""); setAssignDeptId(""); setAssignDue(""); setUserSearch("");
       if (selSection) await loadAssignments(selSection);
     } catch (err) {
       setToast({ type: "error", message: err.message || "Assignment failed" });
@@ -163,7 +175,6 @@ export default function AssignSectionsPage({ reportId, onBack }) {
       if (type === "user") {
         await apiJson(apiFetch, `/api/builder/assignments/${assignId}`, { method: "DELETE" });
       } else {
-        // deptId stored in assignId for dept — use section-level delete
         const [secId, deptId] = assignId.split("::");
         await apiJson(apiFetch, `/api/builder/assignments/section/${secId}/departments/${deptId}`, { method: "DELETE" });
       }
@@ -180,7 +191,12 @@ export default function AssignSectionsPage({ reportId, onBack }) {
     u.email?.toLowerCase().includes(userSearch.toLowerCase())
   );
 
-  const allIds = getAllSectionIds();
+  const allIds = getAllIds();
+
+  /* ── find section title for selected section panel ── */
+  const selSectionTitle = selSection
+    ? flattenTree(tree).find(s => s.id === selSection)?.title
+    : null;
 
   if (loading) return (
     <div style={{ minHeight: "60vh", display: "flex", alignItems: "center", justifyContent: "center",
@@ -208,65 +224,81 @@ export default function AssignSectionsPage({ reportId, onBack }) {
           <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden" }}>
             <div style={{ padding: "12px 16px", background: C.bg, borderBottom: `1px solid ${C.border}`,
                           display: "flex", alignItems: "center", gap: 12 }}>
-              <input type="checkbox" checked={selected.size === allIds.length && allIds.length > 0}
+              <input type="checkbox"
+                checked={allIds.length > 0 && selected.size === allIds.length}
                 onChange={toggleAll} style={{ cursor: "pointer" }} />
               <span style={{ fontSize: 13, fontWeight: 700, color: C.text }}>Section Tree</span>
               <span style={{ fontSize: 11, color: C.textSub, marginLeft: "auto" }}>
-                {allIds.length} total sections
+                {allIds.length} section{allIds.length !== 1 ? "s" : ""} total
               </span>
             </div>
 
-            <div style={{ padding: 12 }}>
-              {sections.map(sec => (
-                <div key={sec.id}>
-                  <SectionRow sec={sec} depth={0} selected={selected.has(sec.id)}
-                    onToggle={() => toggle(sec.id)} active={selSection === sec.id}
-                    onSelect={() => setSelSection(sec.id === selSection ? null : sec.id)} />
-                  {(sec.children || []).map(child => (
-                    <SectionRow key={child.id} sec={child} depth={1} selected={selected.has(child.id)}
-                      onToggle={() => toggle(child.id)} active={selSection === child.id}
-                      onSelect={() => setSelSection(child.id === selSection ? null : child.id)} />
-                  ))}
+            <div style={{ padding: 10 }}>
+              {tree.length === 0 && (
+                <div style={{ padding: "24px 0", textAlign: "center", fontSize: 12, color: C.textSub }}>
+                  No sections found in this report.
                 </div>
+              )}
+              {tree.map(sec => (
+                <SectionTreeNode
+                  key={sec.id}
+                  node={sec}
+                  depth={0}
+                  selected={selected}
+                  onToggle={toggle}
+                  onToggleSubtree={toggleSubtree}
+                  selSection={selSection}
+                  onSelect={id => setSelSection(id === selSection ? null : id)}
+                />
               ))}
             </div>
           </div>
 
           {/* ── assignments for selected section ── */}
-          {selSection && assignments[selSection] && (
+          {selSection && (
             <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10,
                           marginTop: 16, padding: 16 }}>
               <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 12 }}>
-                Assignments — {sections.flatMap(s => [s, ...(s.children || [])]).find(s => s.id === selSection)?.title}
+                Assignments — {selSectionTitle}
               </div>
 
-              <Tabs active={activeTab} onChange={setActiveTab}
-                tabs={[{ id: "user", label: `Users (${assignments[selSection]?.users?.length || 0})` },
-                       { id: "dept", label: `Departments (${assignments[selSection]?.departments?.length || 0})` }]} />
-
-              {activeTab === "user" && (
-                <div style={{ marginTop: 12 }}>
-                  {!assignments[selSection]?.users?.length && (
-                    <div style={{ fontSize: 12, color: "#bbb", textAlign: "center", padding: "20px 0" }}>No user assignments</div>
-                  )}
-                  {assignments[selSection]?.users?.map(a => (
-                    <AssignmentRow key={a.id} name={a.full_name} email={a.email} role={a.role}
-                      due={a.due_at} onRemove={() => removeAssignment(a.id, "user")} />
-                  ))}
+              {!assignments[selSection] ? (
+                <div style={{ fontSize: 12, color: C.textSub, textAlign: "center", padding: "12px 0" }}>
+                  Loading…
                 </div>
-              )}
+              ) : (
+                <>
+                  <Tabs active={activeTab} onChange={setActiveTab}
+                    tabs={[
+                      { id: "user", label: `Users (${assignments[selSection]?.users?.length || 0})` },
+                      { id: "dept", label: `Departments (${assignments[selSection]?.departments?.length || 0})` },
+                    ]} />
 
-              {activeTab === "dept" && (
-                <div style={{ marginTop: 12 }}>
-                  {!assignments[selSection]?.departments?.length && (
-                    <div style={{ fontSize: 12, color: "#bbb", textAlign: "center", padding: "20px 0" }}>No department assignments</div>
+                  {activeTab === "user" && (
+                    <div style={{ marginTop: 12 }}>
+                      {!assignments[selSection]?.users?.length && (
+                        <div style={{ fontSize: 12, color: "#bbb", textAlign: "center", padding: "20px 0" }}>No user assignments</div>
+                      )}
+                      {assignments[selSection]?.users?.map(a => (
+                        <AssignmentRow key={a.id} name={a.full_name} email={a.email} role={a.role}
+                          due={a.due_at} onRemove={() => removeAssignment(a.id, "user")} />
+                      ))}
+                    </div>
                   )}
-                  {assignments[selSection]?.departments?.map(d => (
-                    <AssignmentRow key={d.department_id} name={d.department_name || d.name} role="Dept"
-                      due={d.due_at}
-                      onRemove={() => removeAssignment(`${selSection}::${d.department_id}`, "dept")} />
-                  ))}
-                </div>
+
+                  {activeTab === "dept" && (
+                    <div style={{ marginTop: 12 }}>
+                      {!assignments[selSection]?.departments?.length && (
+                        <div style={{ fontSize: 12, color: "#bbb", textAlign: "center", padding: "20px 0" }}>No department assignments</div>
+                      )}
+                      {assignments[selSection]?.departments?.map(d => (
+                        <AssignmentRow key={d.department_id} name={d.department_name || d.name} role="Dept"
+                          due={d.due_at}
+                          onRemove={() => removeAssignment(`${selSection}::${d.department_id}`, "dept")} />
+                      ))}
+                    </div>
+                  )}
+                </>
               )}
             </div>
           )}
@@ -281,20 +313,32 @@ export default function AssignSectionsPage({ reportId, onBack }) {
 
             <div style={{ marginBottom: 14 }}>
               <label style={lbl}>User</label>
-              <input style={inp} placeholder="Search user…" value={userSearch} onChange={e => setUserSearch(e.target.value)} />
-              <div style={{ maxHeight: 160, overflowY: "auto", border: `1px solid ${C.border}`, borderRadius: 6,
-                            marginTop: 4, display: userSearch ? "block" : "none" }}>
-                {filteredUsers.slice(0, 12).map(u => (
-                  <div key={u.id}
-                    style={{ padding: "7px 10px", cursor: "pointer", fontSize: 12, color: C.text,
-                             background: assignUserId === u.id ? C.primaryLt : "transparent",
-                             borderBottom: `1px solid ${C.border}` }}
-                    onClick={() => { setAssignUserId(u.id); setUserSearch(u.full_name); }}>
-                    <div style={{ fontWeight: 600 }}>{u.full_name}</div>
-                    <div style={{ color: C.textSub }}>{u.email}</div>
-                  </div>
-                ))}
-              </div>
+              <input style={inp} placeholder="Search user…" value={userSearch}
+                onChange={e => { setUserSearch(e.target.value); if (!e.target.value) setAssignUserId(""); }} />
+              {userSearch && (
+                <div style={{ maxHeight: 180, overflowY: "auto", border: `1px solid ${C.border}`, borderRadius: 6, marginTop: 4 }}>
+                  {filteredUsers.slice(0, 12).map(u => (
+                    <div key={u.id}
+                      style={{ padding: "7px 10px", cursor: "pointer", fontSize: 12, color: C.text,
+                               background: assignUserId === u.id ? C.primaryLt : "transparent",
+                               borderBottom: `1px solid ${C.border}` }}
+                      onClick={() => { setAssignUserId(u.id); setUserSearch(u.full_name); }}>
+                      <div style={{ fontWeight: 600 }}>{u.full_name}</div>
+                      <div style={{ color: C.textSub, fontSize: 11 }}>{u.email}</div>
+                    </div>
+                  ))}
+                  {filteredUsers.length === 0 && (
+                    <div style={{ padding: "10px", fontSize: 12, color: C.textSub, textAlign: "center" }}>No users found</div>
+                  )}
+                </div>
+              )}
+              {assignUserId && (
+                <div style={{ marginTop: 4, fontSize: 11, color: C.primary }}>
+                  ✓ {filteredUsers.find(u => u.id === assignUserId)?.full_name || "User selected"}
+                  <button onClick={() => { setAssignUserId(""); setUserSearch(""); }}
+                    style={{ marginLeft: 6, background: "none", border: "none", cursor: "pointer", color: C.danger, fontSize: 11 }}>✕</button>
+                </div>
+              )}
             </div>
 
             <div style={{ marginBottom: 14 }}>
@@ -311,7 +355,9 @@ export default function AssignSectionsPage({ reportId, onBack }) {
               <select style={inp} value={assignDeptId} onChange={e => setAssignDeptId(e.target.value)}>
                 <option value="">— None —</option>
                 {departments.map(d => (
-                  <option key={d.department_id || d.id} value={d.department_id || d.id}>{d.name || d.department_name}</option>
+                  <option key={d.department_id || d.id} value={d.department_id || d.id}>
+                    {d.name || d.department_name}
+                  </option>
                 ))}
               </select>
             </div>
@@ -321,7 +367,9 @@ export default function AssignSectionsPage({ reportId, onBack }) {
               <input type="datetime-local" style={inp} value={assignDue} onChange={e => setAssignDue(e.target.value)} />
             </div>
 
-            <button style={{ ...primaryBtn, width: "100%" }} disabled={busy || (!assignUserId && !assignDeptId) || !selected.size}
+            <button
+              style={{ ...primaryBtn, width: "100%", opacity: (busy || (!assignUserId && !assignDeptId) || !selected.size) ? 0.55 : 1 }}
+              disabled={busy || (!assignUserId && !assignDeptId) || !selected.size}
               onClick={handleBulkAssign}>
               {busy ? "Assigning…" : `Assign to ${selected.size || 0} Section(s)`}
             </button>
@@ -331,6 +379,21 @@ export default function AssignSectionsPage({ reportId, onBack }) {
                 Select sections on the left first
               </div>
             )}
+
+            {selected.size > 0 && (
+              <div style={{ marginTop: 12, padding: "8px 10px", background: C.bg, borderRadius: 6, fontSize: 11, color: C.textSub }}>
+                <div style={{ fontWeight: 700, marginBottom: 4 }}>Selected:</div>
+                {flattenTree(tree)
+                  .filter(s => selected.has(s.id))
+                  .slice(0, 5)
+                  .map(s => (
+                    <div key={s.id} style={{ paddingLeft: s._depth * 10, marginBottom: 2 }}>
+                      {s._depth > 0 ? "↳ " : "• "}{s.title}
+                    </div>
+                  ))}
+                {selected.size > 5 && <div style={{ color: C.primary }}>+{selected.size - 5} more…</div>}
+              </div>
+            )}
           </div>
         </div>
       </main>
@@ -338,29 +401,115 @@ export default function AssignSectionsPage({ reportId, onBack }) {
   );
 }
 
-/* ── helpers ─────────────────────────────────────────────────────────────── */
-const lbl = { display: "block", fontSize: 11, fontWeight: 700, color: C.textSub,
-              textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 };
+/* ── Recursive tree node ──────────────────────────────────────────────────── */
+function SectionTreeNode({ node, depth, selected, onToggle, onToggleSubtree, selSection, onSelect }) {
+  const [expanded, setExpanded] = useState(true);
+  const hasChildren = node.children?.length > 0;
+  const isActive    = selSection === node.id;
+  const isSelected  = selected.has(node.id);
 
-function SectionRow({ sec, depth, selected, onToggle, active, onSelect }) {
-  const meta = STATUS_META[sec.status] || STATUS_META.NOT_STARTED;
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px",
-                  borderRadius: 7, marginLeft: depth * 16, marginBottom: 3, cursor: "pointer",
-                  background: active ? C.primaryLt : selected ? "#f5f7ff" : "transparent",
-                  border: `1px solid ${active ? C.primary : selected ? C.primary + "44" : "transparent"}` }}
-      onClick={onSelect}>
-      <input type="checkbox" checked={selected} onChange={e => { e.stopPropagation(); onToggle(); }}
-        style={{ cursor: "pointer", flexShrink: 0 }} />
-      <span style={{ flex: 1, fontSize: 12, fontWeight: depth === 0 ? 700 : 400, color: C.text,
-                     whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-        {sec.title}
-      </span>
-      <span style={{ padding: "1px 7px", borderRadius: 8, fontSize: 9, fontWeight: 700,
-                     color: meta.color, background: meta.bg, flexShrink: 0 }}>{meta.label}</span>
+    <div>
+      <div
+        style={{
+          display: "flex", alignItems: "center", gap: 6,
+          padding: "7px 10px", borderRadius: 7, marginBottom: 2,
+          marginLeft: depth * 20,
+          cursor: "pointer",
+          background: isActive ? C.primaryLt : isSelected ? "#f5f7ff" : "transparent",
+          border: `1px solid ${isActive ? C.primary : isSelected ? C.primary + "44" : "transparent"}`,
+          transition: "background 0.1s",
+        }}
+        onClick={() => onSelect(node.id)}
+      >
+        {/* expand/collapse toggle */}
+        {hasChildren ? (
+          <button
+            onClick={e => { e.stopPropagation(); setExpanded(o => !o); }}
+            style={{ background: "none", border: "none", cursor: "pointer", color: C.textSub,
+                     fontSize: 10, padding: "0 2px", flexShrink: 0, width: 16, textAlign: "center" }}>
+            {expanded ? "▼" : "▶"}
+          </button>
+        ) : (
+          <span style={{ width: 16, flexShrink: 0 }} />
+        )}
+
+        {/* checkbox */}
+        <input type="checkbox" checked={isSelected}
+          onChange={e => { e.stopPropagation(); onToggle(node.id); }}
+          style={{ cursor: "pointer", flexShrink: 0 }} />
+
+        {/* depth indicator */}
+        {depth > 0 && (
+          <span style={{ color: "#c4b5fd", fontSize: 11, fontWeight: 700, flexShrink: 0 }}>
+            {"└".repeat(1)}
+          </span>
+        )}
+
+        {/* title */}
+        <span style={{
+          flex: 1, fontSize: depth === 0 ? 13 : 12,
+          fontWeight: depth === 0 ? 700 : 500,
+          color: isActive ? C.primary : C.text,
+          whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+        }}>
+          {node.title}
+        </span>
+
+        {/* subsection badge */}
+        {depth > 0 && (
+          <span style={{ fontSize: 9, color: "#7c3aed", background: "#ede9fe",
+                         padding: "1px 5px", borderRadius: 4, flexShrink: 0 }}>
+            sub
+          </span>
+        )}
+
+        {/* status badge */}
+        <span style={{
+          padding: "1px 7px", borderRadius: 8, fontSize: 9, fontWeight: 700, flexShrink: 0,
+          color: (STATUS_META[node.status] || STATUS_META.NOT_STARTED).color,
+          background: (STATUS_META[node.status] || STATUS_META.NOT_STARTED).bg,
+        }}>
+          {(STATUS_META[node.status] || STATUS_META.NOT_STARTED).label}
+        </span>
+
+        {/* select all children button */}
+        {hasChildren && (
+          <button
+            onClick={e => { e.stopPropagation(); onToggleSubtree(node); }}
+            title="Select this section and all its subsections"
+            style={{
+              background: "none", border: `1px solid ${C.border}`, borderRadius: 4,
+              cursor: "pointer", fontSize: 9, color: C.textSub,
+              padding: "1px 5px", flexShrink: 0, fontFamily: "inherit",
+            }}>
+            all
+          </button>
+        )}
+      </div>
+
+      {/* children */}
+      {hasChildren && expanded && node.children.map(child => (
+        <SectionTreeNode
+          key={child.id}
+          node={child}
+          depth={depth + 1}
+          selected={selected}
+          onToggle={onToggle}
+          onToggleSubtree={onToggleSubtree}
+          selSection={selSection}
+          onSelect={onSelect}
+        />
+      ))}
     </div>
   );
 }
+
+/* ── helpers ─────────────────────────────────────────────────────────────── */
+const lbl = {
+  display: "block", fontSize: 11, fontWeight: 700, color: C.textSub,
+  textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4,
+};
 
 function AssignmentRow({ name, email, role, due, onRemove }) {
   return (
@@ -386,9 +535,11 @@ function Tabs({ active, onChange, tabs }) {
     <div style={{ display: "flex", borderBottom: `2px solid ${C.border}` }}>
       {tabs.map(t => (
         <button key={t.id} onClick={() => onChange(t.id)}
-          style={{ padding: "7px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer", border: "none",
-                   borderBottom: active === t.id ? `2px solid ${C.primary}` : "2px solid transparent",
-                   background: "none", color: active === t.id ? C.primary : C.textSub, marginBottom: -2 }}>
+          style={{
+            padding: "7px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer", border: "none",
+            borderBottom: active === t.id ? `2px solid ${C.primary}` : "2px solid transparent",
+            background: "none", color: active === t.id ? C.primary : C.textSub, marginBottom: -2,
+          }}>
           {t.label}
         </button>
       ))}

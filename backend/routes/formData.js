@@ -5,7 +5,7 @@ const { verifyToken } = require("../middleware/auth");
 const logger = require("../utils/logger");
 const { writeAuditLog } = require("../utils/audit");
 const { translateRow, resolveTranslationMode, enrichSchemaLabels } = require("../services/translationService");
-const { getAcademicYearLockBlockForReq, getFormArchiveBlockForReq, resolveActiveAcademicYear } = require("../services/academicYearService");
+const { getAcademicYearLockBlockForReq, getFormArchiveBlockForReq, resolveOperatingYear, getAcademicYearLockBlock, getFormArchiveBlock } = require("../services/academicYearService");
 const { getEffectiveState, messageFor, canWrite } = require("../services/stateResolver");
 const { SOURCE_LANGUAGE, isDerivedRow } = require("../services/translationOwnership");
 const { assertEquivalent } = require("../services/equivalenceGuard");
@@ -32,6 +32,44 @@ async function resolveOwnedSchema(pool, formName, institutionId, year, schema) {
     logger.error(`Bug 17 resolveOwnedSchema failed for ${formName}/${institutionId}`, { stack: err.stack });
   }
   return schema;
+}
+
+/* H-2 — the academic year(s) the TARGETED record(s) actually belong to. Lock /
+   archive / academic-year enforcement on edit & delete must key off the record's
+   OWN year, never the latest schema year or a client-chosen header — otherwise a
+   view-only old-year record could be edited/deleted by selecting a different
+   (active) year. Optionally department-scoped so a dept admin's batch isn't
+   over-blocked by other departments' rows in the same id list. NULL-year rows
+   (very old imports) are skipped — they fall back to the existing header checks. */
+async function getRecordYears(pool, formName, ids, institutionId, departmentId = null) {
+  if (!ids || ids.length === 0) return [];
+  const params = [ids, institutionId];
+  let deptClause = "";
+  if (departmentId) {
+    params.push(departmentId);
+    deptClause = ` AND (department_id = $3 OR department_id IS NULL)`;
+  }
+  const { rows } = await pool.query(
+    `SELECT DISTINCT year FROM ${formName}_records
+      WHERE id = ANY($1::uuid[]) AND institution_id = $2 AND year IS NOT NULL${deptClause}`,
+    params
+  );
+  return rows.map((r) => Number(r.year)).filter((y) => Number.isInteger(y));
+}
+
+/* H-2 — combined write-block (lock + academic-year lock/archive + form archive)
+   for a SPECIFIC (form, institution, year). Used to enforce against a record's own
+   year. Returns { blocked, message }. A null year means "no record-year signal" →
+   not blocked here (the existing header-based checks still apply). */
+async function getYearWriteBlock(pool, formName, institutionId, year) {
+  if (year == null) return { blocked: false, message: null };
+  const lb = await getLockBlock(pool, formName, institutionId, year);
+  if (lb.locked) return { blocked: true, message: lb.message };
+  const ay = await getAcademicYearLockBlock(pool, institutionId, year);
+  if (ay.locked) return { blocked: true, message: ay.message };
+  const ab = await getFormArchiveBlock(pool, institutionId, formName, year);
+  if (ab.blocked) return { blocked: true, message: ab.message };
+  return { blocked: false, message: null };
 }
 
 /* Latest active schema year for a form+institution — used to resolve which
@@ -61,7 +99,9 @@ router.use(async (req, _res, next) => {
     if (!explicit) {
       const pool = req.app.locals.pool;
       const { institutionId } = await resolveEffectiveDepartment(pool, req);
-      req.institutionAcademicYear = await resolveActiveAcademicYear(pool, institutionId);
+      // M-2 — prefer active → latest real academic year (never the calendar year
+      // for a year-aware institution).
+      req.institutionAcademicYear = await resolveOperatingYear(pool, institutionId);
     }
   } catch { /* leave undefined → calendar-year fallback */ }
   next();
@@ -733,12 +773,23 @@ router.put("/:formName/records/:id", async (req, res) => {
          hi → update ONLY this Hindi row (English untouched, no reverse translation)
        The language is read from the DB (not trusted from the client). */
     const { rows: targetRows } = await pool.query(
-      `SELECT language FROM ${formName}_records WHERE id = $1 AND institution_id = $2`,
+      `SELECT language, year FROM ${formName}_records WHERE id = $1 AND institution_id = $2`,
       [id, ctx.institutionId]
     );
     if (!targetRows.length)
       return res.status(404).json({ success: false, message: "Record not found." });
     const editedLanguage = targetRows[0].language === "hi" ? "hi" : "en";
+
+    /* H-2 — enforce lock/archive/academic-year against the record's OWN year, so a
+       view-only old-year record can't be edited by selecting a different active
+       year via the X-Academic-Year header. Additive: the header-based checks above
+       still run; this only adds the missing record-year block. */
+    const recYearBlock = await getYearWriteBlock(
+      pool, formName, ctx.institutionId,
+      targetRows[0].year != null ? Number(targetRows[0].year) : null
+    );
+    if (recYearBlock.blocked)
+      return res.status(403).json({ success: false, message: recYearBlock.message });
 
     let idx = 1;
     const setClauses = [...fieldCols.map((col) => `${col} = $${idx++}`), `updated_at = now()`];
@@ -807,11 +858,14 @@ router.put("/:formName/records/:id", async (req, res) => {
         let hidx = 1;
         const hiSetClauses = fieldCols.map((col) => `${col} = $${hidx++}`);
         hiSetClauses.push(`updated_at = now()`);
-        const hiVals = [...fieldCols.map((col) => hiData[col] ?? null), id];
+        // L-2 — scope the mirror update to the institution (defense-in-depth;
+        // source_row_id is already a unique UUID, but every other write in this
+        // file carries the tenant predicate).
+        const hiVals = [...fieldCols.map((col) => hiData[col] ?? null), id, ctx.institutionId];
 
         const upd = await pool.query(
           `UPDATE ${tableName} SET ${hiSetClauses.join(", ")}
-           WHERE source_row_id = $${hidx}`,
+           WHERE source_row_id = $${hidx} AND institution_id = $${hidx + 1}`,
           hiVals
         );
 
@@ -898,6 +952,21 @@ router.delete("/:formName/records/bulk-delete", async (req, res) => {
     const archiveBlock = await getFormArchiveBlockForReq(pool, req, ctx.institutionId, formName, await getFormActiveYear(pool, formName, ctx.institutionId));
     if (archiveBlock.blocked)
       return res.status(403).json({ success: false, message: archiveBlock.message });
+
+    /* H-2 — enforce against the records' OWN years: if ANY targeted record belongs
+       to a locked/archived/academic-year-locked year, reject the whole batch (no
+       partial delete) so a protected old-year row can't be removed by selecting a
+       different active year. Department-scoped so a dept admin isn't over-blocked
+       by other departments' rows that share the id list. */
+    const targetYears = await getRecordYears(
+      pool, formName, ids, ctx.institutionId,
+      ctx.role === "department_admin" ? ctx.departmentId : null
+    );
+    for (const ty of targetYears) {
+      const yb = await getYearWriteBlock(pool, formName, ctx.institutionId, ty);
+      if (yb.blocked)
+        return res.status(403).json({ success: false, message: yb.message });
+    }
 
     await ensureSourceRowIdColumn(pool, `${formName}_records`);
 
@@ -1009,9 +1078,19 @@ router.delete("/:formName/records/:id", async (req, res) => {
        (id = root OR source_row_id = root) removes both, so a Hindi row can never be
        deleted on its own (English orphan) and vice-versa. */
     const { rows: tgtRows } = await pool.query(
-      `SELECT source_row_id FROM ${formName}_records WHERE id = $1 AND institution_id = $2`,
+      `SELECT source_row_id, year FROM ${formName}_records WHERE id = $1 AND institution_id = $2`,
       [id, ctx.institutionId]
     );
+
+    /* H-2 — block deletion when the record's OWN year is locked/archived/AY-locked,
+       independent of the latest schema year or the selected-year header. */
+    const recYearBlock = await getYearWriteBlock(
+      pool, formName, ctx.institutionId,
+      tgtRows[0]?.year != null ? Number(tgtRows[0].year) : null
+    );
+    if (recYearBlock.blocked)
+      return res.status(403).json({ success: false, message: recYearBlock.message });
+
     const rootId = tgtRows[0]?.source_row_id || id;
 
     let whereClause = "(id = $1 OR source_row_id = $1) AND institution_id = $2";

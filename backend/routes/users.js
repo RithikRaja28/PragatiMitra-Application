@@ -76,6 +76,20 @@ function isDeptAdmin(req) {
     && !roles.includes("institute_admin");
 }
 
+/* RBAC TIER GUARD (C-2) — which role NAMES a caller may grant via create/import.
+   Closes privilege escalation: a non-super-admin must never be able to mint a
+   super_admin, and only super/institute admins may mint an institute_admin.
+   All other (department-level) roles stay assignable by inst/dept admins so
+   existing user-management flows are unchanged. */
+function canAssignRole(req, roleName) {
+  const roles = req.user.roles || [];
+  if (roles.includes("super_admin")) return true;            // god — anything
+  const rn = String(roleName || "").trim().toLowerCase();
+  if (rn === "super_admin")    return false;                 // only super_admin may grant
+  if (rn === "institute_admin") return roles.includes("institute_admin");
+  return true;                                                // department-level roles
+}
+
 /* ─────────────────────────────────────────────────────────────────────────────
    IMPORT HELPERS
 ───────────────────────────────────────────────────────────────────────────── */
@@ -408,6 +422,15 @@ router.post(
       const deptMap    = new Map(depts.map((d) => [`${d.institution_id}::${d.name_lower}`, d.department_id]));
       const roleMap    = new Map(roles.map((r) => [r.name_lower, r.id]));
 
+      /* C-1 — tenant scope for the importer. A non-super-admin may only import
+         into their OWN institution (and dept admins only into their OWN dept);
+         the file's Institution/Department columns and defaultInstitutionId can
+         never redirect the import to another tenant. super_admin is unscoped. */
+      const deptAdmin = isDeptAdmin(req);
+      const instAdmin = isOnlyInstAdmin(req);
+      const scopedInst = (deptAdmin || instAdmin) ? req.user.institutionId : null;
+      const scopedDept = deptAdmin ? req.user.departmentId : null;
+
       const fieldToCol = {};
       for (const [f, c] of Object.entries(mapping)) if (c) fieldToCol[f] = c;
 
@@ -445,8 +468,13 @@ router.post(
           if (!r) { errorRows.push({ row: rowNum, error: `Institution "${inst_name}" not found` }); continue; }
           institution_id = r.id;
         }
+        // Scoped admins default to (and are pinned to) their own institution.
+        if (!institution_id && scopedInst) institution_id = scopedInst;
         if (!institution_id)
           { errorRows.push({ row: rowNum, error: "Institution is required — map the column or set a default" }); continue; }
+        // C-1 — reject any attempt to import into another institution.
+        if (scopedInst && String(institution_id) !== String(scopedInst))
+          { errorRows.push({ row: rowNum, error: "You can only import users into your own institution." }); continue; }
 
         const instDomain  = instById.get(institution_id) || "";
         const emailDomain = email.split("@")[1]?.toLowerCase() || "";
@@ -456,9 +484,14 @@ router.post(
         let department_id = null;
         if (dept_name)
           department_id = deptMap.get(`${institution_id}::${dept_name.toLowerCase()}`) || null;
+        // C-1 — a department admin can only import into their own department.
+        if (deptAdmin) department_id = scopedDept;
 
         const role_lookup    = role_str || defaultRoleName || "";
         const role_id        = role_lookup ? (roleMap.get(role_lookup.toLowerCase()) || null) : null;
+        // C-2 — cannot import a user with a role above the caller's tier.
+        if (role_lookup && !canAssignRole(req, role_lookup))
+          { errorRows.push({ row: rowNum, error: `You are not permitted to assign the role "${role_lookup}".` }); continue; }
         const VALID_STATUSES = ["ACTIVE", "INACTIVE", "SUSPENDED"];
         const account_status = VALID_STATUSES.includes(status_str?.toUpperCase())
           ? status_str.toUpperCase()
@@ -483,20 +516,31 @@ router.post(
       }
 
       const { rows: existing } = await pool.query(
-        `SELECT email, id FROM users WHERE email = ANY($1::text[]) AND account_status != 'DELETED'`,
+        `SELECT email, id, institution_id, department_id
+           FROM users WHERE email = ANY($1::text[]) AND account_status != 'DELETED'`,
         [prepared.map((p) => p.email)]
       );
-      const existingMap = new Map(existing.map((r) => [r.email, r.id]));
+      const existingMap = new Map(existing.map((r) => [r.email, r]));
 
       const toInsert = [];
       const toUpdate = [];
       let   skipped  = 0;
 
       for (const u of prepared) {
-        const existingId = existingMap.get(u.email);
-        if (existingId) {
+        const ex = existingMap.get(u.email);
+        if (ex) {
           if (duplicateHandling === "skip") { skipped++; continue; }
-          toUpdate.push({ ...u, id: existingId });
+          /* C-1 — a non-super-admin may only overwrite an existing user that is
+             already inside their own scope; never reach across tenants/departments. */
+          if (scopedInst && String(ex.institution_id) !== String(scopedInst)) {
+            errorRows.push({ row: null, error: `"${u.email}" belongs to another institution and was not overwritten.` });
+            continue;
+          }
+          if (scopedDept && String(ex.department_id) !== String(scopedDept)) {
+            errorRows.push({ row: null, error: `"${u.email}" belongs to another department and was not overwritten.` });
+            continue;
+          }
+          toUpdate.push({ ...u, id: ex.id });
         } else {
           toInsert.push(u);
         }
@@ -1384,6 +1428,10 @@ router.post("/", verifyToken, requireRole(["super_admin", "institute_admin", "de
     const { rows: roleRows } = await pool.query("SELECT id FROM roles WHERE name = $1", [role_name]);
     if (!roleRows.length)
       return res.status(400).json({ success: false, message: "Invalid role." });
+
+    // 2b. RBAC tier guard (C-2) — cannot grant a role above the caller's tier.
+    if (!canAssignRole(req, role_name))
+      return res.status(403).json({ success: false, message: "You are not permitted to assign this role." });
 
     // 3. Hash password and insert — bcrypt only runs if email is confirmed unique
     const passwordHash = await bcrypt.hash(password, 10);

@@ -28,6 +28,22 @@ let lifecycleColsEnsured = false;
 async function ensureLifecycleColumns(pool) {
   if (lifecycleColsEnsured) return;
   await pool.query(`ALTER TABLE institutions ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ`);
+
+  /* The institution_status column is the Postgres ENUM `institution_status`, which
+     originally shipped with only ACTIVE | INACTIVE. The lifecycle handlers persist
+     ARCHIVED (archive) and DELETED (soft-delete), so without these enum values the
+     archive / delete UPDATEs throw "invalid input value for enum …" — which is why
+     only Edit (ACTIVE/INACTIVE) worked. Extend the enum idempotently. Each runs as
+     its own statement (ADD VALUE can't be used in the same transaction it's added)
+     and is wrapped so a plain-TEXT status column (some envs) is a harmless no-op and
+     never blocks the deleted_at column add above. */
+  for (const val of ["ARCHIVED", "DELETED"]) {
+    try {
+      await pool.query(`ALTER TYPE public.institution_status ADD VALUE IF NOT EXISTS '${val}'`);
+    } catch (e) {
+      logger.error(`Failed to extend institution_status enum with '${val}'`, { stack: e.stack });
+    }
+  }
   lifecycleColsEnsured = true;
 }
 
@@ -861,14 +877,12 @@ router.put("/:id", async (req, res) => {
     if (dupDomain.length)
       return res.status(409).json({ success: false, errors: { email_domain: `Domain "${rawDomain}" is already registered.` } });
 
-    if (existing.status === "ACTIVE" && rawStatus === "INACTIVE") {
-      const { rows: [{ active_count }] } = await pool.query(
-        `SELECT COUNT(*) AS active_count FROM users WHERE institution_id = $1 AND account_status = 'ACTIVE'`,
-        [institutionId]
-      );
-      if (Number(active_count) > 0)
-        return res.status(409).json({ success: false, message: `Cannot deactivate: ${active_count} active user(s) still belong to this institution.` });
-    }
+    /* Deactivating an institution is a CASCADE, not a conflict: setting it INACTIVE
+       disables every user under it via the login / verifyToken gate (exactly like
+       Archive), and Restore re-enables them losslessly. The previous "cannot
+       deactivate while active users exist" block made Deactivate unusable for any
+       real institution and was inconsistent with Archive — removed so Deactivate
+       takes effect and reflects everywhere. */
 
     const { rows: [updated] } = await pool.query(
       `UPDATE institutions
@@ -883,6 +897,17 @@ router.put("/:id", async (req, res) => {
 
     const changedFields = ["institution_name", "code", "email_domain", "city", "state", "pincode", "status"]
       .filter((f) => String(existing[f] ?? "") !== String(updated[f] ?? ""));
+
+    /* When the institution leaves ACTIVE, immediately invalidate every session of
+       its users so the deactivation reflects everywhere at once (the gate already
+       rejects their access tokens on the next request; this also blocks refresh
+       reuse). Mirrors the per-user disable flow. Best-effort. */
+    if (existing.status === "ACTIVE" && updated.status !== "ACTIVE") {
+      await pool.query(
+        "DELETE FROM sessions WHERE user_id IN (SELECT id FROM users WHERE institution_id = $1)",
+        [institutionId]
+      ).catch(() => {});
+    }
 
     await writeAuditLog(req, {
       actionType:    "INST_UPDATED",
@@ -966,6 +991,14 @@ async function setLifecycleState(req, res, { targetStatus, deletedAt, okMessage,
     // when nothing changed; never throws.
     if (targetStatus === "ACTIVE") {
       await resolveInstitutionSharedForms(pool, institutionId);
+    } else {
+      /* Archive / soft-delete → invalidate all of this institution's users' sessions
+         so the change reflects everywhere immediately (the gate also blocks them on
+         their next request). Best-effort — never block the lifecycle response. */
+      await pool.query(
+        "DELETE FROM sessions WHERE user_id IN (SELECT id FROM users WHERE institution_id = $1)",
+        [institutionId]
+      ).catch(() => {});
     }
 
     await writeAuditLog(req, {

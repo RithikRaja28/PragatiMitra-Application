@@ -9,6 +9,20 @@ async function apiJson(apiFetch, path, opts) {
   return json;
 }
 
+async function downloadViaFetch(apiFetch, path, filename) {
+  const res = await apiFetch(path);
+  if (!res.ok) throw new Error("Download failed");
+  const blob = await res.blob();
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href     = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 const C = {
   primary: "#4f8ef7", primaryLt: "#e8f0fe",
   success: "#43a047", successLt: "#e8f5e9",
@@ -73,9 +87,11 @@ export default function CompileReportPage({ reportId, onBack }) {
       setToast({ type: "success", message: `${format.toUpperCase()} compiled successfully!` });
       await load();
 
-      // Trigger download
-      if (res.data?.download_url) {
-        window.open(res.data.download_url, "_blank");
+      // Auto-download the freshly compiled file
+      if (res.data?.id) {
+        const dlPath = `/api/builder/compile/report/${reportId}/${res.data.id}/download`;
+        const fname  = `report_${res.data.id.slice(0, 8)}.${format.toLowerCase()}`;
+        await downloadViaFetch(apiFetch, dlPath, fname).catch(() => {});
       }
     } catch (err) {
       setToast({ type: "error", message: err.message || "Compilation failed" });
@@ -85,9 +101,14 @@ export default function CompileReportPage({ reportId, onBack }) {
     }
   };
 
-  const handleDownload = (item) => {
-    if (item.download_url) window.open(item.download_url, "_blank");
-    else setToast({ type: "error", message: "Download URL not available" });
+  const handleDownload = async (item) => {
+    try {
+      const dlPath = `/api/builder/compile/report/${reportId}/${item.id}/download`;
+      const fname  = `report_${item.id.slice(0, 8)}.${(item.format || "docx").toLowerCase()}`;
+      await downloadViaFetch(apiFetch, dlPath, fname);
+    } catch {
+      setToast({ type: "error", message: "Download failed" });
+    }
   };
 
   const readyCount  = status?.ready_count ?? 0;
@@ -186,7 +207,7 @@ export default function CompileReportPage({ reportId, onBack }) {
                       <td style={{ padding: "10px 14px" }}>
                         <span style={{ padding: "2px 8px", borderRadius: 5, fontSize: 11, fontWeight: 700,
                                        background: C.primaryLt, color: C.primary }}>
-                          {item.output_format?.toUpperCase()}
+                          {item.format?.toUpperCase()}
                         </span>
                       </td>
                       <td style={{ padding: "10px 14px" }}>
@@ -196,7 +217,7 @@ export default function CompileReportPage({ reportId, onBack }) {
                         {item.compiled_at ? new Date(item.compiled_at).toLocaleString() : "—"}
                       </td>
                       <td style={{ padding: "10px 14px", color: C.textSub, fontSize: 12 }}>
-                        {item.file_size_bytes ? `${Math.round(item.file_size_bytes / 1024)} KB` : "—"}
+                        {item.file_size ? `${Math.round(item.file_size / 1024)} KB` : "—"}
                       </td>
                       <td style={{ padding: "10px 14px" }}>
                         <button style={{ padding: "4px 12px", background: C.primary, color: "#fff",

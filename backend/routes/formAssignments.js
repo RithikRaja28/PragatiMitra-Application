@@ -16,7 +16,7 @@
 const express = require("express");
 const { verifyToken, requireRole } = require("../middleware/auth");
 const { writeAuditLog } = require("../utils/audit");
-const { getFormLifecycleStatus, resolveActiveAcademicYear } = require("../services/academicYearService");
+const { getFormLifecycleStatus, resolveOperatingYear } = require("../services/academicYearService");
 const { assertFormDomainAccess } = require("../services/domainService");
 const { resolveEffectiveDepartment, getDepartmentWriteBlock } = require("../services/departmentContext");
 const logger = require("../utils/logger");
@@ -152,7 +152,8 @@ router.use(async (req, _res, next) => {
     if (!hasExplicitYear(req)) {
       const pool = req.app.locals.pool;
       const { institutionId } = await resolveEffectiveDepartment(pool, req);
-      req.institutionAcademicYear = await resolveActiveAcademicYear(pool, institutionId);
+      // M-2 — active → latest real academic year (no calendar drift when year-aware).
+      req.institutionAcademicYear = await resolveOperatingYear(pool, institutionId);
     }
   } catch { /* leave undefined → calendar-year fallback */ }
   next();

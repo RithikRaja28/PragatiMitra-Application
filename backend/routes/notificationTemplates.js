@@ -25,12 +25,12 @@ router.get("/inbox", verifyToken, async (req, res) => {
     const { rows } = await pool.query(
       `SELECT * FROM (
          (SELECT id, event_id, title, message, is_read, created_at
-          FROM notifications
+          FROM public.notifications
           WHERE user_id = $1 AND is_read = false
           ORDER BY created_at DESC)
          UNION ALL
          (SELECT id, event_id, title, message, is_read, created_at
-          FROM notifications
+          FROM public.notifications
           WHERE user_id = $1 AND is_read = true
           ORDER BY created_at DESC
           LIMIT 3)
@@ -51,7 +51,7 @@ router.get("/inbox/unread", verifyToken, async (req, res) => {
   const userId = req.user.userId;
   try {
     const { rows } = await pool.query(
-      `SELECT COUNT(*) AS cnt FROM notifications
+      `SELECT COUNT(*) AS cnt FROM public.notifications
        WHERE user_id = $1 AND is_read = false`,
       [userId]
     );
@@ -68,7 +68,7 @@ router.put("/inbox/read-all", verifyToken, async (req, res) => {
   const userId = req.user.userId;
   try {
     await pool.query(
-      `UPDATE notifications SET is_read = true WHERE user_id = $1 AND is_read = false`,
+      `UPDATE public.notifications SET is_read = true WHERE user_id = $1 AND is_read = false`,
       [userId]
     );
     return res.json({ success: true });
@@ -90,7 +90,7 @@ router.put("/inbox/:id/read", verifyToken, async (req, res) => {
 
   try {
     await pool.query(
-      `UPDATE notifications SET is_read = true WHERE id = $1 AND user_id = $2 AND is_read = false`,
+      `UPDATE public.notifications SET is_read = true WHERE id = $1 AND user_id = $2 AND is_read = false`,
       [id, userId]
     );
     return res.json({ success: true });

@@ -1025,21 +1025,13 @@ router.put(
         });
       }
 
-      if (existing.status === "ACTIVE" && rawStatus === "INACTIVE") {
-        const { rows: [{ active_count }] } = await pool.query(
-          `SELECT COUNT(*) AS active_count
-           FROM   users
-           WHERE  department_id  = $1
-             AND  account_status = 'ACTIVE'`,
-          [departmentId]
-        );
-        if (Number(active_count) > 0) {
-          return res.status(409).json({
-            success: false,
-            message: `Cannot deactivate "${existing.name}": ${active_count} user(s) are still active. Deactivate all members first.`,
-          });
-        }
-      }
+      /* Bug 11 — deactivation is a CASCADE, not a conflict. An inactive department
+         suspends its users / assignments / forms / records via the department gate
+         (view-only), and a restore resumes everything losslessly. The previous
+         "deactivate all members first" block made the status toggle (PUT) fail for
+         any non-empty department — inconsistent with the PATCH /:id/deactivate path
+         which already deactivates with active members. Removed so the toggle works
+         and reflects everywhere, exactly like the institution lifecycle. */
 
     const { rows: [updated] } = await pool.query(
       `UPDATE departments

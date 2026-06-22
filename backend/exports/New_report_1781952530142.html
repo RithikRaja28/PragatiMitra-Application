@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>New report</title>
+<style>
+/* ── Base ── */
+body {
+  font-family: 'Times New Roman', Times, serif;
+  font-size: 12pt; color: #111827; margin: 0; padding: 20px;
+  background: #808080;
+}
+.page-wrapper { max-width: 794px; margin: 0 auto; background: #fff; padding: 72px; box-shadow: 0 3px 16px rgba(0,0,0,.45); margin-bottom: 24px; }
+
+/* ── Report title page ── */
+.title-page { page-break-after: always; text-align: center; padding: 40px 0 60px; }
+.title-main { font-size: 20pt; font-weight: 700; color: #1F3864; margin-bottom: 10px; }
+.title-sub  { font-size: 9pt; color: #6b7280; font-style: italic; }
+
+/* ── TOC ── */
+.toc-page { page-break-after: always; padding-bottom: 24px; }
+.toc-row  { display: flex; align-items: baseline; margin-bottom: 7px; }
+.toc-label { white-space: nowrap; flex-shrink: 0; }
+.toc-dots  { flex: 1; border-bottom: 1px dotted #374151; margin: 0 6px 3px; min-width: 20px; }
+.toc-pg    { white-space: nowrap; flex-shrink: 0; }
+
+/* ── Section headings — exact match to SectionHeader component ── */
+.sec-h1 {
+  font-size: 15pt; font-weight: 800; color: #1F3864;
+  border-bottom: 2px solid #1F3864; padding-bottom: 6px;
+  margin-top: 20px; margin-bottom: 10px;
+}
+.sec-h2 { font-size: 12pt; font-weight: 700; color: #2E4A7A; margin-top: 14px; margin-bottom: 7px; }
+.sec-h3 { font-size: 11pt; font-weight: 700; color: #374151; margin-top: 10px; margin-bottom: 5px; }
+.sec-desc { font-size: 9pt; font-weight: 400; color: #6b7280; margin-top: 3px; font-style: italic; }
+
+/* ── Content headings (HEADING block, matches WordBlock lvlStyle) ── */
+.ch1 { font-size: 18px; font-weight: 700; color: #1F3864; border-bottom: 1.5px solid #1F3864; padding-bottom: 3px; margin-bottom: 10px; margin-top: 18px; }
+.ch2 { font-size: 14px; font-weight: 700; color: #2E4A7A; margin-bottom: 6px; margin-top: 14px; }
+.ch3 { font-size: 12px; font-weight: 700; color: #374151; margin-bottom: 5px; margin-top: 10px; }
+
+/* ── Paragraph ── */
+.para { font-family: 'Times New Roman', Times, serif; font-size: 12pt; line-height: 1.8; color: #111827; margin-bottom: 10px; word-break: break-word; }
+
+/* ── List ── */
+.blk-list { font-family: 'Times New Roman', Times, serif; font-size: 12pt; color: #111827; padding-left: 20px; line-height: 1.75; margin: 4px 0 10px; }
+.blk-list li { margin-bottom: 2px; }
+
+/* ── Divider ── */
+hr.divider { border: none; border-top: 1px solid #9ca3af; margin: 10px 0 12px; }
+
+/* ── Tables ── */
+.data-tbl { border-collapse: collapse; width: 100%; margin: 8px 0 12px; font-size: 10pt; }
+.data-tbl th { background: #D0CECE; font-weight: 700; padding: 4px 7px; text-align: left; border: 1px solid #9ca3af; color: #111827; }
+.data-tbl td { border: 1px solid #9ca3af; padding: 4px 7px; color: #111827; vertical-align: top; }
+.data-tbl tr.alt td { background: #f9fafb; }
+.data-tbl tr.tot td { background: #D0CECE; font-weight: 700; }
+
+/* ── KPI ── */
+.kpi-block { margin: 8px 0 12px; }
+.kpi-title { font-size: 14px; font-weight: 700; color: #2E4A7A; margin: 0 0 4px; }
+.kpi-cap   { font-size: 10pt; color: #6b7280; font-style: italic; margin: 0 0 8px; }
+.kpi-svg   { max-width: 100%; overflow: hidden; margin-bottom: 10px; }
+.kpi-svg svg { max-width: 100%; height: auto; }
+.kpi-simple { font-size: 11pt; margin: 8px 0; }
+
+/* ── Images ── */
+.img-wrap { margin: 8px 0 12px; }
+.img-wrap img { border-radius: 3px; border: 1px solid #e5e7eb; }
+.img-cap { font-size: 9pt; color: #6b7280; text-align: center; margin-top: 3px; font-style: italic; }
+.img-grid { display: grid; gap: 8px; margin: 8px 0 12px; }
+.img-placeholder { height: 60px; background: #f9fafb; border: 1px dashed #d1d5db; border-radius: 4px; display: flex; align-items: center; justify-content: center; color: #9ca3af; font-size: 10px; }
+
+/* ── File attachment ── */
+.file-blk { font-size: 10pt; margin: 6px 0 10px; padding: 5px 10px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 2px; }
+.file-blk a { color: #1d4ed8; text-decoration: underline; }
+
+/* ── Page/print ── */
+@page { margin: 20mm 25mm; size: A4 portrait; }
+@media print {
+  body { background: white; padding: 0; }
+  .page-wrapper { box-shadow: none; margin: 0; padding: 0; }
+  .section[style*="page-break-before"] { page-break-before: always; }
+  .toc-page { page-break-after: always; }
+}
+</style>
+</head>
+<body>
+<div class="page-wrapper">
+
+
+    <div class="title-page">
+      
+      <div style="clear:both"></div>
+      <div style="font-family:'Calibri','Segoe UI',Arial,sans-serif;font-size:13pt;font-weight:700;color:#1F3864;text-align:center;margin-bottom:8px">
+        AIIA
+      </div>
+      <div class="title-main">New report</div>
+      <div class="title-sub">Annual   ·   2026-27</div>
+    </div>
+<div class="toc-page">
+      <div class="sec-h1" style="text-align:center;margin-top:0;margin-bottom:24px">TABLE OF CONTENTS</div>
+      <div class="toc-row" style="padding-left:0px;font-weight:700;color:#1F3864;font-size:11pt">
+        <span class="toc-label">1&nbsp;&nbsp;Introduction</span>
+        <span class="toc-dots"></span>
+        <span class="toc-pg">3</span>
+      </div><div class="toc-row" style="padding-left:22px;font-weight:400;color:#374151;font-size:10pt">
+        <span class="toc-label">1.1&nbsp;&nbsp;subsection</span>
+        <span class="toc-dots"></span>
+        <span class="toc-pg">3</span>
+      </div><div class="toc-row" style="padding-left:0px;font-weight:700;color:#1F3864;font-size:11pt">
+        <span class="toc-label">2&nbsp;&nbsp;Conclusion</span>
+        <span class="toc-dots"></span>
+        <span class="toc-pg">6</span>
+      </div>
+    </div>
+<div class="section" style=""><div class="sec-h1">1.&nbsp;&nbsp;Introduction</div><div class="para"><div style="text-align: justify;"><span style="font-size: 14pt;"><span style="font-size: 12pt;">HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!</span></span></div></div>
+<div class="img-grid" style="grid-template-columns:repeat(3,1fr)">
+          <div>
+            <img src="https://tse4.mm.bing.net/th/id/OIP.hXWwNOQw15ZVWKlMs-xv0wHaFQ?rs=1&amp;pid=ImgDetMain&amp;o=7&amp;rm=3" style="width:100%;border-radius:3px;border:1px solid #e5e7eb">
+            <div class="img-cap">Fig 1 </div>
+          </div>
+          <div>
+            <img src="https://tse4.mm.bing.net/th/id/OIP.hXWwNOQw15ZVWKlMs-xv0wHaFQ?rs=1&amp;pid=ImgDetMain&amp;o=7&amp;rm=3" style="width:100%;border-radius:3px;border:1px solid #e5e7eb">
+            <div class="img-cap">Fig 2</div>
+          </div>
+          <div>
+            <img src="https://tse4.mm.bing.net/th/id/OIP.hXWwNOQw15ZVWKlMs-xv0wHaFQ?rs=1&amp;pid=ImgDetMain&amp;o=7&amp;rm=3" style="width:100%;border-radius:3px;border:1px solid #e5e7eb">
+            <div class="img-cap">Fig 3</div>
+          </div></div>
+<div class="para"><span style="font-size: 16px; text-align: justify;">HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP&nbsp;</span><span style="font-size: 16px; text-align: justify;">&nbsp;!!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP</span></div>
+<table class="data-tbl"><thead><tr><th>Test</th><th>Name</th></tr></thead><tbody><tr class=""><td>No 1</td><td>Rithik</td></tr><tr class="alt"><td>No 2</td><td>Rohit</td></tr><tr class=""><td>No 3</td><td>Likesh</td></tr><tr class="alt"><td>No 4</td><td>Divakar</td></tr><tr class=""><td>No 5 </td><td>Kanagavel</td></tr></tbody></table>
+<div class="para"><span style="font-size: 16px; text-align: justify;">HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!HELP !!</span></div>
+<div class="img-wrap">
+          <img src="https://cdna.artstation.com/p/marketplace/presentation_assets/003/430/262/large/file.jpg?1706950301" alt="Fig 4 Illumunati" style="width:100%;border-radius:3px;border:1px solid #e5e7eb">
+          <div class="img-cap">Fig 4 Illumunati</div>
+        </div></div>
+<div class="section" style=""><div class="sec-h2">1.1.&nbsp;&nbsp;subsection</div><div class="para"><div style="text-align: justify;"><span style="font-size: 13pt;">Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.</span></div></div>
+<div class="para"><div style="text-align: justify;"><span style="font-size: 13pt;">Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.</span></div></div>
+<div class="img-grid" style="grid-template-columns:repeat(2,1fr)">
+          <div>
+            <img src="https://cdna.artstation.com/p/marketplace/presentation_assets/003/430/262/large/file.jpg?1706950301" style="width:100%;border-radius:3px;border:1px solid #e5e7eb">
+            <div class="img-cap">Fig 1 Illumunati 1</div>
+          </div>
+          <div>
+            <img src="https://cdna.artstation.com/p/marketplace/presentation_assets/003/430/262/large/file.jpg?1706950301" style="width:100%;border-radius:3px;border:1px solid #e5e7eb">
+            <div class="img-cap">Fig 2  Illumunati 2</div>
+          </div></div></div>
+<div class="section" style="page-break-before:always;"><div class="sec-h1">2.&nbsp;&nbsp;Conclusion</div><div class="para"><div style="text-align: justify;"><span style="font-size: 13pt;">Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.</span></div></div>
+<div class="para"><div style="text-align: justify;"><span style="font-size: 13pt;">Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.</span></div></div>
+<div class="para"><div style="text-align: justify;"><span style="font-size: 13pt;"><span style="background-color: rgb(254, 240, 138);">Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis&nbsp;</span></span></div></div>
+<div class="img-grid" style="grid-template-columns:repeat(2,1fr)">
+          <div>
+            <img src="https://images-wixmp-ed30a86b8c4ca887773594c2.wixmp.com/f/f79f219c-0fab-4488-8295-b5071222b163/d7nljiv-3654005e-998e-4a04-b161-0a2045f88fe5.jpg/v1/fill/w_999,h_800,q_70,strp/composizione1820bis_by_claudio51_d7nljiv-pre.jpg?token=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1cm46YXBwOjdlMGQxODg5ODIyNjQzNzNhNWYwZDQxNWVhMGQyNmUwIiwiaXNzIjoidXJuOmFwcDo3ZTBkMTg4OTgyMjY0MzczYTVmMGQ0MTVlYTBkMjZlMCIsIm9iaiI6W1t7ImhlaWdodCI6Ijw9ODIwIiwicGF0aCI6IlwvZlwvZjc5ZjIxOWMtMGZhYi00NDg4LTgyOTUtYjUwNzEyMjJiMTYzXC9kN25saml2LTM2NTQwMDVlLTk5OGUtNGEwNC1iMTYxLTBhMjA0NWY4OGZlNS5qcGciLCJ3aWR0aCI6Ijw9MTAyNCJ9XV0sImF1ZCI6WyJ1cm46c2VydmljZTppbWFnZS5vcGVyYXRpb25zIl19.5Y5F1mD7d6Loek5aXy5-SLzYYuUkJwhIHPdQYjJ9nDA" style="width:100%;border-radius:3px;border:1px solid #e5e7eb">
+            
+          </div>
+          <div>
+            <img src="https://images-wixmp-ed30a86b8c4ca887773594c2.wixmp.com/f/f79f219c-0fab-4488-8295-b5071222b163/d7nljiv-3654005e-998e-4a04-b161-0a2045f88fe5.jpg/v1/fill/w_999,h_800,q_70,strp/composizione1820bis_by_claudio51_d7nljiv-pre.jpg?token=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1cm46YXBwOjdlMGQxODg5ODIyNjQzNzNhNWYwZDQxNWVhMGQyNmUwIiwiaXNzIjoidXJuOmFwcDo3ZTBkMTg4OTgyMjY0MzczYTVmMGQ0MTVlYTBkMjZlMCIsIm9iaiI6W1t7ImhlaWdodCI6Ijw9ODIwIiwicGF0aCI6IlwvZlwvZjc5ZjIxOWMtMGZhYi00NDg4LTgyOTUtYjUwNzEyMjJiMTYzXC9kN25saml2LTM2NTQwMDVlLTk5OGUtNGEwNC1iMTYxLTBhMjA0NWY4OGZlNS5qcGciLCJ3aWR0aCI6Ijw9MTAyNCJ9XV0sImF1ZCI6WyJ1cm46c2VydmljZTppbWFnZS5vcGVyYXRpb25zIl19.5Y5F1mD7d6Loek5aXy5-SLzYYuUkJwhIHPdQYjJ9nDA" style="width:100%;border-radius:3px;border:1px solid #e5e7eb">
+            
+          </div></div></div>
+</div>
+</body>
+</html>

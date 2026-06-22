@@ -11,6 +11,27 @@ const router = express.Router();
 
 const ALLOWED_ROLES = ["department_admin", "super_admin", "institute_admin"];
 
+/* N-1 — the assignee (user_id) must be a real, ACTIVE user inside the SAME scope
+   the NOA is being created/updated for. Without this a department/institute admin
+   could grant NOA elevation (department_admin / institute_admin injected on the
+   target's next login) to an arbitrary user in ANOTHER department or institution —
+   a cross-tenant privilege escalation. super_admin is system-level and only
+   requires the user to exist and be active. Returns { ok, status?, message? }. */
+async function assertAssignableUser(pool, { userId, institutionId, departmentId, isSuperAdmin }) {
+  const { rows } = await pool.query(
+    "SELECT institution_id, department_id, account_status FROM users WHERE id = $1",
+    [userId]
+  );
+  if (!rows.length)                       return { ok: false, status: 400, message: "Selected user was not found." };
+  if (rows[0].account_status !== "ACTIVE") return { ok: false, status: 400, message: "Selected user is not active." };
+  if (isSuperAdmin) return { ok: true };
+  if (String(rows[0].institution_id) !== String(institutionId))
+    return { ok: false, status: 403, message: "You can only assign a user from your own institution." };
+  if (departmentId && String(rows[0].department_id) !== String(departmentId))
+    return { ok: false, status: 403, message: "You can only assign a user from your own department." };
+  return { ok: true };
+}
+
 /* Standard format (locked): "YYYY-YYYY" with end = start + 1, e.g. "2026-2027".
    Mirrors validateFinanceYear's pattern in committees.js so every "year range"
    string in the app shares one canonical shape. */
@@ -143,6 +164,16 @@ router.post("/", verifyToken, requireRole(ALLOWED_ROLES), async (req, res) => {
   }
 
   try {
+    // N-1 — the assignee must belong to the assignment's scope and be active.
+    const assigneeCheck = await assertAssignableUser(pool, {
+      userId: user_id,
+      institutionId,
+      departmentId: insertDeptId,
+      isSuperAdmin: roles.includes("super_admin"),
+    });
+    if (!assigneeCheck.ok)
+      return res.status(assigneeCheck.status).json({ success: false, message: assigneeCheck.message });
+
     const { rows } = await pool.query(
       `INSERT INTO nodal_officer_assignments
          (institution_id, department_id, user_id, reporting_year, is_active, assigned_by)
@@ -267,6 +298,19 @@ router.put("/:id", verifyToken, requireRole(ALLOWED_ROLES), async (req, res) => 
         if (assignment.institution_id !== institutionId || assignment.department_id !== departmentId)
           return res.status(403).json({ success: false, message: "Access denied." });
       }
+    }
+
+    // N-1 — a reassignment must point at an active user inside the SAME scope as the
+    // existing assignment (the caller is already scope-guarded to that assignment).
+    if (user_id !== undefined) {
+      const assigneeCheck = await assertAssignableUser(pool, {
+        userId: user_id,
+        institutionId: assignment.institution_id,
+        departmentId: assignment.department_id,
+        isSuperAdmin: roles.includes("super_admin"),
+      });
+      if (!assigneeCheck.ok)
+        return res.status(assigneeCheck.status).json({ success: false, message: assigneeCheck.message });
     }
 
     const setClauses = ["updated_at = now()"];

@@ -18,7 +18,7 @@ const {
   resolveDeptContext, ensureDeptYearRow, pgType, slugify,
   deptRecordsTable, collectColumnNames, buildDeptRecordsTableDDL, quoteIdent,
 } = require("../services/departmentFormService");
-const { resolveActiveAcademicYear } = require("../services/academicYearService");
+const { resolveOperatingYear } = require("../services/academicYearService");
 const { assertEquivalent } = require("../services/equivalenceGuard");
 const { enqueueEmail }    = require("../services/mailService");
 const { getDepartmentState, DEPARTMENT_INACTIVE_MESSAGE } = require("../services/departmentContext");
@@ -63,7 +63,8 @@ router.use(async (req, _res, next) => {
     if (!hasExplicitYear(req)) {
       const pool = req.app.locals.pool;
       const { institutionId } = await resolveDeptContext(pool, req);
-      req.institutionAcademicYear = await resolveActiveAcademicYear(pool, institutionId);
+      // M-2 — active → latest real academic year (no calendar drift when year-aware).
+      req.institutionAcademicYear = await resolveOperatingYear(pool, institutionId);
     }
   } catch {
     /* leave req.institutionAcademicYear undefined → calendar-year fallback */
