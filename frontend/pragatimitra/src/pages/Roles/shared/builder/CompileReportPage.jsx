@@ -24,12 +24,12 @@ async function downloadViaFetch(apiFetch, path, filename) {
 }
 
 const C = {
-  primary: "#4f8ef7", primaryLt: "#e8f0fe",
-  success: "#43a047", successLt: "#e8f5e9",
-  danger: "#e53935", dangerLt: "#fef2f2",
-  warning: "#f9a825", warningLt: "#fffde7",
-  text: "#1a1a2e", textSub: "#555", border: "#e0e4ea",
-  bg: "#f7f8fa", surface: "#fff",
+  primary: "#2563eb", primaryLt: "#dbeafe",
+  success: "#16a34a", successLt: "#dcfce7",
+  danger: "#dc2626", dangerLt: "#fef2f2",
+  warning: "#d97706", warningLt: "#fef3c7",
+  text: "#111827", textSub: "#6b7280", border: "#e5e7eb",
+  bg: "#f8fafc", surface: "#fff",
 };
 
 const FORMAT_OPTIONS = [
@@ -117,24 +117,56 @@ export default function CompileReportPage({ reportId, onBack }) {
   const canCompile  = notReadyCount === 0 && totalCount > 0;
 
   if (loading) return (
-    <div style={{ minHeight: "60vh", display: "flex", alignItems: "center", justifyContent: "center",
-                  fontFamily: "'Plus Jakarta Sans', sans-serif", color: C.textSub }}>
-      Loading compile status…
+    <div style={{ minHeight: "60vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+                  fontFamily: "'Plus Jakarta Sans', sans-serif", gap: 12 }}>
+      <div style={{ width: 32, height: 32, border: "3px solid #e2e8f0", borderTopColor: "#2563eb", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      <span style={{ fontSize: 13, color: C.textSub }}>Loading compile status…</span>
     </div>
   );
 
   return (
     <div style={{ minHeight: "100vh", background: "transparent", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       {toast && <Toast {...toast} onClose={() => setToast(null)} />}
 
       {/* header */}
       <header style={{ background: C.surface, borderBottom: `1px solid ${C.border}`,
-                       padding: "16px 32px", display: "flex", alignItems: "center", gap: 16 }}>
-        <button style={{ background: "none", border: "none", cursor: "pointer", fontSize: 16, color: C.primary }} onClick={onBack}>←</button>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 18, fontWeight: 700, color: C.text }}>Compile Report</div>
-          <div style={{ fontSize: 12, color: C.textSub }}>{report?.title}</div>
+                       padding: "14px 32px", display: "flex", alignItems: "center", gap: 14 }}>
+        <button onClick={onBack} style={{
+          display: "inline-flex", alignItems: "center", gap: 6,
+          padding: "7px 14px", borderRadius: 8,
+          border: "1.5px solid #e5e7eb", background: "#fff",
+          fontSize: 13, fontWeight: 600, color: "#374151", cursor: "pointer",
+          flexShrink: 0,
+        }}
+          onMouseEnter={e => { e.currentTarget.style.background = "#f3f4f6"; e.currentTarget.style.borderColor = "#d1d5db"; }}
+          onMouseLeave={e => { e.currentTarget.style.background = "#fff";    e.currentTarget.style.borderColor = "#e5e7eb"; }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M19 12H5M12 5l-7 7 7 7"/>
+          </svg>
+          Back
+        </button>
+        <div style={{ width: 1, height: 28, background: C.border, flexShrink: 0 }} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 11, color: C.textSub }}>Report Builder</span>
+            <span style={{ fontSize: 11, color: "#d1d5db" }}>›</span>
+            <span style={{ fontSize: 11, color: C.primary, fontWeight: 600 }}>Compile</span>
+          </div>
+          <div style={{ fontSize: 17, fontWeight: 700, color: C.text, marginTop: 1 }}>
+            Compile Report
+          </div>
         </div>
+        {report?.title && (
+          <div style={{
+            padding: "6px 14px", borderRadius: 8, background: C.bg,
+            fontSize: 12, color: C.textSub, border: `1px solid ${C.border}`,
+            maxWidth: 320, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+          }}>
+            {report.title}
+          </div>
+        )}
       </header>
 
       <main style={{ maxWidth: 900, margin: "0 auto", padding: "32px 24px" }}>
@@ -170,16 +202,39 @@ export default function CompileReportPage({ reportId, onBack }) {
             </div>
           )}
 
-          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-            <button style={{ padding: "12px 32px", background: canCompile ? C.primary : "#ccc", color: "#fff",
-                             border: "none", borderRadius: 8, cursor: canCompile ? "pointer" : "not-allowed",
-                             fontSize: 14, fontWeight: 700, transition: "all .15s" }}
-              disabled={!canCompile || compiling} onClick={handleCompile}>
-              {compiling ? "Compiling…" : `⚙ Generate ${format.toUpperCase()}`}
+          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+            <button
+              disabled={!canCompile || compiling} onClick={handleCompile}
+              style={{
+                display: "inline-flex", alignItems: "center", gap: 8,
+                padding: "0 28px", height: 42,
+                background: canCompile ? C.primary : "#e5e7eb",
+                color: canCompile ? "#fff" : "#9ca3af",
+                border: "none", borderRadius: 8,
+                cursor: canCompile && !compiling ? "pointer" : "not-allowed",
+                fontSize: 13.5, fontWeight: 700, transition: "background .15s",
+                boxShadow: canCompile ? "0 2px 8px rgba(37,99,235,0.22)" : "none",
+              }}
+              onMouseEnter={e => { if (canCompile && !compiling) e.currentTarget.style.background = "#1d4ed8"; }}
+              onMouseLeave={e => { if (canCompile) e.currentTarget.style.background = C.primary; }}>
+              {compiling ? (
+                <>
+                  <div style={{ width: 14, height: 14, border: "2.5px solid rgba(255,255,255,0.35)", borderTopColor: "#fff", borderRadius: "50%", animation: "spin .7s linear infinite" }} />
+                  Compiling…
+                </>
+              ) : (
+                <>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="3"/><path d="M19.07 4.93A10 10 0 1 0 4.93 19.07"/>
+                  </svg>
+                  Generate {format.toUpperCase()}
+                </>
+              )}
             </button>
             {!canCompile && !compiling && (
-              <div style={{ fontSize: 12, color: C.danger }}>
-                {totalCount === 0 ? "No sections found" : `${notReadyCount} section(s) not ready for compilation`}
+              <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: C.danger }}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+                {totalCount === 0 ? "No sections found" : `${notReadyCount} section(s) not yet approved`}
               </div>
             )}
           </div>
@@ -220,10 +275,16 @@ export default function CompileReportPage({ reportId, onBack }) {
                         {item.file_size ? `${Math.round(item.file_size / 1024)} KB` : "—"}
                       </td>
                       <td style={{ padding: "10px 14px" }}>
-                        <button style={{ padding: "4px 12px", background: C.primary, color: "#fff",
-                                         border: "none", borderRadius: 5, cursor: "pointer", fontSize: 11 }}
-                          onClick={() => handleDownload(item)}>
-                          ⬇ Download
+                        <button onClick={() => handleDownload(item)}
+                          style={{
+                            display: "inline-flex", alignItems: "center", gap: 5,
+                            padding: "5px 12px", background: C.primary, color: "#fff",
+                            border: "none", borderRadius: 7, cursor: "pointer", fontSize: 11, fontWeight: 600,
+                          }}
+                          onMouseEnter={e => e.currentTarget.style.background = "#1d4ed8"}
+                          onMouseLeave={e => e.currentTarget.style.background = C.primary}>
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                          Download
                         </button>
                       </td>
                     </tr>

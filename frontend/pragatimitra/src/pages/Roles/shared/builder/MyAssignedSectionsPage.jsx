@@ -8,14 +8,14 @@ const STATUS_CFG = {
   NOT_STARTED:  { bg: "#f1f5f9", color: "#64748b",  label: "Not Started",  icon: "📋" },
   IN_PROGRESS:  { bg: "#dbeafe", color: "#1d4ed8",  label: "In Progress",  icon: "✏️" },
   SUBMITTED:    { bg: "#fef3c7", color: "#d97706",  label: "Submitted",    icon: "📤" },
-  UNDER_REVIEW: { bg: "#ede9fe", color: "#6d28d9",  label: "Under Review", icon: "🔍" },
+  UNDER_REVIEW: { bg: "#dbeafe", color: "#1e40af",  label: "Under Review", icon: "🔍" },
   APPROVED:     { bg: "#dcfce7", color: "#15803d",  label: "Approved",     icon: "✅" },
   SENT_BACK:    { bg: "#fee2e2", color: "#b91c1c",  label: "Sent Back",    icon: "🔄" },
   LOCKED:       { bg: "#e2e8f0", color: "#475569",  label: "Locked",       icon: "🔒" },
 };
 
 const ROLE_CFG = {
-  OWNER:       { bg: "#ede9fe", color: "#6d28d9" },
+  OWNER:       { bg: "#fef3c7", color: "#92400e" },
   CONTRIBUTOR: { bg: "#dbeafe", color: "#1d4ed8" },
   REVIEWER:    { bg: "#dcfce7", color: "#15803d" },
 };
@@ -99,7 +99,7 @@ function SectionCard({ section, onEdit }) {
         onClick={() => onEdit(section)}
         style={{
           padding: "8px 18px",
-          background: canEdit ? "#7c3aed" : "#f1f5f9",
+          background: canEdit ? "#2563eb" : "#f1f5f9",
           color: canEdit ? "#fff" : "#64748b",
           border: "none", borderRadius: 8, fontSize: 13, fontWeight: 600,
           cursor: "pointer", flexShrink: 0,

@@ -11,12 +11,12 @@ async function apiJson(apiFetch, path, opts) {
 }
 
 const C = {
-  primary: "#4f8ef7", primaryDark: "#1565c0", primaryLt: "#e8f0fe",
-  success: "#43a047", successLt: "#e8f5e9",
-  danger: "#e53935", dangerLt: "#fef2f2",
-  warning: "#f9a825", warningLt: "#fffde7",
-  text: "#1a1a2e", textSub: "#555", border: "#e0e4ea",
-  bg: "#f7f8fa", surface: "#fff",
+  primary: "#2563eb", primaryDark: "#1d4ed8", primaryLt: "#dbeafe",
+  success: "#16a34a", successLt: "#dcfce7",
+  danger: "#dc2626", dangerLt: "#fef2f2",
+  warning: "#d97706", warningLt: "#fef3c7",
+  text: "#111827", textSub: "#6b7280", border: "#e5e7eb",
+  bg: "#f8fafc", surface: "#fff",
 };
 
 const STATUS_META = {
@@ -31,12 +31,14 @@ const STATUS_META = {
 
 const inp = {
   width: "100%", boxSizing: "border-box", padding: "8px 12px", fontSize: 13,
-  border: `1px solid ${C.border}`, borderRadius: 7, outline: "none",
+  border: `1.5px solid ${C.border}`, borderRadius: 8, outline: "none",
   fontFamily: "inherit", background: C.surface, color: C.text,
 };
 const primaryBtn = {
-  padding: "8px 18px", background: C.primary, color: "#fff",
-  border: "none", borderRadius: 7, cursor: "pointer", fontSize: 13, fontWeight: 600,
+  display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6,
+  padding: "0 18px", height: 38,
+  background: C.primary, color: "#fff",
+  border: "none", borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: 600,
 };
 
 /* Build recursive tree from flat sections array */
@@ -209,22 +211,57 @@ export default function AssignSectionsPage({ reportId, onBack }) {
     : null;
 
   if (loading) return (
-    <div style={{ minHeight: "60vh", display: "flex", alignItems: "center", justifyContent: "center",
-                  fontFamily: "'Plus Jakarta Sans', sans-serif", color: C.textSub }}>
-      Loading assignment data…
+    <div style={{ minHeight: "60vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+                  fontFamily: "'Plus Jakarta Sans', sans-serif", gap: 12 }}>
+      <div style={{ width: 32, height: 32, border: "3px solid #e2e8f0", borderTopColor: "#2563eb", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      <span style={{ fontSize: 13, color: C.textSub }}>Loading assignment data…</span>
     </div>
   );
 
   return (
     <div style={{ minHeight: "100vh", background: "transparent", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       {toast && <Toast {...toast} onClose={() => setToast(null)} />}
 
       {/* header */}
-      <header style={{ background: C.surface, borderBottom: `1px solid ${C.border}`,
-                       padding: "16px 32px", display: "flex", alignItems: "center", gap: 16 }}>
-        <button style={{ background: "none", border: "none", cursor: "pointer", fontSize: 16, color: C.primary }} onClick={onBack}>←</button>
-        <div style={{ flex: 1, fontSize: 18, fontWeight: 700, color: C.text }}>Assign Sections</div>
-        <div style={{ fontSize: 12, color: C.textSub }}>{selected.size} section(s) selected</div>
+      <header style={{
+        background: C.surface, borderBottom: `1px solid ${C.border}`,
+        padding: "14px 32px", display: "flex", alignItems: "center", gap: 14,
+      }}>
+        <button onClick={onBack} style={{
+          display: "inline-flex", alignItems: "center", gap: 6,
+          padding: "7px 14px", borderRadius: 8,
+          border: "1.5px solid #e5e7eb", background: "#fff",
+          fontSize: 13, fontWeight: 600, color: "#374151", cursor: "pointer", flexShrink: 0,
+        }}
+          onMouseEnter={e => { e.currentTarget.style.background = "#f3f4f6"; e.currentTarget.style.borderColor = "#d1d5db"; }}
+          onMouseLeave={e => { e.currentTarget.style.background = "#fff";    e.currentTarget.style.borderColor = "#e5e7eb"; }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M19 12H5M12 5l-7 7 7 7"/>
+          </svg>
+          Back
+        </button>
+        <div style={{ width: 1, height: 28, background: C.border, flexShrink: 0 }} />
+        <div style={{ flex: 1 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 1 }}>
+            <span style={{ fontSize: 11, color: C.textSub }}>Report Builder</span>
+            <span style={{ fontSize: 11, color: "#d1d5db" }}>›</span>
+            <span style={{ fontSize: 11, color: C.primary, fontWeight: 600 }}>Assign Sections</span>
+          </div>
+          <div style={{ fontSize: 16, fontWeight: 700, color: C.text }}>Assign Sections</div>
+        </div>
+        {selected.size > 0 && (
+          <div style={{
+            display: "inline-flex", alignItems: "center", gap: 6,
+            padding: "5px 12px", borderRadius: 20,
+            background: C.primaryLt, color: C.primary,
+            fontSize: 12, fontWeight: 700,
+          }}>
+            <span style={{ width: 6, height: 6, borderRadius: "50%", background: C.primary }} />
+            {selected.size} section{selected.size !== 1 ? "s" : ""} selected
+          </div>
+        )}
       </header>
 
       <main style={{ maxWidth: 1200, margin: "0 auto", padding: "28px 24px", display: "flex", gap: 24 }}>
@@ -432,10 +469,25 @@ export default function AssignSectionsPage({ reportId, onBack }) {
             </div>
 
             <button
-              style={{ ...primaryBtn, width: "100%", opacity: (busy || !selected.size) ? 0.55 : 1 }}
+              style={{
+                ...primaryBtn, width: "100%", height: 40,
+                opacity: (busy || !selected.size) ? 0.6 : 1,
+                cursor: (busy || !selected.size) ? "not-allowed" : "pointer",
+                boxShadow: selected.size ? "0 2px 8px rgba(37,99,235,0.22)" : "none",
+              }}
               disabled={busy || !selected.size}
               onClick={handleBulkAssign}>
-              {busy ? "Assigning…" : `Assign to ${selected.size || 0} Section(s)`}
+              {busy ? (
+                <>
+                  <div style={{ width: 13, height: 13, border: "2px solid rgba(255,255,255,0.35)", borderTopColor: "#fff", borderRadius: "50%", animation: "spin .7s linear infinite" }} />
+                  Assigning…
+                </>
+              ) : (
+                <>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                  Assign to {selected.size || 0} Section{selected.size !== 1 ? "s" : ""}
+                </>
+              )}
             </button>
 
             {!selected.size && (
@@ -571,8 +623,8 @@ function SectionTreeNode({ node, depth, selected, onToggle, onToggleSubtree, sel
 
 /* ── helpers ─────────────────────────────────────────────────────────────── */
 const lbl = {
-  display: "block", fontSize: 11, fontWeight: 700, color: C.textSub,
-  textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4,
+  display: "block", fontSize: 12, fontWeight: 600, color: "#374151",
+  marginBottom: 5,
 };
 
 function AssignmentRow({ name, email, role, due, onRemove }) {
@@ -587,8 +639,13 @@ function AssignmentRow({ name, email, role, due, onRemove }) {
       <span style={{ padding: "2px 7px", borderRadius: 5, fontSize: 10, fontWeight: 700,
                      background: C.primaryLt, color: C.primary }}>{role}</span>
       <button onClick={onRemove}
-        style={{ background: "none", border: "none", cursor: "pointer", color: C.danger, fontSize: 14, padding: "0 4px" }}>
-        ×
+        style={{ background: "none", border: "none", cursor: "pointer", color: "#cbd5e1", padding: "3px 4px", borderRadius: 5, lineHeight: 0 }}
+        onMouseEnter={e => e.currentTarget.style.color = C.danger}
+        onMouseLeave={e => e.currentTarget.style.color = "#cbd5e1"}>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/>
+          <path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/>
+        </svg>
       </button>
     </div>
   );
