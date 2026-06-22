@@ -67,10 +67,15 @@ function hashToken(raw) {
 }
 
 function cookieOptions() {
+  const isProd = process.env.NODE_ENV === "production";
   return {
     httpOnly: true,
-    secure:   process.env.NODE_ENV === "production",
-    sameSite: "strict",
+    // When the frontend and backend are on different domains (separate hosting),
+    // the refresh cookie is cross-site, so production needs SameSite=None +
+    // Secure or the browser drops it (login appears to work but refresh fails).
+    // Local dev stays same-site → keep the stricter "strict" + non-secure.
+    secure:   isProd,
+    sameSite: isProd ? "none" : "strict",
     maxAge:   REFRESH_TOKEN_TTL_MS,
     path:     "/api/auth",
   };

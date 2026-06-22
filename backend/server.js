@@ -50,16 +50,31 @@ const builderReportIntegrationRoutes = require("./routes/builder/reportIntegrati
 const app  = express();
 const PORT = process.env.PORT || 3000;
 
+/* Behind a reverse proxy in production (most hosts), so secure cookies, HTTPS
+   detection and the rate-limiter see the REAL client IP instead of the proxy's.
+   Harmless when not proxied. */
+if (process.env.NODE_ENV === "production") app.set("trust proxy", 1);
+
 /* ─── Security middleware ───────────────────────────────────── */
 app.use(helmet());
 
+/* Allowed CORS origins = built-in localhost dev origins PLUS any production
+   origin(s) supplied via env — deploy-by-config, no code change:
+     FRONTEND_URL  = https://app.yourdomain.com           (single origin)
+     CORS_ORIGINS  = https://a.com,https://b.com           (comma-separated, optional)
+   credentials:true is required for the httpOnly refresh cookie. */
+const ALLOWED_ORIGINS = [
+  "http://localhost:5173",
+  "http://localhost:5000",
+  "http://localhost:4000",
+  ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL.trim()] : []),
+  ...(process.env.CORS_ORIGINS
+    ? process.env.CORS_ORIGINS.split(",").map((s) => s.trim()).filter(Boolean)
+    : []),
+];
+
 app.use(cors({
-  origin:      [
-    "http://localhost:5173",
-    "http://localhost:5000",
-    "http://localhost:4000",
-    "https://yourfrontend.com",
-  ],
+  origin:      ALLOWED_ORIGINS,
   methods:     ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   credentials: true,
 }));
