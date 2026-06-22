@@ -11,6 +11,7 @@ import { useAcademicYear } from "../../store/AcademicYearContext";
 import { useLanguage } from "../../i18n/LanguageContext";
 import { t } from "../../i18n/translations";
 import { Toast, isAuthError } from "../../components/shared/formUtils";
+import { API_BASE } from "../../api/client";
 import FormBuilderPage from "./FormBuilderPage";
 import InstituteFormRecordsPage from "./InstituteFormRecordsPage";
 
@@ -58,7 +59,6 @@ function institutionsLabel(form, lang = "en") {
 }
 
 async function downloadExport(formName, format, language, accessToken) {
-  const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
   const res = await fetch(
     `${API_BASE}/api/form-data/${formName}/export?format=${format}&language=${language}`,
     { headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {} }
