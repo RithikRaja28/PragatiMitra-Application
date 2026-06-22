@@ -17,13 +17,13 @@ import { DateField, TimeField } from "./DateTimePicker";
 import { color, Button, PageHeader, Badge, EmptyState, Modal, Dropdown, MenuItem, MenuLabel, DataTable } from "../../ui";
 import { useLanguage } from "../../i18n/LanguageContext";
 import { t } from "../../i18n/translations";
+import { API_BASE } from "../../api/client";
 
 const STROKE = 1.75;
 
 /* Download a department form's records (CSV/Excel) for the selected year —
    mirrors the institution dynamic-form export so the experience is consistent. */
 async function downloadDeptExport(formId, format, accessToken, year) {
-  const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
   const yq = year != null ? `&year=${year}` : "";
   const res = await fetch(`${API_BASE}/api/department-form-data/${formId}/export?format=${format}${yq}`,
     { headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {} });
