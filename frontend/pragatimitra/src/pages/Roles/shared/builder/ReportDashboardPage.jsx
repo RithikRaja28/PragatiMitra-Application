@@ -66,14 +66,24 @@ export default function ReportDashboardPage({ reportId, onNavigate }) {
   useEffect(() => { load(); }, [load]);
 
   /* ── summary stats from dashboard ── */
-  const progress    = dash?.progress_breakdown || {};
-  const totalSec    = Object.values(progress).reduce((a, b) => a + (b || 0), 0);
-  const approvedSec = (progress.APPROVED || 0) + (progress.LOCKED || 0);
+  const progress    = dash?.progress || {};
+  // backend returns lowercase keys; map to uppercase for STATUS_META lookup
+  const progByKey   = {
+    NOT_STARTED:  Number(progress.not_started  || 0),
+    IN_PROGRESS:  Number(progress.in_progress  || 0),
+    SUBMITTED:    Number(progress.submitted     || 0),
+    UNDER_REVIEW: Number(progress.under_review  || 0),
+    APPROVED:     Number(progress.approved      || 0),
+    SENT_BACK:    Number(progress.sent_back     || 0),
+    LOCKED:       Number(progress.locked        || 0),
+  };
+  const totalSec    = Number(progress.total || 0) || Object.values(progByKey).reduce((a, b) => a + b, 0);
+  const approvedSec = progByKey.APPROVED + progByKey.LOCKED;
   const pct         = totalSec ? Math.round((approvedSec / totalSec) * 100) : 0;
   const overdue     = dash?.overdue_sections || [];
-  const activity    = dash?.activity_feed || [];
-  const deptProg    = dash?.dept_progress || [];
-  const userProg    = dash?.user_progress || [];
+  const activity    = dash?.activity || [];
+  const deptProg    = dash?.departments || [];
+  const userProg    = dash?.users || [];
 
   if (loading) return (
     <div style={{ minHeight: "60vh", display: "flex", alignItems: "center", justifyContent: "center",
@@ -151,7 +161,7 @@ export default function ReportDashboardPage({ reportId, onNavigate }) {
             </div>
             <div style={{ padding: 12 }}>
               {Object.entries(STATUS_META).map(([k, v]) => {
-                const count = progress[k] || 0;
+                const count = progByKey[k] || 0;
                 const barPct = totalSec ? (count / totalSec) * 100 : 0;
                 return (
                   <div key={k} style={{ marginBottom: 10 }}>
@@ -186,7 +196,9 @@ export default function ReportDashboardPage({ reportId, onNavigate }) {
               </div>
               <div style={{ padding: 12 }}>
                 {deptProg.map((d, i) => {
-                  const p = d.total ? Math.round((d.approved / d.total) * 100) : 0;
+                  const total = Number(d.assigned_sections || d.total || 0);
+                  const appr  = Number(d.approved_sections || d.approved || 0);
+                  const p = total ? Math.round((appr / total) * 100) : 0;
                   return (
                     <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
                       <div style={{ flex: 1, minWidth: 0 }}>
@@ -198,7 +210,7 @@ export default function ReportDashboardPage({ reportId, onNavigate }) {
                         </div>
                       </div>
                       <span style={{ fontSize: 11, fontWeight: 700, color: C.textSub, flexShrink: 0 }}>
-                        {d.approved}/{d.total}
+                        {appr}/{total}
                       </span>
                     </div>
                   );

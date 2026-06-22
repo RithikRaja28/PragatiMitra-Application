@@ -19,11 +19,11 @@ router.get("/inbox", verifyToken, async (req, res) => {
   const userId = req.user.userId;
   try {
     const { rows } = await pool.query(
-      `SELECT id, title, message, is_read, created_at
-       FROM notifications
+      `SELECT id, type, title, body AS message, (read_at IS NULL) AS is_read, created_at
+       FROM public.notifications
        WHERE user_id = $1
        ORDER BY created_at DESC
-       LIMIT 3`,
+       LIMIT 30`,
       [userId]
     );
     return res.json({ success: true, notifications: rows });
@@ -39,8 +39,8 @@ router.get("/inbox/unread", verifyToken, async (req, res) => {
   const userId = req.user.userId;
   try {
     const { rows } = await pool.query(
-      `SELECT COUNT(*) AS cnt FROM notifications
-       WHERE user_id = $1 AND is_read = false`,
+      `SELECT COUNT(*) AS cnt FROM public.notifications
+       WHERE user_id = $1 AND read_at IS NULL`,
       [userId]
     );
     return res.json({ success: true, count: parseInt(rows[0].cnt, 10) });
@@ -56,7 +56,7 @@ router.put("/inbox/read-all", verifyToken, async (req, res) => {
   const userId = req.user.userId;
   try {
     await pool.query(
-      `UPDATE notifications SET is_read = true WHERE user_id = $1 AND is_read = false`,
+      `UPDATE public.notifications SET read_at = now() WHERE user_id = $1 AND read_at IS NULL`,
       [userId]
     );
     return res.json({ success: true });
@@ -70,15 +70,15 @@ router.put("/inbox/read-all", verifyToken, async (req, res) => {
 router.put("/inbox/:id/read", verifyToken, async (req, res) => {
   const pool   = req.app.locals.pool;
   const userId = req.user.userId;
-  const id     = parseInt(req.params.id, 10);
-
-  if (isNaN(id)) {
+  const id = req.params.id;
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!UUID_RE.test(id)) {
     return res.status(400).json({ success: false, message: "Invalid notification id." });
   }
 
   try {
     await pool.query(
-      `UPDATE notifications SET is_read = true WHERE id = $1 AND user_id = $2 AND is_read = false`,
+      `UPDATE public.notifications SET read_at = now() WHERE id = $1 AND user_id = $2 AND read_at IS NULL`,
       [id, userId]
     );
     return res.json({ success: true });
