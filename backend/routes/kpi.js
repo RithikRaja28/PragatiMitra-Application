@@ -889,8 +889,9 @@ router.post("/configs", async (req, res) => {
 });
 
 router.get("/configs", async (req, res) => {
-  const ctx   = getRoleContext(req);
-  const scope = buildScopeWhere(ctx, "c", req.query.scope || null);
+  const ctx  = getRoleContext(req);
+  let scope  = buildScopeWhere(ctx, "c", req.query.scope || null);
+  if (req.query.year) scope = appendAnd(scope, "c.academic_year = $?", req.query.year);
 
   try {
     await ensureTables(req.pool);
@@ -1169,8 +1170,9 @@ router.get("/configs/:id/svg", async (req, res) => {
 // =============================================================================
 
 router.get("/dashboard-charts", async (req, res) => {
-  const ctx   = getRoleContext(req);
-  const scope = buildScopeWhere(ctx, "c", req.query.scope || null);
+  const ctx  = getRoleContext(req);
+  let scope  = buildScopeWhere(ctx, "c", req.query.scope || null);
+  if (req.query.year) scope = appendAnd(scope, "c.academic_year = $?", req.query.year);
 
   try {
     await ensureTables(req.pool);
