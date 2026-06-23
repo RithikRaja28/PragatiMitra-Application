@@ -480,7 +480,7 @@ function buildRecordsTableDDL(tableName, fields) {
   ];
   const fixed = (fields || []).map((f) => {
     const col = f.column_name.toLowerCase().replace(/\s+/g, "_");
-    return `${col} ${pgType(f.type)}`;
+    return `"${col}" ${pgType(f.type)}`;
   });
   return `CREATE TABLE IF NOT EXISTS ${tableName} (\n  ${[...standard, ...fixed].join(",\n  ")}\n)`;
 }
@@ -663,7 +663,7 @@ router.post(
           const colName = field.column_name.trim().toLowerCase().replace(/\s+/g, "_");
           if (/^[a-z][a-z0-9_]*$/.test(colName)) {
             await client.query(
-              `ALTER TABLE ${recordsTable} ADD COLUMN IF NOT EXISTS ${colName} ${pgType(field.type)}`
+              `ALTER TABLE ${recordsTable} ADD COLUMN IF NOT EXISTS "${colName}" ${pgType(field.type)}`
             );
           }
         }
@@ -1117,7 +1117,7 @@ router.put(
             const colName = field.column_name.trim().toLowerCase().replace(/\s+/g, "_");
             if (/^[a-z][a-z0-9_]*$/.test(colName)) {
               await client.query(
-                `ALTER TABLE ${recordsTable} ADD COLUMN IF NOT EXISTS ${colName} ${pgType(field.type)}`
+                `ALTER TABLE ${recordsTable} ADD COLUMN IF NOT EXISTS "${colName}" ${pgType(field.type)}`
               );
             }
           }

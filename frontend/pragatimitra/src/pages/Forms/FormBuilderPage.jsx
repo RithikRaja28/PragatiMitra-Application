@@ -605,11 +605,17 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
     const currentColumnNames = new Set(
       fields.map((f) => f.column_name.trim().toLowerCase().replace(/\s+/g, "_")).filter(Boolean)
     );
+    const seen = new Set();
     for (const f of activeFields) {
       if (!f.column_name.trim()) { setSubmitError("All fields must have a column name."); return false; }
       if (!f.label?.en?.trim())  { setSubmitError("All fields must have an English label."); return false; }
+      const normalized = f.column_name.trim().toLowerCase().replace(/\s+/g, "_");
+      if (seen.has(normalized)) {
+        setSubmitError(`Column name "${normalized}" is used by more than one field. Each field must have a unique column name.`);
+        return false;
+      }
+      seen.add(normalized);
       if (!f.is_fixed) {
-        const normalized = f.column_name.trim().toLowerCase().replace(/\s+/g, "_");
         if (usedColumnNames.has(normalized) && !currentColumnNames.has(normalized)) {
           setSubmitError(`Column name "${normalized}" was previously used and cannot be reused.`);
           return false;
