@@ -5,28 +5,16 @@
  */
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useAuth } from "../../../../store/AuthContext";
-import { useApi } from "../../../../hooks/useApi";
+import { useApi }  from "../../../../hooks/useApi";
 import { BLOCK_ICONS, BlockEditor, DEFAULT_CONTENT } from "./BlockEditors";
-import {
-  generateSectionDocx,
-  downloadBlob,
-  printSectionAsPdf,
-} from "./sectionToDocx";
+import { generateSectionDocx, downloadBlob, printSectionAsPdf } from "./sectionToDocx";
 import FormImportWizard from "./FormImportWizard";
-import KpiImportWizard from "./KpiImportWizard";
+import KpiImportWizard  from "./KpiImportWizard";
 
 /* ═══════════════════════════════════════════════════════════════════════════
    BLOCK COMMENTS SIDEBAR — threaded inline comments per content block
 ═══════════════════════════════════════════════════════════════════════════ */
-const AVATAR_COLORS = [
-  "#4f46e5",
-  "#0891b2",
-  "#16a34a",
-  "#d97706",
-  "#dc2626",
-  "#7c3aed",
-  "#db2777",
-];
+const AVATAR_COLORS = ["#4f46e5","#0891b2","#16a34a","#d97706","#dc2626","#7c3aed","#db2777"];
 function avatarColor(id) {
   const n = (id || "").split("").reduce((a, c) => a + c.charCodeAt(0), 0);
   return AVATAR_COLORS[n % AVATAR_COLORS.length];
@@ -34,66 +22,48 @@ function avatarColor(id) {
 function initials(name) {
   if (!name) return "?";
   const parts = name.trim().split(" ").filter(Boolean);
-  return parts.length >= 2
-    ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
-    : name.slice(0, 2).toUpperCase();
+  return parts.length >= 2 ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase() : name.slice(0, 2).toUpperCase();
 }
 function timeAgo(ts) {
   const s = Math.floor((Date.now() - new Date(ts)) / 1000);
-  if (s < 60) return "just now";
+  if (s < 60)  return "just now";
   if (s < 3600) return `${Math.floor(s / 60)}m ago`;
   if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
   return `${Math.floor(s / 86400)}d ago`;
 }
 
 function BlockCommentsSidebar({
-  sectionId,
-  blockId,
-  blocks,
-  blockCounts,
-  currentUserId,
-  apiFetch,
-  onClose,
-  showBackToPreview,
-  onBlockSelect,
-  onCountRefresh,
+  sectionId, blockId, blocks, blockCounts,
+  currentUserId, apiFetch,
+  onClose, showBackToPreview,
+  onBlockSelect, onCountRefresh,
 }) {
-  const [threads, setThreads] = useState([]);
-  const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [posting, setPosting] = useState(false);
-  const [replyTo, setReplyTo] = useState(null);
-  const [replyInput, setReplyInput] = useState("");
+  const [threads,      setThreads]      = useState([]);
+  const [input,        setInput]        = useState("");
+  const [loading,      setLoading]      = useState(false);
+  const [posting,      setPosting]      = useState(false);
+  const [replyTo,      setReplyTo]      = useState(null);
+  const [replyInput,   setReplyInput]   = useState("");
   const [postingReply, setPostingReply] = useState(false);
-  const [blocksOpen, setBlocksOpen] = useState(false);
-  const inputRef = useRef(null);
+  const [blocksOpen,   setBlocksOpen]   = useState(false);
+  const inputRef     = useRef(null);
   const replyInputRef = useRef(null);
-  const threadRef = useRef(null);
+  const threadRef    = useRef(null);
 
   const load = useCallback(async () => {
     if (!blockId) return;
     setLoading(true);
     try {
-      const res = await apiFetch(`/api/builder/comments/block/${blockId}`);
+      const res  = await apiFetch(`/api/builder/comments/block/${blockId}`);
       const json = await res.json();
       if (json.success) setThreads(json.data || []);
-    } catch {
-      setThreads([]);
-    } finally {
-      setLoading(false);
-    }
+    } catch { setThreads([]); } finally { setLoading(false); }
   }, [blockId, apiFetch]);
 
-  useEffect(() => {
-    load();
-    setInput("");
-    setReplyTo(null);
-    setReplyInput("");
-  }, [load]);
+  useEffect(() => { load(); setInput(""); setReplyTo(null); setReplyInput(""); }, [load]);
 
   useEffect(() => {
-    if (threadRef.current)
-      threadRef.current.scrollTop = threadRef.current.scrollHeight;
+    if (threadRef.current) threadRef.current.scrollTop = threadRef.current.scrollHeight;
   }, [threads]);
 
   const postComment = async () => {
@@ -101,21 +71,17 @@ function BlockCommentsSidebar({
     if (!text || posting) return;
     setPosting(true);
     try {
-      const res = await apiFetch(`/api/builder/comments/block/${blockId}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+      const res  = await apiFetch(`/api/builder/comments/block/${blockId}`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ body: text }),
       });
       const json = await res.json();
       if (json.success) {
-        setThreads((prev) => [...prev, { ...json.data, replies: [] }]);
+        setThreads(prev => [...prev, { ...json.data, replies: [] }]);
         setInput("");
         onCountRefresh?.();
       }
-    } catch {
-    } finally {
-      setPosting(false);
-    }
+    } catch {} finally { setPosting(false); }
   };
 
   const postReply = async (parentId) => {
@@ -123,47 +89,28 @@ function BlockCommentsSidebar({
     if (!text || postingReply) return;
     setPostingReply(true);
     try {
-      const res = await apiFetch(`/api/builder/comments/${parentId}/replies`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+      const res  = await apiFetch(`/api/builder/comments/${parentId}/replies`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ body: text }),
       });
       const json = await res.json();
       if (json.success) {
-        setThreads((prev) =>
-          prev.map((t) =>
-            t.id === parentId
-              ? { ...t, replies: [...(t.replies || []), json.data] }
-              : t,
-          ),
-        );
-        setReplyInput("");
-        setReplyTo(null);
+        setThreads(prev => prev.map(t =>
+          t.id === parentId ? { ...t, replies: [...(t.replies || []), json.data] } : t
+        ));
+        setReplyInput(""); setReplyTo(null);
       }
-    } catch {
-    } finally {
-      setPostingReply(false);
-    }
+    } catch {} finally { setPostingReply(false); }
   };
 
   const resolveComment = async (id) => {
     try {
-      const res = await apiFetch(`/api/builder/comments/${id}/resolve`, {
-        method: "PATCH",
-      });
+      const res  = await apiFetch(`/api/builder/comments/${id}/resolve`, { method: "PATCH" });
       const json = await res.json();
       if (json.success) {
-        setThreads((prev) =>
-          prev.map((t) =>
-            t.id === id
-              ? {
-                  ...t,
-                  is_resolved: true,
-                  resolved_by_name: json.data.resolved_by_name,
-                }
-              : t,
-          ),
-        );
+        setThreads(prev => prev.map(t =>
+          t.id === id ? { ...t, is_resolved: true, resolved_by_name: json.data.resolved_by_name } : t
+        ));
         onCountRefresh?.();
       }
     } catch {}
@@ -171,77 +118,40 @@ function BlockCommentsSidebar({
 
   const reopenComment = async (id) => {
     try {
-      const res = await apiFetch(`/api/builder/comments/${id}/reopen`, {
-        method: "PATCH",
-      });
+      const res  = await apiFetch(`/api/builder/comments/${id}/reopen`, { method: "PATCH" });
       const json = await res.json();
       if (json.success) {
-        setThreads((prev) =>
-          prev.map((t) =>
-            t.id === id
-              ? {
-                  ...t,
-                  is_resolved: false,
-                  resolved_by: null,
-                  resolved_by_name: null,
-                }
-              : t,
-          ),
-        );
+        setThreads(prev => prev.map(t =>
+          t.id === id ? { ...t, is_resolved: false, resolved_by: null, resolved_by_name: null } : t
+        ));
         onCountRefresh?.();
       }
     } catch {}
   };
 
-  const currentBlock = blocks.find((b) => b.id === blockId);
-  const blockLabel = currentBlock
-    ? `${BLOCK_ICONS[currentBlock.block_type] || ""} ${currentBlock.block_type}`
-    : "Block";
-  const unresolvedCnt = threads.filter((t) => !t.is_resolved).length;
-  const totalCnt = threads.length;
-  const totalUnresAcrossSection = Object.values(blockCounts).reduce(
-    (a, c) => a + (c.unresolved || 0),
-    0,
-  );
+  const currentBlock  = blocks.find(b => b.id === blockId);
+  const blockLabel    = currentBlock ? `${BLOCK_ICONS[currentBlock.block_type] || ""} ${currentBlock.block_type}` : "Block";
+  const unresolvedCnt = threads.filter(t => !t.is_resolved).length;
+  const totalCnt      = threads.length;
+  const totalUnresAcrossSection = Object.values(blockCounts).reduce((a, c) => a + (c.unresolved || 0), 0);
 
   const BC = {
-    border: "#e2e8f0",
-    surface: "#fff",
-    bg: "#f8fafc",
-    primary: "#4f46e5",
-    primaryLt: "#eef2ff",
-    text: "#0f172a",
-    textSub: "#64748b",
-    muted: "#94a3b8",
-    success: "#16a34a",
-    successLt: "#f0fdf4",
+    border: "#e2e8f0", surface: "#fff", bg: "#f8fafc",
+    primary: "#4f46e5", primaryLt: "#eef2ff",
+    text: "#0f172a", textSub: "#64748b", muted: "#94a3b8",
+    success: "#16a34a", successLt: "#f0fdf4",
   };
 
   if (!blockId) {
     return (
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          height: "100%",
-          background: BC.surface,
-          borderLeft: `1px solid ${BC.border}`,
-          fontFamily: "'Plus Jakarta Sans', sans-serif",
-          alignItems: "center",
-          justifyContent: "center",
-          gap: 10,
-        }}
-      >
+      <div style={{
+        display: "flex", flexDirection: "column", height: "100%",
+        background: BC.surface, borderLeft: `1px solid ${BC.border}`,
+        fontFamily: "'Plus Jakarta Sans', sans-serif",
+        alignItems: "center", justifyContent: "center", gap: 10,
+      }}>
         <div style={{ fontSize: 32 }}>💬</div>
-        <div
-          style={{
-            fontSize: 13,
-            color: BC.textSub,
-            textAlign: "center",
-            padding: "0 20px",
-            lineHeight: 1.6,
-          }}
-        >
+        <div style={{ fontSize: 13, color: BC.textSub, textAlign: "center", padding: "0 20px", lineHeight: 1.6 }}>
           Click the comment icon on any block to view its thread
         </div>
       </div>
@@ -249,141 +159,50 @@ function BlockCommentsSidebar({
   }
 
   return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        height: "100%",
-        background: BC.surface,
-        borderLeft: `1px solid ${BC.border}`,
-        fontFamily: "'Plus Jakarta Sans', sans-serif",
-      }}
-    >
+    <div style={{
+      display: "flex", flexDirection: "column", height: "100%",
+      background: BC.surface, borderLeft: `1px solid ${BC.border}`,
+      fontFamily: "'Plus Jakarta Sans', sans-serif",
+    }}>
       <style>{`@keyframes bcDot{0%,100%{opacity:1}50%{opacity:.35}}`}</style>
 
       {/* ── Header ── */}
-      <div
-        style={{
-          padding: "10px 14px 8px",
-          borderBottom: `1px solid ${BC.border}`,
-          flexShrink: 0,
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 7,
-            marginBottom: 5,
-          }}
-        >
-          <span
-            style={{
-              width: 6,
-              height: 6,
-              borderRadius: "50%",
-              background: "#22c55e",
-              display: "inline-block",
-              animation: "bcDot 2s ease-in-out infinite",
-              flexShrink: 0,
-            }}
-          />
-          <span
-            style={{ fontSize: 13, fontWeight: 800, color: BC.text, flex: 1 }}
-          >
-            Block Comments
-          </span>
-          <button
-            onClick={load}
-            title="Refresh"
-            style={{
-              background: "none",
-              border: "none",
-              cursor: "pointer",
-              fontSize: 13,
-              color: BC.muted,
-              padding: "2px 4px",
-              borderRadius: 4,
-            }}
-          >
-            ↻
-          </button>
+      <div style={{ padding: "10px 14px 8px", borderBottom: `1px solid ${BC.border}`, flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 5 }}>
+          <span style={{
+            width: 6, height: 6, borderRadius: "50%", background: "#22c55e",
+            display: "inline-block", animation: "bcDot 2s ease-in-out infinite", flexShrink: 0,
+          }} />
+          <span style={{ fontSize: 13, fontWeight: 800, color: BC.text, flex: 1 }}>Block Comments</span>
+          <button onClick={load} title="Refresh" style={{
+            background: "none", border: "none", cursor: "pointer",
+            fontSize: 13, color: BC.muted, padding: "2px 4px", borderRadius: 4,
+          }}>↻</button>
           {showBackToPreview ? (
-            <button
-              onClick={onClose}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 4,
-                background: "#f1f5f9",
-                border: "none",
-                cursor: "pointer",
-                fontSize: 11,
-                fontWeight: 600,
-                color: "#475569",
-                padding: "4px 9px",
-                borderRadius: 6,
-                fontFamily: "inherit",
-              }}
-            >
-              ← Preview
-            </button>
+            <button onClick={onClose} style={{
+              display: "flex", alignItems: "center", gap: 4,
+              background: "#f1f5f9", border: "none", cursor: "pointer",
+              fontSize: 11, fontWeight: 600, color: "#475569",
+              padding: "4px 9px", borderRadius: 6, fontFamily: "inherit",
+            }}>← Preview</button>
           ) : (
-            <button
-              onClick={onClose}
-              style={{
-                background: "#f1f5f9",
-                border: "none",
-                cursor: "pointer",
-                fontSize: 13,
-                color: BC.textSub,
-                padding: "4px 7px",
-                borderRadius: 6,
-              }}
-            >
-              ✕
-            </button>
+            <button onClick={onClose} style={{
+              background: "#f1f5f9", border: "none", cursor: "pointer",
+              fontSize: 13, color: BC.textSub, padding: "4px 7px", borderRadius: 6,
+            }}>✕</button>
           )}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <span
-            style={{
-              fontSize: 9,
-              fontWeight: 800,
-              color: "#818cf8",
-              background: "#eef2ff",
-              padding: "2px 7px",
-              borderRadius: 4,
-              textTransform: "uppercase",
-              letterSpacing: 0.5,
-            }}
-          >
-            {blockLabel}
-          </span>
+          <span style={{
+            fontSize: 9, fontWeight: 800, color: "#818cf8", background: "#eef2ff",
+            padding: "2px 7px", borderRadius: 4, textTransform: "uppercase", letterSpacing: 0.5,
+          }}>{blockLabel}</span>
           {unresolvedCnt > 0 ? (
-            <span
-              style={{
-                fontSize: 10,
-                fontWeight: 700,
-                color: "#b45309",
-                background: "#fef3c7",
-                padding: "1px 7px",
-                borderRadius: 10,
-              }}
-            >
+            <span style={{ fontSize: 10, fontWeight: 700, color: "#b45309", background: "#fef3c7", padding: "1px 7px", borderRadius: 10 }}>
               {unresolvedCnt} unresolved
             </span>
           ) : totalCnt > 0 ? (
-            <span
-              style={{
-                fontSize: 10,
-                fontWeight: 700,
-                color: BC.success,
-                background: BC.successLt,
-                padding: "1px 7px",
-                borderRadius: 10,
-              }}
-            >
+            <span style={{ fontSize: 10, fontWeight: 700, color: BC.success, background: BC.successLt, padding: "1px 7px", borderRadius: 10 }}>
               All resolved
             </span>
           ) : null}
@@ -393,142 +212,53 @@ function BlockCommentsSidebar({
       {/* ── Block selector ── */}
       {blocks.length > 1 && (
         <div style={{ flexShrink: 0, borderBottom: `1px solid ${BC.border}` }}>
-          <button
-            onClick={() => setBlocksOpen((o) => !o)}
-            style={{
-              width: "100%",
-              display: "flex",
-              alignItems: "center",
-              gap: 7,
-              padding: "7px 14px",
-              background: "#fafbfc",
-              border: "none",
-              cursor: "pointer",
-              fontFamily: "inherit",
-              fontSize: 11,
-              color: BC.textSub,
-              fontWeight: 600,
-              textAlign: "left",
-            }}
-          >
-            <svg
-              width="11"
-              height="11"
-              viewBox="0 0 16 16"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.8"
-            >
-              <rect x="1" y="1" width="6" height="6" rx="1" />
-              <rect x="9" y="1" width="6" height="6" rx="1" />
-              <rect x="1" y="9" width="6" height="6" rx="1" />
-              <rect x="9" y="9" width="6" height="6" rx="1" />
+          <button onClick={() => setBlocksOpen(o => !o)} style={{
+            width: "100%", display: "flex", alignItems: "center", gap: 7,
+            padding: "7px 14px", background: "#fafbfc",
+            border: "none", cursor: "pointer", fontFamily: "inherit",
+            fontSize: 11, color: BC.textSub, fontWeight: 600, textAlign: "left",
+          }}>
+            <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">
+              <rect x="1" y="1" width="6" height="6" rx="1"/><rect x="9" y="1" width="6" height="6" rx="1"/>
+              <rect x="1" y="9" width="6" height="6" rx="1"/><rect x="9" y="9" width="6" height="6" rx="1"/>
             </svg>
             Switch block
             {totalUnresAcrossSection > 0 && (
-              <span
-                style={{
-                  fontSize: 9,
-                  color: "#b45309",
-                  background: "#fef3c7",
-                  padding: "1px 5px",
-                  borderRadius: 8,
-                  fontWeight: 700,
-                }}
-              >
+              <span style={{ fontSize: 9, color: "#b45309", background: "#fef3c7", padding: "1px 5px", borderRadius: 8, fontWeight: 700 }}>
                 {totalUnresAcrossSection} unresolved
               </span>
             )}
-            <span style={{ marginLeft: "auto", fontSize: 10, color: BC.muted }}>
-              {blocksOpen ? "▲" : "▼"}
-            </span>
+            <span style={{ marginLeft: "auto", fontSize: 10, color: BC.muted }}>{blocksOpen ? "▲" : "▼"}</span>
           </button>
           {blocksOpen && (
-            <div
-              style={{
-                maxHeight: 200,
-                overflowY: "auto",
-                background: "#fafbfc",
-              }}
-            >
+            <div style={{ maxHeight: 200, overflowY: "auto", background: "#fafbfc" }}>
               {blocks.map((b, i) => {
-                const cnt = blockCounts[b.id] || { total: 0, unresolved: 0 };
+                const cnt   = blockCounts[b.id] || { total: 0, unresolved: 0 };
                 const isCur = b.id === blockId;
                 return (
-                  <div
-                    key={b.id}
-                    onClick={() => {
-                      onBlockSelect(b.id);
-                      setBlocksOpen(false);
-                    }}
+                  <div key={b.id}
+                    onClick={() => { onBlockSelect(b.id); setBlocksOpen(false); }}
                     style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 8,
-                      padding: "6px 14px",
-                      cursor: "pointer",
+                      display: "flex", alignItems: "center", gap: 8,
+                      padding: "6px 14px", cursor: "pointer",
                       background: isCur ? "#eef2ff" : "transparent",
-                      borderLeft: isCur
-                        ? "3px solid #4f46e5"
-                        : "3px solid transparent",
+                      borderLeft: isCur ? "3px solid #4f46e5" : "3px solid transparent",
                     }}
-                    onMouseEnter={(e) => {
-                      if (!isCur) e.currentTarget.style.background = "#f4f6fa";
-                    }}
-                    onMouseLeave={(e) => {
-                      if (!isCur)
-                        e.currentTarget.style.background = "transparent";
-                    }}
+                    onMouseEnter={e => { if (!isCur) e.currentTarget.style.background = "#f4f6fa"; }}
+                    onMouseLeave={e => { if (!isCur) e.currentTarget.style.background = "transparent"; }}
                   >
-                    <span
-                      style={{
-                        fontSize: 8,
-                        fontWeight: 800,
-                        color: isCur ? "#4f46e5" : "#94a3b8",
-                        background: isCur ? "#eef2ff" : "#f1f5f9",
-                        padding: "1px 5px",
-                        borderRadius: 3,
-                        textTransform: "uppercase",
-                        flexShrink: 0,
-                      }}
-                    >
-                      {BLOCK_ICONS[b.block_type]} {b.block_type}
-                    </span>
-                    <span
-                      style={{
-                        fontSize: 10,
-                        color: isCur ? "#312e81" : BC.textSub,
-                        flex: 1,
-                      }}
-                    >
-                      Block {i + 1}
-                    </span>
+                    <span style={{
+                      fontSize: 8, fontWeight: 800,
+                      color: isCur ? "#4f46e5" : "#94a3b8",
+                      background: isCur ? "#eef2ff" : "#f1f5f9",
+                      padding: "1px 5px", borderRadius: 3, textTransform: "uppercase", flexShrink: 0,
+                    }}>{BLOCK_ICONS[b.block_type]} {b.block_type}</span>
+                    <span style={{ fontSize: 10, color: isCur ? "#312e81" : BC.textSub, flex: 1 }}>Block {i + 1}</span>
                     {cnt.unresolved > 0 && (
-                      <span
-                        style={{
-                          fontSize: 9,
-                          fontWeight: 700,
-                          color: "#b45309",
-                          background: "#fef3c7",
-                          padding: "1px 5px",
-                          borderRadius: 8,
-                        }}
-                      >
-                        {cnt.unresolved}
-                      </span>
+                      <span style={{ fontSize: 9, fontWeight: 700, color: "#b45309", background: "#fef3c7", padding: "1px 5px", borderRadius: 8 }}>{cnt.unresolved}</span>
                     )}
                     {cnt.total > 0 && !cnt.unresolved && (
-                      <span
-                        style={{
-                          fontSize: 9,
-                          color: BC.muted,
-                          background: "#f1f5f9",
-                          padding: "1px 5px",
-                          borderRadius: 8,
-                        }}
-                      >
-                        {cnt.total}
-                      </span>
+                      <span style={{ fontSize: 9, color: BC.muted, background: "#f1f5f9", padding: "1px 5px", borderRadius: 8 }}>{cnt.total}</span>
                     )}
                   </div>
                 );
@@ -539,134 +269,67 @@ function BlockCommentsSidebar({
       )}
 
       {/* ── Thread list ── */}
-      <div
-        ref={threadRef}
-        style={{
-          flex: 1,
-          overflowY: "auto",
-          padding: "12px 12px 4px",
-          minHeight: 0,
-        }}
-      >
+      <div ref={threadRef} style={{ flex: 1, overflowY: "auto", padding: "12px 12px 4px", minHeight: 0 }}>
         {loading && (
-          <div
-            style={{
-              textAlign: "center",
-              padding: "40px 0",
-              color: BC.muted,
-              fontSize: 12,
-            }}
-          >
-            Loading…
-          </div>
+          <div style={{ textAlign: "center", padding: "40px 0", color: BC.muted, fontSize: 12 }}>Loading…</div>
         )}
         {!loading && threads.length === 0 && (
           <div style={{ textAlign: "center", padding: "48px 16px" }}>
             <div style={{ fontSize: 28, marginBottom: 10 }}>💬</div>
-            <div
-              style={{
-                fontSize: 13,
-                fontWeight: 600,
-                color: BC.text,
-                marginBottom: 4,
-              }}
-            >
-              No comments yet
-            </div>
-            <div style={{ fontSize: 11, color: BC.muted }}>
-              Add the first comment on this block below.
-            </div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: BC.text, marginBottom: 4 }}>No comments yet</div>
+            <div style={{ fontSize: 11, color: BC.muted }}>Add the first comment on this block below.</div>
           </div>
         )}
-        {!loading &&
-          threads.map((thread) => (
-            <BlockCommentThread
-              key={thread.id}
-              thread={thread}
-              currentUserId={currentUserId}
-              replyTo={replyTo}
-              replyInput={replyInput}
-              setReplyInput={setReplyInput}
-              postingReply={postingReply}
-              replyInputRef={replyInputRef}
-              onReply={(t) => {
-                setReplyTo(t);
-                setReplyInput("");
-                setTimeout(() => replyInputRef.current?.focus(), 50);
-              }}
-              onCancelReply={() => setReplyTo(null)}
-              onPostReply={postReply}
-              onResolve={resolveComment}
-              onReopen={reopenComment}
-            />
-          ))}
+        {!loading && threads.map(thread => (
+          <BlockCommentThread
+            key={thread.id}
+            thread={thread}
+            currentUserId={currentUserId}
+            replyTo={replyTo}
+            replyInput={replyInput}
+            setReplyInput={setReplyInput}
+            postingReply={postingReply}
+            replyInputRef={replyInputRef}
+            onReply={t => { setReplyTo(t); setReplyInput(""); setTimeout(() => replyInputRef.current?.focus(), 50); }}
+            onCancelReply={() => setReplyTo(null)}
+            onPostReply={postReply}
+            onResolve={resolveComment}
+            onReopen={reopenComment}
+          />
+        ))}
       </div>
 
       {/* ── New comment input ── */}
-      <div
-        style={{
-          padding: "9px 11px 12px",
-          borderTop: `1px solid ${BC.border}`,
-          flexShrink: 0,
-        }}
-      >
+      <div style={{ padding: "9px 11px 12px", borderTop: `1px solid ${BC.border}`, flexShrink: 0 }}>
         <div style={{ display: "flex", gap: 7, alignItems: "flex-end" }}>
           <textarea
             ref={inputRef}
             value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                postComment();
-              }
-            }}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); postComment(); } }}
             placeholder="Add a comment on this block…"
             rows={2}
             style={{
-              flex: 1,
-              resize: "none",
-              border: "1.5px solid #e2e8f0",
-              borderRadius: 10,
-              padding: "7px 11px",
-              fontSize: 12,
-              fontFamily: "inherit",
-              color: "#1e293b",
-              outline: "none",
-              lineHeight: 1.5,
-              minHeight: 38,
-              maxHeight: 100,
-              transition: "border-color 0.15s",
-              background: "#fff",
+              flex: 1, resize: "none", border: "1.5px solid #e2e8f0", borderRadius: 10,
+              padding: "7px 11px", fontSize: 12, fontFamily: "inherit",
+              color: "#1e293b", outline: "none", lineHeight: 1.5, minHeight: 38, maxHeight: 100,
+              transition: "border-color 0.15s", background: "#fff",
             }}
-            onFocus={(e) => (e.target.style.borderColor = "#818cf8")}
-            onBlur={(e) => (e.target.style.borderColor = "#e2e8f0")}
+            onFocus={e => e.target.style.borderColor = "#818cf8"}
+            onBlur={e  => e.target.style.borderColor = "#e2e8f0"}
           />
-          <button
-            onClick={postComment}
-            disabled={!input.trim() || posting}
-            style={{
-              width: 34,
-              height: 34,
-              borderRadius: 9,
-              border: "none",
-              background: !input.trim() || posting ? "#c7d2fe" : "#4f46e5",
-              color: "#fff",
-              cursor: !input.trim() || posting ? "not-allowed" : "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              flexShrink: 0,
-            }}
-          >
+          <button onClick={postComment} disabled={!input.trim() || posting} style={{
+            width: 34, height: 34, borderRadius: 9, border: "none",
+            background: !input.trim() || posting ? "#c7d2fe" : "#4f46e5",
+            color: "#fff", cursor: !input.trim() || posting ? "not-allowed" : "pointer",
+            display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+          }}>
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-              <path d="M13 7L1 1l2 6-2 6 12-6z" fill="white" />
+              <path d="M13 7L1 1l2 6-2 6 12-6z" fill="white"/>
             </svg>
           </button>
         </div>
-        <div
-          style={{ fontSize: 9, color: BC.muted, marginTop: 4, paddingLeft: 2 }}
-        >
+        <div style={{ fontSize: 9, color: BC.muted, marginTop: 4, paddingLeft: 2 }}>
           Enter to send · Shift+Enter for new line
         </div>
       </div>
@@ -675,258 +338,108 @@ function BlockCommentsSidebar({
 }
 
 function BlockCommentThread({
-  thread,
-  currentUserId,
-  replyTo,
-  replyInput,
-  setReplyInput,
-  postingReply,
-  replyInputRef,
-  onReply,
-  onCancelReply,
-  onPostReply,
-  onResolve,
-  onReopen,
+  thread, currentUserId,
+  replyTo, replyInput, setReplyInput, postingReply, replyInputRef,
+  onReply, onCancelReply, onPostReply, onResolve, onReopen,
 }) {
   const [repliesExpanded, setRepliesExpanded] = useState(true);
-  const isReplying = replyTo?.id === thread.id;
-  const authorName = thread.author_name || "User";
-  const avColor = avatarColor(thread.created_by);
-  const ts = thread.created_at ? timeAgo(thread.created_at) : "";
+  const isReplying  = replyTo?.id === thread.id;
+  const authorName  = thread.author_name || "User";
+  const avColor     = avatarColor(thread.created_by);
+  const ts          = thread.created_at ? timeAgo(thread.created_at) : "";
 
   const BC = {
-    border: "#e2e8f0",
-    text: "#0f172a",
-    textSub: "#64748b",
-    muted: "#94a3b8",
-    success: "#16a34a",
-    successLt: "#f0fdf4",
+    border: "#e2e8f0", text: "#0f172a", textSub: "#64748b", muted: "#94a3b8",
+    success: "#16a34a", successLt: "#f0fdf4",
   };
 
   return (
-    <div
-      style={{
-        marginBottom: 12,
-        border: `1px solid ${thread.is_resolved ? "#e8edf3" : "#dde3ec"}`,
-        borderRadius: 10,
-        background: thread.is_resolved ? "#f9fafb" : "#fff",
-        overflow: "hidden",
-      }}
-    >
+    <div style={{
+      marginBottom: 12,
+      border: `1px solid ${thread.is_resolved ? "#e8edf3" : "#dde3ec"}`,
+      borderRadius: 10, background: thread.is_resolved ? "#f9fafb" : "#fff",
+      overflow: "hidden",
+    }}>
       {thread.is_resolved && (
-        <div
-          style={{
-            padding: "4px 12px",
-            background: "#f0fdf4",
-            borderBottom: "1px solid #dcfce7",
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-          }}
-        >
+        <div style={{
+          padding: "4px 12px", background: "#f0fdf4", borderBottom: "1px solid #dcfce7",
+          display: "flex", alignItems: "center", gap: 6,
+        }}>
           <span style={{ fontSize: 10, color: BC.success }}>✓</span>
-          <span
-            style={{
-              fontSize: 10,
-              color: BC.success,
-              fontWeight: 600,
-              flex: 1,
-            }}
-          >
-            Resolved
-            {thread.resolved_by_name ? ` by ${thread.resolved_by_name}` : ""}
+          <span style={{ fontSize: 10, color: BC.success, fontWeight: 600, flex: 1 }}>
+            Resolved{thread.resolved_by_name ? ` by ${thread.resolved_by_name}` : ""}
           </span>
-          <button
-            onClick={() => onReopen(thread.id)}
-            style={{
-              background: "none",
-              border: "1px solid #d1d5db",
-              borderRadius: 4,
-              cursor: "pointer",
-              fontSize: 9,
-              color: "#6b7280",
-              padding: "1px 7px",
-              fontFamily: "inherit",
-            }}
-          >
-            Reopen
-          </button>
+          <button onClick={() => onReopen(thread.id)} style={{
+            background: "none", border: "1px solid #d1d5db", borderRadius: 4,
+            cursor: "pointer", fontSize: 9, color: "#6b7280",
+            padding: "1px 7px", fontFamily: "inherit",
+          }}>Reopen</button>
         </div>
       )}
 
       <div style={{ padding: "10px 12px" }}>
         <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
-          <div
-            style={{
-              width: 28,
-              height: 28,
-              borderRadius: "50%",
-              flexShrink: 0,
-              background: avColor,
-              color: "#fff",
-              fontSize: 10,
-              fontWeight: 700,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            {initials(authorName)}
-          </div>
+          <div style={{
+            width: 28, height: 28, borderRadius: "50%", flexShrink: 0,
+            background: avColor, color: "#fff", fontSize: 10, fontWeight: 700,
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}>{initials(authorName)}</div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "baseline",
-                gap: 6,
-                marginBottom: 3,
-              }}
-            >
-              <span style={{ fontSize: 12, fontWeight: 700, color: BC.text }}>
-                {authorName}
-              </span>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginBottom: 3 }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: BC.text }}>{authorName}</span>
               <span style={{ fontSize: 10, color: BC.muted }}>{ts}</span>
             </div>
-            <div
-              style={{
-                fontSize: 12,
-                color: thread.is_resolved ? BC.muted : BC.text,
-                lineHeight: 1.6,
-                wordBreak: "break-word",
-                fontStyle: thread.is_resolved ? "italic" : "normal",
-              }}
-            >
-              {thread.body}
-            </div>
+            <div style={{
+              fontSize: 12, color: thread.is_resolved ? BC.muted : BC.text,
+              lineHeight: 1.6, wordBreak: "break-word",
+              fontStyle: thread.is_resolved ? "italic" : "normal",
+            }}>{thread.body}</div>
           </div>
         </div>
 
-        <div
-          style={{
-            display: "flex",
-            gap: 6,
-            marginTop: 7,
-            paddingLeft: 36,
-            alignItems: "center",
-          }}
-        >
-          <button
-            onClick={() => onReply(thread)}
-            style={{
-              background: "none",
-              border: "none",
-              cursor: "pointer",
-              fontSize: 10,
-              color: BC.textSub,
-              padding: "1px 4px",
-              fontFamily: "inherit",
-            }}
-          >
-            ↩ Reply
-          </button>
+        <div style={{ display: "flex", gap: 6, marginTop: 7, paddingLeft: 36, alignItems: "center" }}>
+          <button onClick={() => onReply(thread)} style={{
+            background: "none", border: "none", cursor: "pointer",
+            fontSize: 10, color: BC.textSub, padding: "1px 4px", fontFamily: "inherit",
+          }}>↩ Reply</button>
           {thread.replies?.length > 0 && (
-            <button
-              onClick={() => setRepliesExpanded((o) => !o)}
-              style={{
-                background: "none",
-                border: "none",
-                cursor: "pointer",
-                fontSize: 10,
-                color: BC.textSub,
-                padding: "1px 4px",
-                fontFamily: "inherit",
-              }}
-            >
-              {repliesExpanded ? "▲" : "▼"} {thread.replies.length}{" "}
-              {thread.replies.length === 1 ? "reply" : "replies"}
+            <button onClick={() => setRepliesExpanded(o => !o)} style={{
+              background: "none", border: "none", cursor: "pointer",
+              fontSize: 10, color: BC.textSub, padding: "1px 4px", fontFamily: "inherit",
+            }}>
+              {repliesExpanded ? "▲" : "▼"} {thread.replies.length} {thread.replies.length === 1 ? "reply" : "replies"}
             </button>
           )}
           {!thread.is_resolved && (
-            <button
-              onClick={() => onResolve(thread.id)}
-              style={{
-                marginLeft: "auto",
-                background: "none",
-                border: "1px solid #d1fae5",
-                borderRadius: 4,
-                cursor: "pointer",
-                fontSize: 9,
-                color: BC.success,
-                padding: "1px 8px",
-                fontFamily: "inherit",
-              }}
-            >
-              ✓ Resolve
-            </button>
+            <button onClick={() => onResolve(thread.id)} style={{
+              marginLeft: "auto", background: "none",
+              border: "1px solid #d1fae5", borderRadius: 4,
+              cursor: "pointer", fontSize: 9, color: BC.success,
+              padding: "1px 8px", fontFamily: "inherit",
+            }}>✓ Resolve</button>
           )}
         </div>
       </div>
 
       {repliesExpanded && thread.replies?.length > 0 && (
-        <div
-          style={{
-            borderTop: `1px solid ${BC.border}`,
-            background: "#fafbfc",
-            padding: "8px 12px 8px 40px",
-          }}
-        >
-          {thread.replies.map((reply) => {
-            const rName = reply.author_name || "User";
+        <div style={{ borderTop: `1px solid ${BC.border}`, background: "#fafbfc", padding: "8px 12px 8px 40px" }}>
+          {thread.replies.map(reply => {
+            const rName  = reply.author_name || "User";
             const rColor = avatarColor(reply.created_by);
-            const rTs = reply.created_at ? timeAgo(reply.created_at) : "";
+            const rTs    = reply.created_at ? timeAgo(reply.created_at) : "";
             return (
-              <div
-                key={reply.id}
-                style={{
-                  display: "flex",
-                  gap: 7,
-                  marginBottom: 8,
-                  alignItems: "flex-start",
-                }}
-              >
-                <div
-                  style={{
-                    width: 22,
-                    height: 22,
-                    borderRadius: "50%",
-                    flexShrink: 0,
-                    background: rColor,
-                    color: "#fff",
-                    fontSize: 8,
-                    fontWeight: 700,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  {initials(rName)}
-                </div>
+              <div key={reply.id} style={{ display: "flex", gap: 7, marginBottom: 8, alignItems: "flex-start" }}>
+                <div style={{
+                  width: 22, height: 22, borderRadius: "50%", flexShrink: 0,
+                  background: rColor, color: "#fff", fontSize: 8, fontWeight: 700,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                }}>{initials(rName)}</div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div
-                    style={{
-                      display: "flex",
-                      gap: 5,
-                      alignItems: "baseline",
-                      marginBottom: 2,
-                    }}
-                  >
-                    <span
-                      style={{ fontSize: 11, fontWeight: 700, color: BC.text }}
-                    >
-                      {rName}
-                    </span>
+                  <div style={{ display: "flex", gap: 5, alignItems: "baseline", marginBottom: 2 }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: BC.text }}>{rName}</span>
                     <span style={{ fontSize: 9, color: BC.muted }}>{rTs}</span>
                   </div>
-                  <div
-                    style={{
-                      fontSize: 11,
-                      color: BC.text,
-                      lineHeight: 1.5,
-                      wordBreak: "break-word",
-                    }}
-                  >
-                    {reply.body}
-                  </div>
+                  <div style={{ fontSize: 11, color: BC.text, lineHeight: 1.5, wordBreak: "break-word" }}>{reply.body}</div>
                 </div>
               </div>
             );
@@ -935,84 +448,41 @@ function BlockCommentThread({
       )}
 
       {isReplying && (
-        <div
-          style={{
-            borderTop: `1px solid ${BC.border}`,
-            padding: "8px 12px",
-            background: "#f8fafc",
-          }}
-        >
+        <div style={{ borderTop: `1px solid ${BC.border}`, padding: "8px 12px", background: "#f8fafc" }}>
           <div style={{ display: "flex", gap: 6, alignItems: "flex-end" }}>
             <textarea
               ref={replyInputRef}
               value={replyInput}
-              onChange={(e) => setReplyInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  onPostReply(thread.id);
-                }
+              onChange={e => setReplyInput(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); onPostReply(thread.id); }
                 if (e.key === "Escape") onCancelReply();
               }}
               placeholder={`Reply to ${authorName}…`}
               rows={2}
               style={{
-                flex: 1,
-                resize: "none",
-                border: "1.5px solid #c7d2fe",
-                borderRadius: 8,
-                padding: "6px 10px",
-                fontSize: 11,
-                fontFamily: "inherit",
-                color: "#1e293b",
-                outline: "none",
-                lineHeight: 1.5,
-                background: "#fff",
+                flex: 1, resize: "none", border: "1.5px solid #c7d2fe", borderRadius: 8,
+                padding: "6px 10px", fontSize: 11, fontFamily: "inherit",
+                color: "#1e293b", outline: "none", lineHeight: 1.5, background: "#fff",
               }}
             />
             <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              <button
-                onClick={() => onPostReply(thread.id)}
-                disabled={!replyInput.trim() || postingReply}
-                style={{
-                  width: 30,
-                  height: 30,
-                  borderRadius: 7,
-                  border: "none",
-                  background:
-                    !replyInput.trim() || postingReply ? "#c7d2fe" : "#4f46e5",
-                  color: "#fff",
-                  cursor:
-                    !replyInput.trim() || postingReply
-                      ? "not-allowed"
-                      : "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
+              <button onClick={() => onPostReply(thread.id)} disabled={!replyInput.trim() || postingReply} style={{
+                width: 30, height: 30, borderRadius: 7, border: "none",
+                background: !replyInput.trim() || postingReply ? "#c7d2fe" : "#4f46e5",
+                color: "#fff", cursor: !replyInput.trim() || postingReply ? "not-allowed" : "pointer",
+                display: "flex", alignItems: "center", justifyContent: "center",
+              }}>
                 <svg width="11" height="11" viewBox="0 0 14 14" fill="none">
-                  <path d="M13 7L1 1l2 6-2 6 12-6z" fill="white" />
+                  <path d="M13 7L1 1l2 6-2 6 12-6z" fill="white"/>
                 </svg>
               </button>
-              <button
-                onClick={onCancelReply}
-                style={{
-                  width: 30,
-                  height: 30,
-                  borderRadius: 7,
-                  border: "1px solid #e2e8f0",
-                  background: "#fff",
-                  cursor: "pointer",
-                  color: BC.textSub,
-                  fontSize: 11,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                ✕
-              </button>
+              <button onClick={onCancelReply} style={{
+                width: 30, height: 30, borderRadius: 7,
+                border: "1px solid #e2e8f0", background: "#fff",
+                cursor: "pointer", color: BC.textSub, fontSize: 11,
+                display: "flex", alignItems: "center", justifyContent: "center",
+              }}>✕</button>
             </div>
           </div>
         </div>
@@ -1023,50 +493,39 @@ function BlockCommentThread({
 
 /* ── status config ────────────────────────────────────────────────────────── */
 const STATUS_STYLE = {
-  NOT_STARTED: { bg: "#f1f5f9", color: "#64748b", label: "Not Started" },
-  IN_PROGRESS: { bg: "#dbeafe", color: "#1d4ed8", label: "In Progress" },
-  SUBMITTED: { bg: "#fef3c7", color: "#d97706", label: "Submitted" },
-  UNDER_REVIEW: { bg: "#ede9fe", color: "#6d28d9", label: "Under Review" },
-  APPROVED: { bg: "#dcfce7", color: "#15803d", label: "Approved" },
-  SENT_BACK: { bg: "#fee2e2", color: "#b91c1c", label: "Sent Back" },
-  LOCKED: { bg: "#e2e8f0", color: "#475569", label: "Locked" },
+  NOT_STARTED:  { bg: "#f1f5f9", color: "#64748b",  label: "Not Started" },
+  IN_PROGRESS:  { bg: "#dbeafe", color: "#1d4ed8",  label: "In Progress" },
+  SUBMITTED:    { bg: "#fef3c7", color: "#d97706",  label: "Submitted" },
+  UNDER_REVIEW: { bg: "#ede9fe", color: "#6d28d9",  label: "Under Review" },
+  APPROVED:     { bg: "#dcfce7", color: "#15803d",  label: "Approved" },
+  SENT_BACK:    { bg: "#fee2e2", color: "#b91c1c",  label: "Sent Back" },
+  LOCKED:       { bg: "#e2e8f0", color: "#475569",  label: "Locked" },
 };
 
 function StatusBadge({ status, tiny }) {
   const s = STATUS_STYLE[status] || STATUS_STYLE.NOT_STARTED;
   return (
-    <span
-      style={{
-        padding: tiny ? "1px 7px" : "3px 11px",
-        borderRadius: 20,
-        fontSize: tiny ? 9 : 11,
-        fontWeight: 700,
-        textTransform: "uppercase",
-        letterSpacing: 0.5,
-        background: s.bg,
-        color: s.color,
-        whiteSpace: "nowrap",
-      }}
-    >
+    <span style={{
+      padding: tiny ? "1px 7px" : "3px 11px",
+      borderRadius: 20, fontSize: tiny ? 9 : 11,
+      fontWeight: 700, textTransform: "uppercase",
+      letterSpacing: 0.5, background: s.bg, color: s.color,
+      whiteSpace: "nowrap",
+    }}>
       {s.label}
     </span>
   );
 }
 
 const ROLE_BADGE = {
-  OWNER: { bg: "#ede9fe", color: "#6d28d9" },
+  OWNER:       { bg: "#ede9fe", color: "#6d28d9" },
   CONTRIBUTOR: { bg: "#dbeafe", color: "#1d4ed8" },
-  REVIEWER: { bg: "#dcfce7", color: "#15803d" },
+  REVIEWER:    { bg: "#dcfce7", color: "#15803d" },
 };
 
 const arrowBtn = {
-  background: "none",
-  border: "none",
-  cursor: "pointer",
-  color: "#94a3b8",
-  fontSize: 13,
-  padding: "2px 5px",
-  borderRadius: 4,
+  background: "none", border: "none", cursor: "pointer",
+  color: "#94a3b8", fontSize: 13, padding: "2px 5px", borderRadius: 4,
 };
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -1075,64 +534,41 @@ const arrowBtn = {
 const DOC_FONT = "'Calibri', 'Segoe UI', Arial, sans-serif";
 
 /* A4 page at 96 dpi: 794 × 1123 px  |  margins: 72 px each side */
-const A4_W = 794;
-const A4_H = 1123;
-const MARG = 72;
-const CON_W = A4_W - MARG * 2; // 650 px content width
-const CON_H = A4_H - MARG * 2; // 979 px content height (page body)
-const TITLE_H = 110; // approximate height taken by title block on page 1
+const A4_W  = 794;
+const A4_H  = 1123;
+const MARG  = 72;
+const CON_W = A4_W  - MARG * 2;   // 650 px content width
+const CON_H = A4_H  - MARG * 2;   // 979 px content height (page body)
+const TITLE_H = 110;               // approximate height taken by title block on page 1
 
 /* ── render one block in Word style ── */
-function WordBlock({ block, lang = "en", measureIdx = null }) {
-  const c = block.content || {};
+function WordBlock({ block, lang = "en" }) {
+  const c    = block.content || {};
   const isHi = lang === "hi";
   // Block translations live in block.translations[language] (block_translations table),
   // mirroring only the translatable text fields of `content`. Fall back to English
   // whenever the active language has no translation row yet, or the field is empty.
-  const t = isHi ? block.translations?.hi || {} : null;
-  const pick = (hiVal, enVal) => (isHi && hiVal ? hiVal : enVal);
+  const t    = isHi ? (block.translations?.hi || {}) : null;
+  const pick = (hiVal, enVal) => (isHi && hiVal) ? hiVal : enVal;
 
   switch (block.block_type) {
+
     case "PARAGRAPH":
       return (
         <div
-          style={{
-            fontFamily: DOC_FONT,
-            fontSize: 11,
-            lineHeight: 1.8,
-            color: "#111827",
-            marginBottom: 10,
-            wordBreak: "break-word",
-          }}
-          dangerouslySetInnerHTML={{
-            __html:
-              pick(t?.html, c.html || c.text) ||
-              "<em style='color:#9ca3af'>Empty paragraph</em>",
-          }}
+          style={{ fontFamily: DOC_FONT, fontSize: 11, lineHeight: 1.8, color: "#111827", marginBottom: 10, wordBreak: "break-word" }}
+          dangerouslySetInnerHTML={{ __html: pick(t?.html, c.html || c.text) || "<em style='color:#9ca3af'>Empty paragraph</em>" }}
         />
       );
 
     case "HEADING": {
       const lvlStyle = {
-        1: {
-          fontSize: 18,
-          color: "#1F3864",
-          borderBottom: "1.5px solid #1F3864",
-          paddingBottom: 3,
-          marginBottom: 10,
-          marginTop: 18,
-        },
+        1: { fontSize: 18, color: "#1F3864", borderBottom: "1.5px solid #1F3864", paddingBottom: 3, marginBottom: 10, marginTop: 18 },
         2: { fontSize: 14, color: "#2E4A7A", marginBottom: 6, marginTop: 14 },
         3: { fontSize: 12, color: "#374151", marginBottom: 5, marginTop: 10 },
       };
       return (
-        <div
-          style={{
-            fontFamily: DOC_FONT,
-            fontWeight: 700,
-            ...lvlStyle[c.level || 2],
-          }}
-        >
+        <div style={{ fontFamily: DOC_FONT, fontWeight: 700, ...lvlStyle[c.level || 2] }}>
           {pick(t?.text, c.text) || "Heading"}
         </div>
       );
@@ -1140,63 +576,22 @@ function WordBlock({ block, lang = "en", measureIdx = null }) {
 
     case "IMAGE": {
       const w = c.widthPct ?? 100;
-      const alignMap = {
-        left: "flex-start",
-        center: "center",
-        right: "flex-end",
-      };
-      const alt = pick(t?.alt, c.alt);
+      const alignMap = { left: "flex-start", center: "center", right: "flex-end" };
+      const alt     = pick(t?.alt, c.alt);
       const caption = pick(t?.caption, c.caption);
       return (
-        <div
-          style={{
-            display: "flex",
-            justifyContent: alignMap[c.align] || "center",
-            margin: "8px 0 12px",
-          }}
-        >
+        <div style={{ display: "flex", justifyContent: alignMap[c.align] || "center", margin: "8px 0 12px" }}>
           <div style={{ width: `${w}%` }}>
             {c.url ? (
-              <img
-                src={c.url}
-                alt={alt || caption || ""}
-                style={{
-                  width: "100%",
-                  borderRadius: 3,
-                  border: "1px solid #e5e7eb",
-                }}
-                onError={(e) => {
-                  e.currentTarget.style.display = "none";
-                }}
-              />
+              <img src={c.url} alt={alt || caption || ""} style={{ width: "100%", borderRadius: 3, border: "1px solid #e5e7eb" }}
+                onError={(e) => { e.currentTarget.style.display = "none"; }} />
             ) : (
-              <div
-                style={{
-                  height: 60,
-                  background: "#f9fafb",
-                  border: "1px dashed #d1d5db",
-                  borderRadius: 4,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: "#9ca3af",
-                  fontSize: 10,
-                }}
-              >
+              <div style={{ height: 60, background: "#f9fafb", border: "1px dashed #d1d5db", borderRadius: 4, display: "flex", alignItems: "center", justifyContent: "center", color: "#9ca3af", fontSize: 10 }}>
                 [Image]
               </div>
             )}
             {caption && (
-              <div
-                style={{
-                  fontFamily: DOC_FONT,
-                  fontSize: 9,
-                  color: "#6b7280",
-                  textAlign: "center",
-                  marginTop: 3,
-                  fontStyle: "italic",
-                }}
-              >
+              <div style={{ fontFamily: DOC_FONT, fontSize: 9, color: "#6b7280", textAlign: "center", marginTop: 3, fontStyle: "italic" }}>
                 {caption}
               </div>
             )}
@@ -1206,66 +601,24 @@ function WordBlock({ block, lang = "en", measureIdx = null }) {
     }
 
     case "IMAGE_GRID": {
-      const cols = c.cols || [];
+      const cols   = c.cols || [];
       const hiCols = t?.cols || [];
       return (
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: `repeat(${cols.length || 2}, 1fr)`,
-            gap: 8,
-            margin: "8px 0 12px",
-          }}
-        >
+        <div style={{ display: "grid", gridTemplateColumns: `repeat(${cols.length || 2}, 1fr)`, gap: 8, margin: "8px 0 12px" }}>
           {cols.map((col, i) => {
-            const hiCol = hiCols[i] || {};
-            const alt = pick(hiCol.alt, col.alt);
+            const hiCol   = hiCols[i] || {};
+            const alt     = pick(hiCol.alt, col.alt);
             const caption = pick(hiCol.caption, col.caption);
             return (
               <div key={i}>
                 {col.url ? (
-                  <img
-                    src={col.url}
-                    alt={alt || caption || `Image ${i + 1}`}
-                    style={{
-                      width: "100%",
-                      borderRadius: 3,
-                      border: "1px solid #e5e7eb",
-                    }}
-                    onError={(e) => {
-                      e.currentTarget.style.display = "none";
-                    }}
-                  />
+                  <img src={col.url} alt={alt || caption || `Image ${i + 1}`} style={{ width: "100%", borderRadius: 3, border: "1px solid #e5e7eb" }}
+                    onError={(e) => { e.currentTarget.style.display = "none"; }} />
                 ) : (
-                  <div
-                    style={{
-                      height: 60,
-                      background: "#f9fafb",
-                      border: "1px dashed #d1d5db",
-                      borderRadius: 4,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      color: "#9ca3af",
-                      fontSize: 9,
-                    }}
-                  >
-                    [Image {i + 1}]
-                  </div>
+                  <div style={{ height: 60, background: "#f9fafb", border: "1px dashed #d1d5db", borderRadius: 4, display: "flex", alignItems: "center", justifyContent: "center", color: "#9ca3af", fontSize: 9 }}>[Image {i + 1}]</div>
                 )}
                 {caption && (
-                  <div
-                    style={{
-                      fontFamily: DOC_FONT,
-                      fontSize: 9,
-                      color: "#6b7280",
-                      textAlign: "center",
-                      marginTop: 2,
-                      fontStyle: "italic",
-                    }}
-                  >
-                    {caption}
-                  </div>
+                  <div style={{ fontFamily: DOC_FONT, fontSize: 9, color: "#6b7280", textAlign: "center", marginTop: 2, fontStyle: "italic" }}>{caption}</div>
                 )}
               </div>
             );
@@ -1276,77 +629,41 @@ function WordBlock({ block, lang = "en", measureIdx = null }) {
 
     case "TABLE": {
       const isFormImport = c.source === "form_import";
+      // Form-import blocks store columns as [{key,label}] and rows as objects keyed by col.key;
+      // manually-built tables store headers as a string[] and rows as arrays of cell values.
+      // Both kinds read their Hindi version from block.translations.hi (block_translations table).
       const dataLanguage = c.language === "hi" ? "hi" : "en";
       const useTranslation = isHi && lang !== dataLanguage && t;
-      const fmtColumns =
-        (isFormImport && useTranslation && t.columns) || c.columns || [];
-      const fmtRows =
-        (isFormImport && useTranslation && t.rows) || c.rows || [];
+      const fmtColumns = (isFormImport && useTranslation && t.columns) || c.columns || [];
+      const fmtRows    = (isFormImport && useTranslation && t.rows)    || c.rows    || [];
       const headers = isFormImport
-        ? fmtColumns.map((col) => col.label || col.key)
-        : pick(t?.headers, c.headers) || [];
-      const allRows = isFormImport ? fmtRows : pick(t?.rows, c.rows) || [];
-      // Table-splitting meta-props: injected by the distribution algorithm when
-      // a table is too tall to fit on one page and must be chunked across pages.
-      const rowStart       = block._rowStart ?? 0;
-      const rowEnd         = block._rowEnd   ?? allRows.length;
-      const rows           = allRows.slice(rowStart, rowEnd);
-      const isContinuation = !!block._isContinuation;
-      const hideHeader     = !!block._hideHeader;
-      const noBottomMargin = !!block._noBottomMargin;
-      const cell = {
-        border: "1px solid #9ca3af",
-        padding: "4px 7px",
-        fontFamily: DOC_FONT,
-        fontSize: 10,
-        color: "#111827",
-        verticalAlign: "top",
-      };
+        ? fmtColumns.map(col => col.label || col.key)
+        : (pick(t?.headers, c.headers) || []);
+      const rows = isFormImport ? fmtRows : (pick(t?.rows, c.rows) || []);
+      const cell = { border: "1px solid #9ca3af", padding: "4px 7px", fontFamily: DOC_FONT, fontSize: 10, color: "#111827", verticalAlign: "top" };
       return (
-        <div style={{ margin: `${hideHeader ? "-1px" : "8px"} 0 ${noBottomMargin ? "0" : "12px"}`, overflowX: "auto" }}>
-          {isContinuation && !hideHeader && (
-            <div style={{ fontFamily: DOC_FONT, fontSize: 8, color: "#9ca3af", fontStyle: "italic", marginBottom: 2 }}>
-              (continued)
-            </div>
-          )}
+        <div style={{ margin: "8px 0 12px", overflowX: "auto" }}>
           <table style={{ borderCollapse: "collapse", width: "100%" }}>
-            {!hideHeader && headers.length > 0 && (
-              <thead {...(measureIdx != null ? { "data-table-header": measureIdx } : {})}>
+            {headers.length > 0 && (
+              <thead>
                 <tr>
                   {headers.map((h, i) => (
-                    <th
-                      key={i}
-                      style={{
-                        ...cell,
-                        background: "#D0CECE",
-                        fontWeight: 700,
-                        textAlign: "left",
-                      }}
-                    >
-                      {h || `Col ${i + 1}`}
-                    </th>
+                    <th key={i} style={{ ...cell, background: "#D0CECE", fontWeight: 700, textAlign: "left" }}>{h || `Col ${i + 1}`}</th>
                   ))}
                 </tr>
               </thead>
             )}
             <tbody>
               {rows.map((row, ri) => (
-                <tr
-                  key={rowStart + ri}
-                  {...(measureIdx != null ? { "data-table-row": `${measureIdx}-${rowStart + ri}` } : {})}
-                  style={{ background: (rowStart + ri) % 2 === 0 ? "#fff" : "#f9fafb" }}
-                >
+                <tr key={ri} style={{ background: ri % 2 === 0 ? "#fff" : "#f9fafb" }}>
                   {isFormImport
                     ? fmtColumns.map((col, ci) => (
-                        <td key={ci} style={cell}>
-                          {row?.[col.key] != null ? String(row[col.key]) : ""}
-                        </td>
+                        <td key={ci} style={cell}>{row?.[col.key] != null ? String(row[col.key]) : ""}</td>
                       ))
                     : (Array.isArray(row) ? row : []).map((cell_val, ci) => (
-                        <td key={ci} style={cell}>
-                          {cell_val}
-                        </td>
-                      ))}
+                        <td key={ci} style={cell}>{cell_val}</td>
+                      ))
+                  }
                 </tr>
               ))}
             </tbody>
@@ -1357,101 +674,46 @@ function WordBlock({ block, lang = "en", measureIdx = null }) {
 
     case "LIST": {
       const items = pick(t?.items, c.items) || [];
-      const Tag = c.ordered ? "ol" : "ul";
-      const fs = c.fontSize || 11;
-      const fc = c.fontColor || "#111827";
+      const Tag   = c.ordered ? "ol" : "ul";
+      const fs    = c.fontSize  || 11;
+      const fc    = c.fontColor || "#111827";
       return (
-        <Tag
-          style={{
-            fontFamily: DOC_FONT,
-            fontSize: fs,
-            color: fc,
-            paddingLeft: 24,
-            lineHeight: 1.8,
-            margin: "4px 0 10px",
-          }}
-        >
-          {items.map((it, i) => (
-            <li key={i} style={{ marginBottom: 3 }}>
-              {it}
-            </li>
-          ))}
+        <Tag style={{ fontFamily: DOC_FONT, fontSize: fs, color: fc, paddingLeft: 24, lineHeight: 1.8, margin: "4px 0 10px" }}>
+          {items.map((it, i) => <li key={i} style={{ marginBottom: 3 }}>{it}</li>)}
         </Tag>
       );
     }
 
     case "KPI": {
-      const opts = c.compile_options || {};
-      const showChart = opts.show_chart !== false;
+      const opts      = c.compile_options || {};
+      const showChart = opts.show_chart      !== false;
       const showTable = opts.show_data_table !== false;
-      const data = c.data || {};
-      const columns = data.columns || [];
-      const series = data.series || [];
-      const totals = data.totals || [];
-      const cell = {
-        border: "1px solid #9ca3af",
-        padding: "4px 7px",
-        fontFamily: DOC_FONT,
-        fontSize: 10,
-        color: "#111827",
-        verticalAlign: "top",
-      };
+      const data      = c.data || {};
+      const columns   = data.columns || [];
+      const series    = data.series  || [];
+      const totals    = data.totals  || [];
+      const cell = { border: "1px solid #9ca3af", padding: "4px 7px", fontFamily: DOC_FONT, fontSize: 10, color: "#111827", verticalAlign: "top" };
       return (
         <div style={{ margin: "8px 0 12px" }}>
           {showChart && c.svg_data && (
-            <div
-              style={{ overflow: "hidden", lineHeight: 0 }}
-              dangerouslySetInnerHTML={{ __html: c.svg_data }}
-            />
+            <div style={{ overflow: "hidden", lineHeight: 0 }} dangerouslySetInnerHTML={{ __html: c.svg_data }} />
           )}
           {showTable && columns.length > 0 && (
-            <table
-              style={{
-                borderCollapse: "collapse",
-                width: "100%",
-                marginTop: 8,
-              }}
-            >
+            <table style={{ borderCollapse: "collapse", width: "100%", marginTop: 8 }}>
               <thead>
                 <tr>
-                  <th
-                    style={{
-                      ...cell,
-                      background: "#D0CECE",
-                      fontWeight: 700,
-                      textAlign: "left",
-                    }}
-                  >
-                    Series
-                  </th>
+                  <th style={{ ...cell, background: "#D0CECE", fontWeight: 700, textAlign: "left" }}>Series</th>
                   {columns.map((col, i) => (
-                    <th
-                      key={i}
-                      style={{
-                        ...cell,
-                        background: "#D0CECE",
-                        fontWeight: 700,
-                        textAlign: "right",
-                      }}
-                    >
-                      {col}
-                    </th>
+                    <th key={i} style={{ ...cell, background: "#D0CECE", fontWeight: 700, textAlign: "right" }}>{col}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {series.map((s, si) => (
-                  <tr
-                    key={si}
-                    style={{ background: si % 2 === 0 ? "#fff" : "#f9fafb" }}
-                  >
-                    <td style={{ ...cell, fontWeight: 600 }}>
-                      {s.display_name || s.name}
-                    </td>
+                  <tr key={si} style={{ background: si % 2 === 0 ? "#fff" : "#f9fafb" }}>
+                    <td style={{ ...cell, fontWeight: 600 }}>{s.display_name || s.name}</td>
                     {(s.values || []).map((v, vi) => (
-                      <td key={vi} style={{ ...cell, textAlign: "right" }}>
-                        {v}
-                      </td>
+                      <td key={vi} style={{ ...cell, textAlign: "right" }}>{v}</td>
                     ))}
                   </tr>
                 ))}
@@ -1459,12 +721,7 @@ function WordBlock({ block, lang = "en", measureIdx = null }) {
                   <tr>
                     <td style={{ ...cell, fontWeight: 700 }}>Total</td>
                     {totals.map((v, vi) => (
-                      <td
-                        key={vi}
-                        style={{ ...cell, textAlign: "right", fontWeight: 700 }}
-                      >
-                        {v}
-                      </td>
+                      <td key={vi} style={{ ...cell, textAlign: "right", fontWeight: 700 }}>{v}</td>
                     ))}
                   </tr>
                 )}
@@ -1472,69 +729,25 @@ function WordBlock({ block, lang = "en", measureIdx = null }) {
             </table>
           )}
           {opts.caption && (
-            <div
-              style={{
-                fontFamily: DOC_FONT,
-                fontSize: 9,
-                color: "#6b7280",
-                textAlign: "center",
-                marginTop: 4,
-                fontStyle: "italic",
-              }}
-            >
+            <div style={{ fontFamily: DOC_FONT, fontSize: 9, color: "#6b7280", textAlign: "center", marginTop: 4, fontStyle: "italic" }}>
               {opts.caption}
             </div>
           )}
           {!c.svg_data && !showTable && (
-            <div
-              style={{
-                fontFamily: DOC_FONT,
-                fontSize: 10,
-                color: "#9ca3af",
-                fontStyle: "italic",
-              }}
-            >
-              [KPI chart not yet imported]
-            </div>
+            <div style={{ fontFamily: DOC_FONT, fontSize: 10, color: "#9ca3af", fontStyle: "italic" }}>[KPI chart not yet imported]</div>
           )}
         </div>
       );
     }
 
     case "DIVIDER":
-      return (
-        <hr
-          style={{
-            border: "none",
-            borderTop: "1px solid #9ca3af",
-            margin: "10px 0 12px",
-          }}
-        />
-      );
+      return <hr style={{ border: "none", borderTop: "1px solid #9ca3af", margin: "10px 0 12px" }} />;
 
     case "FILE":
       return (
-        <div
-          style={{
-            fontFamily: DOC_FONT,
-            fontSize: 10,
-            margin: "6px 0 10px",
-            padding: "5px 10px",
-            background: "#eff6ff",
-            border: "1px solid #bfdbfe",
-            borderRadius: 2,
-            display: "flex",
-            alignItems: "center",
-            gap: 5,
-          }}
-        >
+        <div style={{ fontFamily: DOC_FONT, fontSize: 10, margin: "6px 0 10px", padding: "5px 10px", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 2, display: "flex", alignItems: "center", gap: 5 }}>
           <span>📎</span>
-          <a
-            href={c.url || "#"}
-            target="_blank"
-            rel="noreferrer"
-            style={{ color: "#1d4ed8", textDecoration: "underline" }}
-          >
+          <a href={c.url || "#"} target="_blank" rel="noreferrer" style={{ color: "#1d4ed8", textDecoration: "underline" }}>
             {c.name || c.url || "Attachment"}
           </a>
         </div>
@@ -1546,44 +759,25 @@ function WordBlock({ block, lang = "en", measureIdx = null }) {
 }
 
 /* ── A4 Page shell ── */
-function A4Page({
-  children,
-  pageNum,
-  totalPages,
-  sectionTitle,
-  reportTitle,
-  scale,
-  isFirst,
-  reportMeta,
-}) {
+function A4Page({ children, pageNum, totalPages, sectionTitle, reportTitle, scale, isFirst, reportMeta }) {
   return (
-    <div
-      style={{
-        width: A4_W,
-        minHeight: A4_H,
-        background: "#fff",
-        boxShadow: "0 3px 16px rgba(0,0,0,0.45)",
-        position: "relative",
-        boxSizing: "border-box",
-        flexShrink: 0,
-      }}
-    >
+    <div style={{
+      width: A4_W,
+      minHeight: A4_H,
+      background: "#fff",
+      boxShadow: "0 3px 16px rgba(0,0,0,0.45)",
+      position: "relative",
+      boxSizing: "border-box",
+      flexShrink: 0,
+    }}>
       {/* Running page header */}
-      <div
-        style={{
-          position: "absolute",
-          top: 24,
-          left: MARG,
-          right: MARG,
-          borderBottom: "0.5px solid #d1d5db",
-          paddingBottom: 5,
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "baseline",
-        }}
-      >
+      <div style={{
+        position: "absolute", top: 24, left: MARG, right: MARG,
+        borderBottom: "0.5px solid #d1d5db", paddingBottom: 5,
+        display: "flex", justifyContent: "space-between", alignItems: "baseline",
+      }}>
         <span style={{ fontFamily: DOC_FONT, fontSize: 7.5, color: "#9ca3af" }}>
-          {reportMeta?.report_type || ""} {reportMeta?.academic_year || ""}
+          {reportMeta?.report_type || ""}  {reportMeta?.academic_year || ""}
         </span>
         <span style={{ fontFamily: DOC_FONT, fontSize: 7.5, color: "#9ca3af" }}>
           {reportTitle || reportMeta?.title || ""}
@@ -1592,40 +786,16 @@ function A4Page({
 
       {/* Content area */}
       <div style={{ padding: `${MARG}px ${MARG}px ${MARG + 20}px` }}>
+
         {/* Document title block — first page only */}
         {isFirst && reportMeta && (
-          <div
-            style={{
-              marginBottom: 20,
-              paddingBottom: 16,
-              borderBottom: "2px solid #1F3864",
-            }}
-          >
-            <div
-              style={{
-                fontFamily: DOC_FONT,
-                fontSize: 20,
-                fontWeight: 700,
-                color: "#1F3864",
-                textAlign: "center",
-                lineHeight: 1.3,
-                marginBottom: 4,
-              }}
-            >
+          <div style={{ marginBottom: 20, paddingBottom: 16, borderBottom: "2px solid #1F3864" }}>
+            <div style={{ fontFamily: DOC_FONT, fontSize: 20, fontWeight: 700, color: "#1F3864", textAlign: "center", lineHeight: 1.3, marginBottom: 4 }}>
               {reportMeta.title}
             </div>
             {(reportMeta.report_type || reportMeta.academic_year) && (
-              <div
-                style={{
-                  fontFamily: DOC_FONT,
-                  fontSize: 9,
-                  color: "#6b7280",
-                  textAlign: "center",
-                }}
-              >
-                {[reportMeta.report_type, reportMeta.academic_year]
-                  .filter(Boolean)
-                  .join("  ·  ")}
+              <div style={{ fontFamily: DOC_FONT, fontSize: 9, color: "#6b7280", textAlign: "center" }}>
+                {[reportMeta.report_type, reportMeta.academic_year].filter(Boolean).join("  ·  ")}
               </div>
             )}
           </div>
@@ -1633,19 +803,11 @@ function A4Page({
 
         {/* Section heading */}
         {sectionTitle && (
-          <div
-            style={{
-              fontFamily: DOC_FONT,
-              fontSize: 14,
-              fontWeight: 700,
-              color: "#1F3864",
-              borderBottom: "1px solid #d1d5db",
-              paddingBottom: 5,
-              marginBottom: 14,
-            }}
-          >
-            {sectionTitle}
-            {!isFirst ? " (continued)" : ""}
+          <div style={{
+            fontFamily: DOC_FONT, fontSize: 14, fontWeight: 700, color: "#1F3864",
+            borderBottom: "1px solid #d1d5db", paddingBottom: 5, marginBottom: 14,
+          }}>
+            {sectionTitle}{!isFirst ? " (continued)" : ""}
           </div>
         )}
 
@@ -1653,24 +815,14 @@ function A4Page({
       </div>
 
       {/* Running page footer */}
-      <div
-        style={{
-          position: "absolute",
-          bottom: 24,
-          left: MARG,
-          right: MARG,
-          borderTop: "0.5px solid #d1d5db",
-          paddingTop: 5,
-          display: "flex",
-          justifyContent: "space-between",
-        }}
-      >
+      <div style={{
+        position: "absolute", bottom: 24, left: MARG, right: MARG,
+        borderTop: "0.5px solid #d1d5db", paddingTop: 5,
+        display: "flex", justifyContent: "space-between",
+      }}>
+        <span style={{ fontFamily: DOC_FONT, fontSize: 7.5, color: "#9ca3af" }}>{sectionTitle}</span>
         <span style={{ fontFamily: DOC_FONT, fontSize: 7.5, color: "#9ca3af" }}>
-          {sectionTitle}
-        </span>
-        <span style={{ fontFamily: DOC_FONT, fontSize: 7.5, color: "#9ca3af" }}>
-          {pageNum}
-          {totalPages > 1 ? ` / ${totalPages}` : ""}
+          {pageNum}{totalPages > 1 ? ` / ${totalPages}` : ""}
         </span>
       </div>
     </div>
@@ -1678,26 +830,15 @@ function A4Page({
 }
 
 /* ── Paginated Word Document Preview ── */
-function WordDocumentPreview({
-  reportMeta,
-  section,
-  blocks,
-  reportSections,
-  currentSectionId,
-  canvasRef,
-  lang = "en",
-}) {
-  const containerRef = useRef(null);
-  const measureRef = useRef(null);
+function WordDocumentPreview({ reportMeta, section, blocks, reportSections, currentSectionId, canvasRef, lang = "en" }) {
+  const containerRef  = useRef(null);
+  const measureRef    = useRef(null);
 
-  const containerCallbackRef = useCallback(
-    (el) => {
-      containerRef.current = el;
-      if (canvasRef) canvasRef.current = el;
-    },
-    [canvasRef],
-  );
-  const [scale, setScale] = useState(0.6);
+  const containerCallbackRef = useCallback((el) => {
+    containerRef.current = el;
+    if (canvasRef) canvasRef.current = el;
+  }, [canvasRef]);
+  const [scale, setScale]       = useState(0.6);
   const [pageGroups, setPageGroups] = useState([]);
 
   /* Compute scale based on container width */
@@ -1714,163 +855,68 @@ function WordDocumentPreview({
     return () => ro.disconnect();
   }, []);
 
-  /* Distribute blocks across pages using hidden measurement.
-     TABLE blocks are split row-by-row so a large table can span multiple pages. */
+  /* Distribute blocks across pages using hidden measurement */
   useEffect(() => {
     if (!measureRef.current || !blocks.length) {
       setPageGroups([blocks]);
       return;
     }
 
-    const run = () => {
-      const container = measureRef.current;
-      if (!container) return;
+    const els = Array.from(measureRef.current.querySelectorAll("[data-block-idx]"));
+    if (!els.length) { setPageGroups([blocks]); return; }
 
-      const result = [];
-      let page = [];
-      let usedH = TITLE_H; // page 1 reserves space for title block
+    const groups  = [];
+    let current   = [];
+    let usedH     = TITLE_H; // page 1 has title header above section
 
-      blocks.forEach((block, i) => {
-        const el = container.querySelector(`[data-block-idx="${i}"]`);
-        if (!el) { page.push(block); return; }
-
-        if (block.block_type === "TABLE") {
-          const headerEl = container.querySelector(`thead[data-table-header="${i}"]`);
-          const headerH = headerEl ? headerEl.offsetHeight : 0;
-          const rowEls = container.querySelectorAll(`tr[data-table-row^="${i}-"]`);
-          const rowHeights = Array.from(rowEls).map((r) => r.offsetHeight);
-
-          if (!rowHeights.length) {
-            // No measurable rows — treat as atomic block
-            const h = el.offsetHeight + 12;
-            if (usedH + h > CON_H && page.length > 0) {
-              result.push(page); page = [block]; usedH = 40 + h;
-            } else {
-              page.push(block); usedH += h;
-            }
-            return;
-          }
-
-          let rowStart = 0;
-          let chunkIdx = 0;
-          const totalRows = rowHeights.length;
-
-          while (rowStart < totalRows) {
-            const isFirstChunk = chunkIdx === 0;
-            const thisHeaderH = isFirstChunk ? headerH : 0;
-            const available = CON_H - usedH;
-
-            let chunkH = thisHeaderH;
-            let rowEnd = rowStart;
-            while (rowEnd < totalRows) {
-              const rh = rowHeights[rowEnd];
-              if (chunkH + rh > available && rowEnd > rowStart) break;
-              chunkH += rh;
-              rowEnd++;
-            }
-            if (rowEnd === rowStart) rowEnd = rowStart + 1; // always include ≥1 row
-
-            const isLastChunk = rowEnd >= totalRows;
-            page.push({
-              ...block,
-              _rowStart: rowStart,
-              _rowEnd: rowEnd,
-              _isContinuation: !isFirstChunk,
-              _hideHeader: !isFirstChunk,
-              _noBottomMargin: !isLastChunk,
-            });
-            usedH += chunkH + 12;
-            rowStart = rowEnd;
-            chunkIdx++;
-
-            if (!isLastChunk) {
-              result.push(page);
-              page = [];
-              usedH = 40; // continuation pages: section heading only
-            }
-          }
-          return;
-        }
-
-        // Non-table block — treat as atomic unit
-        const h = el.offsetHeight + 12;
-        if (usedH + h > CON_H && page.length > 0) {
-          result.push(page);
-          page = [block];
-          usedH = 40 + h;
-        } else {
-          page.push(block);
-          usedH += h;
-        }
-      });
-
-      if (page.length) result.push(page);
-      setPageGroups(result.length ? result : [blocks]);
-    };
-
-    const raf = requestAnimationFrame(run);
-    return () => cancelAnimationFrame(raf);
-  }, [blocks, lang]);
+    els.forEach((el) => {
+      const idx = Number(el.getAttribute("data-block-idx"));
+      const h   = el.offsetHeight + 12; // 12 = inter-block margin
+      if (usedH + h > CON_H && current.length > 0) {
+        groups.push(current);
+        current = [blocks[idx]];
+        usedH   = 40; // subsequent pages: section heading only
+      } else {
+        current.push(blocks[idx]);
+        usedH += h;
+      }
+    });
+    if (current.length) groups.push(current);
+    setPageGroups(groups.length ? groups : [blocks]);
+  }, [blocks]);
 
   /* Status colours for nav strip */
   const navSectionList = reportSections;
 
   return (
-    <div
-      style={{
-        background: "#808080",
-        flex: 1,
-        display: "flex",
-        flexDirection: "column",
-        minHeight: 0,
-      }}
-    >
+    <div style={{ background: "#808080", flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
+
       {/* ── Toolbar strip ── */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          padding: "8px 14px",
-          background: "#595959",
-          flexShrink: 0,
-        }}
-      >
-        <span
-          style={{
-            fontSize: 10,
-            fontWeight: 700,
-            color: "#e2e8f0",
-            textTransform: "uppercase",
-            letterSpacing: 1,
-          }}
-        >
+      <div style={{
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        padding: "8px 14px", background: "#595959", flexShrink: 0,
+      }}>
+        <span style={{ fontSize: 10, fontWeight: 700, color: "#e2e8f0", textTransform: "uppercase", letterSpacing: 1 }}>
           Document Preview
         </span>
         <StatusBadge status={section?.status} tiny />
       </div>
 
       {/* ── Scrollable canvas ── */}
-      <div
-        ref={containerCallbackRef}
-        style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 16 }}
-      >
+      <div ref={containerCallbackRef} style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 16 }}>
+
         {/* Hidden measurement div — renders blocks at real doc width */}
         <div
           ref={measureRef}
           style={{
-            position: "absolute",
-            visibility: "hidden",
-            pointerEvents: "none",
-            width: CON_W,
-            top: 0,
-            left: -9999,
+            position: "absolute", visibility: "hidden", pointerEvents: "none",
+            width: CON_W, top: 0, left: -9999,
           }}
           aria-hidden="true"
         >
           {blocks.map((b, i) => (
             <div key={b.id} data-block-idx={i}>
-              <WordBlock block={b} lang={lang} measureIdx={i} />
+              <WordBlock block={b} lang={lang} />
             </div>
           ))}
         </div>
@@ -1879,16 +925,7 @@ function WordDocumentPreview({
         {(pageGroups.length ? pageGroups : [blocks]).map((pageBlocks, pi) => (
           <div key={pi}>
             {pi > 0 && (
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                  margin: "8px 0",
-                  color: "#d1d5db",
-                  fontSize: 9,
-                }}
-              >
+              <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "8px 0", color: "#d1d5db", fontSize: 9 }}>
                 <div style={{ flex: 1, height: 1, background: "#6b7280" }} />
                 <span>Page {pi + 1}</span>
                 <div style={{ flex: 1, height: 1, background: "#6b7280" }} />
@@ -1896,21 +933,17 @@ function WordDocumentPreview({
             )}
 
             {/* Scale wrapper */}
-            <div
-              style={{
-                width: A4_W * scale,
-                height: A4_H * scale,
-                overflow: "hidden",
-                marginBottom: 10,
-              }}
-            >
-              <div
-                style={{
-                  transform: `scale(${scale})`,
-                  transformOrigin: "top left",
-                  width: A4_W,
-                }}
-              >
+            <div style={{
+              width: A4_W * scale,
+              height: A4_H * scale,
+              overflow: "hidden",
+              marginBottom: 10,
+            }}>
+              <div style={{
+                transform: `scale(${scale})`,
+                transformOrigin: "top left",
+                width: A4_W,
+              }}>
                 <A4Page
                   pageNum={pi + 1}
                   totalPages={pageGroups.length || 1}
@@ -1920,22 +953,11 @@ function WordDocumentPreview({
                   isFirst={pi === 0}
                 >
                   {pageBlocks.length === 0 ? (
-                    <div
-                      style={{
-                        fontFamily: DOC_FONT,
-                        fontSize: 11,
-                        color: "#9ca3af",
-                        fontStyle: "italic",
-                        textAlign: "center",
-                        paddingTop: 60,
-                      }}
-                    >
+                    <div style={{ fontFamily: DOC_FONT, fontSize: 11, color: "#9ca3af", fontStyle: "italic", textAlign: "center", paddingTop: 60 }}>
                       No content yet — add blocks using the editor on the left.
                     </div>
                   ) : (
-                    pageBlocks.map((b) => (
-                      <WordBlock key={b.id} block={b} lang={lang} />
-                    ))
+                    pageBlocks.map((b) => <WordBlock key={b.id} block={b} lang={lang} />)
                   )}
                 </A4Page>
               </div>
@@ -1949,51 +971,24 @@ function WordDocumentPreview({
             {navSectionList.map((sec, idx) => {
               const isCurrent = sec.id === currentSectionId;
               return (
-                <div
-                  key={sec.id}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                    padding: "6px 12px",
-                    background: isCurrent ? "#374151" : "#4b5563",
-                    borderBottom:
-                      idx < navSectionList.length - 1
-                        ? "1px solid #6b7280"
-                        : "none",
-                  }}
-                >
-                  <span
-                    style={{
-                      width: 15,
-                      height: 15,
-                      borderRadius: "50%",
-                      flexShrink: 0,
-                      display: "inline-flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      background: isCurrent ? "#7c3aed" : "#6b7280",
-                      color: "#fff",
-                      fontSize: 8,
-                      fontWeight: 700,
-                    }}
-                  >
-                    {idx + 1}
-                  </span>
-                  <span
-                    style={{
-                      flex: 1,
-                      fontFamily: DOC_FONT,
-                      fontSize: 10,
-                      color: isCurrent ? "#f3f4f6" : "#9ca3af",
-                      fontWeight: isCurrent ? 700 : 400,
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {sec.title}
-                  </span>
+                <div key={sec.id} style={{
+                  display: "flex", alignItems: "center", gap: 8,
+                  padding: "6px 12px",
+                  background: isCurrent ? "#374151" : "#4b5563",
+                  borderBottom: idx < navSectionList.length - 1 ? "1px solid #6b7280" : "none",
+                }}>
+                  <span style={{
+                    width: 15, height: 15, borderRadius: "50%", flexShrink: 0,
+                    display: "inline-flex", alignItems: "center", justifyContent: "center",
+                    background: isCurrent ? "#7c3aed" : "#6b7280",
+                    color: "#fff", fontSize: 8, fontWeight: 700,
+                  }}>{idx + 1}</span>
+                  <span style={{
+                    flex: 1, fontFamily: DOC_FONT, fontSize: 10,
+                    color: isCurrent ? "#f3f4f6" : "#9ca3af",
+                    fontWeight: isCurrent ? 700 : 400,
+                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                  }}>{sec.title}</span>
                   <StatusBadge status={sec.status} tiny />
                 </div>
               );
@@ -2011,282 +1006,84 @@ function TypeGlyph({ type, size = 16 }) {
   const s = { width: size, height: size, display: "block" };
   switch (type) {
     case "PARAGRAPH":
-      return (
-        <span
-          style={{
-            ...s,
-            fontWeight: 800,
-            fontSize: size * 0.85,
-            lineHeight: 1,
-            textAlign: "center",
-          }}
-        >
-          T
-        </span>
-      );
+      return <span style={{ ...s, fontWeight: 800, fontSize: size * 0.85, lineHeight: 1, textAlign: "center" }}>T</span>;
     case "HEADING":
-      return (
-        <span
-          style={{
-            ...s,
-            fontWeight: 800,
-            fontSize: size * 0.85,
-            lineHeight: 1,
-            textAlign: "center",
-          }}
-        >
-          H
-        </span>
-      );
+      return <span style={{ ...s, fontWeight: 800, fontSize: size * 0.85, lineHeight: 1, textAlign: "center" }}>H</span>;
     case "TABLE":
       return (
-        <svg
-          style={s}
-          viewBox="0 0 20 20"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.7"
-        >
-          <rect x="2.5" y="3.5" width="15" height="13" rx="1.5" />
-          <path d="M2.5 8h15M2.5 12.5h15M9 3.5v13" />
+        <svg style={s} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.7">
+          <rect x="2.5" y="3.5" width="15" height="13" rx="1.5"/><path d="M2.5 8h15M2.5 12.5h15M9 3.5v13"/>
         </svg>
       );
-    case "IMAGE":
-    case "IMAGE_GRID":
+    case "IMAGE": case "IMAGE_GRID":
       return (
-        <svg
-          style={s}
-          viewBox="0 0 20 20"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.7"
-        >
-          <rect x="2.5" y="3.5" width="15" height="13" rx="1.5" />
-          <circle cx="7" cy="8" r="1.4" />
-          <path
-            d="M3 14.5l4.5-4.5 3 3 2.5-3 4 4.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
+        <svg style={s} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.7">
+          <rect x="2.5" y="3.5" width="15" height="13" rx="1.5"/><circle cx="7" cy="8" r="1.4"/><path d="M3 14.5l4.5-4.5 3 3 2.5-3 4 4.5" strokeLinecap="round" strokeLinejoin="round"/>
         </svg>
       );
     case "LIST":
       return (
-        <svg
-          style={s}
-          viewBox="0 0 20 20"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.8"
-          strokeLinecap="round"
-        >
-          <circle cx="3.5" cy="5" r="1" />
-          <circle cx="3.5" cy="10" r="1" />
-          <circle cx="3.5" cy="15" r="1" />
-          <path d="M7 5h10M7 10h10M7 15h10" />
+        <svg style={s} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+          <circle cx="3.5" cy="5" r="1"/><circle cx="3.5" cy="10" r="1"/><circle cx="3.5" cy="15" r="1"/>
+          <path d="M7 5h10M7 10h10M7 15h10"/>
         </svg>
       );
     case "FILE":
       return (
-        <svg
-          style={s}
-          viewBox="0 0 20 20"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.7"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <path d="M14 3.5l2.5 2.5v9a1.5 1.5 0 01-1.5 1.5H5a1.5 1.5 0 01-1.5-1.5v-11A1.5 1.5 0 015 2.5h9z" />
-          <path d="M7.5 9.5h5M7.5 12.5h5" />
+        <svg style={s} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M14 3.5l2.5 2.5v9a1.5 1.5 0 01-1.5 1.5H5a1.5 1.5 0 01-1.5-1.5v-11A1.5 1.5 0 015 2.5h9z"/>
+          <path d="M7.5 9.5h5M7.5 12.5h5"/>
         </svg>
       );
     case "KPI":
       return (
-        <svg
-          style={s}
-          viewBox="0 0 20 20"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.8"
-          strokeLinecap="round"
-        >
-          <path d="M3 16.5h14" />
-          <rect
-            x="5"
-            y="10"
-            width="2.6"
-            height="6.5"
-            rx="0.5"
-            fill="currentColor"
-            stroke="none"
-          />
-          <rect
-            x="9.7"
-            y="6"
-            width="2.6"
-            height="10.5"
-            rx="0.5"
-            fill="currentColor"
-            stroke="none"
-          />
-          <rect
-            x="14.4"
-            y="3"
-            width="2.6"
-            height="13.5"
-            rx="0.5"
-            fill="currentColor"
-            stroke="none"
-          />
+        <svg style={s} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+          <path d="M3 16.5h14"/><rect x="5" y="10" width="2.6" height="6.5" rx="0.5" fill="currentColor" stroke="none"/>
+          <rect x="9.7" y="6" width="2.6" height="10.5" rx="0.5" fill="currentColor" stroke="none"/>
+          <rect x="14.4" y="3" width="2.6" height="13.5" rx="0.5" fill="currentColor" stroke="none"/>
         </svg>
       );
     case "DIVIDER":
-      return (
-        <svg
-          style={s}
-          viewBox="0 0 20 20"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.8"
-          strokeLinecap="round"
-        >
-          <path d="M3 10h14" />
-        </svg>
-      );
+      return <svg style={s} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M3 10h14"/></svg>;
     default:
-      return (
-        <span style={{ ...s, fontWeight: 800, fontSize: size * 0.7 }}>?</span>
-      );
+      return <span style={{ ...s, fontWeight: 800, fontSize: size * 0.7 }}>?</span>;
   }
 }
 
 const BLOCK_TYPE_META = {
-  PARAGRAPH: {
-    label: "Rich Text Block",
-    menuLabel: "Rich Text",
-    hint: "Formatted text — font, size, color, alignment, lists, links",
-    color: "#1d4ed8",
-    bg: "#eff6ff",
-  },
-  HEADING: {
-    label: "Heading",
-    menuLabel: "Heading",
-    hint: "Section heading (H1–H3)",
-    color: "#6d28d9",
-    bg: "#f5f3ff",
-  },
-  TABLE: {
-    label: "Table",
-    menuLabel: "Table",
-    hint: "A grid of cells, or imported data from a form",
-    color: "#0e7490",
-    bg: "#ecfeff",
-  },
-  IMAGE: {
-    label: "Image",
-    menuLabel: "Image",
-    hint: "A single image with caption",
-    color: "#15803d",
-    bg: "#f0fdf4",
-  },
-  IMAGE_GRID: {
-    label: "Image Grid",
-    menuLabel: "Image Grid",
-    hint: "Up to 4 images side by side",
-    color: "#15803d",
-    bg: "#f0fdf4",
-  },
-  LIST: {
-    label: "List",
-    menuLabel: "List",
-    hint: "Bulleted or numbered list",
-    color: "#b45309",
-    bg: "#fffbeb",
-  },
-  FILE: {
-    label: "File Attachment",
-    menuLabel: "File",
-    hint: "Link to a downloadable file",
-    color: "#475569",
-    bg: "#f1f5f9",
-  },
-  KPI: {
-    label: "KPI Chart",
-    menuLabel: "KPI Chart",
-    hint: "A chart imported from the KPI module",
-    color: "#be185d",
-    bg: "#fdf2f8",
-  },
-  DIVIDER: {
-    label: "Divider",
-    menuLabel: "Divider",
-    hint: "A horizontal rule separating content",
-    color: "#64748b",
-    bg: "#f8fafc",
-  },
+  PARAGRAPH:  { label: "Rich Text Block", menuLabel: "Rich Text", hint: "Formatted text — font, size, color, alignment, lists, links",        color: "#1d4ed8", bg: "#eff6ff" },
+  HEADING:    { label: "Heading",         menuLabel: "Heading",   hint: "Section heading (H1–H3)",                                            color: "#6d28d9", bg: "#f5f3ff" },
+  TABLE:      { label: "Table",           menuLabel: "Table",     hint: "A grid of cells, or imported data from a form",                       color: "#0e7490", bg: "#ecfeff" },
+  IMAGE:      { label: "Image",           menuLabel: "Image",     hint: "A single image with caption",                                        color: "#15803d", bg: "#f0fdf4" },
+  IMAGE_GRID: { label: "Image Grid",      menuLabel: "Image Grid", hint: "Up to 4 images side by side",                                        color: "#15803d", bg: "#f0fdf4" },
+  LIST:       { label: "List",            menuLabel: "List",      hint: "Bulleted or numbered list",                                          color: "#b45309", bg: "#fffbeb" },
+  FILE:       { label: "File Attachment", menuLabel: "File",      hint: "Link to a downloadable file",                                        color: "#475569", bg: "#f1f5f9" },
+  KPI:        { label: "KPI Chart",       menuLabel: "KPI Chart", hint: "A chart imported from the KPI module",                                color: "#be185d", bg: "#fdf2f8" },
+  DIVIDER:    { label: "Divider",         menuLabel: "Divider",   hint: "A horizontal rule separating content",                                color: "#64748b", bg: "#f8fafc" },
 };
-function typeMeta(type) {
-  return (
-    BLOCK_TYPE_META[type] || {
-      label: type,
-      menuLabel: type,
-      hint: "",
-      color: "#64748b",
-      bg: "#f8fafc",
-    }
-  );
-}
+function typeMeta(type) { return BLOCK_TYPE_META[type] || { label: type, menuLabel: type, hint: "", color: "#64748b", bg: "#f8fafc" }; }
 
 function IconChip({ type, size = 30 }) {
   const m = typeMeta(type);
   return (
-    <div
-      style={{
-        width: size,
-        height: size,
-        borderRadius: 8,
-        flexShrink: 0,
-        background: m.bg,
-        color: m.color,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-      }}
-    >
+    <div style={{
+      width: size, height: size, borderRadius: 8, flexShrink: 0,
+      background: m.bg, color: m.color,
+      display: "flex", alignItems: "center", justifyContent: "center",
+    }}>
       <TypeGlyph type={type} size={Math.round(size * 0.55)} />
     </div>
   );
 }
 
-const ADD_BLOCK_TYPES = [
-  "PARAGRAPH",
-  "HEADING",
-  "TABLE",
-  "IMAGE",
-  "IMAGE_GRID",
-  "LIST",
-  "FILE",
-  "KPI",
-  "DIVIDER",
-];
+const ADD_BLOCK_TYPES = ["PARAGRAPH", "HEADING", "TABLE", "IMAGE", "IMAGE_GRID", "LIST", "FILE", "KPI", "DIVIDER"];
 
 /* ── Block-type picker list, shared by InlineAdder's dropdown and the big
    "+ Add Block" button below. ────────────────────────────────────────────── */
 function BlockTypeMenu({ onAdd }) {
   return (
     <>
-      <div
-        style={{
-          width: "100%",
-          fontSize: 10,
-          fontWeight: 700,
-          color: "#94a3b8",
-          textTransform: "uppercase",
-          letterSpacing: 0.7,
-          marginBottom: 4,
-        }}
-      >
+      <div style={{ width: "100%", fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.7, marginBottom: 4 }}>
         Insert block
       </div>
       {ADD_BLOCK_TYPES.map((type) => {
@@ -2294,33 +1091,14 @@ function BlockTypeMenu({ onAdd }) {
         return (
           <button
             key={type}
-            onMouseDown={(e) => {
-              e.preventDefault();
-              onAdd(type);
-            }}
+            onMouseDown={(e) => { e.preventDefault(); onAdd(type); }}
             style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 5,
-              padding: "6px 10px",
-              borderRadius: 7,
-              border: "1px solid #e2e8f0",
-              background: "#fff",
-              fontSize: 12,
-              color: "#374151",
-              cursor: "pointer",
-              fontFamily: "inherit",
+              display: "flex", alignItems: "center", gap: 5, padding: "6px 10px",
+              borderRadius: 7, border: "1px solid #e2e8f0", background: "#fff",
+              fontSize: 12, color: "#374151", cursor: "pointer", fontFamily: "inherit",
             }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = "#faf5ff";
-              e.currentTarget.style.borderColor = "#c4b5fd";
-              e.currentTarget.style.color = "#7c3aed";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = "#fff";
-              e.currentTarget.style.borderColor = "#e2e8f0";
-              e.currentTarget.style.color = "#374151";
-            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = "#faf5ff"; e.currentTarget.style.borderColor = "#c4b5fd"; e.currentTarget.style.color = "#7c3aed"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = "#fff"; e.currentTarget.style.borderColor = "#e2e8f0"; e.currentTarget.style.color = "#374151"; }}
           >
             <IconChip type={type} size={18} />
             {m.menuLabel}
@@ -2341,9 +1119,7 @@ function BigAddBlockButton({ onAdd, label = "+ Add Block" }) {
 
   useEffect(() => {
     if (!open) return;
-    function handler(e) {
-      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
-    }
+    function handler(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false); }
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [open]);
@@ -2353,56 +1129,26 @@ function BigAddBlockButton({ onAdd, label = "+ Add Block" }) {
       <button
         onClick={() => setOpen((o) => !o)}
         style={{
-          width: "100%",
-          padding: "13px 16px",
-          borderRadius: 10,
+          width: "100%", padding: "13px 16px", borderRadius: 10,
           border: `2px dashed ${open ? "#7c3aed" : "#c4b5fd"}`,
-          background: open ? "#faf5ff" : "#fff",
-          color: "#7c3aed",
-          fontSize: 13.5,
-          fontWeight: 700,
-          cursor: "pointer",
-          fontFamily: "inherit",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          gap: 6,
+          background: open ? "#faf5ff" : "#fff", color: "#7c3aed",
+          fontSize: 13.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit",
+          display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
           transition: "all 0.15s",
         }}
-        onMouseEnter={(e) => {
-          if (!open) e.currentTarget.style.background = "#faf5ff";
-        }}
-        onMouseLeave={(e) => {
-          if (!open) e.currentTarget.style.background = "#fff";
-        }}
+        onMouseEnter={(e) => { if (!open) e.currentTarget.style.background = "#faf5ff"; }}
+        onMouseLeave={(e) => { if (!open) e.currentTarget.style.background = "#fff"; }}
       >
         {label}
       </button>
       {open && (
-        <div
-          style={{
-            position: "absolute",
-            bottom: "calc(100% + 6px)",
-            left: "50%",
-            transform: "translateX(-50%)",
-            background: "#fff",
-            border: "1px solid #e2e8f0",
-            borderRadius: 12,
-            boxShadow: "0 8px 28px rgba(0,0,0,0.13)",
-            padding: "10px 12px",
-            display: "flex",
-            flexWrap: "wrap",
-            gap: 5,
-            width: 308,
-            zIndex: 100,
-          }}
-        >
-          <BlockTypeMenu
-            onAdd={(type) => {
-              onAdd(type);
-              setOpen(false);
-            }}
-          />
+        <div style={{
+          position: "absolute", bottom: "calc(100% + 6px)", left: "50%", transform: "translateX(-50%)",
+          background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12,
+          boxShadow: "0 8px 28px rgba(0,0,0,0.13)", padding: "10px 12px",
+          display: "flex", flexWrap: "wrap", gap: 5, width: 308, zIndex: 100,
+        }}>
+          <BlockTypeMenu onAdd={(type) => { onAdd(type); setOpen(false); }} />
         </div>
       )}
     </div>
@@ -2430,56 +1176,28 @@ function InlineAdder({ isOpen, onToggle, onAdd }) {
 
   return (
     <div
-      style={{
-        position: "relative",
-        height: 20,
-        display: "flex",
-        alignItems: "center",
-        margin: "2px 0",
-        zIndex: isOpen ? 30 : 1,
-      }}
+      style={{ position: "relative", height: 20, display: "flex", alignItems: "center", margin: "2px 0", zIndex: isOpen ? 30 : 1 }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
       {/* Line */}
-      <div
-        style={{
-          flex: 1,
-          height: 1.5,
-          borderRadius: 1,
-          background: show ? "#c4b5fd" : "#f1f5f9",
-          transition: "background 0.15s",
-        }}
-      />
+      <div style={{ flex: 1, height: 1.5, borderRadius: 1, background: show ? "#c4b5fd" : "#f1f5f9", transition: "background 0.15s" }} />
 
       {/* + button — always present so the insert affordance is discoverable without hovering */}
       <button
         title="Insert block"
         aria-label="Insert block"
-        onMouseDown={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          onToggle(!isOpen);
-        }}
+        onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); onToggle(!isOpen); }}
         style={{
-          position: "absolute",
-          left: "50%",
-          transform: "translateX(-50%)",
-          width: show ? 24 : 18,
-          height: show ? 24 : 18,
-          borderRadius: "50%",
+          position: "absolute", left: "50%", transform: "translateX(-50%)",
+          width: show ? 24 : 18, height: show ? 24 : 18, borderRadius: "50%",
           border: `1.5px solid ${isOpen ? "#7c3aed" : show ? "#c4b5fd" : "#e2e8f0"}`,
           background: isOpen ? "#7c3aed" : show ? "#faf5ff" : "#fff",
           color: isOpen ? "#fff" : show ? "#7c3aed" : "#94a3b8",
           opacity: show ? 1 : 0.6,
-          fontSize: show ? 16 : 12,
-          fontWeight: 300,
-          lineHeight: 1,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          cursor: "pointer",
-          boxShadow: isOpen ? "0 2px 8px rgba(124,58,237,0.3)" : "none",
+          fontSize: show ? 16 : 12, fontWeight: 300, lineHeight: 1,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          cursor: "pointer", boxShadow: isOpen ? "0 2px 8px rgba(124,58,237,0.3)" : "none",
           transition: "all 0.15s",
         }}
       >
@@ -2488,31 +1206,13 @@ function InlineAdder({ isOpen, onToggle, onAdd }) {
 
       {/* Dropdown */}
       {isOpen && (
-        <div
-          ref={dropdownRef}
-          style={{
-            position: "absolute",
-            top: "calc(100% + 6px)",
-            left: "50%",
-            transform: "translateX(-50%)",
-            background: "#fff",
-            border: "1px solid #e2e8f0",
-            borderRadius: 12,
-            boxShadow: "0 8px 28px rgba(0,0,0,0.13)",
-            padding: "10px 12px",
-            display: "flex",
-            flexWrap: "wrap",
-            gap: 5,
-            width: 308,
-            zIndex: 100,
-          }}
-        >
-          <BlockTypeMenu
-            onAdd={(type) => {
-              onAdd(type);
-              onToggle(false);
-            }}
-          />
+        <div ref={dropdownRef} style={{
+          position: "absolute", top: "calc(100% + 6px)", left: "50%", transform: "translateX(-50%)",
+          background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12,
+          boxShadow: "0 8px 28px rgba(0,0,0,0.13)", padding: "10px 12px",
+          display: "flex", flexWrap: "wrap", gap: 5, width: 308, zIndex: 100,
+        }}>
+          <BlockTypeMenu onAdd={(type) => { onAdd(type); onToggle(false); }} />
         </div>
       )}
     </div>
@@ -2529,34 +1229,18 @@ function ToolBtn({ onClick, active, title, children, disabled }) {
       disabled={disabled}
       title={title}
       style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 6,
-        padding: "6px 12px",
+        display: "flex", alignItems: "center", gap: 6, padding: "6px 12px",
         border: `1.5px solid ${active ? "#818cf8" : "#e2e8f0"}`,
-        borderRadius: 8,
-        flexShrink: 0,
+        borderRadius: 8, flexShrink: 0,
         background: active ? "#eef2ff" : "#fff",
-        fontSize: 12,
-        fontWeight: 600,
+        fontSize: 12, fontWeight: 600,
         color: disabled ? "#cbd5e1" : active ? "#4338ca" : "#64748b",
         cursor: disabled ? "not-allowed" : "pointer",
         opacity: disabled ? 0.6 : 1,
-        transition: "all 0.15s",
-        fontFamily: "inherit",
+        transition: "all 0.15s", fontFamily: "inherit",
       }}
-      onMouseEnter={(e) => {
-        if (!active && !disabled) {
-          e.currentTarget.style.borderColor = "#c7d2fe";
-          e.currentTarget.style.color = "#4f46e5";
-        }
-      }}
-      onMouseLeave={(e) => {
-        if (!active && !disabled) {
-          e.currentTarget.style.borderColor = "#e2e8f0";
-          e.currentTarget.style.color = "#64748b";
-        }
-      }}
+      onMouseEnter={e => { if (!active && !disabled) { e.currentTarget.style.borderColor = "#c7d2fe"; e.currentTarget.style.color = "#4f46e5"; }}}
+      onMouseLeave={e => { if (!active && !disabled) { e.currentTarget.style.borderColor = "#e2e8f0"; e.currentTarget.style.color = "#64748b"; }}}
     >
       {children}
     </button>
@@ -2571,126 +1255,38 @@ function ExportMenu({ onWord, onPdf, exporting, disabled }) {
 
   useEffect(() => {
     if (!open) return;
-    function handler(e) {
-      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
-    }
+    function handler(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false); }
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [open]);
 
   return (
     <div ref={ref} style={{ position: "relative" }}>
-      <ToolBtn
-        onClick={() => setOpen((o) => !o)}
-        active={open}
-        disabled={disabled}
-        title="Export this section"
-      >
-        {exporting ? "⏳ Exporting…" : "Export"}{" "}
-        <span style={{ fontSize: 9 }}>{open ? "▲" : "▼"}</span>
+      <ToolBtn onClick={() => setOpen(o => !o)} active={open} disabled={disabled} title="Export this section">
+        {exporting ? "⏳ Exporting…" : "Export"} <span style={{ fontSize: 9 }}>{open ? "▲" : "▼"}</span>
       </ToolBtn>
       {open && (
-        <div
-          style={{
-            position: "absolute",
-            top: "calc(100% + 6px)",
-            right: 0,
-            background: "#fff",
-            border: "1px solid #e2e8f0",
-            borderRadius: 10,
-            boxShadow: "0 8px 28px rgba(0,0,0,0.13)",
-            padding: 6,
-            zIndex: 100,
-            width: 190,
-          }}
-        >
+        <div style={{
+          position: "absolute", top: "calc(100% + 6px)", right: 0,
+          background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10,
+          boxShadow: "0 8px 28px rgba(0,0,0,0.13)", padding: 6, zIndex: 100, width: 190,
+        }}>
           <button
-            onMouseDown={(e) => {
-              e.preventDefault();
-              onWord();
-              setOpen(false);
-            }}
-            style={{
-              width: "100%",
-              textAlign: "left",
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              padding: "8px 10px",
-              borderRadius: 7,
-              border: "none",
-              background: "transparent",
-              fontSize: 12.5,
-              color: "#1e293b",
-              cursor: "pointer",
-              fontFamily: "inherit",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = "#f8fafc";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = "transparent";
-            }}
+            onMouseDown={(e) => { e.preventDefault(); onWord(); setOpen(false); }}
+            style={{ width: "100%", textAlign: "left", display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", borderRadius: 7, border: "none", background: "transparent", fontSize: 12.5, color: "#1e293b", cursor: "pointer", fontFamily: "inherit" }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = "#f8fafc"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
           >
-            <svg
-              width="13"
-              height="13"
-              viewBox="0 0 20 20"
-              fill="none"
-              stroke="#047857"
-              strokeWidth="2"
-            >
-              <path
-                d="M4 16v1a1 1 0 001 1h10a1 1 0 001-1v-1M10 3v10m0 0l-3-3m3 3l3-3"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
+            <svg width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="#047857" strokeWidth="2"><path d="M4 16v1a1 1 0 001 1h10a1 1 0 001-1v-1M10 3v10m0 0l-3-3m3 3l3-3" strokeLinecap="round" strokeLinejoin="round"/></svg>
             Convert to Word
           </button>
           <button
-            onMouseDown={(e) => {
-              e.preventDefault();
-              onPdf();
-              setOpen(false);
-            }}
-            style={{
-              width: "100%",
-              textAlign: "left",
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              padding: "8px 10px",
-              borderRadius: 7,
-              border: "none",
-              background: "transparent",
-              fontSize: 12.5,
-              color: "#1e293b",
-              cursor: "pointer",
-              fontFamily: "inherit",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = "#f8fafc";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = "transparent";
-            }}
+            onMouseDown={(e) => { e.preventDefault(); onPdf(); setOpen(false); }}
+            style={{ width: "100%", textAlign: "left", display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", borderRadius: 7, border: "none", background: "transparent", fontSize: 12.5, color: "#1e293b", cursor: "pointer", fontFamily: "inherit" }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = "#f8fafc"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
           >
-            <svg
-              width="13"
-              height="13"
-              viewBox="0 0 20 20"
-              fill="none"
-              stroke="#1d4ed8"
-              strokeWidth="2"
-            >
-              <path
-                d="M7 7H5a2 2 0 00-2 2v6a2 2 0 002 2h10a2 2 0 002-2V9a2 2 0 00-2-2h-2M7 7V5a2 2 0 012-2h2a2 2 0 012 2v2M7 7h6"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-              <path d="M10 13v-2m0 4h.01" strokeLinecap="round" />
-            </svg>
+            <svg width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="#1d4ed8" strokeWidth="2"><path d="M7 7H5a2 2 0 00-2 2v6a2 2 0 002 2h10a2 2 0 002-2V9a2 2 0 00-2-2h-2M7 7V5a2 2 0 012-2h2a2 2 0 012 2v2M7 7h6" strokeLinecap="round" strokeLinejoin="round"/><path d="M10 13v-2m0 4h.01" strokeLinecap="round"/></svg>
             Convert to PDF
           </button>
         </div>
@@ -2710,17 +1306,14 @@ function BlockOutlineRail({ blocks, onSelect, activeBlockId }) {
       onMouseEnter={() => setExpanded(true)}
       onMouseLeave={() => setExpanded(false)}
       style={{
-        width: expanded ? 196 : 40,
-        flexShrink: 0,
-        borderRight: "1px solid #e2e8f0",
-        background: "#fff",
-        overflow: "hidden",
-        transition: "width 0.16s ease",
+        width: expanded ? 196 : 40, flexShrink: 0,
+        borderRight: "1px solid #e2e8f0", background: "#fff",
+        overflow: "hidden", transition: "width 0.16s ease",
       }}
     >
       <div style={{ padding: "8px 0", overflowY: "auto", height: "100%" }}>
         {blocks.map((block, idx) => {
-          const m = typeMeta(block.block_type);
+          const m        = typeMeta(block.block_type);
           const isActive = block.id === activeBlockId;
           return (
             <button
@@ -2728,37 +1321,18 @@ function BlockOutlineRail({ blocks, onSelect, activeBlockId }) {
               onClick={() => onSelect(block.id)}
               title={`${idx + 1}. ${m.label}`}
               style={{
-                width: "100%",
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                padding: expanded ? "7px 11px" : "7px 0",
-                justifyContent: expanded ? "flex-start" : "center",
-                border: "none",
-                background: isActive ? "#eef2ff" : "transparent",
-                cursor: "pointer",
-                fontFamily: "inherit",
-                textAlign: "left",
-                whiteSpace: "nowrap",
+                width: "100%", display: "flex", alignItems: "center", gap: 8,
+                padding: expanded ? "7px 11px" : "7px 0", justifyContent: expanded ? "flex-start" : "center",
+                border: "none", background: isActive ? "#eef2ff" : "transparent",
+                cursor: "pointer", fontFamily: "inherit", textAlign: "left", whiteSpace: "nowrap",
                 transition: "background 0.12s",
               }}
-              onMouseEnter={(e) => {
-                if (!isActive) e.currentTarget.style.background = "#f8fafc";
-              }}
-              onMouseLeave={(e) => {
-                if (!isActive) e.currentTarget.style.background = "transparent";
-              }}
+              onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = "#f8fafc"; }}
+              onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = "transparent"; }}
             >
               <IconChip type={block.block_type} size={20} />
               {expanded && (
-                <span
-                  style={{
-                    fontSize: 11.5,
-                    color: "#475569",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                  }}
-                >
+                <span style={{ fontSize: 11.5, color: "#475569", overflow: "hidden", textOverflow: "ellipsis" }}>
                   {idx + 1}. {m.label}
                 </span>
               )}
@@ -2773,33 +1347,28 @@ function BlockOutlineRail({ blocks, onSelect, activeBlockId }) {
 /* ═══════════════════════════════════════════════════════════════════════════
    SECTION EDITOR PAGE
 ═══════════════════════════════════════════════════════════════════════════ */
-export default function SectionEditorPage({
-  sectionId,
-  reportTitle,
-  onBack,
-  kpiScope = "department",
-}) {
-  const { user } = useAuth();
+export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiScope = "department" }) {
+  const { user }     = useAuth();
   const { apiFetch } = useApi();
 
-  const [section, setSection] = useState(null);
-  const [blocks, setBlocks] = useState([]);
-  const [myRole, setMyRole] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [saveLabel, setSaveLabel] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [submitMsg, setSubmitMsg] = useState("");
-  const [err, setErr] = useState("");
-  const [reportMeta, setReportMeta] = useState(null);
-  const [reportSections, setReportSections] = useState([]);
+  const [section,          setSection]          = useState(null);
+  const [blocks,           setBlocks]           = useState([]);
+  const [myRole,           setMyRole]           = useState(null);
+  const [loading,          setLoading]          = useState(true);
+  const [saving,           setSaving]           = useState(false);
+  const [saveLabel,        setSaveLabel]        = useState("");
+  const [submitting,       setSubmitting]       = useState(false);
+  const [submitMsg,        setSubmitMsg]        = useState("");
+  const [err,              setErr]              = useState("");
+  const [reportMeta,       setReportMeta]       = useState(null);
+  const [reportSections,   setReportSections]   = useState([]);
   const [reviewerComments, setReviewerComments] = useState([]);
-  const [commentsOpen, setCommentsOpen] = useState(true);
-  const [chatOpen, setChatOpen] = useState(false);
-  const [exporting, setExporting] = useState(false);
-  const [blockCounts, setBlockCounts] = useState({});
-  const [selectedBlockId, setSelectedBlockId] = useState(null);
-  const [activeInserter, setActiveInserter] = useState(null);
+  const [commentsOpen,     setCommentsOpen]     = useState(true);
+  const [chatOpen,         setChatOpen]         = useState(false);
+  const [exporting,        setExporting]        = useState(false);
+  const [blockCounts,      setBlockCounts]      = useState({});
+  const [selectedBlockId,  setSelectedBlockId]  = useState(null);
+  const [activeInserter,   setActiveInserter]   = useState(null);
 
   // Section-wide content authoring language — switches whether the block editors
   // below read/write the primary content (English) or that block's row in
@@ -2808,7 +1377,7 @@ export default function SectionEditorPage({
   const [contentLang, setContentLang] = useState("en");
 
   // Live preview is a slide-over drawer, opened on demand rather than a permanent column.
-  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewOpen,  setPreviewOpen]  = useState(false);
   const [previewWidth, setPreviewWidth] = useState(720); // user-resizable via the drag handle
   const resizingPreviewRef = useRef(false);
   // Brief highlight applied to a block card when navigated to from the outline rail.
@@ -2844,75 +1413,41 @@ export default function SectionEditorPage({
   }, []);
 
   // table type choice modal + form import wizard
-  const [tableTypeModal, setTableTypeModal] = useState({
-    open: false,
-    afterIndex: undefined,
-  });
-  const [formImportWizard, setFormImportWizard] = useState({
-    open: false,
-    afterIndex: undefined,
-    orderIndex: undefined,
-  });
+  const [tableTypeModal,   setTableTypeModal]   = useState({ open: false, afterIndex: undefined });
+  const [formImportWizard, setFormImportWizard] = useState({ open: false, afterIndex: undefined, orderIndex: undefined });
 
   // kpi type choice modal + kpi import wizard
-  const [kpiTypeModal, setKpiTypeModal] = useState({
-    open: false,
-    afterIndex: undefined,
-  });
-  const [kpiImportWizard, setKpiImportWizard] = useState({
-    open: false,
-    afterIndex: undefined,
-    orderIndex: undefined,
-  });
+  const [kpiTypeModal,   setKpiTypeModal]   = useState({ open: false, afterIndex: undefined });
+  const [kpiImportWizard, setKpiImportWizard] = useState({ open: false, afterIndex: undefined, orderIndex: undefined });
 
   // dirty tracking + save description modal
-  const [dirtyBlocks, setDirtyBlocks] = useState(new Set());
+  const [dirtyBlocks,       setDirtyBlocks]       = useState(new Set());
   // Pending, unsaved translation edits: { [blockId]: { [language]: partialContent } } —
   // tracked separately from dirtyBlocks (primary content) but counted as "unsaved changes"
   // too, since editing/translating Hindi content must require an explicit Save like any
   // other edit, not silently autosave.
   const [dirtyTranslations, setDirtyTranslations] = useState({});
-  const [saveDescModal, setSaveDescModal] = useState({
-    open: false,
-    desc: "",
-    error: "",
-  });
+  const [saveDescModal,     setSaveDescModal]     = useState({ open: false, desc: "", error: "" });
   // Pre-save prompt: ask whether to auto-translate updated English content into Hindi
   // for blocks that already have a Hindi translation, before the save actually runs.
-  const [translatePromptModal, setTranslatePromptModal] = useState({
-    open: false,
-    blocks: [],
-  });
+  const [translatePromptModal, setTranslatePromptModal] = useState({ open: false, blocks: [] });
   const [translatingBeforeSave, setTranslatingBeforeSave] = useState(false);
-  const hasUnsavedChanges =
-    dirtyBlocks.size > 0 || Object.keys(dirtyTranslations).length > 0;
-  const dirtyBlockCount = new Set([
-    ...dirtyBlocks,
-    ...Object.keys(dirtyTranslations),
-  ]).size;
+  const hasUnsavedChanges = dirtyBlocks.size > 0 || Object.keys(dirtyTranslations).length > 0;
+  const dirtyBlockCount   = new Set([...dirtyBlocks, ...Object.keys(dirtyTranslations)]).size;
 
   // submit modal
-  const [submitModal, setSubmitModal] = useState({
-    open: false,
-    desc: "",
-    error: "",
-    validationErrors: [],
-    unresolvedCount: 0,
-  });
+  const [submitModal,     setSubmitModal]     = useState({ open: false, desc: "", error: "", validationErrors: [], unresolvedCount: 0 });
 
   // 409 conflict modal
-  const [conflictModal, setConflictModal] = useState({
-    open: false,
-    latestVersion: null,
-  });
+  const [conflictModal,   setConflictModal]   = useState({ open: false, latestVersion: null });
 
   // version history panel
   const [versionHistOpen, setVersionHistOpen] = useState(false);
-  const [versions, setVersions] = useState([]);
+  const [versions,        setVersions]        = useState([]);
   const [loadingVersions, setLoadingVersions] = useState(false);
   const [viewingSnapshot, setViewingSnapshot] = useState(null); // { version, data }
 
-  const editorScrollRef = useRef(null);
+  const editorScrollRef  = useRef(null);
   const previewCanvasRef = useRef(null);
 
   const syncScroll = useCallback(() => {
@@ -2927,31 +1462,22 @@ export default function SectionEditorPage({
 
   /* ── Outline rail navigation: scroll a block into view and briefly highlight it ── */
   const scrollToBlock = useCallback((blockId) => {
-    const el = editorScrollRef.current?.querySelector(
-      `[data-block-id="${blockId}"]`,
-    );
+    const el = editorScrollRef.current?.querySelector(`[data-block-id="${blockId}"]`);
     if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
     setHighlightedBlockId(blockId);
-    setTimeout(
-      () => setHighlightedBlockId((cur) => (cur === blockId ? null : cur)),
-      1400,
-    );
+    setTimeout(() => setHighlightedBlockId((cur) => (cur === blockId ? null : cur)), 1400);
   }, []);
 
   const loadBlockCounts = useCallback(async () => {
     if (!sectionId) return;
     try {
-      const res = await apiFetch(
-        `/api/builder/comments/section/${sectionId}/counts`,
-      );
+      const res  = await apiFetch(`/api/builder/comments/section/${sectionId}/counts`);
       const json = await res.json();
       if (json.success) setBlockCounts(json.counts || {});
     } catch {}
   }, [sectionId, apiFetch]);
 
-  useEffect(() => {
-    loadBlockCounts();
-  }, [loadBlockCounts]);
+  useEffect(() => { loadBlockCounts(); }, [loadBlockCounts]);
 
   useEffect(() => {
     if (!sectionId) return;
@@ -2960,113 +1486,82 @@ export default function SectionEditorPage({
 
     Promise.all([
       apiFetch(`/api/builder/sections/${sectionId}`).then((r) => r.json()),
-      apiFetch(`/api/builder/assignments/section/${sectionId}`).then((r) =>
-        r.json(),
-      ),
-    ])
-      .then(async ([secData, assignData]) => {
-        if (!secData.success) {
-          setErr(secData.message || "Section not found");
-          return;
-        }
-        setSection(secData.data);
-        setBlocks(secData.data.blocks || []);
+      apiFetch(`/api/builder/assignments/section/${sectionId}`).then((r) => r.json()),
+    ]).then(async ([secData, assignData]) => {
+      if (!secData.success) { setErr(secData.message || "Section not found"); return; }
+      setSection(secData.data);
+      setBlocks(secData.data.blocks || []);
 
-        if (assignData.success) {
-          const mine = (assignData.data?.users || []).find(
-            (a) => a.user_id === user?.id,
-          );
-          setMyRole(mine?.role || null);
-        }
+      if (assignData.success) {
+        const mine = (assignData.data?.users || []).find((a) => a.user_id === user?.id);
+        setMyRole(mine?.role || null);
+      }
 
-        const reportId = secData.data.report_id;
-        if (reportId) {
-          try {
-            const rRes = await apiFetch(`/api/builder/reports/${reportId}`);
-            const rJson = await rRes.json();
-            if (rJson.success) {
-              setReportMeta({
-                title: rJson.data.title,
-                report_type: rJson.data.report_type,
-                academic_year: rJson.data.academic_year,
-              });
-              setReportSections(rJson.data.sections || []);
-            }
-          } catch {}
-        }
-
-        /* fetch reviewer comments (sent-back history) */
+      const reportId = secData.data.report_id;
+      if (reportId) {
         try {
-          const hRes = await apiFetch(
-            `/api/builder/approvals/section/${sectionId}`,
-          );
-          const hJson = await hRes.json();
-          if (hJson.success) {
-            const sentBack = (hJson.data || []).filter(
-              (h) => h.decision === "SENT_BACK" && h.reviewer_comment,
-            );
-            setReviewerComments(sentBack);
-            setCommentsOpen(sentBack.length > 0);
+          const rRes  = await apiFetch(`/api/builder/reports/${reportId}`);
+          const rJson = await rRes.json();
+          if (rJson.success) {
+            setReportMeta({
+              title:         rJson.data.title,
+              report_type:   rJson.data.report_type,
+              academic_year: rJson.data.academic_year,
+            });
+            setReportSections(rJson.data.sections || []);
           }
         } catch {}
-      })
-      .catch(() => setErr("Failed to load section"))
+      }
+
+      /* fetch reviewer comments (sent-back history) */
+      try {
+        const hRes  = await apiFetch(`/api/builder/approvals/section/${sectionId}`);
+        const hJson = await hRes.json();
+        if (hJson.success) {
+          const sentBack = (hJson.data || []).filter(h => h.decision === "SENT_BACK" && h.reviewer_comment);
+          setReviewerComments(sentBack);
+          setCommentsOpen(sentBack.length > 0);
+        }
+      } catch {}
+    }).catch(() => setErr("Failed to load section"))
       .finally(() => setLoading(false));
   }, [sectionId, user?.id]);
 
   /* ── permissions ── */
-  const roleNames = new Set((user?.roles || []).map((r) => r.name || r));
-  const isAdmin =
-    roleNames.has("super_admin") || roleNames.has("institute_admin");
-  const canEdit =
-    isAdmin || (myRole && ["OWNER", "CONTRIBUTOR"].includes(myRole));
-  const statusLock = !["NOT_STARTED", "IN_PROGRESS", "SENT_BACK"].includes(
-    section?.status,
-  );
-  const readOnly = !canEdit || statusLock;
-  const canSubmit =
-    canEdit &&
-    ["NOT_STARTED", "IN_PROGRESS", "SENT_BACK"].includes(section?.status);
+  const roleNames  = new Set((user?.roles || []).map((r) => r.name || r));
+  const isAdmin    = roleNames.has("super_admin") || roleNames.has("institute_admin");
+  const canEdit    = isAdmin || (myRole && ["OWNER", "CONTRIBUTOR"].includes(myRole));
+  const statusLock = !["NOT_STARTED", "IN_PROGRESS", "SENT_BACK"].includes(section?.status);
+  const readOnly   = !canEdit || statusLock;
+  const canSubmit  = canEdit && ["NOT_STARTED", "IN_PROGRESS", "SENT_BACK"].includes(section?.status);
 
   /* Hide preview when the section is in a review/submitted/approved state */
-  const hidePreview = ["SUBMITTED", "UNDER_REVIEW", "APPROVED"].includes(
-    section?.status,
-  );
+  const hidePreview = ["SUBMITTED", "UNDER_REVIEW", "APPROVED"].includes(section?.status);
 
   /* ── load version history ── */
   const loadVersions = useCallback(async () => {
     if (!sectionId) return;
     setLoadingVersions(true);
     try {
-      const res = await apiFetch(`/api/builder/versions/section/${sectionId}`);
+      const res  = await apiFetch(`/api/builder/versions/section/${sectionId}`);
       const json = await res.json();
       if (json.success) setVersions(json.data || []);
-    } catch {
-    } finally {
-      setLoadingVersions(false);
-    }
+    } catch {} finally { setLoadingVersions(false); }
   }, [sectionId, apiFetch]);
 
-  useEffect(() => {
-    if (versionHistOpen) loadVersions();
-  }, [versionHistOpen, loadVersions]);
+  useEffect(() => { if (versionHistOpen) loadVersions(); }, [versionHistOpen, loadVersions]);
 
   const loadSnapshot = async (versionNum) => {
     try {
-      const res = await apiFetch(
-        `/api/builder/versions/section/${sectionId}/${versionNum}`,
-      );
+      const res  = await apiFetch(`/api/builder/versions/section/${sectionId}/${versionNum}`);
       const json = await res.json();
-      if (json.success)
-        setViewingSnapshot({ version: versionNum, data: json.data });
+      if (json.success) setViewingSnapshot({ version: versionNum, data: json.data });
     } catch {}
   };
 
   /* ── toggle a block's required flag — saves immediately, no dirty-tracking needed ── */
   async function toggleRequired(blockId, current) {
-    setBlocks((prev) =>
-      prev.map((b) => (b.id === blockId ? { ...b, is_required: !current } : b)),
-    );
+    setBlocks((prev) => prev.map((b) => b.id === blockId ? { ...b, is_required: !current } : b));
     try {
       await apiFetch(`/api/builder/blocks/${blockId}`, {
         method: "PUT",
@@ -3074,19 +1569,13 @@ export default function SectionEditorPage({
         body: JSON.stringify({ is_required: !current }),
       });
     } catch {
-      setBlocks((prev) =>
-        prev.map((b) =>
-          b.id === blockId ? { ...b, is_required: current } : b,
-        ),
-      );
+      setBlocks((prev) => prev.map((b) => b.id === blockId ? { ...b, is_required: current } : b));
     }
   }
 
   /* ── block change — mark dirty, no auto-save ── */
   function handleBlockChange(blockId, newContent) {
-    setBlocks((prev) =>
-      prev.map((b) => (b.id === blockId ? { ...b, content: newContent } : b)),
-    );
+    setBlocks((prev) => prev.map((b) => b.id === blockId ? { ...b, content: newContent } : b));
     setDirtyBlocks((prev) => new Set([...prev, blockId]));
     setSaveLabel("Unsaved changes");
   }
@@ -3097,22 +1586,10 @@ export default function SectionEditorPage({
     // Local-only update — does NOT call the API. Editing/translating Hindi content is a
     // change like any other; it's queued here and only persisted when the user clicks
     // "Save Changes", same as primary-content edits.
-    setBlocks((prev) =>
-      prev.map((b) =>
-        b.id === blockId
-          ? {
-              ...b,
-              translations: {
-                ...b.translations,
-                [language]: {
-                  ...(b.translations?.[language] || {}),
-                  ...partialContent,
-                },
-              },
-            }
-          : b,
-      ),
-    );
+    setBlocks((prev) => prev.map((b) => b.id === blockId
+      ? { ...b, translations: { ...b.translations, [language]: { ...(b.translations?.[language] || {}), ...partialContent } } }
+      : b
+    ));
     setDirtyTranslations((prev) => ({
       ...prev,
       [blockId]: {
@@ -3142,13 +1619,7 @@ export default function SectionEditorPage({
       case "IMAGE":
         return { kind: "image", caption: c.caption || "", alt: c.alt || "" };
       case "IMAGE_GRID":
-        return {
-          kind: "image_grid",
-          cols: (c.cols || []).map((col) => ({
-            caption: col.caption || "",
-            alt: col.alt || "",
-          })),
-        };
+        return { kind: "image_grid", cols: (c.cols || []).map((col) => ({ caption: col.caption || "", alt: col.alt || "" })) };
       case "TABLE":
         if (c.source === "form_import") return null;
         return { kind: "table", headers: c.headers || [], rows: c.rows || [] };
@@ -3163,18 +1634,12 @@ export default function SectionEditorPage({
     const extracted = extractTranslatableFields(block);
     if (!extracted) return null;
     const translateOne = async (text) => {
-      const res = await apiFetch("/api/report-integration/translate", {
-        method: "POST",
-        body: JSON.stringify({ text }),
-      });
+      const res  = await apiFetch("/api/report-integration/translate", { method: "POST", body: JSON.stringify({ text }) });
       const data = await res.json();
       return data?.data?.hi || "";
     };
     const translateMany = async (texts) => {
-      const res = await apiFetch("/api/report-integration/translate", {
-        method: "POST",
-        body: JSON.stringify({ texts }),
-      });
+      const res  = await apiFetch("/api/report-integration/translate", { method: "POST", body: JSON.stringify({ texts }) });
       const data = await res.json();
       return data?.data?.translations || texts.map(() => "");
     };
@@ -3182,10 +1647,7 @@ export default function SectionEditorPage({
     switch (extracted.kind) {
       case "html": {
         if (!extracted.text.trim()) return null;
-        return {
-          html: `<p>${await translateOne(extracted.text)}</p>`,
-          _stale: false,
-        };
+        return { html: `<p>${await translateOne(extracted.text)}</p>`, _stale: false };
       }
       case "text": {
         if (!extracted.text.trim()) return null;
@@ -3197,34 +1659,25 @@ export default function SectionEditorPage({
       }
       case "image": {
         if (!extracted.caption && !extracted.alt) return null;
-        const [capHi, altHi] = await translateMany([
-          extracted.caption,
-          extracted.alt,
-        ]);
+        const [capHi, altHi] = await translateMany([extracted.caption, extracted.alt]);
         return { caption: capHi, alt: altHi, _stale: false };
       }
       case "image_grid": {
         const flat = extracted.cols.flatMap((col) => [col.caption, col.alt]);
         if (!flat.some(Boolean)) return null;
         const translated = await translateMany(flat);
-        const cols = extracted.cols.map((_, i) => ({
-          caption: translated[i * 2],
-          alt: translated[i * 2 + 1],
-        }));
+        const cols = extracted.cols.map((_, i) => ({ caption: translated[i * 2], alt: translated[i * 2 + 1] }));
         return { cols, _stale: false };
       }
       case "table": {
         const flat = [...extracted.headers, ...extracted.rows.flat()];
         if (!flat.some(Boolean)) return null;
         const translated = await translateMany(flat);
-        const headers = translated.slice(0, extracted.headers.length);
+        const headers   = translated.slice(0, extracted.headers.length);
         const cellsFlat = translated.slice(extracted.headers.length);
         const rows = [];
         let idx = 0;
-        for (const r of extracted.rows) {
-          rows.push(cellsFlat.slice(idx, idx + r.length));
-          idx += r.length;
-        }
+        for (const r of extracted.rows) { rows.push(cellsFlat.slice(idx, idx + r.length)); idx += r.length; }
         return { headers, rows, _stale: false };
       }
       default:
@@ -3238,13 +1691,7 @@ export default function SectionEditorPage({
   function openSaveFlow() {
     const blocksNeedingPrompt = [...dirtyBlocks]
       .map((id) => blocks.find((b) => b.id === id))
-      .filter(
-        (b) =>
-          b &&
-          b.translations?.hi &&
-          Object.keys(b.translations.hi).length > 0 &&
-          extractTranslatableFields(b),
-      );
+      .filter((b) => b && b.translations?.hi && Object.keys(b.translations.hi).length > 0 && extractTranslatableFields(b));
     if (blocksNeedingPrompt.length > 0) {
       setTranslatePromptModal({ open: true, blocks: blocksNeedingPrompt });
     } else {
@@ -3273,18 +1720,13 @@ export default function SectionEditorPage({
   function handleSkipTranslateBeforeSave() {
     const targets = translatePromptModal.blocks;
     setTranslatePromptModal({ open: false, blocks: [] });
-    for (const block of targets)
-      saveBlockTranslation(block.id, "hi", { _stale: true });
+    for (const block of targets) saveBlockTranslation(block.id, "hi", { _stale: true });
     setSaveDescModal({ open: true, desc: "", error: "" });
   }
 
   /* ── save all dirty blocks (+ pending translations) with description ── */
   async function executeSave(description) {
-    if (
-      (dirtyBlocks.size === 0 && Object.keys(dirtyTranslations).length === 0) ||
-      saving
-    )
-      return;
+    if ((dirtyBlocks.size === 0 && Object.keys(dirtyTranslations).length === 0) || saving) return;
     setSaving(true);
     setSaveLabel("Saving…");
     let currentLock = section?.version_lock ?? 0;
@@ -3292,13 +1734,13 @@ export default function SectionEditorPage({
 
     try {
       for (const blockId of dirtyBlocks) {
-        const block = blocks.find((b) => b.id === blockId);
+        const block = blocks.find(b => b.id === blockId);
         if (!block) continue;
-        const res = await apiFetch(`/api/builder/blocks/${blockId}`, {
+        const res  = await apiFetch(`/api/builder/blocks/${blockId}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            content: block.content,
+            content:      block.content,
             description,
             version_lock: currentLock,
           }),
@@ -3306,36 +1748,26 @@ export default function SectionEditorPage({
         const json = await res.json();
         if (res.status === 409) {
           conflictOccurred = true;
-          setConflictModal({
-            open: true,
-            latestVersion: json.latest_version_num,
-          });
+          setConflictModal({ open: true, latestVersion: json.latest_version_num });
           break;
         }
         if (!json.success) throw new Error(json.message);
         currentLock = json.version_lock ?? currentLock;
         if (json.success && section?.status === "NOT_STARTED") {
-          setSection((s) => ({
-            ...s,
-            status: "IN_PROGRESS",
-            version_lock: currentLock,
-          }));
+          setSection(s => ({ ...s, status: "IN_PROGRESS", version_lock: currentLock }));
         } else {
-          setSection((s) => ({ ...s, version_lock: currentLock }));
+          setSection(s => ({ ...s, version_lock: currentLock }));
         }
       }
       if (!conflictOccurred) {
         // Persist any pending translation edits alongside the primary content.
         for (const [blockId, langs] of Object.entries(dirtyTranslations)) {
           for (const [language, partial] of Object.entries(langs)) {
-            await apiFetch(
-              `/api/builder/blocks/${blockId}/translations/${language}`,
-              {
-                method: "PUT",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ content: partial }),
-              },
-            ).catch(() => {});
+            await apiFetch(`/api/builder/blocks/${blockId}/translations/${language}`, {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ content: partial }),
+            }).catch(() => {});
           }
         }
         setDirtyBlocks(new Set());
@@ -3352,38 +1784,27 @@ export default function SectionEditorPage({
   }
 
   function computeOrderIndex(afterIndex) {
-    const insertAfter =
-      afterIndex !== undefined ? afterIndex : blocks.length - 1;
-    if (blocks.length === 0) return 1;
-    if (insertAfter < 0) return (blocks[0].order_index || 1) - 1;
-    if (insertAfter >= blocks.length - 1)
-      return (blocks[blocks.length - 1].order_index || blocks.length) + 1;
-    return (
-      ((blocks[insertAfter].order_index || insertAfter + 1) +
-        (blocks[insertAfter + 1].order_index || insertAfter + 2)) /
-      2
-    );
+    const insertAfter = afterIndex !== undefined ? afterIndex : blocks.length - 1;
+    if (blocks.length === 0)           return 1;
+    if (insertAfter < 0)               return (blocks[0].order_index || 1) - 1;
+    if (insertAfter >= blocks.length - 1) return (blocks[blocks.length - 1].order_index || blocks.length) + 1;
+    return ((blocks[insertAfter].order_index || insertAfter + 1) + (blocks[insertAfter + 1].order_index || insertAfter + 2)) / 2;
   }
 
   async function addBlock(type, afterIndex) {
     // afterIndex: index of the block to insert AFTER (-1 = before first, undefined = after last)
-    const insertAfter =
-      afterIndex !== undefined ? afterIndex : blocks.length - 1;
-    const orderIndex = computeOrderIndex(afterIndex);
+    const insertAfter = afterIndex !== undefined ? afterIndex : blocks.length - 1;
+    const orderIndex  = computeOrderIndex(afterIndex);
 
-    const res = await apiFetch(`/api/builder/blocks/section/${sectionId}`, {
+    const res  = await apiFetch(`/api/builder/blocks/section/${sectionId}`, {
       method: "POST",
-      body: JSON.stringify({
-        block_type: type,
-        content: DEFAULT_CONTENT[type] || {},
-        order_index: orderIndex,
-      }),
+      body:   JSON.stringify({ block_type: type, content: DEFAULT_CONTENT[type] || {}, order_index: orderIndex }),
     });
     const json = await res.json();
     if (json.success) {
       setBlocks((prev) => {
         const next = [...prev];
-        const at = insertAfter < 0 ? 0 : Math.min(insertAfter + 1, prev.length);
+        const at   = insertAfter < 0 ? 0 : Math.min(insertAfter + 1, prev.length);
         next.splice(at, 0, json.data);
         return next;
       });
@@ -3413,53 +1834,34 @@ export default function SectionEditorPage({
   }
 
   function handleFormImported(blockData) {
-    const afterIndex = formImportWizard.afterIndex;
-    const insertAfter =
-      afterIndex !== undefined ? afterIndex : blocks.length - 1;
+    const afterIndex  = formImportWizard.afterIndex;
+    const insertAfter = afterIndex !== undefined ? afterIndex : blocks.length - 1;
     setBlocks((prev) => {
       const next = [...prev];
-      const at = insertAfter < 0 ? 0 : Math.min(insertAfter + 1, prev.length);
+      const at   = insertAfter < 0 ? 0 : Math.min(insertAfter + 1, prev.length);
       next.splice(at, 0, blockData);
       return next;
     });
-    setFormImportWizard({
-      open: false,
-      afterIndex: undefined,
-      orderIndex: undefined,
-    });
+    setFormImportWizard({ open: false, afterIndex: undefined, orderIndex: undefined });
   }
 
   function handleKpiImported(blockData) {
-    const afterIndex = kpiImportWizard.afterIndex;
-    const insertAfter =
-      afterIndex !== undefined ? afterIndex : blocks.length - 1;
+    const afterIndex  = kpiImportWizard.afterIndex;
+    const insertAfter = afterIndex !== undefined ? afterIndex : blocks.length - 1;
     setBlocks((prev) => {
       const next = [...prev];
-      const at = insertAfter < 0 ? 0 : Math.min(insertAfter + 1, prev.length);
+      const at   = insertAfter < 0 ? 0 : Math.min(insertAfter + 1, prev.length);
       next.splice(at, 0, blockData);
       return next;
     });
-    setKpiImportWizard({
-      open: false,
-      afterIndex: undefined,
-      orderIndex: undefined,
-    });
+    setKpiImportWizard({ open: false, afterIndex: undefined, orderIndex: undefined });
   }
 
   function handleBlockRefetched(blockId, newContent, translations) {
-    setBlocks((prev) =>
-      prev.map((b) =>
-        b.id === blockId
-          ? {
-              ...b,
-              content: newContent,
-              ...(translations && Object.keys(translations).length
-                ? { translations }
-                : {}),
-            }
-          : b,
-      ),
-    );
+    setBlocks((prev) => prev.map((b) => b.id === blockId
+      ? { ...b, content: newContent, ...(translations && Object.keys(translations).length ? { translations } : {}) }
+      : b
+    ));
     // Does NOT add to dirtyBlocks — DB was already updated by the refetch/reimport endpoint
   }
 
@@ -3470,28 +1872,20 @@ export default function SectionEditorPage({
   }
 
   async function moveBlock(idx, dir) {
-    const next = [...blocks];
+    const next   = [...blocks];
     const target = idx + dir;
     if (target < 0 || target >= next.length) return;
     [next[idx], next[target]] = [next[target], next[idx]];
     const items = next.map((b, i) => ({ id: b.id, order_index: i + 1 }));
     setBlocks(next.map((b, i) => ({ ...b, order_index: i + 1 })));
-    apiFetch("/api/builder/blocks/reorder", {
-      method: "POST",
-      body: JSON.stringify({ items }),
-    });
+    apiFetch("/api/builder/blocks/reorder", { method: "POST", body: JSON.stringify({ items }) });
   }
 
   async function handleExportDocx() {
     if (exporting) return;
     setExporting(true);
     try {
-      const blob = await generateSectionDocx(
-        section,
-        blocks,
-        reportMeta,
-        reportSections,
-      );
+      const blob     = await generateSectionDocx(section, blocks, reportMeta, reportSections);
       const filename = `${(section?.title || "section").replace(/[^a-z0-9\s]/gi, "").trim()}.docx`;
       downloadBlob(blob, filename);
     } catch (err) {
@@ -3509,27 +1903,21 @@ export default function SectionEditorPage({
   async function handleSubmitConfirm() {
     const desc = submitModal.desc.trim();
     if (desc.length < 5) {
-      setSubmitModal((m) => ({
-        ...m,
-        error: "Description must be at least 5 characters",
-      }));
+      setSubmitModal(m => ({ ...m, error: "Description must be at least 5 characters" }));
       return;
     }
     setSubmitting(true);
-    setSubmitModal((m) => ({ ...m, error: "" }));
+    setSubmitModal(m => ({ ...m, error: "" }));
     try {
-      const res = await apiFetch(
-        `/api/builder/approvals/section/${sectionId}/submit`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ description: desc }),
-        },
-      );
+      const res  = await apiFetch(`/api/builder/approvals/section/${sectionId}/submit`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ description: desc }),
+      });
       const json = await res.json();
       if (!res.ok) {
         if (json.empty_blocks) {
-          setSubmitModal((m) => ({
+          setSubmitModal(m => ({
             ...m,
             error: json.message,
             validationErrors: json.empty_blocks,
@@ -3539,47 +1927,24 @@ export default function SectionEditorPage({
         throw new Error(json.message);
       }
       setSection((s) => ({ ...s, status: "SUBMITTED" }));
-      setSubmitModal({
-        open: false,
-        desc: "",
-        error: "",
-        validationErrors: [],
-        unresolvedCount: 0,
-      });
+      setSubmitModal({ open: false, desc: "", error: "", validationErrors: [], unresolvedCount: 0 });
       setSubmitMsg("✓ Submitted for review successfully!");
     } catch (ex) {
-      setSubmitModal((m) => ({ ...m, error: ex.message || "Submit failed" }));
+      setSubmitModal(m => ({ ...m, error: ex.message || "Submit failed" }));
     } finally {
       setSubmitting(false);
     }
   }
 
   function openSubmitModal() {
-    const unresCnt = Object.values(blockCounts).reduce(
-      (a, c) => a + (c.unresolved || 0),
-      0,
-    );
-    setSubmitModal({
-      open: true,
-      desc: "",
-      error: "",
-      validationErrors: [],
-      unresolvedCount: unresCnt,
-    });
+    const unresCnt = Object.values(blockCounts).reduce((a, c) => a + (c.unresolved || 0), 0);
+    setSubmitModal({ open: true, desc: "", error: "", validationErrors: [], unresolvedCount: unresCnt });
   }
 
   /* ── loading / error ── */
   if (loading) {
     return (
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          height: "100%",
-          fontFamily: "'Plus Jakarta Sans', sans-serif",
-        }}
-      >
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
         <div style={{ textAlign: "center", color: "#94a3b8" }}>
           <div style={{ fontSize: 32, marginBottom: 10 }}>⏳</div>
           <div>Loading section…</div>
@@ -3590,30 +1955,9 @@ export default function SectionEditorPage({
 
   if (err) {
     return (
-      <div
-        style={{ padding: 32, fontFamily: "'Plus Jakarta Sans', sans-serif" }}
-      >
-        <div
-          style={{
-            background: "#fee2e2",
-            color: "#b91c1c",
-            padding: "14px 18px",
-            borderRadius: 10,
-          }}
-        >
-          {err}
-        </div>
-        <button
-          onClick={onBack}
-          style={{
-            marginTop: 16,
-            padding: "8px 16px",
-            border: "1px solid #e2e8f0",
-            borderRadius: 8,
-            background: "#fff",
-            cursor: "pointer",
-          }}
-        >
+      <div style={{ padding: 32, fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+        <div style={{ background: "#fee2e2", color: "#b91c1c", padding: "14px 18px", borderRadius: 10 }}>{err}</div>
+        <button onClick={onBack} style={{ marginTop: 16, padding: "8px 16px", border: "1px solid #e2e8f0", borderRadius: 8, background: "#fff", cursor: "pointer" }}>
           ← Back
         </button>
       </div>
@@ -3622,126 +1966,54 @@ export default function SectionEditorPage({
 
   /* ═══ layout ═══════════════════════════════════════════════════════════════ */
   return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        height: "100%",
-        fontFamily: "'Plus Jakarta Sans', sans-serif",
-        background: "#f1f5f9",
-        minHeight: 0,
-      }}
-    >
+    <div style={{
+      display: "flex", flexDirection: "column", height: "100%",
+      fontFamily: "'Plus Jakarta Sans', sans-serif", background: "#f1f5f9",
+      minHeight: 0,
+    }}>
+
       {/* ── top bar ── */}
-      <div
-        style={{
-          background: "linear-gradient(135deg, #ffffff 0%, #f8faff 100%)",
-          borderBottom: "1px solid #e2e8f0",
-          padding: "8px 20px",
-          display: "flex",
-          flexWrap: "wrap",
-          alignItems: "center",
-          gap: 10,
-          rowGap: 8,
-          flexShrink: 0,
-          minHeight: 56,
-          boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
-        }}
-      >
+      <div style={{
+        background: "linear-gradient(135deg, #ffffff 0%, #f8faff 100%)",
+        borderBottom: "1px solid #e2e8f0",
+        padding: "8px 20px", display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, rowGap: 8,
+        flexShrink: 0, minHeight: 56,
+        boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
+      }}>
         {/* Back button */}
-        <button
-          onClick={onBack}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 5,
-            padding: "5px 12px",
-            border: "1.5px solid #e2e8f0",
-            borderRadius: 8,
-            background: "#fff",
-            fontSize: 12,
-            fontWeight: 600,
-            color: "#475569",
-            cursor: "pointer",
-            flexShrink: 0,
-            transition: "all 0.15s",
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.borderColor = "#94a3b8";
-            e.currentTarget.style.color = "#1e293b";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.borderColor = "#e2e8f0";
-            e.currentTarget.style.color = "#475569";
-          }}
+        <button onClick={onBack} style={{
+          display: "flex", alignItems: "center", gap: 5, padding: "5px 12px",
+          border: "1.5px solid #e2e8f0", borderRadius: 8,
+          background: "#fff", fontSize: 12, fontWeight: 600,
+          color: "#475569", cursor: "pointer", flexShrink: 0,
+          transition: "all 0.15s",
+        }}
+          onMouseEnter={e => { e.currentTarget.style.borderColor = "#94a3b8"; e.currentTarget.style.color = "#1e293b"; }}
+          onMouseLeave={e => { e.currentTarget.style.borderColor = "#e2e8f0"; e.currentTarget.style.color = "#475569"; }}
         >
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-            <path
-              d="M7.5 2L3.5 6l4 4"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M7.5 2L3.5 6l4 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
           My Sections
         </button>
 
-        <div
-          style={{ width: 1, height: 22, background: "#e2e8f0", flexShrink: 0 }}
-        />
+        <div style={{ width: 1, height: 22, background: "#e2e8f0", flexShrink: 0 }} />
 
         {/* Breadcrumb + title */}
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div
-            style={{
-              fontSize: 10,
-              color: "#94a3b8",
-              marginBottom: 1,
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              letterSpacing: 0.2,
-            }}
-          >
+          <div style={{ fontSize: 10, color: "#94a3b8", marginBottom: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", letterSpacing: 0.2 }}>
             {reportTitle}
           </div>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              flexWrap: "nowrap",
-              overflow: "hidden",
-            }}
-          >
-            <span
-              style={{
-                fontSize: 14,
-                fontWeight: 800,
-                color: "#0f172a",
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                maxWidth: 260,
-              }}
-            >
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "nowrap", overflow: "hidden" }}>
+            <span style={{ fontSize: 14, fontWeight: 800, color: "#0f172a", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 260 }}>
               {section?.title}
             </span>
             <StatusBadge status={section?.status} />
             {myRole && (
-              <span
-                style={{
-                  padding: "2px 9px",
-                  borderRadius: 20,
-                  fontSize: 10,
-                  fontWeight: 700,
-                  textTransform: "uppercase",
-                  flexShrink: 0,
-                  background: (ROLE_BADGE[myRole] || ROLE_BADGE.CONTRIBUTOR).bg,
-                  color: (ROLE_BADGE[myRole] || ROLE_BADGE.CONTRIBUTOR).color,
-                }}
-              >
+              <span style={{
+                padding: "2px 9px", borderRadius: 20, fontSize: 10, fontWeight: 700,
+                textTransform: "uppercase", flexShrink: 0,
+                background: (ROLE_BADGE[myRole] || ROLE_BADGE.CONTRIBUTOR).bg,
+                color:      (ROLE_BADGE[myRole] || ROLE_BADGE.CONTRIBUTOR).color,
+              }}>
                 {myRole}
               </span>
             )}
@@ -3751,28 +2023,15 @@ export default function SectionEditorPage({
         {/* ── Group: content language ── */}
         <div
           title="Author content in English or Hindi"
-          style={{
-            display: "flex",
-            border: "1.5px solid #e2e8f0",
-            borderRadius: 8,
-            overflow: "hidden",
-            flexShrink: 0,
-          }}
+          style={{ display: "flex", border: "1.5px solid #e2e8f0", borderRadius: 8, overflow: "hidden", flexShrink: 0 }}
         >
-          {[
-            ["en", "EN"],
-            ["hi", "HI"],
-          ].map(([val, label]) => (
+          {[["en", "EN"], ["hi", "HI"]].map(([val, label]) => (
             <button
               key={val}
               onClick={() => setContentLang(val)}
               style={{
-                padding: "5px 12px",
-                border: "none",
-                cursor: "pointer",
-                fontSize: 12,
-                fontWeight: 700,
-                fontFamily: "inherit",
+                padding: "5px 12px", border: "none", cursor: "pointer",
+                fontSize: 12, fontWeight: 700, fontFamily: "inherit",
                 background: contentLang === val ? "#7c3aed" : "#fff",
                 color: contentLang === val ? "#fff" : "#64748b",
                 transition: "all 0.15s",
@@ -3783,111 +2042,40 @@ export default function SectionEditorPage({
           ))}
         </div>
 
-        <div
-          style={{ width: 1, height: 22, background: "#e2e8f0", flexShrink: 0 }}
-        />
+        <div style={{ width: 1, height: 22, background: "#e2e8f0", flexShrink: 0 }} />
 
         {/* ── Group: document tools (Export, History, Preview) ── */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            flexShrink: 0,
-          }}
-        >
-          <ExportMenu
-            onWord={handleExportDocx}
-            onPdf={handleExportPdf}
-            exporting={exporting}
-            disabled={blocks.length === 0}
-          />
-          <ToolBtn
-            onClick={() => setVersionHistOpen((o) => !o)}
-            active={versionHistOpen}
-            title="Version history"
-          >
-            <svg
-              width="12"
-              height="12"
-              viewBox="0 0 20 20"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <circle cx="10" cy="10" r="8" />
-              <path d="M10 6v4l3 3" />
-            </svg>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+          <ExportMenu onWord={handleExportDocx} onPdf={handleExportPdf} exporting={exporting} disabled={blocks.length === 0} />
+          <ToolBtn onClick={() => setVersionHistOpen(o => !o)} active={versionHistOpen} title="Version history">
+            <svg width="12" height="12" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="10" cy="10" r="8"/><path d="M10 6v4l3 3"/></svg>
             History
           </ToolBtn>
           {!hidePreview && (
-            <ToolBtn
-              onClick={() => setPreviewOpen((o) => !o)}
-              active={previewOpen}
-              title="Live document preview"
-            >
-              <svg
-                width="12"
-                height="12"
-                viewBox="0 0 20 20"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-              >
-                <path d="M2 10s3-6 8-6 8 6 8 6-3 6-8 6-8-6-8-6z" />
-                <circle cx="10" cy="10" r="2.5" />
-              </svg>
+            <ToolBtn onClick={() => setPreviewOpen(o => !o)} active={previewOpen} title="Live document preview">
+              <svg width="12" height="12" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2"><path d="M2 10s3-6 8-6 8 6 8 6-3 6-8 6-8-6-8-6z"/><circle cx="10" cy="10" r="2.5"/></svg>
               Preview
             </ToolBtn>
           )}
         </div>
 
-        <div
-          style={{ width: 1, height: 22, background: "#e2e8f0", flexShrink: 0 }}
-        />
+        <div style={{ width: 1, height: 22, background: "#e2e8f0", flexShrink: 0 }} />
 
         {/* ── Group: collaboration ── */}
-        <ToolBtn
-          onClick={() => setChatOpen((o) => !o)}
-          active={chatOpen}
-          title={chatOpen ? "Hide comments" : "Show comments"}
-        >
-          <svg
-            width="13"
-            height="13"
-            viewBox="0 0 20 20"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-          >
-            <path d="M2 5a2 2 0 012-2h12a2 2 0 012 2v7a2 2 0 01-2 2H7l-4 3v-3H4a2 2 0 01-2-2V5z" />
-          </svg>
+        <ToolBtn onClick={() => setChatOpen(o => !o)} active={chatOpen} title={chatOpen ? "Hide comments" : "Show comments"}>
+          <svg width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2"><path d="M2 5a2 2 0 012-2h12a2 2 0 012 2v7a2 2 0 01-2 2H7l-4 3v-3H4a2 2 0 01-2-2V5z"/></svg>
           Comments
         </ToolBtn>
 
-        <div
-          style={{ width: 1, height: 22, background: "#e2e8f0", flexShrink: 0 }}
-        />
+        <div style={{ width: 1, height: 22, background: "#e2e8f0", flexShrink: 0 }} />
 
         {/* ── Group: save state + the single primary action ── */}
         {saveLabel && (
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 5,
-              flexShrink: 0,
-              fontSize: 11,
-              fontWeight: 500,
-              color: saveLabel.startsWith("✓")
-                ? "#15803d"
-                : saveLabel.startsWith("⚠")
-                  ? "#b91c1c"
-                  : saveLabel === "Unsaved changes"
-                    ? "#b45309"
-                    : "#64748b",
-            }}
-          >
+          <div style={{
+            display: "flex", alignItems: "center", gap: 5, flexShrink: 0,
+            fontSize: 11, fontWeight: 500,
+            color: saveLabel.startsWith("✓") ? "#15803d" : saveLabel.startsWith("⚠") ? "#b91c1c" : saveLabel === "Unsaved changes" ? "#b45309" : "#64748b",
+          }}>
             {saveLabel}
           </div>
         )}
@@ -3897,21 +2085,11 @@ export default function SectionEditorPage({
             onClick={openSaveFlow}
             disabled={saving}
             style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-              padding: "7px 16px",
-              background: saving
-                ? "#a3e635"
-                : "linear-gradient(135deg,#16a34a,#15803d)",
-              color: "#fff",
-              border: "none",
-              borderRadius: 8,
-              fontSize: 12,
-              fontWeight: 700,
-              cursor: saving ? "not-allowed" : "pointer",
-              flexShrink: 0,
-              boxShadow: saving ? "none" : "0 2px 8px rgba(22,163,74,0.3)",
+              display: "flex", alignItems: "center", gap: 6, padding: "7px 16px",
+              background: saving ? "#a3e635" : "linear-gradient(135deg,#16a34a,#15803d)",
+              color: "#fff", border: "none", borderRadius: 8, fontSize: 12,
+              fontWeight: 700, cursor: saving ? "not-allowed" : "pointer",
+              flexShrink: 0, boxShadow: saving ? "none" : "0 2px 8px rgba(22,163,74,0.3)",
               transition: "all 0.15s",
             }}
           >
@@ -3919,397 +2097,145 @@ export default function SectionEditorPage({
           </button>
         )}
 
-        {canEdit &&
-          (section?.status === "NOT_STARTED" ||
-            section?.status === "IN_PROGRESS") && (
-            <button
-              onClick={openSubmitModal}
-              disabled={submitting}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-                padding: "7px 16px",
-                background: submitting
-                  ? "#93c5fd"
-                  : "linear-gradient(135deg, #2563eb, #4f46e5)",
-                color: "#fff",
-                border: "none",
-                borderRadius: 8,
-                fontSize: 12,
-                fontWeight: 700,
-                cursor: submitting ? "not-allowed" : "pointer",
-                flexShrink: 0,
-                boxShadow: submitting
-                  ? "none"
-                  : "0 2px 8px rgba(37,99,235,0.3)",
-                transition: "all 0.15s",
-              }}
-            >
-              Request Review →
-            </button>
-          )}
+        {canEdit && (section?.status === "NOT_STARTED" || section?.status === "IN_PROGRESS") && (
+          <button onClick={openSubmitModal} disabled={submitting} style={{
+            display: "flex", alignItems: "center", gap: 6, padding: "7px 16px",
+            background: submitting ? "#93c5fd" : "linear-gradient(135deg, #2563eb, #4f46e5)",
+            color: "#fff", border: "none", borderRadius: 8, fontSize: 12,
+            fontWeight: 700, cursor: submitting ? "not-allowed" : "pointer",
+            flexShrink: 0, boxShadow: submitting ? "none" : "0 2px 8px rgba(37,99,235,0.3)",
+            transition: "all 0.15s",
+          }}>
+            Request Review →
+          </button>
+        )}
 
         {canEdit && section?.status === "SENT_BACK" && (
-          <button
-            onClick={openSubmitModal}
-            disabled={submitting}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-              padding: "7px 16px",
-              background: submitting
-                ? "#fca5a5"
-                : "linear-gradient(135deg,#dc2626,#b91c1c)",
-              color: "#fff",
-              border: "none",
-              borderRadius: 8,
-              fontSize: 12,
-              fontWeight: 700,
-              cursor: submitting ? "not-allowed" : "pointer",
-              flexShrink: 0,
-              boxShadow: submitting ? "none" : "0 2px 8px rgba(220,38,38,0.3)",
-              transition: "all 0.15s",
-            }}
-          >
+          <button onClick={openSubmitModal} disabled={submitting} style={{
+            display: "flex", alignItems: "center", gap: 6, padding: "7px 16px",
+            background: submitting ? "#fca5a5" : "linear-gradient(135deg,#dc2626,#b91c1c)",
+            color: "#fff", border: "none", borderRadius: 8, fontSize: 12,
+            fontWeight: 700, cursor: submitting ? "not-allowed" : "pointer",
+            flexShrink: 0, boxShadow: submitting ? "none" : "0 2px 8px rgba(220,38,38,0.3)",
+            transition: "all 0.15s",
+          }}>
             Re-request Review →
           </button>
         )}
 
         {section?.status === "SUBMITTED" && (
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-              flexShrink: 0,
-              padding: "5px 12px",
-              background: "#eff6ff",
-              borderRadius: 8,
-              border: "1px solid #bfdbfe",
-            }}
-          >
+          <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0, padding: "5px 12px", background: "#eff6ff", borderRadius: 8, border: "1px solid #bfdbfe" }}>
             <span style={{ fontSize: 12 }}>⏳</span>
-            <span style={{ fontSize: 11, fontWeight: 600, color: "#1d4ed8" }}>
-              Pending Review…
-            </span>
+            <span style={{ fontSize: 11, fontWeight: 600, color: "#1d4ed8" }}>Pending Review…</span>
           </div>
         )}
         {section?.status === "UNDER_REVIEW" && (
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-              flexShrink: 0,
-              padding: "5px 12px",
-              background: "#f5f3ff",
-              borderRadius: 8,
-              border: "1px solid #ddd6fe",
-            }}
-          >
+          <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0, padding: "5px 12px", background: "#f5f3ff", borderRadius: 8, border: "1px solid #ddd6fe" }}>
             <span style={{ fontSize: 12 }}>👁</span>
-            <span style={{ fontSize: 11, fontWeight: 600, color: "#6d28d9" }}>
-              Under Review
-            </span>
+            <span style={{ fontSize: 11, fontWeight: 600, color: "#6d28d9" }}>Under Review</span>
           </div>
         )}
         {section?.status === "APPROVED" && (
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-              flexShrink: 0,
-              padding: "5px 12px",
-              background: "#f0fdf4",
-              borderRadius: 8,
-              border: "1px solid #bbf7d0",
-            }}
-          >
+          <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0, padding: "5px 12px", background: "#f0fdf4", borderRadius: 8, border: "1px solid #bbf7d0" }}>
             <span style={{ fontSize: 12 }}>✓</span>
-            <span style={{ fontSize: 11, fontWeight: 600, color: "#15803d" }}>
-              Approved ✓
-            </span>
+            <span style={{ fontSize: 11, fontWeight: 600, color: "#15803d" }}>Approved ✓</span>
           </div>
         )}
         {section?.status === "LOCKED" && (
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-              flexShrink: 0,
-              padding: "5px 12px",
-              background: "#f1f5f9",
-              borderRadius: 8,
-              border: "1px solid #cbd5e1",
-            }}
-          >
+          <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0, padding: "5px 12px", background: "#f1f5f9", borderRadius: 8, border: "1px solid #cbd5e1" }}>
             <span style={{ fontSize: 12 }}>🔒</span>
-            <span style={{ fontSize: 11, fontWeight: 600, color: "#475569" }}>
-              Locked
-            </span>
+            <span style={{ fontSize: 11, fontWeight: 600, color: "#475569" }}>Locked</span>
           </div>
         )}
       </div>
 
       {/* submit message */}
       {submitMsg && (
-        <div
-          style={{
-            padding: "9px 20px",
-            flexShrink: 0,
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            background: submitMsg.startsWith("✓") ? "#f0fdf4" : "#fef2f2",
-            borderBottom: `1px solid ${submitMsg.startsWith("✓") ? "#bbf7d0" : "#fecaca"}`,
-            color: submitMsg.startsWith("✓") ? "#15803d" : "#b91c1c",
-            fontSize: 12,
-            fontWeight: 500,
-          }}
-        >
+        <div style={{
+          padding: "9px 20px", flexShrink: 0, display: "flex", alignItems: "center", gap: 8,
+          background: submitMsg.startsWith("✓") ? "#f0fdf4" : "#fef2f2",
+          borderBottom: `1px solid ${submitMsg.startsWith("✓") ? "#bbf7d0" : "#fecaca"}`,
+          color: submitMsg.startsWith("✓") ? "#15803d" : "#b91c1c",
+          fontSize: 12, fontWeight: 500,
+        }}>
           {submitMsg}
-          <button
-            onClick={() => setSubmitMsg("")}
-            style={{
-              marginLeft: "auto",
-              background: "none",
-              border: "none",
-              cursor: "pointer",
-              fontSize: 14,
-              color: "inherit",
-              opacity: 0.6,
-            }}
-          >
-            ✕
-          </button>
+          <button onClick={() => setSubmitMsg("")} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", fontSize: 14, color: "inherit", opacity: 0.6 }}>✕</button>
         </div>
       )}
 
       {/* Version history panel */}
       {versionHistOpen && (
-        <div
-          style={{
-            flexShrink: 0,
-            borderBottom: "1px solid #e2e8f0",
-            background: "#fafbff",
-            maxHeight: 300,
-            overflowY: "auto",
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              padding: "10px 20px",
-              borderBottom: "1px solid #e8edf3",
-              gap: 10,
-            }}
-          >
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 20 20"
-              fill="none"
-              stroke="#6d28d9"
-              strokeWidth="2"
-            >
-              <circle cx="10" cy="10" r="8" />
-              <path d="M10 6v4l3 3" />
-            </svg>
-            <span
-              style={{
-                fontSize: 13,
-                fontWeight: 700,
-                color: "#1e293b",
-                flex: 1,
-              }}
-            >
-              Version History
-            </span>
-            {loadingVersions && (
-              <span style={{ fontSize: 11, color: "#94a3b8" }}>Loading…</span>
-            )}
-            <button
-              onClick={() => loadVersions()}
-              title="Refresh"
-              style={{
-                background: "none",
-                border: "none",
-                cursor: "pointer",
-                fontSize: 13,
-                color: "#94a3b8",
-              }}
-            >
-              ↻
-            </button>
-            <button
-              onClick={() => {
-                setVersionHistOpen(false);
-                setViewingSnapshot(null);
-              }}
-              style={{
-                background: "none",
-                border: "none",
-                cursor: "pointer",
-                fontSize: 14,
-                color: "#94a3b8",
-              }}
-            >
-              ✕
-            </button>
+        <div style={{
+          flexShrink: 0, borderBottom: "1px solid #e2e8f0",
+          background: "#fafbff", maxHeight: 300, overflowY: "auto",
+        }}>
+          <div style={{ display: "flex", alignItems: "center", padding: "10px 20px", borderBottom: "1px solid #e8edf3", gap: 10 }}>
+            <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="#6d28d9" strokeWidth="2"><circle cx="10" cy="10" r="8"/><path d="M10 6v4l3 3"/></svg>
+            <span style={{ fontSize: 13, fontWeight: 700, color: "#1e293b", flex: 1 }}>Version History</span>
+            {loadingVersions && <span style={{ fontSize: 11, color: "#94a3b8" }}>Loading…</span>}
+            <button onClick={() => loadVersions()} title="Refresh" style={{ background: "none", border: "none", cursor: "pointer", fontSize: 13, color: "#94a3b8" }}>↻</button>
+            <button onClick={() => { setVersionHistOpen(false); setViewingSnapshot(null); }} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 14, color: "#94a3b8" }}>✕</button>
           </div>
           {versions.length === 0 && !loadingVersions && (
-            <div
-              style={{
-                padding: "20px",
-                textAlign: "center",
-                fontSize: 12,
-                color: "#94a3b8",
-              }}
-            >
-              No versions saved yet
-            </div>
+            <div style={{ padding: "20px", textAlign: "center", fontSize: 12, color: "#94a3b8" }}>No versions saved yet</div>
           )}
-          {versions.map((v) => {
-            const eventColors = {
-              MANUAL: { bg: "#eff6ff", color: "#1d4ed8" },
-              SUBMITTED: { bg: "#fef3c7", color: "#d97706" },
-              APPROVED: { bg: "#dcfce7", color: "#15803d" },
-              SENT_BACK: { bg: "#fee2e2", color: "#b91c1c" },
-              RESTORED: { bg: "#f5f3ff", color: "#6d28d9" },
-            };
-            const ec = eventColors[v.event] || {
-              bg: "#f1f5f9",
-              color: "#475569",
-            };
+          {versions.map(v => {
+            const eventColors = { MANUAL: { bg: "#eff6ff", color: "#1d4ed8" }, SUBMITTED: { bg: "#fef3c7", color: "#d97706" }, APPROVED: { bg: "#dcfce7", color: "#15803d" }, SENT_BACK: { bg: "#fee2e2", color: "#b91c1c" }, RESTORED: { bg: "#f5f3ff", color: "#6d28d9" } };
+            const ec = eventColors[v.event] || { bg: "#f1f5f9", color: "#475569" };
             const isViewing = viewingSnapshot?.version === v.version_num;
             return (
-              <div
-                key={v.id}
-                style={{
-                  display: "flex",
-                  alignItems: "flex-start",
-                  gap: 12,
-                  padding: "10px 20px",
-                  borderBottom: "1px solid #f1f5f9",
-                  background: isViewing ? "#eef2ff" : "transparent",
-                }}
-              >
+              <div key={v.id} style={{
+                display: "flex", alignItems: "flex-start", gap: 12, padding: "10px 20px",
+                borderBottom: "1px solid #f1f5f9",
+                background: isViewing ? "#eef2ff" : "transparent",
+              }}>
                 <div style={{ flexShrink: 0, marginTop: 2 }}>
-                  <span
-                    style={{
-                      fontSize: 9,
-                      fontWeight: 800,
-                      padding: "2px 7px",
-                      borderRadius: 4,
-                      background: ec.bg,
-                      color: ec.color,
-                      textTransform: "uppercase",
-                    }}
-                  >
-                    {v.event}
-                  </span>
+                  <span style={{ fontSize: 9, fontWeight: 800, padding: "2px 7px", borderRadius: 4, background: ec.bg, color: ec.color, textTransform: "uppercase" }}>{v.event}</span>
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div
-                    style={{
-                      fontSize: 12,
-                      fontWeight: 600,
-                      color: "#0f172a",
-                      marginBottom: 2,
-                    }}
-                  >
+                  <div style={{ fontSize: 12, fontWeight: 600, color: "#0f172a", marginBottom: 2 }}>
                     v{v.version_num}
-                    {v.description && (
-                      <span
-                        style={{
-                          fontWeight: 400,
-                          color: "#475569",
-                          marginLeft: 8,
-                        }}
-                      >
-                        — {v.description}
-                      </span>
-                    )}
+                    {v.description && <span style={{ fontWeight: 400, color: "#475569", marginLeft: 8 }}>— {v.description}</span>}
                   </div>
                   <div style={{ fontSize: 10, color: "#94a3b8" }}>
-                    {v.created_by_name || "System"} ·{" "}
-                    {new Date(v.created_at).toLocaleString()}
+                    {v.created_by_name || "System"} · {new Date(v.created_at).toLocaleString()}
                   </div>
                 </div>
                 <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
                   <button
-                    onClick={() =>
-                      isViewing
-                        ? setViewingSnapshot(null)
-                        : loadSnapshot(v.version_num)
-                    }
+                    onClick={() => isViewing ? setViewingSnapshot(null) : loadSnapshot(v.version_num)}
                     style={{
-                      padding: "3px 10px",
-                      borderRadius: 6,
-                      border: `1px solid ${isViewing ? "#818cf8" : "#d1d5db"}`,
-                      background: isViewing ? "#eef2ff" : "#fff",
-                      color: isViewing ? "#4f46e5" : "#374151",
-                      fontSize: 11,
-                      cursor: "pointer",
-                      fontFamily: "inherit",
-                      fontWeight: 600,
+                      padding: "3px 10px", borderRadius: 6, border: `1px solid ${isViewing ? "#818cf8" : "#d1d5db"}`,
+                      background: isViewing ? "#eef2ff" : "#fff", color: isViewing ? "#4f46e5" : "#374151",
+                      fontSize: 11, cursor: "pointer", fontFamily: "inherit", fontWeight: 600,
                     }}
-                  >
-                    {isViewing ? "Close" : "View"}
-                  </button>
+                  >{isViewing ? "Close" : "View"}</button>
                   {isAdmin && (
                     <button
                       onClick={async () => {
-                        const desc = window.prompt(
-                          `Restore description (optional):`,
-                          `Restored to version ${v.version_num}`,
-                        );
+                        const desc = window.prompt(`Restore description (optional):`, `Restored to version ${v.version_num}`);
                         if (desc === null) return;
                         try {
-                          const res = await apiFetch(
-                            `/api/builder/versions/section/${sectionId}/${v.version_num}/restore`,
-                            {
-                              method: "POST",
-                              headers: { "Content-Type": "application/json" },
-                              body: JSON.stringify({
-                                description:
-                                  desc ||
-                                  `Restored to version ${v.version_num}`,
-                              }),
-                            },
-                          );
+                          const res = await apiFetch(`/api/builder/versions/section/${sectionId}/${v.version_num}/restore`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ description: desc || `Restored to version ${v.version_num}` }),
+                          });
                           const json = await res.json();
                           if (json.success) {
-                            alert(
-                              `Restored to version ${v.version_num}. Page will reload.`,
-                            );
+                            alert(`Restored to version ${v.version_num}. Page will reload.`);
                             window.location.reload();
                           } else {
                             alert(json.message || "Restore failed");
                           }
-                        } catch {
-                          alert("Restore failed");
-                        }
+                        } catch { alert("Restore failed"); }
                       }}
                       style={{
-                        padding: "3px 10px",
-                        borderRadius: 6,
-                        border: "1px solid #fecaca",
-                        background: "#fff",
-                        color: "#b91c1c",
-                        fontSize: 11,
-                        cursor: "pointer",
-                        fontFamily: "inherit",
-                        fontWeight: 600,
+                        padding: "3px 10px", borderRadius: 6, border: "1px solid #fecaca",
+                        background: "#fff", color: "#b91c1c",
+                        fontSize: 11, cursor: "pointer", fontFamily: "inherit", fontWeight: 600,
                       }}
-                    >
-                      Restore
-                    </button>
+                    >Restore</button>
                   )}
                 </div>
               </div>
@@ -4317,53 +2243,14 @@ export default function SectionEditorPage({
           })}
           {/* Snapshot viewer */}
           {viewingSnapshot && (
-            <div
-              style={{
-                padding: "14px 20px",
-                background: "#fdf4ff",
-                borderTop: "2px solid #c4b5fd",
-              }}
-            >
-              <div
-                style={{
-                  fontSize: 11,
-                  fontWeight: 700,
-                  color: "#6d28d9",
-                  marginBottom: 10,
-                }}
-              >
+            <div style={{ padding: "14px 20px", background: "#fdf4ff", borderTop: "2px solid #c4b5fd" }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#6d28d9", marginBottom: 10 }}>
                 Snapshot — Version {viewingSnapshot.version} (read-only preview)
               </div>
               {(viewingSnapshot.data?.snapshot?.blocks || []).map((b, i) => (
-                <div
-                  key={i}
-                  style={{
-                    padding: "8px 12px",
-                    background: "#fff",
-                    borderRadius: 8,
-                    border: "1px solid #ede9fe",
-                    marginBottom: 8,
-                  }}
-                >
-                  <div
-                    style={{
-                      fontSize: 9,
-                      fontWeight: 800,
-                      color: "#818cf8",
-                      marginBottom: 4,
-                      textTransform: "uppercase",
-                    }}
-                  >
-                    {b.block_type}
-                  </div>
-                  <div
-                    style={{
-                      fontSize: 11,
-                      color: "#374151",
-                      whiteSpace: "pre-wrap",
-                      wordBreak: "break-word",
-                    }}
-                  >
+                <div key={i} style={{ padding: "8px 12px", background: "#fff", borderRadius: 8, border: "1px solid #ede9fe", marginBottom: 8 }}>
+                  <div style={{ fontSize: 9, fontWeight: 800, color: "#818cf8", marginBottom: 4, textTransform: "uppercase" }}>{b.block_type}</div>
+                  <div style={{ fontSize: 11, color: "#374151", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
                     {JSON.stringify(b.content, null, 2)}
                   </div>
                 </div>
@@ -4374,247 +2261,141 @@ export default function SectionEditorPage({
       )}
 
       {/* ── two-panel body ── */}
-      <div
-        style={{ flex: 1, display: "flex", overflow: "hidden", minHeight: 0 }}
-      >
+      <div style={{ flex: 1, display: "flex", overflow: "hidden", minHeight: 0 }}>
+
         {/* LEFT: editor — full width by default; the live preview is now a slide-over
            drawer (triggered from the top bar) rather than a permanent column, so only
            the comments panel still claims a fixed-width sibling column. */}
-        <div
-          style={{
-            flex: chatOpen ? "0 0 58%" : "1 1 100%",
-            display: "flex",
-            flexDirection: "column",
-            borderRight: chatOpen ? "1px solid #e2e8f0" : "none",
-            overflow: "hidden",
-            background: "#f8fafc",
-            transition: "flex-basis 0.25s ease",
-            minWidth: 0,
-          }}
-        >
+        <div style={{
+          flex: chatOpen ? "0 0 58%" : "1 1 100%",
+          display: "flex", flexDirection: "column",
+          borderRight: chatOpen ? "1px solid #e2e8f0" : "none",
+          overflow: "hidden", background: "#f8fafc",
+          transition: "flex-basis 0.25s ease",
+          minWidth: 0,
+        }}>
           {/* section description */}
           {section?.description && (
-            <div
-              style={{
-                background: "linear-gradient(135deg, #f8faff, #fff)",
-                borderBottom: "1px solid #e8edf3",
-                padding: "9px 24px",
-                fontSize: 12.5,
-                color: "#475569",
-                flexShrink: 0,
-                lineHeight: 1.6,
-                borderLeft: "3px solid #818cf8",
-              }}
-            >
+            <div style={{
+              background: "linear-gradient(135deg, #f8faff, #fff)",
+              borderBottom: "1px solid #e8edf3",
+              padding: "9px 24px", fontSize: 12.5, color: "#475569",
+              flexShrink: 0, lineHeight: 1.6,
+              borderLeft: "3px solid #818cf8",
+            }}>
               {section.description}
             </div>
           )}
 
           {/* status lock or read-only banner */}
           {(statusLock || (!canEdit && !statusLock)) && (
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                padding: "8px 24px",
-                flexShrink: 0,
-                background: statusLock ? "#fffbeb" : "#f8fafc",
-                borderBottom: `1px solid ${statusLock ? "#fde68a" : "#e8edf3"}`,
-                fontSize: 12,
-              }}
-            >
+            <div style={{
+              display: "flex", alignItems: "center", gap: 10,
+              padding: "8px 24px", flexShrink: 0,
+              background: statusLock ? "#fffbeb" : "#f8fafc",
+              borderBottom: `1px solid ${statusLock ? "#fde68a" : "#e8edf3"}`,
+              fontSize: 12,
+            }}>
               <span style={{ fontSize: 14 }}>{statusLock ? "🔒" : "👁"}</span>
               {statusLock && (
                 <>
-                  <span style={{ fontWeight: 700, color: "#92400e" }}>
-                    {section?.status?.replace(/_/g, " ")}
-                  </span>
+                  <span style={{ fontWeight: 700, color: "#92400e" }}>{section?.status?.replace(/_/g, " ")}</span>
                   <span style={{ color: "#b45309" }}>
-                    {section?.status === "APPROVED" &&
-                      "— this section has been approved."}
-                    {section?.status === "SUBMITTED" &&
-                      "— awaiting review. Editing is paused."}
-                    {section?.status === "UNDER_REVIEW" &&
-                      "— currently under review."}
-                    {section?.status === "SENT_BACK" &&
-                      "— sent back for revisions."}
-                    {section?.status === "LOCKED" &&
-                      "— locked. No further changes allowed."}
+                    {section?.status === "APPROVED"     && "— this section has been approved."}
+                    {section?.status === "SUBMITTED"    && "— awaiting review. Editing is paused."}
+                    {section?.status === "UNDER_REVIEW" && "— currently under review."}
+                    {section?.status === "SENT_BACK"    && "— sent back for revisions."}
+                    {section?.status === "LOCKED"       && "— locked. No further changes allowed."}
                   </span>
                 </>
               )}
-              {!canEdit && !statusLock && (
-                <span style={{ color: "#64748b" }}>
-                  Viewing in read-only mode. Only assigned contributors can
-                  edit.
-                </span>
-              )}
+              {!canEdit && !statusLock && <span style={{ color: "#64748b" }}>Viewing in read-only mode. Only assigned contributors can edit.</span>}
             </div>
           )}
 
           {/* reviewer comments thread — shown to contributors when status is SENT_BACK */}
           {section?.status === "SENT_BACK" && (
-            <div
-              style={{
-                flexShrink: 0,
-                borderBottom: "1px solid rgba(0,0,0,0.06)",
-                background: "#fff9f0",
-              }}
-            >
+            <div style={{
+              flexShrink: 0, borderBottom: "1px solid rgba(0,0,0,0.06)",
+              background: "#fff9f0",
+            }}>
               {/* Sent-back banner */}
-              {reviewerComments.length > 0 &&
-                (() => {
-                  const latest = reviewerComments[0];
-                  const unresCnt = Object.values(blockCounts).reduce(
-                    (a, c) => a + (c.unresolved || 0),
-                    0,
-                  );
-                  return (
-                    <div
-                      style={{
-                        padding: "8px 20px",
-                        background: "#fef2f2",
-                        borderBottom: "1px solid #fecaca",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 10,
-                        flexWrap: "wrap",
-                      }}
-                    >
-                      <span
+              {reviewerComments.length > 0 && (() => {
+                const latest = reviewerComments[0];
+                const unresCnt = Object.values(blockCounts).reduce((a, c) => a + (c.unresolved || 0), 0);
+                return (
+                  <div style={{
+                    padding: "8px 20px", background: "#fef2f2", borderBottom: "1px solid #fecaca",
+                    display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
+                  }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: "#b91c1c" }}>
+                      Sent back by {latest.reviewer_name || "Reviewer"} on {new Date(latest.created_at).toLocaleDateString()}
+                    </span>
+                    {unresCnt > 0 && (
+                      <button
+                        onClick={() => setChatOpen(true)}
                         style={{
-                          fontSize: 12,
-                          fontWeight: 700,
-                          color: "#b91c1c",
+                          fontSize: 11, color: "#b45309", background: "#fef3c7",
+                          border: "1px solid #fcd34d", borderRadius: 6,
+                          padding: "2px 9px", cursor: "pointer", fontFamily: "inherit", fontWeight: 600,
                         }}
                       >
-                        Sent back by {latest.reviewer_name || "Reviewer"} on{" "}
-                        {new Date(latest.created_at).toLocaleDateString()}
-                      </span>
-                      {unresCnt > 0 && (
-                        <button
-                          onClick={() => setChatOpen(true)}
-                          style={{
-                            fontSize: 11,
-                            color: "#b45309",
-                            background: "#fef3c7",
-                            border: "1px solid #fcd34d",
-                            borderRadius: 6,
-                            padding: "2px 9px",
-                            cursor: "pointer",
-                            fontFamily: "inherit",
-                            fontWeight: 600,
-                          }}
-                        >
-                          {unresCnt} unresolved comment{unresCnt > 1 ? "s" : ""}{" "}
-                          — View →
-                        </button>
-                      )}
-                    </div>
-                  );
-                })()}
+                        {unresCnt} unresolved comment{unresCnt > 1 ? "s" : ""} — View →
+                      </button>
+                    )}
+                  </div>
+                );
+              })()}
               {/* header row — only when there are comments */}
               {reviewerComments.length > 0 && (
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                    padding: "10px 20px",
-                    cursor: "pointer",
-                    userSelect: "none",
-                  }}
-                  onClick={() => setCommentsOpen((o) => !o)}
-                >
-                  <span style={{ fontSize: 14 }}>💬</span>
-                  <span
-                    style={{ fontSize: 12, fontWeight: 700, color: "#92400e" }}
-                  >
-                    Reviewer Comments ({reviewerComments.length})
-                  </span>
-                  <span style={{ fontSize: 11, color: "#a16207", flex: 1 }}>
-                    — address these before resubmitting
-                  </span>
-                  <span style={{ fontSize: 11, color: "#a16207" }}>
-                    {commentsOpen ? "▲" : "▼"}
-                  </span>
-                </div>
+              <div style={{
+                display: "flex", alignItems: "center", gap: 8,
+                padding: "10px 20px", cursor: "pointer", userSelect: "none",
+              }} onClick={() => setCommentsOpen(o => !o)}>
+                <span style={{ fontSize: 14 }}>💬</span>
+                <span style={{ fontSize: 12, fontWeight: 700, color: "#92400e" }}>
+                  Reviewer Comments ({reviewerComments.length})
+                </span>
+                <span style={{ fontSize: 11, color: "#a16207", flex: 1 }}>
+                  — address these before resubmitting
+                </span>
+                <span style={{ fontSize: 11, color: "#a16207" }}>{commentsOpen ? "▲" : "▼"}</span>
+              </div>
               )}
 
               {commentsOpen && reviewerComments.length > 0 && (
                 <div style={{ padding: "0 20px 14px" }}>
                   {reviewerComments.map((h, i) => (
-                    <div
-                      key={i}
-                      style={{
-                        display: "flex",
-                        gap: 10,
-                        marginBottom: i < reviewerComments.length - 1 ? 12 : 0,
-                      }}
-                    >
+                    <div key={i} style={{
+                      display: "flex", gap: 10, marginBottom: i < reviewerComments.length - 1 ? 12 : 0,
+                    }}>
                       {/* avatar */}
-                      <div
-                        style={{
-                          width: 30,
-                          height: 30,
-                          borderRadius: "50%",
-                          flexShrink: 0,
-                          background: "#fee2e2",
-                          color: "#b91c1c",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          fontSize: 12,
-                          fontWeight: 700,
-                        }}
-                      >
+                      <div style={{
+                        width: 30, height: 30, borderRadius: "50%", flexShrink: 0,
+                        background: "#fee2e2", color: "#b91c1c",
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        fontSize: 12, fontWeight: 700,
+                      }}>
                         {h.reviewer_name?.[0]?.toUpperCase() || "R"}
                       </div>
                       <div style={{ flex: 1 }}>
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "baseline",
-                            gap: 8,
-                            marginBottom: 4,
-                          }}
-                        >
-                          <span
-                            style={{
-                              fontSize: 12,
-                              fontWeight: 700,
-                              color: "#1e293b",
-                            }}
-                          >
+                        <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 4 }}>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: "#1e293b" }}>
                             {h.reviewer_name || "Reviewer"}
                           </span>
                           {h.workflow_step_name && (
-                            <span style={{ fontSize: 10, color: "#94a3b8" }}>
-                              {h.workflow_step_name}
-                            </span>
+                            <span style={{ fontSize: 10, color: "#94a3b8" }}>{h.workflow_step_name}</span>
                           )}
-                          <span
-                            style={{
-                              fontSize: 10,
-                              color: "#94a3b8",
-                              marginLeft: "auto",
-                            }}
-                          >
+                          <span style={{ fontSize: 10, color: "#94a3b8", marginLeft: "auto" }}>
                             {new Date(h.created_at).toLocaleString()}
                           </span>
                         </div>
-                        <div
-                          style={{
-                            padding: "9px 13px",
-                            background: "#fef2f2",
-                            border: "1px solid rgba(239,68,68,0.2)",
-                            borderRadius: "0 8px 8px 8px",
-                            fontSize: 12,
-                            color: "#1e293b",
-                            lineHeight: 1.6,
-                          }}
-                        >
+                        <div style={{
+                          padding: "9px 13px", background: "#fef2f2",
+                          border: "1px solid rgba(239,68,68,0.2)",
+                          borderRadius: "0 8px 8px 8px",
+                          fontSize: 12, color: "#1e293b", lineHeight: 1.6,
+                        }}>
                           {h.reviewer_comment}
                         </div>
                       </div>
@@ -4626,441 +2407,189 @@ export default function SectionEditorPage({
           )}
 
           {/* outline rail + blocks scroll area */}
-          <div
-            style={{
-              flex: 1,
-              minHeight: 0,
-              display: "flex",
-              overflow: "hidden",
-            }}
-          >
-            <BlockOutlineRail
-              blocks={blocks}
-              onSelect={scrollToBlock}
-              activeBlockId={highlightedBlockId}
-            />
-            <div
-              ref={editorScrollRef}
-              onScroll={syncScroll}
-              style={{
-                flex: 1,
-                minWidth: 0,
-                overflowY: "auto",
-                padding: "20px 24px",
-              }}
-            >
-              <div style={{ maxWidth: 720, margin: "0 auto" }}>
-                {/* Empty — read only */}
-                {blocks.length === 0 && readOnly && (
-                  <div style={{ textAlign: "center", padding: "80px 0" }}>
-                    <div
-                      style={{ fontSize: 36, marginBottom: 12, opacity: 0.4 }}
-                    >
-                      📄
-                    </div>
-                    <div
-                      style={{
-                        fontSize: 14,
-                        color: "#94a3b8",
-                        fontWeight: 500,
-                      }}
-                    >
-                      This section has no content yet.
-                    </div>
+          <div style={{ flex: 1, minHeight: 0, display: "flex", overflow: "hidden" }}>
+            <BlockOutlineRail blocks={blocks} onSelect={scrollToBlock} activeBlockId={highlightedBlockId} />
+            <div ref={editorScrollRef} onScroll={syncScroll} style={{ flex: 1, minWidth: 0, overflowY: "auto", padding: "20px 24px" }}>
+            <div style={{ maxWidth: 720, margin: "0 auto" }}>
+
+              {/* Empty — read only */}
+              {blocks.length === 0 && readOnly && (
+                <div style={{ textAlign: "center", padding: "80px 0" }}>
+                  <div style={{ fontSize: 36, marginBottom: 12, opacity: 0.4 }}>📄</div>
+                  <div style={{ fontSize: 14, color: "#94a3b8", fontWeight: 500 }}>This section has no content yet.</div>
+                </div>
+              )}
+
+              {/* Empty — editable: centered prompt */}
+              {blocks.length === 0 && !readOnly && (
+                <div style={{ padding: "60px 0 24px", textAlign: "center" }}>
+                  <div style={{ fontSize: 40, marginBottom: 14, opacity: 0.35 }}>✏️</div>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: "#475569", marginBottom: 6 }}>Start writing your section</div>
+                  <div style={{ fontSize: 12, color: "#94a3b8", marginBottom: 24 }}>Add a paragraph, heading, table, image and more</div>
+                  <div style={{ maxWidth: 280, margin: "0 auto" }}>
+                    <BigAddBlockButton onAdd={(type) => handleAddBlock(type, -1)} />
                   </div>
-                )}
+                </div>
+              )}
 
-                {/* Empty — editable: centered prompt */}
-                {blocks.length === 0 && !readOnly && (
-                  <div style={{ padding: "60px 0 24px", textAlign: "center" }}>
-                    <div
-                      style={{ fontSize: 40, marginBottom: 14, opacity: 0.35 }}
-                    >
-                      ✏️
-                    </div>
-                    <div
-                      style={{
-                        fontSize: 14,
-                        fontWeight: 600,
-                        color: "#475569",
-                        marginBottom: 6,
-                      }}
-                    >
-                      Start writing your section
-                    </div>
-                    <div
-                      style={{
-                        fontSize: 12,
-                        color: "#94a3b8",
-                        marginBottom: 24,
-                      }}
-                    >
-                      Add a paragraph, heading, table, image and more
-                    </div>
-                    <div style={{ maxWidth: 280, margin: "0 auto" }}>
-                      <BigAddBlockButton
-                        onAdd={(type) => handleAddBlock(type, -1)}
-                      />
-                    </div>
-                  </div>
-                )}
+              {/* Adder before very first block */}
+              {!readOnly && blocks.length > 0 && (
+                <InlineAdder
+                  isOpen={activeInserter === -1}
+                  onToggle={(open) => setActiveInserter(open ? -1 : null)}
+                  onAdd={(type) => handleAddBlock(type, -1)}
+                />
+              )}
 
-                {/* Adder before very first block */}
-                {!readOnly && blocks.length > 0 && (
-                  <InlineAdder
-                    isOpen={activeInserter === -1}
-                    onToggle={(open) => setActiveInserter(open ? -1 : null)}
-                    onAdd={(type) => handleAddBlock(type, -1)}
-                  />
-                )}
-
-                {blocks.map((block, idx) => {
-                  const isDirty =
-                    dirtyBlocks.has(block.id) || !!dirtyTranslations[block.id];
-                  const isHighlight = highlightedBlockId === block.id;
-                  const m = typeMeta(block.block_type);
-                  return (
-                    <React.Fragment key={block.id}>
-                      <div
-                        data-block-id={block.id}
+              {blocks.map((block, idx) => {
+                const isDirty     = dirtyBlocks.has(block.id) || !!dirtyTranslations[block.id];
+                const isHighlight = highlightedBlockId === block.id;
+                const m           = typeMeta(block.block_type);
+                return (
+                <React.Fragment key={block.id}>
+                  <div data-block-id={block.id} style={{
+                    background: "#fff",
+                    border: `1px solid ${isHighlight ? "#818cf8" : isDirty ? "#fcd34d" : "#e8edf3"}`,
+                    borderRadius: 12, padding: "14px 18px",
+                    boxShadow: isHighlight ? "0 0 0 3px rgba(129,140,248,0.25)" : isDirty ? "0 0 0 3px rgba(252,211,77,0.2)" : "0 1px 4px rgba(15,23,42,0.05)",
+                    transition: "box-shadow 0.2s, border-color 0.2s",
+                  }}
+                    onMouseEnter={e => { if (!isDirty && !isHighlight) { e.currentTarget.style.borderColor = "#c7d2fe"; e.currentTarget.style.boxShadow = "0 2px 8px rgba(79,70,229,0.08)"; }}}
+                    onMouseLeave={e => { if (!isDirty && !isHighlight) { e.currentTarget.style.borderColor = "#e8edf3"; e.currentTarget.style.boxShadow = "0 1px 4px rgba(15,23,42,0.05)"; }}}
+                  >
+                    {/* Block header */}
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                      <IconChip type={block.block_type} size={22} />
+                      <span style={{
+                        fontSize: 9, fontWeight: 800, color: "#818cf8",
+                        background: "#eef2ff", padding: "2px 7px",
+                        borderRadius: 4, textTransform: "uppercase", letterSpacing: 0.7,
+                      }}>
+                        {m.label}
+                      </span>
+                      {!readOnly ? (
+                        <button
+                          onClick={() => toggleRequired(block.id, !!block.is_required)}
+                          title={block.is_required ? "Required — click to make optional" : "Mark as required"}
+                          style={{
+                            background: "none", border: "none", cursor: "pointer",
+                            color: block.is_required ? "#ef4444" : "#cbd5e1",
+                            fontSize: 13, lineHeight: 1, padding: 0,
+                          }}
+                        >*</button>
+                      ) : block.is_required && (
+                        <span title="Required" style={{ color: "#ef4444", fontSize: 13, lineHeight: 1 }}>*</span>
+                      )}
+                      {/* Comment badge — always visible */}
+                      <button
+                        onClick={() => { setSelectedBlockId(block.id); setChatOpen(true); }}
+                        title="View block comments"
                         style={{
-                          background: "#fff",
-                          border: `1px solid ${isHighlight ? "#818cf8" : isDirty ? "#fcd34d" : "#e8edf3"}`,
-                          borderRadius: 12,
-                          padding: "14px 18px",
-                          boxShadow: isHighlight
-                            ? "0 0 0 3px rgba(129,140,248,0.25)"
-                            : isDirty
-                              ? "0 0 0 3px rgba(252,211,77,0.2)"
-                              : "0 1px 4px rgba(15,23,42,0.05)",
-                          transition: "box-shadow 0.2s, border-color 0.2s",
-                        }}
-                        onMouseEnter={(e) => {
-                          if (!isDirty && !isHighlight) {
-                            e.currentTarget.style.borderColor = "#c7d2fe";
-                            e.currentTarget.style.boxShadow =
-                              "0 2px 8px rgba(79,70,229,0.08)";
-                          }
-                        }}
-                        onMouseLeave={(e) => {
-                          if (!isDirty && !isHighlight) {
-                            e.currentTarget.style.borderColor = "#e8edf3";
-                            e.currentTarget.style.boxShadow =
-                              "0 1px 4px rgba(15,23,42,0.05)";
-                          }
+                          marginLeft: "auto", display: "flex", alignItems: "center", gap: 4,
+                          background: blockCounts[block.id]?.unresolved > 0 ? "#fef3c7" : "none",
+                          border: `1px solid ${blockCounts[block.id]?.unresolved > 0 ? "#fcd34d" : "#e2e8f0"}`,
+                          borderRadius: 6, cursor: "pointer", padding: "2px 7px",
+                          color: blockCounts[block.id]?.unresolved > 0 ? "#92400e" : "#94a3b8",
+                          fontSize: 10, fontFamily: "inherit",
                         }}
                       >
-                        {/* Block header */}
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 8,
-                            marginBottom: 10,
-                          }}
-                        >
-                          <IconChip type={block.block_type} size={22} />
-                          <span
-                            style={{
-                              fontSize: 9,
-                              fontWeight: 800,
-                              color: "#818cf8",
-                              background: "#eef2ff",
-                              padding: "2px 7px",
-                              borderRadius: 4,
-                              textTransform: "uppercase",
-                              letterSpacing: 0.7,
-                            }}
-                          >
-                            {m.label}
-                          </span>
-                          {!readOnly ? (
-                            <button
-                              onClick={() =>
-                                toggleRequired(block.id, !!block.is_required)
-                              }
-                              title={
-                                block.is_required
-                                  ? "Required — click to make optional"
-                                  : "Mark as required"
-                              }
-                              style={{
-                                background: "none",
-                                border: "none",
-                                cursor: "pointer",
-                                color: block.is_required
-                                  ? "#ef4444"
-                                  : "#cbd5e1",
-                                fontSize: 13,
-                                lineHeight: 1,
-                                padding: 0,
-                              }}
-                            >
-                              *
-                            </button>
-                          ) : (
-                            block.is_required && (
-                              <span
-                                title="Required"
-                                style={{
-                                  color: "#ef4444",
-                                  fontSize: 13,
-                                  lineHeight: 1,
-                                }}
-                              >
-                                *
-                              </span>
-                            )
-                          )}
-                          {/* Comment badge — always visible */}
-                          <button
-                            onClick={() => {
-                              setSelectedBlockId(block.id);
-                              setChatOpen(true);
-                            }}
-                            title="View block comments"
-                            style={{
-                              marginLeft: "auto",
-                              display: "flex",
-                              alignItems: "center",
-                              gap: 4,
-                              background:
-                                blockCounts[block.id]?.unresolved > 0
-                                  ? "#fef3c7"
-                                  : "none",
-                              border: `1px solid ${blockCounts[block.id]?.unresolved > 0 ? "#fcd34d" : "#e2e8f0"}`,
-                              borderRadius: 6,
-                              cursor: "pointer",
-                              padding: "2px 7px",
-                              color:
-                                blockCounts[block.id]?.unresolved > 0
-                                  ? "#92400e"
-                                  : "#94a3b8",
-                              fontSize: 10,
-                              fontFamily: "inherit",
-                            }}
-                          >
-                            <svg
-                              width="10"
-                              height="10"
-                              viewBox="0 0 16 16"
-                              fill="currentColor"
-                            >
-                              <path d="M2 4a2 2 0 012-2h8a2 2 0 012 2v5a2 2 0 01-2 2H7l-3 2v-2H4a2 2 0 01-2-2V4z" />
-                            </svg>
-                            {blockCounts[block.id]?.unresolved > 0
-                              ? blockCounts[block.id].unresolved
-                              : blockCounts[block.id]?.total > 0
-                                ? blockCounts[block.id].total
-                                : null}
-                          </button>
-                          {!readOnly && (
-                            <div style={{ display: "flex", gap: 1 }}>
-                              <button
-                                onClick={() => moveBlock(idx, -1)}
-                                disabled={idx === 0}
-                                style={{
-                                  ...arrowBtn,
-                                  opacity: idx === 0 ? 0.25 : 0.6,
-                                  fontSize: 11,
-                                }}
-                              >
-                                ↑
-                              </button>
-                              <button
-                                onClick={() => moveBlock(idx, 1)}
-                                disabled={idx === blocks.length - 1}
-                                style={{
-                                  ...arrowBtn,
-                                  opacity:
-                                    idx === blocks.length - 1 ? 0.25 : 0.6,
-                                  fontSize: 11,
-                                }}
-                              >
-                                ↓
-                              </button>
-                              <button
-                                onClick={() => deleteBlock(block.id)}
-                                style={{
-                                  ...arrowBtn,
-                                  color: "#f87171",
-                                  opacity: 0.7,
-                                  fontSize: 11,
-                                }}
-                              >
-                                ✕
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                        <BlockEditor
-                          block={block}
-                          readOnly={readOnly}
-                          onChange={(newContent) =>
-                            handleBlockChange(block.id, newContent)
-                          }
-                          onSaveTranslation={(language, partial) =>
-                            saveBlockTranslation(block.id, language, partial)
-                          }
-                          kpiScope={kpiScope}
-                          onRefetched={(newContent, translations) =>
-                            handleBlockRefetched(
-                              block.id,
-                              newContent,
-                              translations,
-                            )
-                          }
-                          blockId={block.id}
-                          apiFetch={apiFetch}
-                          lang={contentLang}
-                        />
-                      </div>
-
-                      {/* Inline adder after this block */}
+                        <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor">
+                          <path d="M2 4a2 2 0 012-2h8a2 2 0 012 2v5a2 2 0 01-2 2H7l-3 2v-2H4a2 2 0 01-2-2V4z"/>
+                        </svg>
+                        {blockCounts[block.id]?.unresolved > 0
+                          ? blockCounts[block.id].unresolved
+                          : blockCounts[block.id]?.total > 0
+                          ? blockCounts[block.id].total
+                          : null}
+                      </button>
                       {!readOnly && (
-                        <InlineAdder
-                          isOpen={activeInserter === idx}
-                          onToggle={(open) =>
-                            setActiveInserter(open ? idx : null)
-                          }
-                          onAdd={(type) => handleAddBlock(type, idx)}
-                        />
+                        <div style={{ display: "flex", gap: 1 }}>
+                          <button onClick={() => moveBlock(idx, -1)} disabled={idx === 0}
+                            style={{ ...arrowBtn, opacity: idx === 0 ? 0.25 : 0.6, fontSize: 11 }}>↑</button>
+                          <button onClick={() => moveBlock(idx, 1)} disabled={idx === blocks.length - 1}
+                            style={{ ...arrowBtn, opacity: idx === blocks.length - 1 ? 0.25 : 0.6, fontSize: 11 }}>↓</button>
+                          <button onClick={() => deleteBlock(block.id)}
+                            style={{ ...arrowBtn, color: "#f87171", opacity: 0.7, fontSize: 11 }}>✕</button>
+                        </div>
                       )}
-                    </React.Fragment>
-                  );
-                })}
-
-                {/* Prominent, always-visible add-block action — the primary way to add
-                 content; the thin inline "+" separators above are a secondary shortcut
-                 for inserting mid-list once a user already knows they exist. */}
-                {!readOnly && blocks.length > 0 && (
-                  <div style={{ marginTop: 6 }}>
-                    <BigAddBlockButton
-                      onAdd={(type) => handleAddBlock(type, blocks.length - 1)}
+                    </div>
+                    <BlockEditor
+                      block={block}
+                      readOnly={readOnly}
+                      onChange={(newContent) => handleBlockChange(block.id, newContent)}
+                      onSaveTranslation={(language, partial) => saveBlockTranslation(block.id, language, partial)}
+                      kpiScope={kpiScope}
+                      onRefetched={(newContent, translations) => handleBlockRefetched(block.id, newContent, translations)}
+                      blockId={block.id}
+                      apiFetch={apiFetch}
+                      lang={contentLang}
                     />
                   </div>
-                )}
-              </div>
+
+                  {/* Inline adder after this block */}
+                  {!readOnly && (
+                    <InlineAdder
+                      isOpen={activeInserter === idx}
+                      onToggle={(open) => setActiveInserter(open ? idx : null)}
+                      onAdd={(type) => handleAddBlock(type, idx)}
+                    />
+                  )}
+                </React.Fragment>
+                );
+              })}
+
+              {/* Prominent, always-visible add-block action — the primary way to add
+                 content; the thin inline "+" separators above are a secondary shortcut
+                 for inserting mid-list once a user already knows they exist. */}
+              {!readOnly && blocks.length > 0 && (
+                <div style={{ marginTop: 6 }}>
+                  <BigAddBlockButton onAdd={(type) => handleAddBlock(type, blocks.length - 1)} />
+                </div>
+              )}
+            </div>
             </div>
           </div>
         </div>
 
         {/* ── Pre-save: auto-translate updated content into Hindi? ── */}
         {translatePromptModal.open && (
-          <div
-            style={{
-              position: "fixed",
-              inset: 0,
-              background: "rgba(15,23,42,0.45)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              zIndex: 1000,
-              fontFamily: "'Plus Jakarta Sans', sans-serif",
-            }}
-          >
-            <div
-              style={{
-                background: "#fff",
-                borderRadius: 16,
-                padding: "28px 32px",
-                width: 460,
-                boxShadow: "0 20px 60px rgba(15,23,42,0.25)",
-              }}
-            >
-              <div
-                style={{
-                  fontSize: 16,
-                  fontWeight: 800,
-                  color: "#0f172a",
-                  marginBottom: 6,
-                }}
-              >
+          <div style={{
+            position: "fixed", inset: 0, background: "rgba(15,23,42,0.45)",
+            display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000,
+            fontFamily: "'Plus Jakarta Sans', sans-serif",
+          }}>
+            <div style={{
+              background: "#fff", borderRadius: 16, padding: "28px 32px",
+              width: 460, boxShadow: "0 20px 60px rgba(15,23,42,0.25)",
+            }}>
+              <div style={{ fontSize: 16, fontWeight: 800, color: "#0f172a", marginBottom: 6 }}>
                 Update Hindi translation too?
               </div>
-              <div
-                style={{
-                  fontSize: 12.5,
-                  color: "#64748b",
-                  marginBottom: 18,
-                  lineHeight: 1.6,
-                }}
-              >
-                {translatePromptModal.blocks.length} block
-                {translatePromptModal.blocks.length !== 1 ? "s" : ""} you edited
-                already{" "}
-                {translatePromptModal.blocks.length !== 1 ? "have" : "has"} a
-                Hindi translation. If you skip, those translations will be
-                marked as possibly outdated until someone re-translates them
-                manually.
+              <div style={{ fontSize: 12.5, color: "#64748b", marginBottom: 18, lineHeight: 1.6 }}>
+                {translatePromptModal.blocks.length} block{translatePromptModal.blocks.length !== 1 ? "s" : ""} you
+                edited already {translatePromptModal.blocks.length !== 1 ? "have" : "has"} a Hindi translation. If you
+                skip, those translations will be marked as possibly outdated until someone re-translates them manually.
               </div>
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 10,
-                  maxHeight: 160,
-                  overflowY: "auto",
-                  marginBottom: 20,
-                }}
-              >
+              <div style={{ display: "flex", flexDirection: "column", gap: 10, maxHeight: 160, overflowY: "auto", marginBottom: 20 }}>
                 {translatePromptModal.blocks.map((b) => (
-                  <div
-                    key={b.id}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 8,
-                      fontSize: 12,
-                      color: "#374151",
-                    }}
-                  >
+                  <div key={b.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "#374151" }}>
                     <IconChip type={b.block_type} size={22} />
                     <span>{typeMeta(b.block_type).label}</span>
                   </div>
                 ))}
               </div>
-              <div
-                style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}
-              >
-                <button
-                  onClick={handleSkipTranslateBeforeSave}
-                  disabled={translatingBeforeSave}
-                  style={{
-                    padding: "8px 16px",
-                    borderRadius: 10,
-                    border: "1.5px solid #e2e8f0",
-                    background: "#fff",
-                    color: "#64748b",
-                    fontSize: 13,
-                    fontWeight: 600,
-                    cursor: translatingBeforeSave ? "not-allowed" : "pointer",
-                    fontFamily: "inherit",
-                  }}
-                >
-                  Skip — Save as is
-                </button>
-                <button
-                  onClick={handleTranslateBeforeSave}
-                  disabled={translatingBeforeSave}
-                  style={{
-                    padding: "8px 20px",
-                    borderRadius: 10,
-                    border: "none",
-                    background: translatingBeforeSave
-                      ? "#a78bfa"
-                      : "linear-gradient(135deg,#7c3aed,#6d28d9)",
-                    color: "#fff",
-                    fontSize: 13,
-                    fontWeight: 700,
-                    cursor: translatingBeforeSave ? "not-allowed" : "pointer",
-                    fontFamily: "inherit",
-                  }}
-                >
-                  {translatingBeforeSave
-                    ? "Translating…"
-                    : "Translate & Continue →"}
-                </button>
+              <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+                <button onClick={handleSkipTranslateBeforeSave} disabled={translatingBeforeSave} style={{
+                  padding: "8px 16px", borderRadius: 10, border: "1.5px solid #e2e8f0",
+                  background: "#fff", color: "#64748b", fontSize: 13, fontWeight: 600,
+                  cursor: translatingBeforeSave ? "not-allowed" : "pointer", fontFamily: "inherit",
+                }}>Skip — Save as is</button>
+                <button onClick={handleTranslateBeforeSave} disabled={translatingBeforeSave} style={{
+                  padding: "8px 20px", borderRadius: 10, border: "none",
+                  background: translatingBeforeSave ? "#a78bfa" : "linear-gradient(135deg,#7c3aed,#6d28d9)",
+                  color: "#fff", fontSize: 13, fontWeight: 700,
+                  cursor: translatingBeforeSave ? "not-allowed" : "pointer", fontFamily: "inherit",
+                }}>{translatingBeforeSave ? "Translating…" : "Translate & Continue →"}</button>
               </div>
             </div>
           </div>
@@ -5068,140 +2597,57 @@ export default function SectionEditorPage({
 
         {/* ── Save Description Modal ── */}
         {saveDescModal.open && (
-          <div
-            style={{
-              position: "fixed",
-              inset: 0,
-              background: "rgba(15,23,42,0.45)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              zIndex: 1000,
-              fontFamily: "'Plus Jakarta Sans', sans-serif",
-            }}
-            onClick={(e) => {
-              if (e.target === e.currentTarget)
-                setSaveDescModal((m) => ({ ...m, open: false }));
-            }}
-          >
-            <div
-              style={{
-                background: "#fff",
-                borderRadius: 16,
-                padding: "28px 32px",
-                width: 440,
-                boxShadow: "0 20px 60px rgba(15,23,42,0.25)",
-              }}
-            >
-              <div
-                style={{
-                  fontSize: 16,
-                  fontWeight: 800,
-                  color: "#0f172a",
-                  marginBottom: 6,
-                }}
-              >
-                Save Changes
-              </div>
+          <div style={{
+            position: "fixed", inset: 0, background: "rgba(15,23,42,0.45)",
+            display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000,
+            fontFamily: "'Plus Jakarta Sans', sans-serif",
+          }} onClick={e => { if (e.target === e.currentTarget) setSaveDescModal(m => ({ ...m, open: false })); }}>
+            <div style={{
+              background: "#fff", borderRadius: 16, padding: "28px 32px",
+              width: 440, boxShadow: "0 20px 60px rgba(15,23,42,0.25)",
+            }}>
+              <div style={{ fontSize: 16, fontWeight: 800, color: "#0f172a", marginBottom: 6 }}>Save Changes</div>
               <div style={{ fontSize: 12, color: "#64748b", marginBottom: 20 }}>
-                Describe what you changed in this save. This will appear in
-                Version History.
+                Describe what you changed in this save. This will appear in Version History.
               </div>
               <textarea
                 autoFocus
                 value={saveDescModal.desc}
-                onChange={(e) =>
-                  setSaveDescModal((m) => ({
-                    ...m,
-                    desc: e.target.value,
-                    error: "",
-                  }))
-                }
+                onChange={e => setSaveDescModal(m => ({ ...m, desc: e.target.value, error: "" }))}
                 placeholder="e.g. Updated Q3 data and fixed table headers…"
                 rows={4}
                 style={{
-                  width: "100%",
-                  resize: "vertical",
-                  border: `1.5px solid ${saveDescModal.error ? "#fca5a5" : "#e2e8f0"}`,
-                  borderRadius: 10,
-                  padding: "10px 14px",
-                  fontSize: 13,
-                  fontFamily: "inherit",
-                  color: "#1e293b",
-                  outline: "none",
-                  lineHeight: 1.6,
-                  boxSizing: "border-box",
+                  width: "100%", resize: "vertical", border: `1.5px solid ${saveDescModal.error ? "#fca5a5" : "#e2e8f0"}`,
+                  borderRadius: 10, padding: "10px 14px", fontSize: 13, fontFamily: "inherit",
+                  color: "#1e293b", outline: "none", lineHeight: 1.6, boxSizing: "border-box",
                 }}
-                onFocus={(e) => (e.target.style.borderColor = "#818cf8")}
-                onBlur={(e) =>
-                  (e.target.style.borderColor = saveDescModal.error
-                    ? "#fca5a5"
-                    : "#e2e8f0")
-                }
+                onFocus={e => e.target.style.borderColor = "#818cf8"}
+                onBlur={e  => e.target.style.borderColor = saveDescModal.error ? "#fca5a5" : "#e2e8f0"}
               />
               {saveDescModal.error && (
-                <div style={{ fontSize: 11, color: "#b91c1c", marginTop: 5 }}>
-                  {saveDescModal.error}
-                </div>
+                <div style={{ fontSize: 11, color: "#b91c1c", marginTop: 5 }}>{saveDescModal.error}</div>
               )}
-              <div
-                style={{
-                  fontSize: 10,
-                  color: "#94a3b8",
-                  marginTop: 6,
-                  marginBottom: 20,
-                }}
-              >
+              <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 6, marginBottom: 20 }}>
                 Min 5 characters · {saveDescModal.desc.length} characters typed
               </div>
-              <div
-                style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}
-              >
-                <button
-                  onClick={() =>
-                    setSaveDescModal((m) => ({ ...m, open: false }))
-                  }
-                  style={{
-                    padding: "8px 18px",
-                    borderRadius: 10,
-                    border: "1.5px solid #e2e8f0",
-                    background: "#fff",
-                    color: "#64748b",
-                    fontSize: 13,
-                    fontWeight: 600,
-                    cursor: "pointer",
-                    fontFamily: "inherit",
-                  }}
-                >
-                  Cancel
-                </button>
+              <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+                <button onClick={() => setSaveDescModal(m => ({ ...m, open: false }))} style={{
+                  padding: "8px 18px", borderRadius: 10, border: "1.5px solid #e2e8f0",
+                  background: "#fff", color: "#64748b", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit",
+                }}>Cancel</button>
                 <button
                   onClick={() => {
                     const desc = saveDescModal.desc.trim();
-                    if (desc.length < 5) {
-                      setSaveDescModal((m) => ({
-                        ...m,
-                        error: "At least 5 characters required",
-                      }));
-                      return;
-                    }
-                    setSaveDescModal((m) => ({ ...m, open: false }));
+                    if (desc.length < 5) { setSaveDescModal(m => ({ ...m, error: "At least 5 characters required" })); return; }
+                    setSaveDescModal(m => ({ ...m, open: false }));
                     executeSave(desc);
                   }}
                   style={{
-                    padding: "8px 20px",
-                    borderRadius: 10,
-                    border: "none",
+                    padding: "8px 20px", borderRadius: 10, border: "none",
                     background: "linear-gradient(135deg,#16a34a,#15803d)",
-                    color: "#fff",
-                    fontSize: 13,
-                    fontWeight: 700,
-                    cursor: "pointer",
-                    fontFamily: "inherit",
+                    color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit",
                   }}
-                >
-                  Save
-                </button>
+                >Save</button>
               </div>
             </div>
           </div>
@@ -5209,94 +2655,44 @@ export default function SectionEditorPage({
 
         {/* ── Submit Modal ── */}
         {submitModal.open && (
-          <div
-            style={{
-              position: "fixed",
-              inset: 0,
-              background: "rgba(15,23,42,0.45)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              zIndex: 1000,
-              fontFamily: "'Plus Jakarta Sans', sans-serif",
-            }}
-            onClick={(e) => {
-              if (e.target === e.currentTarget)
-                setSubmitModal((m) => ({ ...m, open: false }));
-            }}
-          >
-            <div
-              style={{
-                background: "#fff",
-                borderRadius: 16,
-                padding: "28px 32px",
-                width: 480,
-                boxShadow: "0 20px 60px rgba(15,23,42,0.25)",
-              }}
-            >
-              <div
-                style={{
-                  fontSize: 16,
-                  fontWeight: 800,
-                  color: "#0f172a",
-                  marginBottom: 4,
-                }}
-              >
-                {section?.status === "SENT_BACK"
-                  ? "Re-request Review"
-                  : "Request Review"}
+          <div style={{
+            position: "fixed", inset: 0, background: "rgba(15,23,42,0.45)",
+            display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000,
+            fontFamily: "'Plus Jakarta Sans', sans-serif",
+          }} onClick={e => { if (e.target === e.currentTarget) setSubmitModal(m => ({ ...m, open: false })); }}>
+            <div style={{
+              background: "#fff", borderRadius: 16, padding: "28px 32px",
+              width: 480, boxShadow: "0 20px 60px rgba(15,23,42,0.25)",
+            }}>
+              <div style={{ fontSize: 16, fontWeight: 800, color: "#0f172a", marginBottom: 4 }}>
+                {section?.status === "SENT_BACK" ? "Re-request Review" : "Request Review"}
               </div>
               <div style={{ fontSize: 12, color: "#64748b", marginBottom: 16 }}>
-                Describe what was done in this version. Reviewers will see this
-                in the approval history.
+                Describe what was done in this version. Reviewers will see this in the approval history.
               </div>
 
               {/* Unresolved comments warning for SENT_BACK */}
-              {section?.status === "SENT_BACK" &&
-                submitModal.unresolvedCount > 0 && (
-                  <div
-                    style={{
-                      padding: "10px 14px",
-                      background: "#fef3c7",
-                      border: "1px solid #fcd34d",
-                      borderRadius: 8,
-                      marginBottom: 16,
-                      fontSize: 12,
-                      color: "#92400e",
-                      display: "flex",
-                      gap: 8,
-                      alignItems: "flex-start",
-                    }}
-                  >
-                    <span style={{ flexShrink: 0 }}>⚠</span>
-                    <span>
-                      There are{" "}
-                      <strong>
-                        {submitModal.unresolvedCount} unresolved comment
-                        {submitModal.unresolvedCount > 1 ? "s" : ""}
-                      </strong>{" "}
-                      on this section. Consider addressing them before
-                      re-submitting.
-                    </span>
-                  </div>
-                )}
+              {section?.status === "SENT_BACK" && submitModal.unresolvedCount > 0 && (
+                <div style={{
+                  padding: "10px 14px", background: "#fef3c7", border: "1px solid #fcd34d",
+                  borderRadius: 8, marginBottom: 16, fontSize: 12, color: "#92400e",
+                  display: "flex", gap: 8, alignItems: "flex-start",
+                }}>
+                  <span style={{ flexShrink: 0 }}>⚠</span>
+                  <span>
+                    There are <strong>{submitModal.unresolvedCount} unresolved comment{submitModal.unresolvedCount > 1 ? "s" : ""}</strong> on this section.
+                    Consider addressing them before re-submitting.
+                  </span>
+                </div>
+              )}
 
               {/* Required block validation errors */}
               {submitModal.validationErrors.length > 0 && (
-                <div
-                  style={{
-                    padding: "10px 14px",
-                    background: "#fef2f2",
-                    border: "1px solid #fecaca",
-                    borderRadius: 8,
-                    marginBottom: 16,
-                    fontSize: 12,
-                    color: "#b91c1c",
-                  }}
-                >
-                  <div style={{ fontWeight: 700, marginBottom: 4 }}>
-                    {submitModal.error}
-                  </div>
+                <div style={{
+                  padding: "10px 14px", background: "#fef2f2", border: "1px solid #fecaca",
+                  borderRadius: 8, marginBottom: 16, fontSize: 12, color: "#b91c1c",
+                }}>
+                  <div style={{ fontWeight: 700, marginBottom: 4 }}>{submitModal.error}</div>
                   <div style={{ fontSize: 11, color: "#ef4444" }}>
                     Fill in all required blocks before submitting.
                   </div>
@@ -5306,85 +2702,38 @@ export default function SectionEditorPage({
               <textarea
                 autoFocus
                 value={submitModal.desc}
-                onChange={(e) =>
-                  setSubmitModal((m) => ({
-                    ...m,
-                    desc: e.target.value,
-                    error: "",
-                    validationErrors: [],
-                  }))
-                }
+                onChange={e => setSubmitModal(m => ({ ...m, desc: e.target.value, error: "", validationErrors: [] }))}
                 placeholder="e.g. Completed all required sections and addressed reviewer feedback…"
                 rows={4}
                 style={{
-                  width: "100%",
-                  resize: "vertical",
-                  border: `1.5px solid ${submitModal.error && !submitModal.validationErrors.length ? "#fca5a5" : "#e2e8f0"}`,
-                  borderRadius: 10,
-                  padding: "10px 14px",
-                  fontSize: 13,
-                  fontFamily: "inherit",
-                  color: "#1e293b",
-                  outline: "none",
-                  lineHeight: 1.6,
-                  boxSizing: "border-box",
+                  width: "100%", resize: "vertical", border: `1.5px solid ${submitModal.error && !submitModal.validationErrors.length ? "#fca5a5" : "#e2e8f0"}`,
+                  borderRadius: 10, padding: "10px 14px", fontSize: 13, fontFamily: "inherit",
+                  color: "#1e293b", outline: "none", lineHeight: 1.6, boxSizing: "border-box",
                 }}
-                onFocus={(e) => (e.target.style.borderColor = "#818cf8")}
-                onBlur={(e) => (e.target.style.borderColor = "#e2e8f0")}
+                onFocus={e => e.target.style.borderColor = "#818cf8"}
+                onBlur={e  => e.target.style.borderColor = "#e2e8f0"}
               />
               {submitModal.error && !submitModal.validationErrors.length && (
-                <div style={{ fontSize: 11, color: "#b91c1c", marginTop: 5 }}>
-                  {submitModal.error}
-                </div>
+                <div style={{ fontSize: 11, color: "#b91c1c", marginTop: 5 }}>{submitModal.error}</div>
               )}
-              <div
-                style={{
-                  fontSize: 10,
-                  color: "#94a3b8",
-                  marginTop: 6,
-                  marginBottom: 20,
-                }}
-              >
+              <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 6, marginBottom: 20 }}>
                 Min 5 characters · {submitModal.desc.length} characters typed
               </div>
-              <div
-                style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}
-              >
-                <button
-                  onClick={() => setSubmitModal((m) => ({ ...m, open: false }))}
-                  style={{
-                    padding: "8px 18px",
-                    borderRadius: 10,
-                    border: "1.5px solid #e2e8f0",
-                    background: "#fff",
-                    color: "#64748b",
-                    fontSize: 13,
-                    fontWeight: 600,
-                    cursor: "pointer",
-                    fontFamily: "inherit",
-                  }}
-                >
-                  Cancel
-                </button>
+              <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+                <button onClick={() => setSubmitModal(m => ({ ...m, open: false }))} style={{
+                  padding: "8px 18px", borderRadius: 10, border: "1.5px solid #e2e8f0",
+                  background: "#fff", color: "#64748b", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit",
+                }}>Cancel</button>
                 <button
                   onClick={handleSubmitConfirm}
                   disabled={submitting}
                   style={{
-                    padding: "8px 22px",
-                    borderRadius: 10,
-                    border: "none",
-                    background: submitting
-                      ? "#93c5fd"
-                      : "linear-gradient(135deg,#2563eb,#4f46e5)",
-                    color: "#fff",
-                    fontSize: 13,
-                    fontWeight: 700,
-                    cursor: submitting ? "not-allowed" : "pointer",
-                    fontFamily: "inherit",
+                    padding: "8px 22px", borderRadius: 10, border: "none",
+                    background: submitting ? "#93c5fd" : "linear-gradient(135deg,#2563eb,#4f46e5)",
+                    color: "#fff", fontSize: 13, fontWeight: 700,
+                    cursor: submitting ? "not-allowed" : "pointer", fontFamily: "inherit",
                   }}
-                >
-                  {submitting ? "Submitting…" : "Submit for Review"}
-                </button>
+                >{submitting ? "Submitting…" : "Submit for Review"}</button>
               </div>
             </div>
           </div>
@@ -5392,109 +2741,42 @@ export default function SectionEditorPage({
 
         {/* ── 409 Conflict Modal ── */}
         {conflictModal.open && (
-          <div
-            style={{
-              position: "fixed",
-              inset: 0,
-              background: "rgba(15,23,42,0.45)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              zIndex: 1000,
-              fontFamily: "'Plus Jakarta Sans', sans-serif",
-            }}
-          >
-            <div
-              style={{
-                background: "#fff",
-                borderRadius: 16,
-                padding: "28px 32px",
-                width: 420,
-                boxShadow: "0 20px 60px rgba(15,23,42,0.25)",
-              }}
-            >
-              <div
-                style={{ fontSize: 32, marginBottom: 12, textAlign: "center" }}
-              >
-                ⚠️
-              </div>
-              <div
-                style={{
-                  fontSize: 16,
-                  fontWeight: 800,
-                  color: "#0f172a",
-                  marginBottom: 8,
-                  textAlign: "center",
-                }}
-              >
-                Save Conflict
-              </div>
-              <div
-                style={{
-                  fontSize: 13,
-                  color: "#475569",
-                  marginBottom: 20,
-                  textAlign: "center",
-                  lineHeight: 1.6,
-                }}
-              >
-                This section was modified by someone else while you were
-                editing. Your changes were not saved.
+          <div style={{
+            position: "fixed", inset: 0, background: "rgba(15,23,42,0.45)",
+            display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000,
+            fontFamily: "'Plus Jakarta Sans', sans-serif",
+          }}>
+            <div style={{
+              background: "#fff", borderRadius: 16, padding: "28px 32px",
+              width: 420, boxShadow: "0 20px 60px rgba(15,23,42,0.25)",
+            }}>
+              <div style={{ fontSize: 32, marginBottom: 12, textAlign: "center" }}>⚠️</div>
+              <div style={{ fontSize: 16, fontWeight: 800, color: "#0f172a", marginBottom: 8, textAlign: "center" }}>Save Conflict</div>
+              <div style={{ fontSize: 13, color: "#475569", marginBottom: 20, textAlign: "center", lineHeight: 1.6 }}>
+                This section was modified by someone else while you were editing.
+                Your changes were not saved.
               </div>
               {conflictModal.latestVersion != null && (
-                <div
-                  style={{
-                    fontSize: 12,
-                    color: "#64748b",
-                    textAlign: "center",
-                    marginBottom: 20,
-                  }}
-                >
-                  Latest saved version:{" "}
-                  <strong>v{conflictModal.latestVersion}</strong>
+                <div style={{ fontSize: 12, color: "#64748b", textAlign: "center", marginBottom: 20 }}>
+                  Latest saved version: <strong>v{conflictModal.latestVersion}</strong>
                 </div>
               )}
-              <div
-                style={{ display: "flex", gap: 10, justifyContent: "center" }}
-              >
+              <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
                 <button
-                  onClick={() => {
-                    setConflictModal({ open: false, latestVersion: null });
-                    setVersionHistOpen(true);
-                  }}
+                  onClick={() => { setConflictModal({ open: false, latestVersion: null }); setVersionHistOpen(true); }}
                   style={{
-                    padding: "8px 18px",
-                    borderRadius: 10,
-                    border: "1.5px solid #c4b5fd",
-                    background: "#f5f3ff",
-                    color: "#6d28d9",
-                    fontSize: 13,
-                    fontWeight: 600,
-                    cursor: "pointer",
-                    fontFamily: "inherit",
+                    padding: "8px 18px", borderRadius: 10, border: "1.5px solid #c4b5fd",
+                    background: "#f5f3ff", color: "#6d28d9", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit",
                   }}
-                >
-                  View History
-                </button>
+                >View History</button>
                 <button
-                  onClick={() => {
-                    setConflictModal({ open: false, latestVersion: null });
-                    window.location.reload();
-                  }}
+                  onClick={() => { setConflictModal({ open: false, latestVersion: null }); window.location.reload(); }}
                   style={{
-                    padding: "8px 20px",
-                    borderRadius: 10,
-                    border: "none",
+                    padding: "8px 20px", borderRadius: 10, border: "none",
                     background: "linear-gradient(135deg,#2563eb,#4f46e5)",
-                    color: "#fff",
-                    fontSize: 13,
-                    fontWeight: 700,
-                    cursor: "pointer",
-                    fontFamily: "inherit",
+                    color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit",
                   }}
-                >
-                  Reload Page
-                </button>
+                >Reload Page</button>
               </div>
             </div>
           </div>
@@ -5502,59 +2784,20 @@ export default function SectionEditorPage({
 
         {/* ── Table Type Choice Modal ── */}
         {tableTypeModal.open && (
-          <div
-            style={{
-              position: "fixed",
-              inset: 0,
-              background: "rgba(15,23,42,0.45)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              zIndex: 1200,
-              fontFamily: "'Plus Jakarta Sans', sans-serif",
-            }}
-            onClick={(e) => {
-              if (e.target === e.currentTarget)
-                setTableTypeModal({ open: false, afterIndex: undefined });
-            }}
-          >
-            <div
-              style={{
-                background: "#fff",
-                borderRadius: 18,
-                padding: "32px 36px",
-                width: 480,
-                boxShadow: "0 24px 64px rgba(15,23,42,0.28)",
-              }}
-            >
-              <div
-                style={{
-                  fontSize: 17,
-                  fontWeight: 800,
-                  color: "#0f172a",
-                  marginBottom: 6,
-                }}
-              >
-                Add a Table
+          <div style={{
+            position: "fixed", inset: 0, background: "rgba(15,23,42,0.45)",
+            display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1200,
+            fontFamily: "'Plus Jakarta Sans', sans-serif",
+          }} onClick={e => { if (e.target === e.currentTarget) setTableTypeModal({ open: false, afterIndex: undefined }); }}>
+            <div style={{
+              background: "#fff", borderRadius: 18, padding: "32px 36px",
+              width: 480, boxShadow: "0 24px 64px rgba(15,23,42,0.28)",
+            }}>
+              <div style={{ fontSize: 17, fontWeight: 800, color: "#0f172a", marginBottom: 6 }}>Add a Table</div>
+              <div style={{ fontSize: 12, color: "#64748b", marginBottom: 28, lineHeight: 1.6 }}>
+                Create a blank table you fill manually, or pull live data from a form in the system.
               </div>
-              <div
-                style={{
-                  fontSize: 12,
-                  color: "#64748b",
-                  marginBottom: 28,
-                  lineHeight: 1.6,
-                }}
-              >
-                Create a blank table you fill manually, or pull live data from a
-                form in the system.
-              </div>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr",
-                  gap: 12,
-                }}
-              >
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                 {/* Manual */}
                 <button
                   onClick={() => {
@@ -5562,38 +2805,16 @@ export default function SectionEditorPage({
                     addBlock("TABLE", tableTypeModal.afterIndex);
                   }}
                   style={{
-                    padding: "20px 18px",
-                    border: "2px solid #e2e8f0",
-                    borderRadius: 14,
-                    background: "#fff",
-                    cursor: "pointer",
-                    textAlign: "left",
-                    fontFamily: "inherit",
+                    padding: "20px 18px", border: "2px solid #e2e8f0", borderRadius: 14,
+                    background: "#fff", cursor: "pointer", textAlign: "left", fontFamily: "inherit",
                     transition: "all 0.15s",
                   }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.borderColor = "#818cf8";
-                    e.currentTarget.style.background = "#fafafe";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.borderColor = "#e2e8f0";
-                    e.currentTarget.style.background = "#fff";
-                  }}
+                  onMouseEnter={e => { e.currentTarget.style.borderColor = "#818cf8"; e.currentTarget.style.background = "#fafafe"; }}
+                  onMouseLeave={e => { e.currentTarget.style.borderColor = "#e2e8f0"; e.currentTarget.style.background = "#fff"; }}
                 >
                   <div style={{ fontSize: 24, marginBottom: 10 }}>📋</div>
-                  <div
-                    style={{
-                      fontSize: 13,
-                      fontWeight: 700,
-                      color: "#1e293b",
-                      marginBottom: 4,
-                    }}
-                  >
-                    Manual Table
-                  </div>
-                  <div
-                    style={{ fontSize: 11, color: "#64748b", lineHeight: 1.5 }}
-                  >
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "#1e293b", marginBottom: 4 }}>Manual Table</div>
+                  <div style={{ fontSize: 11, color: "#64748b", lineHeight: 1.5 }}>
                     Blank table — type in each cell yourself.
                   </div>
                 </button>
@@ -5603,67 +2824,28 @@ export default function SectionEditorPage({
                   onClick={() => {
                     const oi = computeOrderIndex(tableTypeModal.afterIndex);
                     setTableTypeModal({ open: false, afterIndex: undefined });
-                    setFormImportWizard({
-                      open: true,
-                      afterIndex: tableTypeModal.afterIndex,
-                      orderIndex: oi,
-                    });
+                    setFormImportWizard({ open: true, afterIndex: tableTypeModal.afterIndex, orderIndex: oi });
                   }}
                   style={{
-                    padding: "20px 18px",
-                    border: "2px solid #e2e8f0",
-                    borderRadius: 14,
-                    background: "#fff",
-                    cursor: "pointer",
-                    textAlign: "left",
-                    fontFamily: "inherit",
+                    padding: "20px 18px", border: "2px solid #e2e8f0", borderRadius: 14,
+                    background: "#fff", cursor: "pointer", textAlign: "left", fontFamily: "inherit",
                     transition: "all 0.15s",
                   }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.borderColor = "#7c3aed";
-                    e.currentTarget.style.background = "#fdf8ff";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.borderColor = "#e2e8f0";
-                    e.currentTarget.style.background = "#fff";
-                  }}
+                  onMouseEnter={e => { e.currentTarget.style.borderColor = "#7c3aed"; e.currentTarget.style.background = "#fdf8ff"; }}
+                  onMouseLeave={e => { e.currentTarget.style.borderColor = "#e2e8f0"; e.currentTarget.style.background = "#fff"; }}
                 >
                   <div style={{ fontSize: 24, marginBottom: 10 }}>🗄️</div>
-                  <div
-                    style={{
-                      fontSize: 13,
-                      fontWeight: 700,
-                      color: "#1e293b",
-                      marginBottom: 4,
-                    }}
-                  >
-                    Import from Form Data
-                  </div>
-                  <div
-                    style={{ fontSize: 11, color: "#64748b", lineHeight: 1.5 }}
-                  >
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "#1e293b", marginBottom: 4 }}>Import from Form Data</div>
+                  <div style={{ fontSize: 11, color: "#64748b", lineHeight: 1.5 }}>
                     Pull records from an existing form. Refresh anytime.
                   </div>
                 </button>
               </div>
               <div style={{ marginTop: 20, textAlign: "right" }}>
                 <button
-                  onClick={() =>
-                    setTableTypeModal({ open: false, afterIndex: undefined })
-                  }
-                  style={{
-                    padding: "7px 18px",
-                    borderRadius: 10,
-                    border: "1.5px solid #e2e8f0",
-                    background: "#fff",
-                    color: "#64748b",
-                    fontSize: 13,
-                    cursor: "pointer",
-                    fontFamily: "inherit",
-                  }}
-                >
-                  Cancel
-                </button>
+                  onClick={() => setTableTypeModal({ open: false, afterIndex: undefined })}
+                  style={{ padding: "7px 18px", borderRadius: 10, border: "1.5px solid #e2e8f0", background: "#fff", color: "#64748b", fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}
+                >Cancel</button>
               </div>
             </div>
           </div>
@@ -5676,71 +2858,26 @@ export default function SectionEditorPage({
             orderIndex={formImportWizard.orderIndex}
             apiFetch={apiFetch}
             onImported={handleFormImported}
-            onClose={() =>
-              setFormImportWizard({
-                open: false,
-                afterIndex: undefined,
-                orderIndex: undefined,
-              })
-            }
+            onClose={() => setFormImportWizard({ open: false, afterIndex: undefined, orderIndex: undefined })}
           />
         )}
 
         {/* ── KPI Type Choice Modal ── */}
         {kpiTypeModal.open && (
-          <div
-            style={{
-              position: "fixed",
-              inset: 0,
-              background: "rgba(15,23,42,0.45)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              zIndex: 1200,
-              fontFamily: "'Plus Jakarta Sans', sans-serif",
-            }}
-            onClick={(e) => {
-              if (e.target === e.currentTarget)
-                setKpiTypeModal({ open: false, afterIndex: undefined });
-            }}
-          >
-            <div
-              style={{
-                background: "#fff",
-                borderRadius: 18,
-                padding: "32px 36px",
-                width: 480,
-                boxShadow: "0 24px 64px rgba(15,23,42,0.28)",
-              }}
-            >
-              <div
-                style={{
-                  fontSize: 17,
-                  fontWeight: 800,
-                  color: "#0f172a",
-                  marginBottom: 6,
-                }}
-              >
-                Add a KPI Chart
+          <div style={{
+            position: "fixed", inset: 0, background: "rgba(15,23,42,0.45)",
+            display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1200,
+            fontFamily: "'Plus Jakarta Sans', sans-serif",
+          }} onClick={e => { if (e.target === e.currentTarget) setKpiTypeModal({ open: false, afterIndex: undefined }); }}>
+            <div style={{
+              background: "#fff", borderRadius: 18, padding: "32px 36px",
+              width: 480, boxShadow: "0 24px 64px rgba(15,23,42,0.28)",
+            }}>
+              <div style={{ fontSize: 17, fontWeight: 800, color: "#0f172a", marginBottom: 6 }}>Add a KPI Chart</div>
+              <div style={{ fontSize: 12, color: "#64748b", marginBottom: 28, lineHeight: 1.6 }}>
+                Insert a KPI chart block — manually configure one or import from saved KPI reports.
               </div>
-              <div
-                style={{
-                  fontSize: 12,
-                  color: "#64748b",
-                  marginBottom: 28,
-                  lineHeight: 1.6,
-                }}
-              >
-                Insert a KPI chart block — manually configure one or import from
-                saved KPI reports.
-              </div>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr",
-                  gap: 12,
-                }}
-              >
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                 {/* Manual KPI — plain placeholder for now */}
                 <button
                   onClick={() => {
@@ -5748,38 +2885,16 @@ export default function SectionEditorPage({
                     addBlock("KPI", kpiTypeModal.afterIndex);
                   }}
                   style={{
-                    padding: "20px 18px",
-                    border: "2px solid #e2e8f0",
-                    borderRadius: 14,
-                    background: "#fff",
-                    cursor: "pointer",
-                    textAlign: "left",
-                    fontFamily: "inherit",
+                    padding: "20px 18px", border: "2px solid #e2e8f0", borderRadius: 14,
+                    background: "#fff", cursor: "pointer", textAlign: "left", fontFamily: "inherit",
                     transition: "all 0.15s",
                   }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.borderColor = "#818cf8";
-                    e.currentTarget.style.background = "#fafafe";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.borderColor = "#e2e8f0";
-                    e.currentTarget.style.background = "#fff";
-                  }}
+                  onMouseEnter={e => { e.currentTarget.style.borderColor = "#818cf8"; e.currentTarget.style.background = "#fafafe"; }}
+                  onMouseLeave={e => { e.currentTarget.style.borderColor = "#e2e8f0"; e.currentTarget.style.background = "#fff"; }}
                 >
                   <div style={{ fontSize: 24, marginBottom: 10 }}>📊</div>
-                  <div
-                    style={{
-                      fontSize: 13,
-                      fontWeight: 700,
-                      color: "#1e293b",
-                      marginBottom: 4,
-                    }}
-                  >
-                    Manual KPI
-                  </div>
-                  <div
-                    style={{ fontSize: 11, color: "#64748b", lineHeight: 1.5 }}
-                  >
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "#1e293b", marginBottom: 4 }}>Manual KPI</div>
+                  <div style={{ fontSize: 11, color: "#64748b", lineHeight: 1.5 }}>
                     Blank KPI block — enter values yourself.
                   </div>
                 </button>
@@ -5789,67 +2904,28 @@ export default function SectionEditorPage({
                   onClick={() => {
                     const oi = computeOrderIndex(kpiTypeModal.afterIndex);
                     setKpiTypeModal({ open: false, afterIndex: undefined });
-                    setKpiImportWizard({
-                      open: true,
-                      afterIndex: kpiTypeModal.afterIndex,
-                      orderIndex: oi,
-                    });
+                    setKpiImportWizard({ open: true, afterIndex: kpiTypeModal.afterIndex, orderIndex: oi });
                   }}
                   style={{
-                    padding: "20px 18px",
-                    border: "2px solid #e2e8f0",
-                    borderRadius: 14,
-                    background: "#fff",
-                    cursor: "pointer",
-                    textAlign: "left",
-                    fontFamily: "inherit",
+                    padding: "20px 18px", border: "2px solid #e2e8f0", borderRadius: 14,
+                    background: "#fff", cursor: "pointer", textAlign: "left", fontFamily: "inherit",
                     transition: "all 0.15s",
                   }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.borderColor = "#7c3aed";
-                    e.currentTarget.style.background = "#fdf8ff";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.borderColor = "#e2e8f0";
-                    e.currentTarget.style.background = "#fff";
-                  }}
+                  onMouseEnter={e => { e.currentTarget.style.borderColor = "#7c3aed"; e.currentTarget.style.background = "#fdf8ff"; }}
+                  onMouseLeave={e => { e.currentTarget.style.borderColor = "#e2e8f0"; e.currentTarget.style.background = "#fff"; }}
                 >
                   <div style={{ fontSize: 24, marginBottom: 10 }}>📈</div>
-                  <div
-                    style={{
-                      fontSize: 13,
-                      fontWeight: 700,
-                      color: "#1e293b",
-                      marginBottom: 4,
-                    }}
-                  >
-                    Import from KPI Reports
-                  </div>
-                  <div
-                    style={{ fontSize: 11, color: "#64748b", lineHeight: 1.5 }}
-                  >
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "#1e293b", marginBottom: 4 }}>Import from KPI Reports</div>
+                  <div style={{ fontSize: 11, color: "#64748b", lineHeight: 1.5 }}>
                     Pull a saved KPI chart with its data. Re-import anytime.
                   </div>
                 </button>
               </div>
               <div style={{ marginTop: 20, textAlign: "right" }}>
                 <button
-                  onClick={() =>
-                    setKpiTypeModal({ open: false, afterIndex: undefined })
-                  }
-                  style={{
-                    padding: "7px 18px",
-                    borderRadius: 10,
-                    border: "1.5px solid #e2e8f0",
-                    background: "#fff",
-                    color: "#64748b",
-                    fontSize: 13,
-                    cursor: "pointer",
-                    fontFamily: "inherit",
-                  }}
-                >
-                  Cancel
-                </button>
+                  onClick={() => setKpiTypeModal({ open: false, afterIndex: undefined })}
+                  style={{ padding: "7px 18px", borderRadius: 10, border: "1.5px solid #e2e8f0", background: "#fff", color: "#64748b", fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}
+                >Cancel</button>
               </div>
             </div>
           </div>
@@ -5860,34 +2936,16 @@ export default function SectionEditorPage({
           <KpiImportWizard
             sectionId={sectionId}
             orderIndex={kpiImportWizard.orderIndex}
-            defaultYear={
-              reportMeta?.academic_year
-                ? Number(String(reportMeta.academic_year).split("-")[0])
-                : undefined
-            }
+            defaultYear={reportMeta?.academic_year ? Number(String(reportMeta.academic_year).split("-")[0]) : undefined}
             apiFetch={apiFetch}
             onImported={handleKpiImported}
-            onClose={() =>
-              setKpiImportWizard({
-                open: false,
-                afterIndex: undefined,
-                orderIndex: undefined,
-              })
-            }
+            onClose={() => setKpiImportWizard({ open: false, afterIndex: undefined, orderIndex: undefined })}
           />
         )}
 
         {/* RIGHT PANEL: comments — its own column, only while open */}
         {chatOpen && (
-          <div
-            style={{
-              flex: "0 0 42%",
-              overflow: "hidden",
-              display: "flex",
-              flexDirection: "column",
-              minWidth: 0,
-            }}
-          >
+          <div style={{ flex: "0 0 42%", overflow: "hidden", display: "flex", flexDirection: "column", minWidth: 0 }}>
             <BlockCommentsSidebar
               sectionId={sectionId}
               blockId={selectedBlockId}
@@ -5895,12 +2953,9 @@ export default function SectionEditorPage({
               blockCounts={blockCounts}
               currentUserId={user?.id}
               apiFetch={apiFetch}
-              onClose={() => {
-                setChatOpen(false);
-                setSelectedBlockId(null);
-              }}
+              onClose={() => { setChatOpen(false); setSelectedBlockId(null); }}
               showBackToPreview={false}
-              onBlockSelect={(id) => setSelectedBlockId(id)}
+              onBlockSelect={id => setSelectedBlockId(id)}
               onCountRefresh={loadBlockCounts}
             />
           </div>
@@ -5913,127 +2968,59 @@ export default function SectionEditorPage({
           {previewOpen && (
             <div
               onClick={() => setPreviewOpen(false)}
-              style={{
-                position: "fixed",
-                inset: 0,
-                background: "rgba(15,23,42,0.35)",
-                zIndex: 900,
-              }}
+              style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.35)", zIndex: 900 }}
             />
           )}
-          <div
-            style={{
-              position: "fixed",
-              top: 0,
-              right: 0,
-              bottom: 0,
-              zIndex: 901,
-              width: previewWidth,
-              transform: previewOpen ? "translateX(0)" : "translateX(100%)",
-              transition: resizingPreviewRef.current
-                ? "none"
-                : "transform 0.25s ease",
-              background: "#808080",
-              boxShadow: "-8px 0 32px rgba(0,0,0,0.25)",
-              display: "flex",
-              flexDirection: "column",
-            }}
-          >
+          <div style={{
+            position: "fixed", top: 0, right: 0, bottom: 0, zIndex: 901,
+            width: previewWidth,
+            transform: previewOpen ? "translateX(0)" : "translateX(100%)",
+            transition: resizingPreviewRef.current ? "none" : "transform 0.25s ease",
+            background: "#808080",
+            boxShadow: "-8px 0 32px rgba(0,0,0,0.25)",
+            display: "flex", flexDirection: "column",
+          }}>
             {/* Drag handle — resizes the drawer */}
             <div
               onMouseDown={startPreviewResize}
               title="Drag to resize"
               style={{
-                position: "absolute",
-                top: 0,
-                left: -4,
-                bottom: 0,
-                width: 8,
-                cursor: "col-resize",
-                zIndex: 2,
+                position: "absolute", top: 0, left: -4, bottom: 0, width: 8,
+                cursor: "col-resize", zIndex: 2,
               }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = "rgba(124,58,237,0.18)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = "transparent";
-              }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(124,58,237,0.18)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
             />
-            <div
-              style={{
-                position: "absolute",
-                top: 8,
-                right: 8,
-                zIndex: 1,
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-              }}
-            >
+            <div style={{
+              position: "absolute", top: 8, right: 8, zIndex: 1,
+              display: "flex", alignItems: "center", gap: 6,
+            }}>
               <button
                 onClick={() => setPreviewWidth((w) => Math.max(360, w - 120))}
                 title="Decrease width"
                 style={{
-                  background: "#fff",
-                  border: "1px solid #e2e8f0",
-                  borderRadius: 8,
-                  cursor: "pointer",
-                  fontSize: 14,
-                  color: "#64748b",
-                  width: 28,
-                  height: 28,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
+                  background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, cursor: "pointer",
+                  fontSize: 14, color: "#64748b", width: 28, height: 28,
+                  display: "flex", alignItems: "center", justifyContent: "center",
                   boxShadow: "0 2px 6px rgba(0,0,0,0.12)",
                 }}
-              >
-                −
-              </button>
+              >−</button>
               <button
-                onClick={() =>
-                  setPreviewWidth((w) =>
-                    Math.min(Math.min(1200, window.innerWidth * 0.92), w + 120),
-                  )
-                }
+                onClick={() => setPreviewWidth((w) => Math.min(Math.min(1200, window.innerWidth * 0.92), w + 120))}
                 title="Increase width"
                 style={{
-                  background: "#fff",
-                  border: "1px solid #e2e8f0",
-                  borderRadius: 8,
-                  cursor: "pointer",
-                  fontSize: 14,
-                  color: "#64748b",
-                  width: 28,
-                  height: 28,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
+                  background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, cursor: "pointer",
+                  fontSize: 14, color: "#64748b", width: 28, height: 28,
+                  display: "flex", alignItems: "center", justifyContent: "center",
                   boxShadow: "0 2px 6px rgba(0,0,0,0.12)",
                 }}
-              >
-                +
-              </button>
-              <button
-                onClick={() => setPreviewOpen(false)}
-                title="Close preview"
-                style={{
-                  background: "#fff",
-                  border: "1px solid #e2e8f0",
-                  borderRadius: 8,
-                  cursor: "pointer",
-                  fontSize: 13,
-                  color: "#64748b",
-                  width: 28,
-                  height: 28,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  boxShadow: "0 2px 6px rgba(0,0,0,0.12)",
-                }}
-              >
-                ✕
-              </button>
+              >+</button>
+              <button onClick={() => setPreviewOpen(false)} title="Close preview" style={{
+                background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, cursor: "pointer",
+                fontSize: 13, color: "#64748b", width: 28, height: 28,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                boxShadow: "0 2px 6px rgba(0,0,0,0.12)",
+              }}>✕</button>
             </div>
             <div style={{ flex: 1, minHeight: 0 }}>
               {previewOpen && (

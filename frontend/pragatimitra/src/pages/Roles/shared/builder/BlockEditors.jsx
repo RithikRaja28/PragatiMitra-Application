@@ -60,6 +60,52 @@ const selectSt = {
   cursor: "pointer", outline: "none", height: 24,
 };
 
+/* ── Translate-from-English button (bilingual text block editors) ─────────
+   getSource() returns either a string or a string[] (batch). onTranslated
+   receives the matching shape back (string or string[]). */
+function TranslateButton({ apiFetch, getSource, onTranslated, label = "Translate from English" }) {
+  const [busy, setBusy] = useState(false);
+  const [err,  setErr]  = useState("");
+
+  async function run() {
+    setErr("");
+    const source = getSource();
+    const isBatch = Array.isArray(source);
+    if (isBatch ? !source.some((s) => s && s.trim()) : !source || !source.trim()) return;
+    setBusy(true);
+    try {
+      const body = isBatch ? { texts: source } : { text: source };
+      const res  = await apiFetch("/api/report-integration/translate", { method: "POST", body: JSON.stringify(body) });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.message || "Translation failed");
+      onTranslated(isBatch ? data.data.translations : data.data.hi);
+    } catch (ex) {
+      setErr(ex.message || "Translation failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-start", gap: 2 }}>
+      <button
+        type="button"
+        onClick={run}
+        disabled={busy || !apiFetch}
+        style={{
+          padding: "4px 10px", border: "1px solid #c4b5fd", borderRadius: 6,
+          background: busy ? "#f5f3ff" : "#faf5ff", color: "#7c3aed",
+          fontSize: 11, fontWeight: 700, cursor: busy ? "not-allowed" : "pointer", fontFamily: "inherit",
+          display: "flex", alignItems: "center", gap: 5, whiteSpace: "nowrap",
+        }}
+      >
+        {busy ? "Translating…" : `🌐 ${label}`}
+      </button>
+      {err && <div style={{ fontSize: 10, color: "#b91c1c" }}>{err}</div>}
+    </div>
+  );
+}
+
 /* ── S3 upload helper ─────────────────────────────────────────────────── */
 async function uploadToS3(file, apiFetch, folder) {
   if (!file) throw new Error("No file selected");
@@ -110,24 +156,20 @@ function UploadImageBtn({ onUploaded, apiFetch, folder, disabled }) {
 /* ══════════════════════════════════════════════════════════════════
    RICH TEXT PARAGRAPH BLOCK  —  Word-like editor
 ══════════════════════════════════════════════════════════════════ */
-export function RichTextBlock({ content, onChange, readOnly }) {
-  const editorRef   = useRef(null);
-  const initialised = useRef(false);
-  const savedSel    = useRef(null);
+export function RichTextBlock({ content, onChange, readOnly, lang = "en", apiFetch, translations, onSaveTranslation }) {
+  const editorRef = useRef(null);
+  const savedSel  = useRef(null);
+  const isHi      = lang === "hi";
+  const hiHtml    = translations?.hi?.html || "";
 
+  // Resync the contentEditable DOM whenever the active language's field changes
+  // externally (initial mount, language toggle, or a translate-button update) —
+  // but skip when it already matches (i.e. the user is mid-edit).
   useEffect(() => {
-    if (editorRef.current && !initialised.current) {
-      editorRef.current.innerHTML = content.html || content.text || "";
-      initialised.current = true;
-    }
-  }, []);
-
-  useEffect(() => {
-    if (editorRef.current && initialised.current) {
-      const incoming = content.html || content.text || "";
-      if (editorRef.current.innerHTML !== incoming) editorRef.current.innerHTML = incoming;
-    }
-  }, [content.html]);
+    if (!editorRef.current) return;
+    const incoming = isHi ? hiHtml : (content.html || content.text || "");
+    if (editorRef.current.innerHTML !== incoming) editorRef.current.innerHTML = incoming;
+  }, [lang, content.html, hiHtml]);
 
   const saveSelection = () => {
     const sel = window.getSelection();
@@ -142,7 +184,11 @@ export function RichTextBlock({ content, onChange, readOnly }) {
     if (sel) { sel.removeAllRanges(); sel.addRange(savedSel.current); }
   };
 
-  const save = () => { if (editorRef.current) onChange({ html: editorRef.current.innerHTML }); };
+  const save = () => {
+    if (!editorRef.current) return;
+    if (isHi) onSaveTranslation?.("hi", { html: editorRef.current.innerHTML });
+    else onChange({ ...content, html: editorRef.current.innerHTML });
+  };
 
   /* execCommand-based formatting — always save after */
   const exec = (cmd, val) => {
@@ -189,16 +235,19 @@ export function RichTextBlock({ content, onChange, readOnly }) {
   };
 
   if (readOnly) {
+    const html = isHi ? hiHtml : (content.html || content.text || "");
     return (
       <div
         className="rtb-reader"
         style={{ lineHeight: 1.8, color: "#111827", wordBreak: "break-word", fontSize: 13, fontFamily: "Calibri, 'Segoe UI', Arial, sans-serif" }}
-        dangerouslySetInnerHTML={{ __html: content.html || content.text || "<em style='color:#9ca3af'>Empty paragraph</em>" }}
+        dangerouslySetInnerHTML={{ __html: html || "<em style='color:#9ca3af'>Empty paragraph</em>" }}
       />
     );
   }
 
   const TB_SEL = { ...selectSt };
+  const isStale = !!translations?.hi?._stale;
+  const needsTranslation = isHi && (!hiHtml || isStale) && (content.html || content.text);
 
   return (
     <div>
@@ -330,6 +379,23 @@ export function RichTextBlock({ content, onChange, readOnly }) {
         <TBtn onClick={() => exec("removeFormat")} title="Clear all formatting" style={{ fontSize: 10, color: "#9ca3af" }}>Clr</TBtn>
       </div>
 
+      {needsTranslation && (
+        <div style={{ padding: "6px 10px", background: isStale ? "#fffbeb" : "#faf5ff", border: `1px solid ${isStale ? "#fcd34d" : "#e9d5ff"}`, borderTop: "none", display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontSize: 11, color: isStale ? "#b45309" : "#7c3aed" }}>
+            {isStale ? "Hindi translation may be outdated (English changed) —" : "No Hindi content yet —"}
+          </span>
+          <TranslateButton
+            apiFetch={apiFetch}
+            getSource={() => {
+              const tmp = document.createElement("div");
+              tmp.innerHTML = content.html || content.text || "";
+              return tmp.textContent || tmp.innerText || "";
+            }}
+            onTranslated={(hi) => onSaveTranslation?.("hi", { html: `<p>${hi}</p>`, _stale: false })}
+          />
+        </div>
+      )}
+
       {/* ══ EDITOR AREA ══ */}
       <div
         ref={editorRef}
@@ -357,39 +423,70 @@ export function RichTextBlock({ content, onChange, readOnly }) {
 }
 
 /* ── Heading ──────────────────────────────────────────────────────────── */
-export function HeadingBlock({ content, onChange, readOnly }) {
-  const level = content.level || 2;
-  const sizes = { 1: 26, 2: 20, 3: 16 };
+export function HeadingBlock({ content, onChange, readOnly, lang = "en", apiFetch, translations, onSaveTranslation }) {
+  const level    = content.level || 2;
+  const sizes    = { 1: 26, 2: 20, 3: 16 };
+  const isHi     = lang === "hi";
+  const hiText   = translations?.hi?.text || "";
+  const text     = isHi ? hiText : (content.text || "");
+  const isStale  = !!translations?.hi?._stale;
+  const needsTranslation = !readOnly && isHi && (!hiText || isStale) && content.text;
+
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-      {!readOnly && (
-        <select
-          value={level}
-          onChange={(e) => onChange({ ...content, level: Number(e.target.value) })}
-          style={{ flexShrink: 0, padding: "3px 7px", border: "1px solid #e2e8f0", borderRadius: 6, fontSize: 11, color: "#64748b", background: "#f8fafc", cursor: "pointer", outline: "none" }}
-        >
-          <option value={1}>H1</option>
-          <option value={2}>H2</option>
-          <option value={3}>H3</option>
-        </select>
+    <div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        {!readOnly && (
+          <select
+            value={level}
+            onChange={(e) => onChange({ ...content, level: Number(e.target.value) })}
+            style={{ flexShrink: 0, padding: "3px 7px", border: "1px solid #e2e8f0", borderRadius: 6, fontSize: 11, color: "#64748b", background: "#f8fafc", cursor: "pointer", outline: "none" }}
+          >
+            <option value={1}>H1</option>
+            <option value={2}>H2</option>
+            <option value={3}>H3</option>
+          </select>
+        )}
+        <div
+          key={isHi ? "hi" : "en"}
+          contentEditable={!readOnly}
+          suppressContentEditableWarning
+          onBlur={(e) => {
+            const val = e.currentTarget.innerText;
+            if (isHi) onSaveTranslation?.("hi", { text: val });
+            else onChange({ ...content, text: val });
+          }}
+          style={{ flex: 1, fontSize: sizes[level] || 20, fontWeight: 700, color: "#0f172a", outline: "none", borderBottom: readOnly ? "none" : "1px dashed #e2e8f0", padding: "4px 0" }}
+          dangerouslySetInnerHTML={{ __html: text }}
+        />
+      </div>
+      {needsTranslation && (
+        <div style={{ marginTop: 6, display: "flex", alignItems: "center", gap: 8 }}>
+          {isStale && <span style={{ fontSize: 11, color: "#b45309" }}>Hindi translation may be outdated —</span>}
+          <TranslateButton
+            apiFetch={apiFetch}
+            getSource={() => content.text}
+            onTranslated={(hi) => onSaveTranslation?.("hi", { text: hi, _stale: false })}
+          />
+        </div>
       )}
-      <div
-        contentEditable={!readOnly}
-        suppressContentEditableWarning
-        onBlur={(e) => onChange({ ...content, text: e.currentTarget.innerText })}
-        style={{ flex: 1, fontSize: sizes[level] || 20, fontWeight: 700, color: "#0f172a", outline: "none", borderBottom: readOnly ? "none" : "1px dashed #e2e8f0", padding: "4px 0" }}
-        dangerouslySetInnerHTML={{ __html: content.text || "" }}
-      />
     </div>
   );
 }
 
 /* ── Enhanced Image Block ─────────────────────────────────────────────── */
-export function ImageBlock({ content, onChange, readOnly }) {
+export function ImageBlock({ content, onChange, readOnly, lang = "en", translations, onSaveTranslation }) {
   const { apiFetch } = useApi();
   const widthPct = content.widthPct ?? 100;
   const align    = content.align || "center";
   const wrapStyle = { left: { display: "flex", justifyContent: "flex-start" }, center: { display: "flex", justifyContent: "center" }, right: { display: "flex", justifyContent: "flex-end" } }[align] || { display: "flex", justifyContent: "center" };
+
+  const isHi    = lang === "hi";
+  const hiAlt   = translations?.hi?.alt     || "";
+  const hiCap   = translations?.hi?.caption || "";
+  const alt     = isHi ? hiAlt : (content.alt     || "");
+  const caption = isHi ? hiCap : (content.caption || "");
+  const isStale = !!translations?.hi?._stale;
+  const needsTranslation = !readOnly && isHi && (!hiCap && !hiAlt || isStale) && (content.caption || content.alt);
 
   return (
     <div>
@@ -412,21 +509,43 @@ export function ImageBlock({ content, onChange, readOnly }) {
             ))}
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginTop: 8 }}>
-            <input key={"alt-" + content.alt} defaultValue={content.alt || ""} onBlur={(e) => onChange({ ...content, alt: e.target.value })} placeholder="Alt text…" style={{ padding: "5px 10px", border: "1px solid #e2e8f0", borderRadius: 7, fontSize: 11, outline: "none" }} />
-            <input key={"cap-" + content.caption} defaultValue={content.caption || ""} onBlur={(e) => onChange({ ...content, caption: e.target.value })} placeholder="Caption…" style={{ padding: "5px 10px", border: "1px solid #e2e8f0", borderRadius: 7, fontSize: 11, outline: "none", color: "#64748b" }} />
+            <input
+              key={"alt-" + (isHi ? "hi" : "en") + "-" + alt}
+              defaultValue={alt}
+              onBlur={(e) => isHi ? onSaveTranslation?.("hi", { alt: e.target.value }) : onChange({ ...content, alt: e.target.value })}
+              placeholder="Alt text…"
+              style={{ padding: "5px 10px", border: "1px solid #e2e8f0", borderRadius: 7, fontSize: 11, outline: "none" }}
+            />
+            <input
+              key={"cap-" + (isHi ? "hi" : "en") + "-" + caption}
+              defaultValue={caption}
+              onBlur={(e) => isHi ? onSaveTranslation?.("hi", { caption: e.target.value }) : onChange({ ...content, caption: e.target.value })}
+              placeholder="Caption…"
+              style={{ padding: "5px 10px", border: "1px solid #e2e8f0", borderRadius: 7, fontSize: 11, outline: "none", color: "#64748b" }}
+            />
           </div>
+          {needsTranslation && (
+            <div style={{ marginTop: 6, display: "flex", alignItems: "center", gap: 8 }}>
+              {isStale && <span style={{ fontSize: 11, color: "#b45309" }}>May be outdated —</span>}
+              <TranslateButton
+                apiFetch={apiFetch}
+                getSource={() => [content.caption || "", content.alt || ""]}
+                onTranslated={([capHi, altHi]) => onSaveTranslation?.("hi", { caption: capHi, alt: altHi, _stale: false })}
+              />
+            </div>
+          )}
         </div>
       )}
       <div style={wrapStyle}>
         <div style={{ width: widthPct + "%" }}>
           {content.url ? (
-            <img src={content.url} alt={content.alt || content.caption || ""} style={{ width: "100%", borderRadius: 6, border: "1px solid #e2e8f0", display: "block" }} onError={(e) => { e.currentTarget.style.display = "none"; }} />
+            <img src={content.url} alt={alt || caption || ""} style={{ width: "100%", borderRadius: 6, border: "1px solid #e2e8f0", display: "block" }} onError={(e) => { e.currentTarget.style.display = "none"; }} />
           ) : (
             <div style={{ height: 80, background: "#f8fafc", border: "1px dashed #cbd5e1", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", color: "#94a3b8", fontSize: 12 }}>
               {readOnly ? "No image" : "Paste a URL or upload an image above"}
             </div>
           )}
-          {content.caption && <div style={{ fontSize: 11, color: "#64748b", textAlign: "center", marginTop: 5, fontStyle: "italic" }}>{content.caption}</div>}
+          {caption && <div style={{ fontSize: 11, color: "#64748b", textAlign: "center", marginTop: 5, fontStyle: "italic" }}>{caption}</div>}
         </div>
       </div>
     </div>
@@ -434,38 +553,66 @@ export function ImageBlock({ content, onChange, readOnly }) {
 }
 
 /* ── Image Grid ───────────────────────────────────────────────────────── */
-export function ImageGridBlock({ content, onChange, readOnly }) {
+export function ImageGridBlock({ content, onChange, readOnly, lang = "en", translations, onSaveTranslation }) {
   const { apiFetch } = useApi();
-  const cols = content.cols || [{ url: "", caption: "", alt: "" }, { url: "", caption: "", alt: "" }];
+  const cols   = content.cols || [{ url: "", caption: "", alt: "" }, { url: "", caption: "", alt: "" }];
+  const isHi   = lang === "hi";
+  const hiCols = translations?.hi?.cols || [];
 
   const update = (i, patch) => onChange({ ...content, cols: cols.map((c, idx) => idx === i ? { ...c, ...patch } : c) });
+  const isStale = !!translations?.hi?._stale;
+  const updateHi = (i, patch) => {
+    const nextHiCols = cols.map((_, idx) => ({ ...(hiCols[idx] || {}), ...(idx === i ? patch : {}) }));
+    onSaveTranslation?.("hi", { cols: nextHiCols, _stale: false });
+  };
   const addCol = () => { if (cols.length >= 4) return; onChange({ ...content, cols: [...cols, { url: "", caption: "", alt: "" }] }); };
   const removeCol = (i) => { if (cols.length <= 1) return; onChange({ ...content, cols: cols.filter((_, idx) => idx !== i) }); };
 
   return (
     <div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(" + cols.length + ", 1fr)", gap: 10 }}>
-        {cols.map((col, i) => (
-          <div key={i}>
-            {!readOnly && (
-              <div style={{ marginBottom: 6 }}>
-                <div style={{ display: "flex", alignItems: "center", marginBottom: 4 }}>
-                  <span style={{ fontSize: 10, fontWeight: 600, color: "#94a3b8" }}>Image {i + 1}</span>
-                  {cols.length > 1 && <button onClick={() => removeCol(i)} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: "#ef4444", fontSize: 12 }}>X</button>}
+        {cols.map((col, i) => {
+          const hiCol = hiCols[i] || {};
+          const caption = isHi ? (hiCol.caption || "") : (col.caption || "");
+          const alt     = isHi ? (hiCol.alt     || "") : (col.alt     || "");
+          const needsTranslation = !readOnly && isHi && (!hiCol.caption && !hiCol.alt || isStale) && (col.caption || col.alt);
+          return (
+            <div key={i}>
+              {!readOnly && (
+                <div style={{ marginBottom: 6 }}>
+                  <div style={{ display: "flex", alignItems: "center", marginBottom: 4 }}>
+                    <span style={{ fontSize: 10, fontWeight: 600, color: "#94a3b8" }}>Image {i + 1}</span>
+                    {cols.length > 1 && <button onClick={() => removeCol(i)} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: "#ef4444", fontSize: 12 }}>X</button>}
+                  </div>
+                  <input key={"url-" + i + "-" + col.url} defaultValue={col.url || ""} onBlur={(e) => update(i, { url: e.target.value })} placeholder="Image URL…" style={{ width: "100%", padding: "5px 8px", border: "1px solid #e2e8f0", borderRadius: 6, fontSize: 11, outline: "none", boxSizing: "border-box", marginBottom: 4 }} />
+                  <UploadImageBtn apiFetch={apiFetch} folder="report-images" onUploaded={(url) => update(i, { url })} />
+                  <input
+                    key={"cap-" + (isHi ? "hi" : "en") + "-" + i + "-" + caption}
+                    defaultValue={caption}
+                    onBlur={(e) => isHi ? updateHi(i, { caption: e.target.value }) : update(i, { caption: e.target.value })}
+                    placeholder="Caption…"
+                    style={{ width: "100%", padding: "4px 8px", border: "1px solid #e2e8f0", borderRadius: 6, fontSize: 10, outline: "none", boxSizing: "border-box", color: "#64748b", marginTop: 4 }}
+                  />
+                  {needsTranslation && (
+                    <div style={{ marginTop: 5 }}>
+                      <TranslateButton
+                        apiFetch={apiFetch}
+                        getSource={() => [col.caption || "", col.alt || ""]}
+                        onTranslated={([capHi, altHi]) => updateHi(i, { caption: capHi, alt: altHi })}
+                      />
+                    </div>
+                  )}
                 </div>
-                <input key={"url-" + i + "-" + col.url} defaultValue={col.url || ""} onBlur={(e) => update(i, { url: e.target.value })} placeholder="Image URL…" style={{ width: "100%", padding: "5px 8px", border: "1px solid #e2e8f0", borderRadius: 6, fontSize: 11, outline: "none", boxSizing: "border-box", marginBottom: 4 }} />
-                <UploadImageBtn apiFetch={apiFetch} folder="report-images" onUploaded={(url) => update(i, { url })} />
-                <input key={"cap-" + i + "-" + col.caption} defaultValue={col.caption || ""} onBlur={(e) => update(i, { caption: e.target.value })} placeholder="Caption…" style={{ width: "100%", padding: "4px 8px", border: "1px solid #e2e8f0", borderRadius: 6, fontSize: 10, outline: "none", boxSizing: "border-box", color: "#64748b", marginTop: 4 }} />
-              </div>
-            )}
-            {col.url ? (
-              <img src={col.url} alt={col.alt || col.caption || ("Image " + (i + 1))} style={{ width: "100%", borderRadius: 5, border: "1px solid #e2e8f0", display: "block" }} onError={(e) => { e.currentTarget.style.display = "none"; }} />
-            ) : (
-              <div style={{ height: 80, background: "#f8fafc", border: "1px dashed #cbd5e1", borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center", color: "#94a3b8", fontSize: 11 }}>{readOnly ? "" : "URL or upload"}</div>
-            )}
-            {col.caption && <div style={{ fontSize: 10, color: "#64748b", textAlign: "center", marginTop: 4, fontStyle: "italic" }}>{col.caption}</div>}
-          </div>
-        ))}
+              )}
+              {col.url ? (
+                <img src={col.url} alt={alt || caption || ("Image " + (i + 1))} style={{ width: "100%", borderRadius: 5, border: "1px solid #e2e8f0", display: "block" }} onError={(e) => { e.currentTarget.style.display = "none"; }} />
+              ) : (
+                <div style={{ height: 80, background: "#f8fafc", border: "1px dashed #cbd5e1", borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center", color: "#94a3b8", fontSize: 11 }}>{readOnly ? "" : "URL or upload"}</div>
+              )}
+              {caption && <div style={{ fontSize: 10, color: "#64748b", textAlign: "center", marginTop: 4, fontStyle: "italic" }}>{caption}</div>}
+            </div>
+          );
+        })}
       </div>
       {!readOnly && cols.length < 4 && (
         <button onClick={addCol} style={{ ...ADD_BTN_STYLE, marginTop: 10, fontSize: 11 }}>+ Add Column</button>
@@ -475,13 +622,21 @@ export function ImageGridBlock({ content, onChange, readOnly }) {
 }
 
 /* ── Form-import TABLE sub-component ────────────────────────────────── */
-function FormImportTableBlock({ blockId, content, onChange, onRefetched, readOnly, apiFetch }) {
+function FormImportTableBlock({ blockId, content, onChange, onRefetched, readOnly, apiFetch, lang = "en", translations }) {
   const [refetching,   setRefetching]   = useState(false);
   const [refetchErr,   setRefetchErr]   = useState("");
   const [confirmOpen,  setConfirmOpen]  = useState(false);
+  const [switching,    setSwitching]    = useState(false);
+  const [switchErr,    setSwitchErr]    = useState("");
 
-  const columns = content.columns || [];
-  const rows    = content.rows    || [];
+  const dataLanguage = content.language === "hi" ? "hi" : "en";
+  // Auto-fetched translation (persisted at import/refetch time) — used automatically
+  // when it covers the active language, so no manual "switch" step is needed.
+  const autoTranslation = lang !== dataLanguage ? translations?.[lang] : null;
+  const effective = autoTranslation || content;
+  const columns = effective.columns || [];
+  const rows    = effective.rows    || [];
+  const langMismatch = !readOnly && dataLanguage !== lang && !autoTranslation;
 
   const lastFetched = content.imported_at
     ? new Date(content.imported_at).toLocaleString()
@@ -495,13 +650,14 @@ function FormImportTableBlock({ blockId, content, onChange, onRefetched, readOnl
       const res  = await apiFetch(`/api/report-integration/blocks/${blockId}/refetch`, { method: "POST" });
       const data = await res.json();
       if (!res.ok || !data.success) throw new Error(data.message || "Re-fetch failed");
-      // Backend returns { rows, imported_at, count } — update content without marking dirty
+      // Backend returns { rows, imported_at, count, translations } — update content
+      // (and the Hindi translation, if any) without marking the block dirty.
       const newContent = {
         ...content,
         rows:        data.data.rows        || [],
         imported_at: data.data.imported_at || new Date().toISOString(),
       };
-      if (onRefetched) onRefetched(newContent);
+      if (onRefetched) onRefetched(newContent, data.data.translations);
       else onChange(newContent);
     } catch (ex) {
       setRefetchErr(ex.message || "Re-fetch failed");
@@ -510,10 +666,55 @@ function FormImportTableBlock({ blockId, content, onChange, onRefetched, readOnl
     }
   }
 
+  async function doSwitchLanguage() {
+    setSwitching(true);
+    setSwitchErr("");
+    try {
+      const res  = await apiFetch(`/api/report-integration/blocks/${blockId}/switch-language`, {
+        method: "POST", body: JSON.stringify({ language: lang }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.message || "Switch failed");
+      // Backend returns the full updated content object
+      if (onRefetched) onRefetched(data.data);
+      else onChange(data.data);
+    } catch (ex) {
+      setSwitchErr(ex.message || "Failed to switch language");
+    } finally {
+      setSwitching(false);
+    }
+  }
+
   const cell = { border: "1px solid #d1d5db", padding: "6px 10px", fontSize: 12, minWidth: 80, verticalAlign: "top" };
 
   return (
     <div>
+      {langMismatch && (
+        <div style={{
+          marginBottom: 10, padding: "9px 14px", background: "#fffbeb", border: "1px solid #fcd34d",
+          borderRadius: 8, fontSize: 12, color: "#92400e",
+          display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
+        }}>
+          <span>
+            This table was imported in <strong>{dataLanguage === "hi" ? "Hindi" : "English"}</strong>, but you're
+            editing in <strong>{lang === "hi" ? "Hindi" : "English"}</strong>.
+          </span>
+          <button
+            onClick={doSwitchLanguage}
+            disabled={switching}
+            style={{
+              padding: "4px 12px", borderRadius: 6, border: "1px solid #d97706",
+              background: switching ? "#fef3c7" : "#fff", color: "#92400e",
+              fontSize: 11, fontWeight: 700, cursor: switching ? "not-allowed" : "pointer", fontFamily: "inherit",
+              flexShrink: 0,
+            }}
+          >
+            {switching ? "Switching…" : `Switch to ${lang === "hi" ? "Hindi" : "English"} data`}
+          </button>
+          {switchErr && <div style={{ width: "100%", color: "#b91c1c" }}>{switchErr}</div>}
+        </div>
+      )}
+
       {/* ── Metadata bar ── */}
       <div style={{
         display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
@@ -531,6 +732,11 @@ function FormImportTableBlock({ blockId, content, onChange, onRefetched, readOnl
           {content.academic_year && (
             <span style={{ fontSize: 10, color: "#0369a1", background: "#e0f2fe", padding: "1px 6px", borderRadius: 4, flexShrink: 0 }}>
               {content.academic_year}
+            </span>
+          )}
+          {autoTranslation && (
+            <span title="Showing the auto-fetched Hindi translation for this table" style={{ fontSize: 10, color: "#15803d", background: "#dcfce7", padding: "1px 6px", borderRadius: 4, flexShrink: 0, fontWeight: 700 }}>
+              Hindi translation
             </span>
           )}
           <span style={{ fontSize: 10, color: "#64748b", flexShrink: 0 }}>
@@ -659,7 +865,7 @@ function FormImportTableBlock({ blockId, content, onChange, onRefetched, readOnl
 }
 
 /* ── Table ────────────────────────────────────────────────────────────── */
-export function TableBlock({ content, onChange, onRefetched, readOnly, blockId, apiFetch }) {
+export function TableBlock({ content, onChange, onRefetched, readOnly, blockId, apiFetch, lang = "en", translations, onSaveTranslation }) {
   // Form-import variant
   if (content.source === "form_import") {
     return (
@@ -670,64 +876,112 @@ export function TableBlock({ content, onChange, onRefetched, readOnly, blockId, 
         onRefetched={onRefetched}
         readOnly={readOnly}
         apiFetch={apiFetch}
+        lang={lang}
+        translations={translations}
       />
     );
   }
 
   // Manual table (original behaviour)
-  const rows    = content.rows    || [["", ""], ["", ""]];
-  const headers = content.headers || Array(rows[0]?.length || 2).fill("");
+  const enRows    = content.rows    || [["", ""], ["", ""]];
+  const enHeaders = content.headers || Array(enRows[0]?.length || 2).fill("");
+  const isHi      = lang === "hi";
+  const hiHeaders = translations?.hi?.headers;
+  const hiRows    = translations?.hi?.rows;
+  const rows    = isHi ? (hiRows    || enRows.map((r) => r.map(() => ""))) : enRows;
+  const headers = isHi ? (hiHeaders || enHeaders.map(() => ""))           : enHeaders;
+  const isStale = !!translations?.hi?._stale;
+  const needsTranslation = !readOnly && isHi && (!hiRows && !hiHeaders || isStale) &&
+    (enHeaders.some(Boolean) || enRows.some((r) => r.some(Boolean)));
 
-  const updateCell   = (ri, ci, val) => { const n = rows.map((r) => [...r]); n[ri][ci] = val; onChange({ ...content, rows: n }); };
-  const updateHeader = (ci, val)     => { const n = [...headers]; n[ci] = val; onChange({ ...content, headers: n }); };
-  const addRow       = ()            => onChange({ ...content, rows: [...rows, Array(headers.length).fill("")] });
-  const addCol       = ()            => onChange({ ...content, headers: [...headers, ""], rows: rows.map((r) => [...r, ""]) });
-  const removeRow    = (ri)          => onChange({ ...content, rows: rows.filter((_, i) => i !== ri) });
-  const removeCol    = (ci)          => onChange({ ...content, headers: headers.filter((_, i) => i !== ci), rows: rows.map((r) => r.filter((_, i) => i !== ci)) });
+  const updateCell = (ri, ci, val) => {
+    const n = rows.map((r) => [...r]); n[ri][ci] = val;
+    if (isHi) onSaveTranslation?.("hi", { rows: n }); else onChange({ ...content, rows: n });
+  };
+  const updateHeader = (ci, val) => {
+    const n = [...headers]; n[ci] = val;
+    if (isHi) onSaveTranslation?.("hi", { headers: n }); else onChange({ ...content, headers: n });
+  };
+  const addRow = () => {
+    const n = [...rows, Array(headers.length).fill("")];
+    if (isHi) onSaveTranslation?.("hi", { rows: n }); else onChange({ ...content, rows: n });
+  };
+  const addCol = () => {
+    const nh = [...headers, ""], nr = rows.map((r) => [...r, ""]);
+    if (isHi) onSaveTranslation?.("hi", { headers: nh, rows: nr }); else onChange({ ...content, headers: nh, rows: nr });
+  };
+  const removeRow = (ri) => {
+    const n = rows.filter((_, i) => i !== ri);
+    if (isHi) onSaveTranslation?.("hi", { rows: n }); else onChange({ ...content, rows: n });
+  };
+  const removeCol = (ci) => {
+    const nh = headers.filter((_, i) => i !== ci), nr = rows.map((r) => r.filter((_, i) => i !== ci));
+    if (isHi) onSaveTranslation?.("hi", { headers: nh, rows: nr }); else onChange({ ...content, headers: nh, rows: nr });
+  };
 
   const cell = { border: "1px solid #d1d5db", padding: "6px 10px", fontSize: 12, minWidth: 80, verticalAlign: "top" };
 
   return (
-    <div style={{ overflowX: "auto" }}>
-      <table style={{ borderCollapse: "collapse", width: "100%" }}>
-        <thead>
-          <tr>
-            {headers.map((h, ci) => (
-              <th key={ci} style={{ ...cell, background: "#f1f5f9", fontWeight: 700 }}>
-                {readOnly ? h : (
-                  <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                    <input value={h} onChange={(e) => updateHeader(ci, e.target.value)} placeholder={"Col " + (ci + 1)} style={{ border: "none", background: "transparent", fontWeight: 700, fontSize: 12, flex: 1, outline: "none" }} />
-                    {headers.length > 1 && <button onClick={() => removeCol(ci)} style={{ background: "none", border: "none", cursor: "pointer", color: "#cbd5e1", fontSize: 11, padding: 0, flexShrink: 0 }} onMouseEnter={(e) => (e.currentTarget.style.color = "#ef4444")} onMouseLeave={(e) => (e.currentTarget.style.color = "#cbd5e1")}>X</button>}
-                  </div>
-                )}
-              </th>
-            ))}
-            {!readOnly && <th style={{ ...cell, background: "#f1f5f9", width: 28 }} />}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, ri) => (
-            <tr key={ri} style={{ background: ri % 2 === 1 ? "#f9fafb" : "#fff" }}>
-              {row.map((c, ci) => (
-                <td key={ci} style={cell}>
-                  {readOnly ? c : <textarea value={c} onChange={(e) => updateCell(ri, ci, e.target.value)} rows={1} style={{ border: "none", background: "transparent", fontSize: 12, width: "100%", outline: "none", resize: "vertical", fontFamily: "inherit" }} />}
-                </td>
-              ))}
-              {!readOnly && (
-                <td style={{ ...cell, textAlign: "center", width: 28, padding: "4px" }}>
-                  <button onClick={() => removeRow(ri)} style={{ background: "none", border: "none", cursor: "pointer", color: "#cbd5e1", fontSize: 13, padding: 0 }} onMouseEnter={(e) => (e.currentTarget.style.color = "#ef4444")} onMouseLeave={(e) => (e.currentTarget.style.color = "#cbd5e1")}>X</button>
-                </td>
-              )}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      {!readOnly && (
-        <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-          <button onClick={addRow} style={ADD_BTN_STYLE}>+ Row</button>
-          <button onClick={addCol} style={ADD_BTN_STYLE}>+ Column</button>
+    <div>
+      {needsTranslation && (
+        <div style={{ marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
+          {isStale && <span style={{ fontSize: 11, color: "#b45309" }}>Hindi translation may be outdated —</span>}
+          <TranslateButton
+            label="Translate all cells from English"
+            apiFetch={apiFetch}
+            getSource={() => [...enHeaders, ...enRows.flat()]}
+            onTranslated={(flat) => {
+              const newHeaders = flat.slice(0, enHeaders.length);
+              const cellsFlat  = flat.slice(enHeaders.length);
+              const newRows = [];
+              let idx = 0;
+              for (const r of enRows) { newRows.push(cellsFlat.slice(idx, idx + r.length)); idx += r.length; }
+              onSaveTranslation?.("hi", { headers: newHeaders, rows: newRows, _stale: false });
+            }}
+          />
         </div>
       )}
+      <div style={{ overflowX: "auto" }}>
+        <table style={{ borderCollapse: "collapse", width: "100%" }}>
+          <thead>
+            <tr>
+              {headers.map((h, ci) => (
+                <th key={ci} style={{ ...cell, background: "#f1f5f9", fontWeight: 700 }}>
+                  {readOnly ? h : (
+                    <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                      <input value={h} onChange={(e) => updateHeader(ci, e.target.value)} placeholder={"Col " + (ci + 1)} style={{ border: "none", background: "transparent", fontWeight: 700, fontSize: 12, flex: 1, outline: "none" }} />
+                      {headers.length > 1 && <button onClick={() => removeCol(ci)} style={{ background: "none", border: "none", cursor: "pointer", color: "#cbd5e1", fontSize: 11, padding: 0, flexShrink: 0 }} onMouseEnter={(e) => (e.currentTarget.style.color = "#ef4444")} onMouseLeave={(e) => (e.currentTarget.style.color = "#cbd5e1")}>X</button>}
+                    </div>
+                  )}
+                </th>
+              ))}
+              {!readOnly && <th style={{ ...cell, background: "#f1f5f9", width: 28 }} />}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, ri) => (
+              <tr key={ri} style={{ background: ri % 2 === 1 ? "#f9fafb" : "#fff" }}>
+                {row.map((c, ci) => (
+                  <td key={ci} style={cell}>
+                    {readOnly ? c : <textarea value={c} onChange={(e) => updateCell(ri, ci, e.target.value)} rows={1} style={{ border: "none", background: "transparent", fontSize: 12, width: "100%", outline: "none", resize: "vertical", fontFamily: "inherit" }} />}
+                  </td>
+                ))}
+                {!readOnly && (
+                  <td style={{ ...cell, textAlign: "center", width: 28, padding: "4px" }}>
+                    <button onClick={() => removeRow(ri)} style={{ background: "none", border: "none", cursor: "pointer", color: "#cbd5e1", fontSize: 13, padding: 0 }} onMouseEnter={(e) => (e.currentTarget.style.color = "#ef4444")} onMouseLeave={(e) => (e.currentTarget.style.color = "#cbd5e1")}>X</button>
+                  </td>
+                )}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {!readOnly && (
+          <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+            <button onClick={addRow} style={ADD_BTN_STYLE}>+ Row</button>
+            <button onClick={addCol} style={ADD_BTN_STYLE}>+ Column</button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -735,11 +989,16 @@ export function TableBlock({ content, onChange, onRefetched, readOnly, blockId, 
 /* ══════════════════════════════════════════════════════════════════
    LIST BLOCK  —  with per-block font size + colour controls
 ══════════════════════════════════════════════════════════════════ */
-export function ListBlock({ content, onChange, readOnly }) {
-  const items    = Array.isArray(content.items) ? content.items : [];
-  const ordered  = content.ordered  || false;
-  const fontSize = content.fontSize || 13;   // stored in px
+export function ListBlock({ content, onChange, readOnly, lang = "en", apiFetch, translations, onSaveTranslation }) {
+  const isHi      = lang === "hi";
+  const enItems   = Array.isArray(content.items) ? content.items : [];
+  const hiItems   = Array.isArray(translations?.hi?.items) ? translations.hi.items : null;
+  const items     = isHi ? (hiItems || enItems.map(() => "")) : enItems;
+  const ordered   = content.ordered  || false;
+  const fontSize  = content.fontSize || 13;   // stored in px
   const fontColor = content.fontColor || "#1e293b";
+  const isStale = !!translations?.hi?._stale;
+  const needsTranslation = !readOnly && isHi && (!hiItems || isStale) && enItems.some(Boolean);
 
   if (readOnly) {
     const Tag = ordered ? "ol" : "ul";
@@ -752,6 +1011,17 @@ export function ListBlock({ content, onChange, readOnly }) {
 
   return (
     <div>
+      {needsTranslation && (
+        <div style={{ marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
+          {isStale && <span style={{ fontSize: 11, color: "#b45309" }}>May be outdated —</span>}
+          <TranslateButton
+            label="Translate all items from English"
+            apiFetch={apiFetch}
+            getSource={() => enItems}
+            onTranslated={(itemsHi) => onSaveTranslation?.("hi", { items: itemsHi, _stale: false })}
+          />
+        </div>
+      )}
       {/* ─ List toolbar ─ */}
       <div style={{
         display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap",
@@ -818,7 +1088,11 @@ export function ListBlock({ content, onChange, readOnly }) {
           </span>
           <input
             value={item}
-            onChange={(e) => { const n = [...items]; n[i] = e.target.value; onChange({ ...content, items: n }); }}
+            onChange={(e) => {
+              const n = [...items]; n[i] = e.target.value;
+              if (isHi) onSaveTranslation?.("hi", { items: n });
+              else onChange({ ...content, items: n });
+            }}
             placeholder={`Item ${i + 1}…`}
             style={{
               flex: 1, padding: "5px 10px",
@@ -831,7 +1105,11 @@ export function ListBlock({ content, onChange, readOnly }) {
             onBlur={(e) => (e.target.style.borderColor = "#e2e8f0")}
           />
           <button
-            onClick={() => onChange({ ...content, items: items.filter((_, j) => j !== i) })}
+            onClick={() => {
+              const n = items.filter((_, j) => j !== i);
+              if (isHi) onSaveTranslation?.("hi", { items: n });
+              else onChange({ ...content, items: n });
+            }}
             style={{ background: "none", border: "none", cursor: "pointer", color: "#cbd5e1", fontSize: 13, flexShrink: 0, padding: "0 2px" }}
             onMouseEnter={(e) => (e.currentTarget.style.color = "#ef4444")}
             onMouseLeave={(e) => (e.currentTarget.style.color = "#cbd5e1")}
@@ -839,7 +1117,14 @@ export function ListBlock({ content, onChange, readOnly }) {
         </div>
       ))}
 
-      <button onClick={() => onChange({ ...content, items: [...items, ""] })} style={{ ...ADD_BTN_STYLE, marginTop: 4 }}>
+      <button
+        onClick={() => {
+          const n = [...items, ""];
+          if (isHi) onSaveTranslation?.("hi", { items: n });
+          else onChange({ ...content, items: n });
+        }}
+        style={{ ...ADD_BTN_STYLE, marginTop: 4 }}
+      >
         + Add item
       </button>
     </div>
@@ -1239,285 +1524,28 @@ export function KpiImportBlock({ blockId, content, onChange, onRefetched, readOn
   );
 }
 
-/* ── Hindi translation helpers ─────────────────────────────────────────── */
-
-function buildHiContent(blockType, enContent, hiTrans) {
-  const c = enContent || {};
-  const h = hiTrans || {};
-  switch (blockType) {
-    case "PARAGRAPH":
-      return { ...c, html: h.html ?? h.text ?? "" };
-    case "HEADING":
-      return { ...c, text: h.text ?? "" };
-    case "LIST":
-      return { ...c, items: Array.isArray(h.items) ? h.items : [] };
-    case "TABLE":
-      if (c.source === "form_import")
-        return { ...c, columns: h.columns ?? c.columns, rows: h.rows ?? c.rows };
-      return { ...c, headers: h.headers ?? c.headers, rows: h.rows ?? c.rows };
-    case "IMAGE":
-      return { ...c, caption: h.caption ?? "", alt: h.alt ?? "" };
-    case "IMAGE_GRID":
-      return {
-        ...c,
-        cols: (c.cols || []).map((col, i) => ({
-          ...col,
-          caption: (h.cols || [])[i]?.caption ?? col.caption,
-          alt: (h.cols || [])[i]?.alt ?? col.alt,
-        })),
-      };
-    case "FILE":
-      return { ...c, name: h.name ?? c.name };
-    default:
-      return c;
-  }
-}
-
-function extractTranslatablePartial(blockType, newContent) {
-  const c = newContent || {};
-  switch (blockType) {
-    case "PARAGRAPH":  return { html: c.html ?? "" };
-    case "HEADING":    return { text: c.text ?? "" };
-    case "LIST":       return { items: c.items ?? [] };
-    case "TABLE":
-      if (c.source === "form_import") return { columns: c.columns, rows: c.rows };
-      return { headers: c.headers, rows: c.rows };
-    case "IMAGE":      return { caption: c.caption ?? "", alt: c.alt ?? "" };
-    case "IMAGE_GRID": return { cols: (c.cols || []).map(col => ({ caption: col.caption ?? "", alt: col.alt ?? "" })) };
-    case "FILE":       return { name: c.name ?? "" };
-    default:           return c;
-  }
-}
-
-function hasHiTranslation(blockType, hiTrans) {
-  if (!hiTrans) return false;
-  const h = hiTrans;
-  switch (blockType) {
-    case "PARAGRAPH":  return !!(h.html || h.text);
-    case "HEADING":    return !!h.text;
-    case "LIST":       return Array.isArray(h.items) && h.items.some(i => i);
-    case "TABLE":      return !!(h.rows?.length || h.headers?.length || h.columns?.length);
-    case "IMAGE":      return !!(h.caption || h.alt);
-    case "IMAGE_GRID": return !!(h.cols?.some(c => c.caption || c.alt));
-    case "FILE":       return !!h.name;
-    default:           return false;
-  }
-}
-
-async function autoTranslateContent(blockType, content, apiFetch) {
-  const c = content || {};
-  const post = async (texts) => {
-    const r = await apiFetch("/api/report-integration/translate", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ texts }),
-    });
-    return r.json();
-  };
-
-  switch (blockType) {
-    case "PARAGRAPH": {
-      const raw = (c.html || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
-      if (!raw) return null;
-      const res = await post([raw]);
-      const t = res.data?.translations?.[0] || raw;
-      return { html: `<p>${t}</p>`, text: t };
-    }
-    case "HEADING": {
-      if (!c.text) return null;
-      const res = await post([c.text]);
-      return { text: res.data?.translations?.[0] || c.text };
-    }
-    case "LIST": {
-      const items = (c.items || []).filter(i => i);
-      if (!items.length) return null;
-      const res = await post(items);
-      return { items: res.data?.translations || items };
-    }
-    case "IMAGE": {
-      const toTrans = [c.caption, c.alt].filter(Boolean);
-      if (!toTrans.length) return null;
-      const res = await post(toTrans);
-      const trans = res.data?.translations || toTrans;
-      let ti = 0;
-      return { caption: c.caption ? (trans[ti++] || "") : "", alt: c.alt ? (trans[ti++] || "") : "" };
-    }
-    case "IMAGE_GRID": {
-      const cols = c.cols || [];
-      const toTrans = cols.map(col => col.caption || "").filter(cap => cap);
-      if (!toTrans.length) return null;
-      const res = await post(toTrans);
-      const trans = res.data?.translations || toTrans;
-      let ti = 0;
-      return { cols: cols.map(col => ({ caption: col.caption ? (trans[ti++] || "") : "" })) };
-    }
-    case "FILE": {
-      if (!c.name) return null;
-      const res = await post([c.name]);
-      return { name: res.data?.translations?.[0] || c.name };
-    }
-    case "TABLE": {
-      if (c.source === "form_import") return null;
-      const headers = c.headers || [];
-      const allRows = c.rows || [];
-      const allCells = [...headers, ...allRows.flatMap(row => row)].filter(v => v && typeof v === "string");
-      if (!allCells.length) return null;
-      const res = await post(allCells);
-      const trans = res.data?.translations || allCells;
-      let ti = 0;
-      const tHeaders = headers.map(h => h ? (trans[ti++] || "") : "");
-      const tRows = allRows.map(row => row.map(cell => (cell && typeof cell === "string") ? (trans[ti++] || "") : cell));
-      return { headers: tHeaders, rows: tRows };
-    }
-    default:
-      return null;
-  }
-}
-
-/* ── HI mode top bar ────────────────────────────────────────────────────── */
-function HiModeBar({ blockType, hasTranslation, onTranslate, translating, readOnly }) {
-  const isNeutral = ["DIVIDER", "KPI"].includes(blockType);
-  return (
-    <div style={{
-      display: "flex", alignItems: "center", gap: 8, marginBottom: 8,
-      padding: "5px 10px", background: "#faf5ff",
-      border: "1px solid #e9d5ff", borderRadius: 6,
-    }}>
-      <span style={{
-        fontSize: 9, fontWeight: 800, color: "#7c3aed",
-        background: "#ede9fe", padding: "2px 6px", borderRadius: 4, letterSpacing: 0.5,
-      }}>
-        HI
-      </span>
-      <span style={{ fontSize: 11, color: "#8b5cf6", flex: 1 }}>
-        {isNeutral
-          ? "Language-neutral block"
-          : hasTranslation
-            ? "Editing Hindi translation"
-            : "No Hindi translation yet"}
-      </span>
-      {!isNeutral && !readOnly && (
-        <button
-          onClick={onTranslate}
-          disabled={translating}
-          style={{
-            padding: "3px 12px", borderRadius: 5, fontSize: 11, fontWeight: 600,
-            cursor: translating ? "not-allowed" : "pointer",
-            border: "1px solid #7c3aed",
-            background: translating ? "#f3e8ff" : "#7c3aed",
-            color: translating ? "#7c3aed" : "#fff",
-            opacity: translating ? 0.7 : 1, transition: "all 0.15s",
-          }}
-        >
-          {translating ? "Translating…" : hasTranslation ? "Re-translate" : "Auto-translate"}
-        </button>
-      )}
-    </div>
-  );
-}
-
 /* ── Block router ─────────────────────────────────────────────────────── */
 // kpiScope: "institute" | "department" — controls which KPIs appear in the KPI picker.
 // Pass this from the report builder so the picker only shows KPIs belonging to the
 // same scope as the report being authored.
-export function BlockEditor({ block, onChange, onRefetched, onSaveTranslation, readOnly, kpiScope = "department", blockId, apiFetch, lang = "en" }) {
-  const [translating, setTranslating] = useState(false);
-
-  const isHi      = lang === "hi";
-  const allTrans  = block?.translations || {};
-  const hiTrans   = isHi ? (allTrans.hi || null) : null;
-  const hasHiTrans = isHi && hasHiTranslation(block.block_type, hiTrans);
-
-  // In HI mode: resolve content from translation, falling back to English fields
-  const activeContent = isHi
-    ? buildHiContent(block.block_type, block.content || {}, hiTrans)
-    : (block.content || {});
-
-  // In HI mode: route edits to onSaveTranslation (only the translatable partial)
-  const handleChange = isHi
-    ? (newContent) => onSaveTranslation?.("hi", extractTranslatablePartial(block.block_type, newContent))
-    : onChange;
-
-  const handleTranslate = async () => {
-    setTranslating(true);
-    try {
-      const partial = await autoTranslateContent(block.block_type, block.content || {}, apiFetch);
-      if (partial) onSaveTranslation?.("hi", partial);
-    } catch { /* ignore */ }
-    setTranslating(false);
-  };
-
-  const isNeutral      = ["DIVIDER", "KPI"].includes(block.block_type);
-  // IMAGE/IMAGE_GRID/FILE: always show editor (caption/label are optional; auto-translate fills them)
-  const alwaysEdit     = ["IMAGE", "IMAGE_GRID", "FILE"].includes(block.block_type);
-  const showPlaceholder = isHi && !hasHiTrans && !isNeutral && !alwaysEdit;
-
-  const p = { content: activeContent, onChange: handleChange, readOnly };
-
-  let editorNode;
+export function BlockEditor({ block, onChange, onRefetched, readOnly, kpiScope = "department", blockId, apiFetch, lang = "en", onSaveTranslation }) {
+  const p = { content: block.content, onChange, readOnly, lang, translations: block.translations, onSaveTranslation };
   switch (block.block_type) {
-    case "PARAGRAPH":  editorNode = <RichTextBlock  {...p} />; break;
-    case "HEADING":    editorNode = <HeadingBlock   key={lang} {...p} />; break;
-    case "IMAGE":      editorNode = <ImageBlock     {...p} />; break;
-    case "IMAGE_GRID": editorNode = <ImageGridBlock {...p} />; break;
-    case "TABLE":      editorNode = <TableBlock     {...p} onRefetched={onRefetched} blockId={blockId || block.id} apiFetch={apiFetch} />; break;
-    case "LIST":       editorNode = <ListBlock      {...p} />; break;
-    case "DIVIDER":    editorNode = <DividerBlock />; break;
-    case "FILE":       editorNode = <FileBlock      {...p} />; break;
+    case "PARAGRAPH":  return <RichTextBlock  {...p} apiFetch={apiFetch} />;
+    case "HEADING":    return <HeadingBlock   {...p} apiFetch={apiFetch} />;
+    case "IMAGE":      return <ImageBlock     {...p} />;
+    case "IMAGE_GRID": return <ImageGridBlock {...p} />;
+    case "TABLE":      return <TableBlock     {...p} onRefetched={onRefetched} blockId={blockId || block.id} apiFetch={apiFetch} />;
+    case "LIST":       return <ListBlock      {...p} apiFetch={apiFetch} />;
+    case "DIVIDER":    return <DividerBlock />;
+    case "FILE":       return <FileBlock      {...p} />;
     case "KPI":
       if ((block.content || {}).source === "kpi_import") {
-        editorNode = <KpiImportBlock blockId={blockId || block.id} content={block.content} onChange={onChange} onRefetched={onRefetched} readOnly={readOnly} apiFetch={apiFetch} />;
-      } else {
-        editorNode = <KpiBlock {...p} kpiScope={kpiScope} />;
+        return <KpiImportBlock blockId={blockId || block.id} content={block.content} onChange={onChange} onRefetched={onRefetched} readOnly={readOnly} apiFetch={apiFetch} />;
       }
-      break;
-    default:
-      editorNode = <div style={{ color: "#94a3b8", fontSize: 13 }}>[{block.block_type}]</div>;
+      return <KpiBlock {...p} kpiScope={kpiScope} />;
+    default:           return <div style={{ color: "#94a3b8", fontSize: 13 }}>[{block.block_type}]</div>;
   }
-
-  if (!isHi) return editorNode;
-
-  return (
-    <div>
-      <HiModeBar
-        blockType={block.block_type}
-        hasTranslation={hasHiTrans}
-        onTranslate={handleTranslate}
-        translating={translating}
-        readOnly={readOnly}
-      />
-      {showPlaceholder ? (
-        <div style={{ position: "relative" }}>
-          <div style={{ opacity: 0.35, pointerEvents: "none", userSelect: "none" }}>
-            {(() => {
-              const ep = { content: block.content || {}, onChange: () => {}, readOnly: true };
-              switch (block.block_type) {
-                case "PARAGRAPH": return <RichTextBlock {...ep} />;
-                case "HEADING":   return <HeadingBlock  {...ep} />;
-                case "LIST":      return <ListBlock     {...ep} />;
-                case "TABLE":     return <TableBlock    {...ep} onRefetched={() => {}} blockId={blockId || block.id} apiFetch={apiFetch} />;
-                default:          return null;
-              }
-            })()}
-          </div>
-          <div style={{
-            position: "absolute", inset: 0,
-            display: "flex", alignItems: "center", justifyContent: "center",
-          }}>
-            <span style={{
-              fontSize: 12, color: "#7c3aed", fontStyle: "italic",
-              background: "rgba(255,255,255,0.88)", padding: "4px 12px",
-              borderRadius: 6, border: "1px solid #e9d5ff",
-            }}>
-              Click "Auto-translate" above to generate Hindi content
-            </span>
-          </div>
-        </div>
-      ) : (
-        editorNode
-      )}
-    </div>
-  );
 }
 
 /* ── Default content ──────────────────────────────────────────────────── */

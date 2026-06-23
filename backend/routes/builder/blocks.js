@@ -9,6 +9,8 @@
  * PUT    /:id                    update block content (with locking + version snapshot)
  * DELETE /:id                    soft-delete block
  * POST   /reorder                bulk reorder blocks
+ * PUT    /:id/translations/:language   upsert a block's translated content
+ * GET    /:id/translations/:language   fetch a block's translated content
  */
 
 const express           = require("express");
@@ -34,16 +36,9 @@ router.get("/section/:sectionId", async (req, res) => {
     if (!isUUID(sectionId)) return res.status(400).json({ success: false, message: "Invalid section id" });
 
     const { rows } = await pool.query(
-      `SELECT b.*,
-              COALESCE(
-                jsonb_object_agg(bt.language, bt.content) FILTER (WHERE bt.language IS NOT NULL),
-                '{}'::jsonb
-              ) AS translations
-       FROM public.section_blocks b
-       LEFT JOIN public.block_translations bt ON bt.block_id = b.id
-       WHERE b.section_id = $1 AND b.deleted_at IS NULL
-       GROUP BY b.id
-       ORDER BY b.order_index`,
+      `SELECT * FROM public.section_blocks
+       WHERE section_id = $1 AND deleted_at IS NULL
+       ORDER BY order_index`,
       [sectionId]
     );
 
@@ -104,7 +99,7 @@ router.put("/:id", async (req, res) => {
   const client = await pool.connect();
   try {
     const { id } = req.params;
-    const { content, order_index, description, version_lock } = req.body;
+    const { content, order_index, description, version_lock, is_required } = req.body;
 
     if (!isUUID(id)) return res.status(400).json({ success: false, message: "Invalid block id" });
 
@@ -122,6 +117,10 @@ router.put("/:id", async (req, res) => {
     if (order_index != null) {
       params.push(Number(order_index));
       sets.push(`order_index = $${params.length}`);
+    }
+    if (is_required !== undefined) {
+      params.push(Boolean(is_required));
+      sets.push(`is_required = $${params.length}`);
     }
     if (!sets.length) return res.status(400).json({ success: false, message: "Nothing to update" });
 
@@ -258,49 +257,6 @@ router.put("/:id", async (req, res) => {
   }
 });
 
-/* ─── PUT /:id/translations/:lang — upsert block translation (partial merge) ── */
-router.put("/:id/translations/:lang", async (req, res) => {
-  const pool = req.app.locals.pool;
-  try {
-    const { id, lang } = req.params;
-    if (!isUUID(id)) return res.status(400).json({ success: false, message: "Invalid block id" });
-    const ALLOWED_LANGS = ["hi", "en", "ta", "mr", "gu", "bn", "te", "kn", "ml"];
-    if (!ALLOWED_LANGS.includes(lang))
-      return res.status(400).json({ success: false, message: "Invalid language code" });
-
-    const { content } = req.body;
-    if (!content || typeof content !== "object")
-      return res.status(400).json({ success: false, message: "content object required" });
-
-    // Verify block exists
-    const { rows: bRows } = await pool.query(
-      `SELECT id FROM public.section_blocks WHERE id = $1 AND deleted_at IS NULL`,
-      [id]
-    );
-    if (!bRows.length) return res.status(404).json({ success: false, message: "Block not found" });
-
-    // Merge partial content into existing translation (coalesce so untouched fields survive)
-    const { rows } = await pool.query(
-      `INSERT INTO public.block_translations (block_id, language, content, status, created_by, updated_by)
-       VALUES ($1, $2, $3::jsonb, 'DRAFT', $4, $4)
-       ON CONFLICT (block_id, language) DO UPDATE
-         SET content    = block_translations.content || EXCLUDED.content,
-             updated_by = EXCLUDED.updated_by,
-             status     = CASE
-                            WHEN block_translations.status = 'APPROVED' THEN 'DRAFT'
-                            ELSE block_translations.status
-                          END
-       RETURNING *`,
-      [id, lang, JSON.stringify(content), req.user.userId]
-    );
-
-    return res.json({ success: true, data: rows[0] });
-  } catch (err) {
-    logger.error("builder/blocks PUT /:id/translations/:lang", { ...getLogContext(req), err: err.message });
-    return res.status(500).json({ success: false, message: "Failed to save translation" });
-  }
-});
-
 /* ─── DELETE /:id — soft delete ─────────────────────────────────────────── */
 router.delete("/:id", async (req, res) => {
   const pool = req.app.locals.pool;
@@ -351,6 +307,64 @@ router.post("/reorder", async (req, res) => {
   } catch (err) {
     logger.error("builder/blocks POST /reorder", { ...getLogContext(req), err: err.message });
     return res.status(500).json({ success: false, message: "Failed to reorder blocks" });
+  }
+});
+
+/* ─── PUT /:id/translations/:language — upsert a block's translated content ──
+   Per the translation data spec: content here mirrors the SAME JSONB shape as
+   section_blocks.content, but only the translatable text fields are filled
+   (e.g. { html } for PARAGRAPH, { text } for HEADING, { items } for LIST,
+   { caption, alt } for IMAGE, { headers, rows } for a manual TABLE). Structural
+   /non-text fields are never duplicated here — the compiler/editor reads those
+   from the primary content and only overlays text fields from this row. ───── */
+router.put("/:id/translations/:language", async (req, res) => {
+  const pool = req.app.locals.pool;
+  try {
+    const { id, language } = req.params;
+    if (!isUUID(id)) return res.status(400).json({ success: false, message: "Invalid block id" });
+    if (!/^[a-z]{2,10}$/i.test(language)) return res.status(400).json({ success: false, message: "Invalid language code" });
+
+    const { content } = req.body;
+    if (!content || typeof content !== "object" || Array.isArray(content))
+      return res.status(400).json({ success: false, message: "content object is required" });
+
+    const { rows: blkRows } = await pool.query(
+      `SELECT id FROM public.section_blocks WHERE id=$1 AND deleted_at IS NULL`, [id]
+    );
+    if (!blkRows.length) return res.status(404).json({ success: false, message: "Block not found" });
+
+    const { rows } = await pool.query(
+      `INSERT INTO public.block_translations (block_id, language, content, status, created_by, updated_by)
+       VALUES ($1,$2,$3::jsonb,'DRAFT',$4,$4)
+       ON CONFLICT (block_id, language) DO UPDATE
+         SET content    = public.block_translations.content || EXCLUDED.content,
+             updated_by  = EXCLUDED.updated_by
+       RETURNING content, status`,
+      [id, language.toLowerCase(), JSON.stringify(content), req.user.userId]
+    );
+
+    return res.json({ success: true, data: rows[0] });
+  } catch (err) {
+    logger.error("builder/blocks PUT /:id/translations/:language", { ...getLogContext(req), err: err.message });
+    return res.status(500).json({ success: false, message: "Failed to save translation" });
+  }
+});
+
+/* ─── GET /:id/translations/:language — fetch a single translation row ──── */
+router.get("/:id/translations/:language", async (req, res) => {
+  const pool = req.app.locals.pool;
+  try {
+    const { id, language } = req.params;
+    if (!isUUID(id)) return res.status(400).json({ success: false, message: "Invalid block id" });
+
+    const { rows } = await pool.query(
+      `SELECT content, status FROM public.block_translations WHERE block_id=$1 AND language=$2`,
+      [id, language.toLowerCase()]
+    );
+    return res.json({ success: true, data: rows[0] || { content: {}, status: null } });
+  } catch (err) {
+    logger.error("builder/blocks GET /:id/translations/:language", { ...getLogContext(req), err: err.message });
+    return res.status(500).json({ success: false, message: "Failed to fetch translation" });
   }
 });
 

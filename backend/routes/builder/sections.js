@@ -45,12 +45,9 @@ router.get("/review-queue", async (req, res) => {
      *   assigned (current_step_id IS NULL) as an oversight fallback — those
      *   sections can't route to anyone specific.
      */
-    const isDirectorsOffice = roles.includes("directors_office");
-
     const { rows } = await pool.query(
       `SELECT
          s.id, s.title, s.status, s.report_id, s.current_step_id,
-         s.needs_director_approval,
          s.submission_deadline,
          s.updated_at AS submitted_at,
          r.title AS report_title, r.report_type, r.academic_year,
@@ -70,11 +67,9 @@ router.get("/review-queue", async (req, res) => {
            OR ws.approver_role = ANY($3::text[])
            /* Admins see workflow-less sections as fallback oversight */
            OR ($4 AND s.current_step_id IS NULL)
-           /* Director's Office sees sections pending their final approval */
-           OR ($5 AND s.needs_director_approval = TRUE)
          )
        ORDER BY s.updated_at DESC`,
-      [instId, userId, roles, isAdmin, isDirectorsOffice]
+      [instId, userId, roles, isAdmin]
     );
 
     return res.json({ success: true, data: rows });
@@ -88,54 +83,40 @@ router.get("/review-queue", async (req, res) => {
 router.get("/assigned", async (req, res) => {
   const pool = req.app.locals.pool;
   try {
-    const userId = req.user.userId;
     const { rows } = await pool.query(
-      `WITH accessible AS (
-         /* 1. Direct user assignment */
-         SELECT a.section_id, a.id AS src_id, a.role AS src_role, a.due_at, a.assigned_at, a.completed_at
-         FROM public.section_assignments a
-         WHERE a.user_id = $1
-
-         UNION ALL
-
-         /* 2. ROLE-based workflow authoring assignment */
-         SELECT swa.section_id, swa.id, 'CONTRIBUTOR', swa.due_at, swa.assigned_at, NULL
-         FROM public.section_workflow_assignments swa
-         JOIN public.user_roles ur ON ur.user_id = $1 AND ur.revoked_at IS NULL
-         JOIN public.roles ro      ON ro.id = ur.role_id AND ro.name = swa.role_name
-         WHERE swa.assignee_type = 'ROLE' AND swa.workflow_step_id IS NULL
-
-         UNION ALL
-
-         /* 3. DEPARTMENT-based workflow authoring assignment */
-         SELECT swa.section_id, swa.id, 'CONTRIBUTOR', swa.due_at, swa.assigned_at, NULL
-         FROM public.section_workflow_assignments swa
-         JOIN public.users u ON u.id = $1 AND u.department_id = swa.department_id
-         WHERE swa.assignee_type = 'DEPARTMENT' AND swa.workflow_step_id IS NULL
-       )
-       SELECT DISTINCT ON (s.id)
+      `SELECT
          s.id, s.title, s.description, s.status, s.report_id, s.order_index,
          r.title          AS report_title,
          r.report_type,
          r.academic_year,
          r.institution_id,
-         ac.src_id        AS assignment_id,
-         ac.src_role      AS assignment_role,
-         ac.due_at,
-         ac.assigned_at,
-         ac.completed_at,
-         (SELECT sv.description FROM public.section_versions sv
-          WHERE sv.section_id = s.id ORDER BY sv.version_num DESC LIMIT 1) AS latest_version_description,
-         (SELECT sv.version_num FROM public.section_versions sv
-          WHERE sv.section_id = s.id ORDER BY sv.version_num DESC LIMIT 1) AS latest_version_num,
-         (SELECT COUNT(*) FROM public.block_comments bc
-          WHERE bc.section_id = s.id AND bc.is_resolved = FALSE
-            AND bc.deleted_at IS NULL AND bc.parent_id IS NULL) AS unresolved_comment_count
-       FROM accessible ac
-       JOIN public.report_sections s ON s.id = ac.section_id AND s.deleted_at IS NULL
+         a.id             AS assignment_id,
+         a.role           AS assignment_role,
+         a.due_at,
+         a.assigned_at,
+         a.completed_at,
+         -- latest version description (most recent manual save)
+         (SELECT sv.description
+          FROM public.section_versions sv
+          WHERE sv.section_id = s.id
+          ORDER BY sv.version_num DESC LIMIT 1) AS latest_version_description,
+         (SELECT sv.version_num
+          FROM public.section_versions sv
+          WHERE sv.section_id = s.id
+          ORDER BY sv.version_num DESC LIMIT 1) AS latest_version_num,
+         -- unresolved block comment count
+         (SELECT COUNT(*)
+          FROM public.block_comments bc
+          WHERE bc.section_id = s.id
+            AND bc.is_resolved = FALSE
+            AND bc.deleted_at IS NULL
+            AND bc.parent_id IS NULL) AS unresolved_comment_count
+       FROM public.section_assignments a
+       JOIN public.report_sections s ON s.id = a.section_id AND s.deleted_at IS NULL
        JOIN public.reports r         ON r.id = s.report_id  AND r.deleted_at IS NULL
-       ORDER BY s.id, ac.due_at ASC NULLS LAST`,
-      [userId]
+       WHERE a.user_id = $1
+       ORDER BY a.due_at ASC NULLS LAST, r.title, s.order_index`,
+      [req.user.userId]
     );
     return res.json({ success: true, data: rows });
   } catch (err) {
@@ -219,13 +200,13 @@ router.get("/:id", async (req, res) => {
     const { rows: blocks } = await pool.query(
       `SELECT b.*,
               COALESCE(
-                jsonb_object_agg(bt.language, bt.content) FILTER (WHERE bt.language IS NOT NULL),
+                (SELECT jsonb_object_agg(bt.language, bt.content)
+                 FROM public.block_translations bt
+                 WHERE bt.block_id = b.id),
                 '{}'::jsonb
               ) AS translations
        FROM public.section_blocks b
-       LEFT JOIN public.block_translations bt ON bt.block_id = b.id
        WHERE b.section_id = $1 AND b.deleted_at IS NULL
-       GROUP BY b.id
        ORDER BY b.order_index`,
       [id]
     );
