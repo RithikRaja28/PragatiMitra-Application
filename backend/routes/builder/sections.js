@@ -45,9 +45,12 @@ router.get("/review-queue", async (req, res) => {
      *   assigned (current_step_id IS NULL) as an oversight fallback — those
      *   sections can't route to anyone specific.
      */
+    const isDirectorsOffice = roles.includes("directors_office");
+
     const { rows } = await pool.query(
       `SELECT
          s.id, s.title, s.status, s.report_id, s.current_step_id,
+         s.needs_director_approval,
          s.submission_deadline,
          s.updated_at AS submitted_at,
          r.title AS report_title, r.report_type, r.academic_year,
@@ -67,9 +70,11 @@ router.get("/review-queue", async (req, res) => {
            OR ws.approver_role = ANY($3::text[])
            /* Admins see workflow-less sections as fallback oversight */
            OR ($4 AND s.current_step_id IS NULL)
+           /* Director's Office sees sections pending their final approval */
+           OR ($5 AND s.needs_director_approval = TRUE)
          )
        ORDER BY s.updated_at DESC`,
-      [instId, userId, roles, isAdmin]
+      [instId, userId, roles, isAdmin, isDirectorsOffice]
     );
 
     return res.json({ success: true, data: rows });

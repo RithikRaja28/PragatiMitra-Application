@@ -80,8 +80,9 @@ export default function ReviewQueuePage() {
     return true;
   });
 
-  const pending      = queue.filter(q => q.status === "SUBMITTED").length;
-  const underReview  = queue.filter(q => q.status === "UNDER_REVIEW").length;
+  const pending        = queue.filter(q => q.status === "SUBMITTED" && !q.needs_director_approval).length;
+  const underReview    = queue.filter(q => q.status === "UNDER_REVIEW").length;
+  const finalApproval  = queue.filter(q => q.needs_director_approval).length;
 
   return (
     <div style={{ padding: "24px 28px", fontFamily: "'Plus Jakarta Sans', sans-serif", background: "transparent", minHeight: "100vh" }}>
@@ -96,9 +97,10 @@ export default function ReviewQueuePage() {
       {!loading && queue.length > 0 && (
         <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
           {[
-            { label: "Total",        value: queue.length, bg: "#f1f5f9", color: "#475569" },
-            { label: "Needs review", value: pending,      bg: pending ? "#fef3c7" : "#f1f5f9", color: pending ? "#92400e" : "#94a3b8" },
-            { label: "Under review", value: underReview,  bg: "#dbeafe", color: "#1e40af" },
+            { label: "Total",          value: queue.length,   bg: "#f1f5f9", color: "#475569" },
+            { label: "Needs review",   value: pending,        bg: pending ? "#fef3c7" : "#f1f5f9", color: pending ? "#92400e" : "#94a3b8" },
+            { label: "Under review",   value: underReview,    bg: "#dbeafe", color: "#1e40af" },
+            { label: "Final approval", value: finalApproval,  bg: finalApproval ? "#fae8ff" : "#f1f5f9", color: finalApproval ? "#7e22ce" : "#94a3b8" },
           ].map(c => (
             <div key={c.label} style={{ padding: "8px 16px", borderRadius: 10, background: c.bg, display: "flex", gap: 8, alignItems: "center" }}>
               <span style={{ fontSize: 18, fontWeight: 700, color: c.color }}>{c.value}</span>
@@ -193,9 +195,15 @@ export default function ReviewQueuePage() {
                     </td>
                     <td style={{ padding: "13px 16px", borderTop: i > 0 ? `0.5px solid ${C.border}` : "none",
                       fontSize: 12, color: C.textSub }}>
-                      {q.current_step_name
-                        ? <span>{q.current_step_name} <span style={{ color: "#94a3b8" }}>#{q.current_step_order}</span></span>
-                        : <span style={{ color: "#94a3b8" }}>No workflow</span>}
+                      {q.needs_director_approval
+                        ? <span style={{ display: "inline-flex", alignItems: "center", gap: 4,
+                            fontSize: 10, fontWeight: 700, padding: "3px 9px", borderRadius: 20,
+                            background: "#fae8ff", color: "#7e22ce", border: "1px solid #e9d5ff" }}>
+                            Director Final Approval
+                          </span>
+                        : q.current_step_name
+                          ? <span>{q.current_step_name} <span style={{ color: "#94a3b8" }}>#{q.current_step_order}</span></span>
+                          : <span style={{ color: "#94a3b8" }}>No workflow</span>}
                     </td>
                     <td style={{ padding: "13px 16px", borderTop: i > 0 ? `0.5px solid ${C.border}` : "none",
                       fontSize: 12, color: C.textSub }}>

@@ -542,8 +542,11 @@ const CON_H = A4_H  - MARG * 2;   // 979 px content height (page body)
 const TITLE_H = 110;               // approximate height taken by title block on page 1
 
 /* ── render one block in Word style ── */
-function WordBlock({ block }) {
-  const c = block.content || {};
+function WordBlock({ block, lang = "en" }) {
+  const c    = block.content || {};
+  const isHi = lang === "hi";
+  const t    = isHi ? (block.translations?.hi || {}) : null;
+  const pick = (hiVal, enVal) => (isHi && hiVal) ? hiVal : enVal;
 
   switch (block.block_type) {
 
@@ -551,7 +554,7 @@ function WordBlock({ block }) {
       return (
         <div
           style={{ fontFamily: DOC_FONT, fontSize: 11, lineHeight: 1.8, color: "#111827", marginBottom: 10, wordBreak: "break-word" }}
-          dangerouslySetInnerHTML={{ __html: c.html || c.text || "<em style='color:#9ca3af'>Empty paragraph</em>" }}
+          dangerouslySetInnerHTML={{ __html: pick(t?.html, c.html || c.text) || "<em style='color:#9ca3af'>Empty paragraph</em>" }}
         />
       );
 
@@ -563,7 +566,7 @@ function WordBlock({ block }) {
       };
       return (
         <div style={{ fontFamily: DOC_FONT, fontWeight: 700, ...lvlStyle[c.level || 2] }}>
-          {c.text || "Heading"}
+          {pick(t?.text, c.text) || "Heading"}
         </div>
       );
     }
@@ -571,20 +574,22 @@ function WordBlock({ block }) {
     case "IMAGE": {
       const w = c.widthPct ?? 100;
       const alignMap = { left: "flex-start", center: "center", right: "flex-end" };
+      const alt     = pick(t?.alt, c.alt);
+      const caption = pick(t?.caption, c.caption);
       return (
         <div style={{ display: "flex", justifyContent: alignMap[c.align] || "center", margin: "8px 0 12px" }}>
           <div style={{ width: `${w}%` }}>
             {c.url ? (
-              <img src={c.url} alt={c.alt || c.caption || ""} style={{ width: "100%", borderRadius: 3, border: "1px solid #e5e7eb" }}
+              <img src={c.url} alt={alt || caption || ""} style={{ width: "100%", borderRadius: 3, border: "1px solid #e5e7eb" }}
                 onError={(e) => { e.currentTarget.style.display = "none"; }} />
             ) : (
               <div style={{ height: 60, background: "#f9fafb", border: "1px dashed #d1d5db", borderRadius: 4, display: "flex", alignItems: "center", justifyContent: "center", color: "#9ca3af", fontSize: 10 }}>
                 [Image]
               </div>
             )}
-            {c.caption && (
+            {caption && (
               <div style={{ fontFamily: DOC_FONT, fontSize: 9, color: "#6b7280", textAlign: "center", marginTop: 3, fontStyle: "italic" }}>
-                {c.caption}
+                {caption}
               </div>
             )}
           </div>
@@ -593,37 +598,59 @@ function WordBlock({ block }) {
     }
 
     case "IMAGE_GRID": {
-      const cols = c.cols || [];
+      const cols   = c.cols || [];
+      const hiCols = t?.cols || [];
       return (
         <div style={{ display: "grid", gridTemplateColumns: `repeat(${cols.length || 2}, 1fr)`, gap: 8, margin: "8px 0 12px" }}>
-          {cols.map((col, i) => (
-            <div key={i}>
-              {col.url ? (
-                <img src={col.url} alt={col.alt || col.caption || `Image ${i + 1}`} style={{ width: "100%", borderRadius: 3, border: "1px solid #e5e7eb" }}
-                  onError={(e) => { e.currentTarget.style.display = "none"; }} />
-              ) : (
-                <div style={{ height: 60, background: "#f9fafb", border: "1px dashed #d1d5db", borderRadius: 4, display: "flex", alignItems: "center", justifyContent: "center", color: "#9ca3af", fontSize: 9 }}>[Image {i + 1}]</div>
-              )}
-              {col.caption && (
-                <div style={{ fontFamily: DOC_FONT, fontSize: 9, color: "#6b7280", textAlign: "center", marginTop: 2, fontStyle: "italic" }}>{col.caption}</div>
-              )}
-            </div>
-          ))}
+          {cols.map((col, i) => {
+            const hiCol   = hiCols[i] || {};
+            const alt     = pick(hiCol.alt, col.alt);
+            const caption = pick(hiCol.caption, col.caption);
+            return (
+              <div key={i}>
+                {col.url ? (
+                  <img src={col.url} alt={alt || caption || `Image ${i + 1}`} style={{ width: "100%", borderRadius: 3, border: "1px solid #e5e7eb" }}
+                    onError={(e) => { e.currentTarget.style.display = "none"; }} />
+                ) : (
+                  <div style={{ height: 60, background: "#f9fafb", border: "1px dashed #d1d5db", borderRadius: 4, display: "flex", alignItems: "center", justifyContent: "center", color: "#9ca3af", fontSize: 9 }}>[Image {i + 1}]</div>
+                )}
+                {caption && (
+                  <div style={{ fontFamily: DOC_FONT, fontSize: 9, color: "#6b7280", textAlign: "center", marginTop: 2, fontStyle: "italic" }}>{caption}</div>
+                )}
+              </div>
+            );
+          })}
         </div>
       );
     }
 
     case "TABLE": {
       const isFormImport = c.source === "form_import";
-      // Form-import blocks store columns as [{key,label}] and rows as objects keyed by col.key;
-      // manually-built tables store headers as a string[] and rows as arrays of cell values.
-      const headers = isFormImport ? (c.columns || []).map(col => col.label || col.key) : (c.headers || []);
-      const rows    = c.rows || [];
+      const dataLanguage = c.language === "hi" ? "hi" : "en";
+      const useTranslation = isHi && lang !== dataLanguage && t;
+      const fmtColumns = (isFormImport && useTranslation && t.columns) || c.columns || [];
+      const fmtRows    = (isFormImport && useTranslation && t.rows)    || c.rows    || [];
+      const headers = isFormImport
+        ? fmtColumns.map(col => col.label || col.key)
+        : (pick(t?.headers, c.headers) || []);
+      const allRows = isFormImport ? fmtRows : (pick(t?.rows, c.rows) || []);
+      // Paginated split support: _rowStart/_rowEnd are injected by WordDocumentPreview
+      const rowStart       = block._rowStart ?? 0;
+      const rowEnd         = block._rowEnd   ?? allRows.length;
+      const rows           = allRows.slice(rowStart, rowEnd);
+      const isContinuation = block._isContinuation;
+      const hideHeader     = block._hideHeader;
+      const noBottomMargin = block._noBottomMargin;
       const cell = { border: "1px solid #9ca3af", padding: "4px 7px", fontFamily: DOC_FONT, fontSize: 10, color: "#111827", verticalAlign: "top" };
       return (
-        <div style={{ margin: "8px 0 12px", overflowX: "auto" }}>
+        <div style={{ margin: `${hideHeader ? "-1px" : "8px"} 0 ${noBottomMargin ? "0" : "12px"}`, overflowX: "auto" }}>
+          {isContinuation && !hideHeader && (
+            <div style={{ fontFamily: DOC_FONT, fontSize: 8, color: "#9ca3af", fontStyle: "italic", marginBottom: 2 }}>
+              (continued)
+            </div>
+          )}
           <table style={{ borderCollapse: "collapse", width: "100%" }}>
-            {headers.length > 0 && (
+            {!hideHeader && headers.length > 0 && (
               <thead>
                 <tr>
                   {headers.map((h, i) => (
@@ -634,9 +661,9 @@ function WordBlock({ block }) {
             )}
             <tbody>
               {rows.map((row, ri) => (
-                <tr key={ri} style={{ background: ri % 2 === 0 ? "#fff" : "#f9fafb" }}>
+                <tr key={rowStart + ri} style={{ background: (rowStart + ri) % 2 === 0 ? "#fff" : "#f9fafb" }}>
                   {isFormImport
-                    ? (c.columns || []).map((col, ci) => (
+                    ? fmtColumns.map((col, ci) => (
                         <td key={ci} style={cell}>{row?.[col.key] != null ? String(row[col.key]) : ""}</td>
                       ))
                     : (Array.isArray(row) ? row : []).map((cell_val, ci) => (
@@ -652,7 +679,7 @@ function WordBlock({ block }) {
     }
 
     case "LIST": {
-      const items = c.items || [];
+      const items = pick(t?.items, c.items) || [];
       const Tag   = c.ordered ? "ol" : "ul";
       const fs    = c.fontSize  || 11;
       const fc    = c.fontColor || "#111827";
@@ -742,7 +769,8 @@ function A4Page({ children, pageNum, totalPages, sectionTitle, reportTitle, scal
   return (
     <div style={{
       width: A4_W,
-      minHeight: A4_H,
+      height: A4_H,
+      overflow: "hidden",
       background: "#fff",
       boxShadow: "0 3px 16px rgba(0,0,0,0.45)",
       position: "relative",
@@ -809,7 +837,7 @@ function A4Page({ children, pageNum, totalPages, sectionTitle, reportTitle, scal
 }
 
 /* ── Paginated Word Document Preview ── */
-function WordDocumentPreview({ reportMeta, section, blocks, reportSections, currentSectionId, canvasRef }) {
+function WordDocumentPreview({ reportMeta, section, blocks, reportSections, currentSectionId, canvasRef, lang = "en" }) {
   const containerRef  = useRef(null);
   const measureRef    = useRef(null);
 
@@ -836,32 +864,91 @@ function WordDocumentPreview({ reportMeta, section, blocks, reportSections, curr
 
   /* Distribute blocks across pages using hidden measurement */
   useEffect(() => {
-    if (!measureRef.current || !blocks.length) {
-      setPageGroups([blocks]);
-      return;
-    }
+    let raf;
+    const measure = () => {
+      if (!measureRef.current || !blocks.length) {
+        setPageGroups([blocks]);
+        return;
+      }
 
-    const els = Array.from(measureRef.current.querySelectorAll("[data-block-idx]"));
-    if (!els.length) { setPageGroups([blocks]); return; }
+      const els = Array.from(measureRef.current.querySelectorAll("[data-block-idx]"));
+      if (!els.length) { setPageGroups([blocks]); return; }
 
     const groups  = [];
     let current   = [];
     let usedH     = TITLE_H; // page 1 has title header above section
 
     els.forEach((el) => {
-      const idx = Number(el.getAttribute("data-block-idx"));
-      const h   = el.offsetHeight + 12; // 12 = inter-block margin
-      if (usedH + h > CON_H && current.length > 0) {
-        groups.push(current);
-        current = [blocks[idx]];
-        usedH   = 40; // subsequent pages: section heading only
+      const idx     = Number(el.getAttribute("data-block-idx"));
+      const isTable = el.getAttribute("data-is-table") === "1";
+
+      if (isTable) {
+        const block = blocks[idx];
+        const c = block.content || {};
+        const rows = c.rows || [];
+        const hasHeaders = ((c.source === "form_import" ? c.columns : c.headers) || []).length > 0;
+
+        const headerEl = el.querySelector(`[data-table-header="${idx}"]`);
+        const headerH  = headerEl ? headerEl.offsetHeight : 0;
+        const rowEls   = Array.from(el.querySelectorAll(`[data-table-row="${idx}"]`));
+
+        let rowStart = 0;
+        while (rowStart < rows.length) {
+          let chunkH = (hasHeaders ? headerH : 0) + 12;
+          let rowEnd = rowStart;
+          for (let ri = rowStart; ri < rowEls.length; ri++) {
+            const rh = rowEls[ri].offsetHeight;
+            if (usedH + chunkH + rh > CON_H && ri > rowStart) break;
+            chunkH += rh;
+            rowEnd = ri + 1;
+          }
+          if (rowEnd <= rowStart) rowEnd = rowStart + 1;
+
+          const splitBlock = { ...block, _rowStart: rowStart, _rowEnd: rowEnd, _isContinuation: rowStart > 0 };
+
+          if (usedH + chunkH > CON_H && current.length > 0) {
+            groups.push(current);
+            current = [splitBlock];
+            usedH = 40 + chunkH;
+          } else {
+            current.push(splitBlock);
+            usedH += chunkH;
+          }
+          rowStart = rowEnd;
+        }
       } else {
-        current.push(blocks[idx]);
-        usedH += h;
+        const h = el.offsetHeight + 12;
+        if (usedH + h > CON_H && current.length > 0) {
+          groups.push(current);
+          current = [blocks[idx]];
+          usedH   = 40;
+        } else {
+          current.push(blocks[idx]);
+          usedH += h;
+        }
       }
     });
     if (current.length) groups.push(current);
+
+    // Post-process: when multiple chunks of the same table land on the same page,
+    // only the first chunk shows the header / "(continued)" label.
+    // Also remove the bottom margin on the preceding chunk and pull the next
+    // chunk up by 1px so the shared border collapses (no visual gap).
+    groups.forEach(pageBlocks => {
+      for (let i = 1; i < pageBlocks.length; i++) {
+        const prev = pageBlocks[i - 1];
+        const cur  = pageBlocks[i];
+        if (cur.id === prev.id && cur._rowStart !== undefined) {
+          pageBlocks[i - 1] = { ...prev, _noBottomMargin: true };
+          pageBlocks[i]     = { ...cur,  _hideHeader: true };
+        }
+      }
+    });
+
     setPageGroups(groups.length ? groups : [blocks]);
+    };
+    raf = requestAnimationFrame(measure);
+    return () => cancelAnimationFrame(raf);
   }, [blocks]);
 
   /* Status colours for nav strip */
@@ -884,20 +971,55 @@ function WordDocumentPreview({ reportMeta, section, blocks, reportSections, curr
       {/* ── Scrollable canvas ── */}
       <div ref={containerCallbackRef} style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 16 }}>
 
-        {/* Hidden measurement div — renders blocks at real doc width */}
+        {/* Hidden measurement div — position:fixed so browser always computes layout */}
         <div
           ref={measureRef}
           style={{
-            position: "absolute", visibility: "hidden", pointerEvents: "none",
+            position: "fixed", visibility: "hidden", pointerEvents: "none",
             width: CON_W, top: 0, left: -9999,
+            zIndex: -1,
           }}
           aria-hidden="true"
         >
-          {blocks.map((b, i) => (
-            <div key={b.id} data-block-idx={i}>
-              <WordBlock block={b} />
-            </div>
-          ))}
+          {blocks.map((b, i) => {
+            if (b.block_type === "TABLE") {
+              const c = b.content || {};
+              const isFormImport = c.source === "form_import";
+              const headers = isFormImport ? (c.columns || []).map(col => col.label || col.key) : (c.headers || []);
+              const rows = c.rows || [];
+              const cellSt = { border: "1px solid #9ca3af", padding: "4px 7px", fontFamily: DOC_FONT, fontSize: 10, verticalAlign: "top" };
+              return (
+                <div key={b.id} data-block-idx={i} data-is-table="1">
+                  {headers.length > 0 && (
+                    <div data-table-header={i}>
+                      <table style={{ borderCollapse: "collapse", width: "100%" }}>
+                        <thead><tr>{headers.map((h, j) => <th key={j} style={{ ...cellSt, fontWeight: 700 }}>{h || `Col ${j + 1}`}</th>)}</tr></thead>
+                      </table>
+                    </div>
+                  )}
+                  {rows.map((row, ri) => (
+                    <div key={ri} data-table-row={i} data-row-num={ri}>
+                      <table style={{ borderCollapse: "collapse", width: "100%" }}>
+                        <tbody>
+                          <tr>
+                            {isFormImport
+                              ? (c.columns || []).map((col, ci) => <td key={ci} style={cellSt}>{row?.[col.key] != null ? String(row[col.key]) : ""}</td>)
+                              : (Array.isArray(row) ? row : []).map((v, ci) => <td key={ci} style={cellSt}>{v}</td>)
+                            }
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  ))}
+                </div>
+              );
+            }
+            return (
+              <div key={b.id} data-block-idx={i}>
+                <WordBlock block={b} />
+              </div>
+            );
+          })}
         </div>
 
         {/* ── Pages ── */}
@@ -936,7 +1058,7 @@ function WordDocumentPreview({ reportMeta, section, blocks, reportSections, curr
                       No content yet — add blocks using the editor on the left.
                     </div>
                   ) : (
-                    pageBlocks.map((b) => <WordBlock key={b.id} block={b} />)
+                    pageBlocks.map((b) => <WordBlock key={b.id} block={b} lang={lang} />)
                   )}
                 </A4Page>
               </div>
@@ -979,18 +1101,271 @@ function WordDocumentPreview({ reportMeta, section, blocks, reportSections, curr
   );
 }
 
+/* ── Block type metadata ── */
+function TypeGlyph({ type, size = 16 }) {
+  const s = { width: size, height: size, display: "block" };
+  switch (type) {
+    case "PARAGRAPH":
+      return <span style={{ ...s, fontWeight: 800, fontSize: size * 0.85, lineHeight: 1, textAlign: "center" }}>T</span>;
+    case "HEADING":
+      return <span style={{ ...s, fontWeight: 800, fontSize: size * 0.85, lineHeight: 1, textAlign: "center" }}>H</span>;
+    case "TABLE":
+      return (
+        <svg style={s} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.7">
+          <rect x="2.5" y="3.5" width="15" height="13" rx="1.5"/><path d="M2.5 8h15M2.5 12.5h15M9 3.5v13"/>
+        </svg>
+      );
+    case "IMAGE": case "IMAGE_GRID":
+      return (
+        <svg style={s} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.7">
+          <rect x="2.5" y="3.5" width="15" height="13" rx="1.5"/><circle cx="7" cy="8" r="1.4"/><path d="M3 14.5l4.5-4.5 3 3 2.5-3 4 4.5" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+      );
+    case "LIST":
+      return (
+        <svg style={s} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+          <circle cx="3.5" cy="5" r="1"/><circle cx="3.5" cy="10" r="1"/><circle cx="3.5" cy="15" r="1"/>
+          <path d="M7 5h10M7 10h10M7 15h10"/>
+        </svg>
+      );
+    case "FILE":
+      return (
+        <svg style={s} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M14 3.5l2.5 2.5v9a1.5 1.5 0 01-1.5 1.5H5a1.5 1.5 0 01-1.5-1.5v-11A1.5 1.5 0 015 2.5h9z"/>
+          <path d="M7.5 9.5h5M7.5 12.5h5"/>
+        </svg>
+      );
+    case "KPI":
+      return (
+        <svg style={s} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+          <path d="M3 16.5h14"/><rect x="5" y="10" width="2.6" height="6.5" rx="0.5" fill="currentColor" stroke="none"/>
+          <rect x="9.7" y="6" width="2.6" height="10.5" rx="0.5" fill="currentColor" stroke="none"/>
+          <rect x="14.4" y="3" width="2.6" height="13.5" rx="0.5" fill="currentColor" stroke="none"/>
+        </svg>
+      );
+    case "DIVIDER":
+      return <svg style={s} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M3 10h14"/></svg>;
+    default:
+      return <span style={{ ...s, fontWeight: 800, fontSize: size * 0.7 }}>?</span>;
+  }
+}
+
+const BLOCK_TYPE_META = {
+  PARAGRAPH:  { label: "Rich Text Block", menuLabel: "Rich Text", color: "#1d4ed8", bg: "#eff6ff" },
+  HEADING:    { label: "Heading",         menuLabel: "Heading",   color: "#6d28d9", bg: "#f5f3ff" },
+  TABLE:      { label: "Table",           menuLabel: "Table",     color: "#0e7490", bg: "#ecfeff" },
+  IMAGE:      { label: "Image",           menuLabel: "Image",     color: "#15803d", bg: "#f0fdf4" },
+  IMAGE_GRID: { label: "Image Grid",      menuLabel: "Image Grid",color: "#15803d", bg: "#f0fdf4" },
+  LIST:       { label: "List",            menuLabel: "List",      color: "#b45309", bg: "#fffbeb" },
+  FILE:       { label: "File Attachment", menuLabel: "File",      color: "#475569", bg: "#f1f5f9" },
+  KPI:        { label: "KPI Chart",       menuLabel: "KPI Chart", color: "#be185d", bg: "#fdf2f8" },
+  DIVIDER:    { label: "Divider",         menuLabel: "Divider",   color: "#64748b", bg: "#f8fafc" },
+};
+function typeMeta(type) { return BLOCK_TYPE_META[type] || { label: type, menuLabel: type, color: "#64748b", bg: "#f8fafc" }; }
+
+function IconChip({ type, size = 30 }) {
+  const m = typeMeta(type);
+  return (
+    <div style={{
+      width: size, height: size, borderRadius: 8, flexShrink: 0,
+      background: m.bg, color: m.color,
+      display: "flex", alignItems: "center", justifyContent: "center",
+    }}>
+      <TypeGlyph type={type} size={Math.round(size * 0.55)} />
+    </div>
+  );
+}
+
+const ADD_BLOCK_TYPES = ["PARAGRAPH", "HEADING", "TABLE", "IMAGE", "IMAGE_GRID", "LIST", "FILE", "KPI", "DIVIDER"];
+
+function BlockTypeMenu({ onAdd }) {
+  return (
+    <>
+      <div style={{ width: "100%", fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.7, marginBottom: 4 }}>
+        Insert block
+      </div>
+      {ADD_BLOCK_TYPES.map((type) => {
+        const m = typeMeta(type);
+        return (
+          <button
+            key={type}
+            onMouseDown={(e) => { e.preventDefault(); onAdd(type); }}
+            style={{
+              display: "flex", alignItems: "center", gap: 5, padding: "6px 10px",
+              borderRadius: 7, border: "1px solid #e2e8f0", background: "#fff",
+              fontSize: 12, color: "#374151", cursor: "pointer", fontFamily: "inherit",
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = "#faf5ff"; e.currentTarget.style.borderColor = "#c4b5fd"; e.currentTarget.style.color = "#7c3aed"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = "#fff"; e.currentTarget.style.borderColor = "#e2e8f0"; e.currentTarget.style.color = "#374151"; }}
+          >
+            <IconChip type={type} size={18} />
+            {m.menuLabel}
+          </button>
+        );
+      })}
+    </>
+  );
+}
+
+function BigAddBlockButton({ onAdd, label = "+ Add Block" }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!open) return;
+    function handler(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false); }
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+  return (
+    <div ref={ref} style={{ position: "relative" }}>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        style={{
+          width: "100%", padding: "13px 16px", borderRadius: 10,
+          border: `2px dashed ${open ? "#7c3aed" : "#c4b5fd"}`,
+          background: open ? "#faf5ff" : "#fff", color: "#7c3aed",
+          fontSize: 13.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit",
+          display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+          transition: "all 0.15s",
+        }}
+        onMouseEnter={(e) => { if (!open) e.currentTarget.style.background = "#faf5ff"; }}
+        onMouseLeave={(e) => { if (!open) e.currentTarget.style.background = "#fff"; }}
+      >
+        {label}
+      </button>
+      {open && (
+        <div style={{
+          position: "absolute", bottom: "calc(100% + 6px)", left: "50%", transform: "translateX(-50%)",
+          background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12,
+          boxShadow: "0 8px 28px rgba(0,0,0,0.13)", padding: "10px 12px",
+          display: "flex", flexWrap: "wrap", gap: 5, width: 308, zIndex: 100,
+        }}>
+          <BlockTypeMenu onAdd={(type) => { onAdd(type); setOpen(false); }} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Shared tool button ── */
+function ToolBtn({ onClick, active, title, children, disabled }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      style={{
+        display: "flex", alignItems: "center", gap: 6, padding: "6px 12px",
+        border: `1.5px solid ${active ? "#818cf8" : "#e2e8f0"}`,
+        borderRadius: 8, flexShrink: 0,
+        background: active ? "#eef2ff" : "#fff",
+        fontSize: 12, fontWeight: 600,
+        color: disabled ? "#cbd5e1" : active ? "#4338ca" : "#64748b",
+        cursor: disabled ? "not-allowed" : "pointer",
+        opacity: disabled ? 0.6 : 1,
+        transition: "all 0.15s", fontFamily: "inherit",
+      }}
+      onMouseEnter={e => { if (!active && !disabled) { e.currentTarget.style.borderColor = "#c7d2fe"; e.currentTarget.style.color = "#4f46e5"; }}}
+      onMouseLeave={e => { if (!active && !disabled) { e.currentTarget.style.borderColor = "#e2e8f0"; e.currentTarget.style.color = "#64748b"; }}}
+    >
+      {children}
+    </button>
+  );
+}
+
+/* ── Export dropdown ── */
+function ExportMenu({ onWord, onPdf, exporting, disabled }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!open) return;
+    function handler(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false); }
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+  return (
+    <div ref={ref} style={{ position: "relative" }}>
+      <ToolBtn onClick={() => setOpen(o => !o)} active={open} disabled={disabled} title="Export this section">
+        {exporting ? "⏳ Exporting…" : "Export"} <span style={{ fontSize: 9 }}>{open ? "▲" : "▼"}</span>
+      </ToolBtn>
+      {open && (
+        <div style={{
+          position: "absolute", top: "calc(100% + 6px)", right: 0,
+          background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10,
+          boxShadow: "0 8px 28px rgba(0,0,0,0.13)", padding: 6, zIndex: 100, width: 190,
+        }}>
+          <button
+            onMouseDown={(e) => { e.preventDefault(); onWord(); setOpen(false); }}
+            style={{ width: "100%", textAlign: "left", display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", borderRadius: 7, border: "none", background: "transparent", fontSize: 12.5, color: "#1e293b", cursor: "pointer", fontFamily: "inherit" }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = "#f8fafc"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+          >
+            <svg width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="#047857" strokeWidth="2"><path d="M4 16v1a1 1 0 001 1h10a1 1 0 001-1v-1M10 3v10m0 0l-3-3m3 3l3-3" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            Convert to Word
+          </button>
+          <button
+            onMouseDown={(e) => { e.preventDefault(); onPdf(); setOpen(false); }}
+            style={{ width: "100%", textAlign: "left", display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", borderRadius: 7, border: "none", background: "transparent", fontSize: 12.5, color: "#1e293b", cursor: "pointer", fontFamily: "inherit" }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = "#f8fafc"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+          >
+            <svg width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="#1d4ed8" strokeWidth="2"><path d="M7 7H5a2 2 0 00-2 2v6a2 2 0 002 2h10a2 2 0 002-2V9a2 2 0 00-2-2h-2M7 7V5a2 2 0 012-2h2a2 2 0 012 2v2M7 7h6" strokeLinecap="round" strokeLinejoin="round"/><path d="M10 13v-2m0 4h.01" strokeLinecap="round"/></svg>
+            Convert to PDF
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Block outline rail ── */
+function BlockOutlineRail({ blocks, onSelect, activeBlockId }) {
+  const [expanded, setExpanded] = useState(false);
+  if (!blocks.length) return null;
+  return (
+    <div
+      onMouseEnter={() => setExpanded(true)}
+      onMouseLeave={() => setExpanded(false)}
+      style={{
+        width: expanded ? 196 : 40, flexShrink: 0,
+        borderRight: "1px solid #e2e8f0", background: "#fff",
+        overflow: "hidden", transition: "width 0.16s ease",
+      }}
+    >
+      <div style={{ padding: "8px 0", overflowY: "auto", height: "100%" }}>
+        {blocks.map((block, idx) => {
+          const m        = typeMeta(block.block_type);
+          const isActive = block.id === activeBlockId;
+          return (
+            <button
+              key={block.id}
+              onClick={() => onSelect(block.id)}
+              title={`${idx + 1}. ${m.label}`}
+              style={{
+                width: "100%", display: "flex", alignItems: "center", gap: 8,
+                padding: expanded ? "7px 11px" : "7px 0", justifyContent: expanded ? "flex-start" : "center",
+                border: "none", background: isActive ? "#eef2ff" : "transparent",
+                cursor: "pointer", fontFamily: "inherit", textAlign: "left", whiteSpace: "nowrap",
+                transition: "background 0.12s",
+              }}
+              onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = "#f8fafc"; }}
+              onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = "transparent"; }}
+            >
+              <IconChip type={block.block_type} size={20} />
+              {expanded && (
+                <span style={{ fontSize: 11.5, color: "#475569", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  {idx + 1}. {m.label}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 /* ── Inline block inserter ──────────────────────────────────────────────── */
-const INLINE_BLOCK_MENU = [
-  { type: "PARAGRAPH",  icon: "P",   label: "Text" },
-  { type: "HEADING",    icon: "H",   label: "Heading" },
-  { type: "IMAGE",      icon: "Img", label: "Image" },
-  { type: "IMAGE_GRID", icon: "Grd", label: "Image Grid" },
-  { type: "TABLE",      icon: "Tbl", label: "Table" },
-  { type: "LIST",       icon: "Lst", label: "List" },
-  { type: "DIVIDER",    icon: "--",  label: "Divider" },
-  { type: "FILE",       icon: "Fil", label: "File" },
-  { type: "KPI",        icon: "KPI", label: "KPI Chart" },
-];
 
 function InlineAdder({ isOpen, onToggle, onAdd }) {
   const [hovered, setHovered] = useState(false);
@@ -1015,30 +1390,29 @@ function InlineAdder({ isOpen, onToggle, onAdd }) {
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      {/* Line */}
       <div style={{ flex: 1, height: 1.5, borderRadius: 1, background: show ? "#c4b5fd" : "#f1f5f9", transition: "background 0.15s" }} />
 
-      {/* + button */}
-      {show && (
-        <button
-          onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); onToggle(!isOpen); }}
-          style={{
-            position: "absolute", left: "50%", transform: "translateX(-50%)",
-            width: 24, height: 24, borderRadius: "50%",
-            border: `1.5px solid ${isOpen ? "#7c3aed" : "#c4b5fd"}`,
-            background: isOpen ? "#7c3aed" : "#faf5ff",
-            color: isOpen ? "#fff" : "#7c3aed",
-            fontSize: 16, fontWeight: 300, lineHeight: 1,
-            display: "flex", alignItems: "center", justifyContent: "center",
-            cursor: "pointer", boxShadow: isOpen ? "0 2px 8px rgba(124,58,237,0.3)" : "none",
-            transition: "all 0.15s",
-          }}
-        >
-          +
-        </button>
-      )}
+      {/* + button — always present so the affordance is discoverable without hovering */}
+      <button
+        title="Insert block"
+        aria-label="Insert block"
+        onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); onToggle(!isOpen); }}
+        style={{
+          position: "absolute", left: "50%", transform: "translateX(-50%)",
+          width: show ? 24 : 18, height: show ? 24 : 18, borderRadius: "50%",
+          border: `1.5px solid ${isOpen ? "#7c3aed" : show ? "#c4b5fd" : "#e2e8f0"}`,
+          background: isOpen ? "#7c3aed" : show ? "#faf5ff" : "#fff",
+          color: isOpen ? "#fff" : show ? "#7c3aed" : "#94a3b8",
+          opacity: show ? 1 : 0.6,
+          fontSize: show ? 16 : 12, fontWeight: 300, lineHeight: 1,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          cursor: "pointer", boxShadow: isOpen ? "0 2px 8px rgba(124,58,237,0.3)" : "none",
+          transition: "all 0.15s",
+        }}
+      >
+        +
+      </button>
 
-      {/* Dropdown */}
       {isOpen && (
         <div ref={dropdownRef} style={{
           position: "absolute", top: "calc(100% + 6px)", left: "50%", transform: "translateX(-50%)",
@@ -1046,25 +1420,7 @@ function InlineAdder({ isOpen, onToggle, onAdd }) {
           boxShadow: "0 8px 28px rgba(0,0,0,0.13)", padding: "10px 12px",
           display: "flex", flexWrap: "wrap", gap: 5, width: 308, zIndex: 100,
         }}>
-          <div style={{ width: "100%", fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.7, marginBottom: 4 }}>
-            Insert block
-          </div>
-          {INLINE_BLOCK_MENU.map((t) => (
-            <button
-              key={t.type}
-              onMouseDown={(e) => { e.preventDefault(); onAdd(t.type); onToggle(false); }}
-              style={{
-                display: "flex", alignItems: "center", gap: 5, padding: "6px 10px",
-                borderRadius: 7, border: "1px solid #e2e8f0", background: "#fff",
-                fontSize: 12, color: "#374151", cursor: "pointer", fontFamily: "inherit",
-              }}
-              onMouseEnter={(e) => { e.currentTarget.style.background = "#faf5ff"; e.currentTarget.style.borderColor = "#c4b5fd"; e.currentTarget.style.color = "#7c3aed"; }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = "#fff"; e.currentTarget.style.borderColor = "#e2e8f0"; e.currentTarget.style.color = "#374151"; }}
-            >
-              <span style={{ fontSize: 10, fontWeight: 700 }}>{t.icon}</span>
-              {t.label}
-            </button>
-          ))}
+          <BlockTypeMenu onAdd={(type) => { onAdd(type); onToggle(false); }} />
         </div>
       )}
     </div>
@@ -1095,6 +1451,18 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
   const [exporting,        setExporting]        = useState(false);
   const [blockCounts,      setBlockCounts]      = useState({});
   const [selectedBlockId,  setSelectedBlockId]  = useState(null);
+  const [activeInserter,   setActiveInserter]   = useState(null);
+
+  // Content authoring language (EN/HI) — independent of app UI language
+  const [contentLang, setContentLang] = useState("en");
+
+  // Live preview slide-over drawer
+  const [previewOpen,  setPreviewOpen]  = useState(false);
+  const [previewWidth, setPreviewWidth] = useState(720);
+  const resizingPreviewRef = useRef(false);
+
+  // Outline rail highlight
+  const [highlightedBlockId, setHighlightedBlockId] = useState(null);
 
   // table type choice modal + form import wizard
   const [tableTypeModal,   setTableTypeModal]   = useState({ open: false, afterIndex: undefined });
@@ -1105,8 +1473,14 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
   const [kpiImportWizard, setKpiImportWizard] = useState({ open: false, afterIndex: undefined, orderIndex: undefined });
 
   // dirty tracking + save description modal
-  const [dirtyBlocks,     setDirtyBlocks]     = useState(new Set());
-  const [saveDescModal,   setSaveDescModal]   = useState({ open: false, desc: "", error: "" });
+  const [dirtyBlocks,       setDirtyBlocks]       = useState(new Set());
+  const [dirtyTranslations, setDirtyTranslations] = useState({});
+  const [saveDescModal,     setSaveDescModal]     = useState({ open: false, desc: "", error: "" });
+  const [translatePromptModal, setTranslatePromptModal] = useState({ open: false, blocks: [] });
+  const [translatingBeforeSave, setTranslatingBeforeSave] = useState(false);
+
+  const hasUnsavedChanges = dirtyBlocks.size > 0 || Object.keys(dirtyTranslations).length > 0;
+  const dirtyBlockCount   = new Set([...dirtyBlocks, ...Object.keys(dirtyTranslations)]).size;
 
   // submit modal
   const [submitModal,     setSubmitModal]     = useState({ open: false, desc: "", error: "", validationErrors: [], unresolvedCount: 0 });
@@ -1118,11 +1492,39 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
   const [versionHistOpen, setVersionHistOpen] = useState(false);
   const [versions,        setVersions]        = useState([]);
   const [loadingVersions, setLoadingVersions] = useState(false);
-  const [viewingSnapshot, setViewingSnapshot] = useState(null); // { version, data }
+  const [viewingSnapshot, setViewingSnapshot] = useState(null);
 
   const editorScrollRef  = useRef(null);
   const previewCanvasRef = useRef(null);
-  const [activeInserter, setActiveInserter] = useState(null);
+
+  /* ── Preview drawer resize (drag the left edge) ── */
+  const startPreviewResize = useCallback((e) => {
+    e.preventDefault();
+    resizingPreviewRef.current = true;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  }, []);
+
+  useEffect(() => {
+    function onMove(e) {
+      if (!resizingPreviewRef.current) return;
+      const maxW = Math.min(1200, window.innerWidth * 0.92);
+      const next = Math.min(Math.max(window.innerWidth - e.clientX, 360), maxW);
+      setPreviewWidth(next);
+    }
+    function onUp() {
+      if (!resizingPreviewRef.current) return;
+      resizingPreviewRef.current = false;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    }
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, []);
 
   const syncScroll = useCallback(() => {
     const ed = editorScrollRef.current;
@@ -1132,6 +1534,13 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
     if (edMax <= 0) return;
     const pct = ed.scrollTop / edMax;
     pv.scrollTop = pct * (pv.scrollHeight - pv.clientHeight);
+  }, []);
+
+  const scrollToBlock = useCallback((blockId) => {
+    const el = editorScrollRef.current?.querySelector(`[data-block-id="${blockId}"]`);
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+    setHighlightedBlockId(blockId);
+    setTimeout(() => setHighlightedBlockId((cur) => (cur === blockId ? null : cur)), 1400);
   }, []);
 
   const loadBlockCounts = useCallback(async () => {
@@ -1225,6 +1634,20 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
     } catch {}
   };
 
+  /* ── toggle a block's required flag ── */
+  async function toggleRequired(blockId, current) {
+    setBlocks((prev) => prev.map((b) => b.id === blockId ? { ...b, is_required: !current } : b));
+    try {
+      await apiFetch(`/api/builder/blocks/${blockId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ is_required: !current }),
+      });
+    } catch {
+      setBlocks((prev) => prev.map((b) => b.id === blockId ? { ...b, is_required: current } : b));
+    }
+  }
+
   /* ── block change — mark dirty, no auto-save ── */
   function handleBlockChange(blockId, newContent) {
     setBlocks((prev) => prev.map((b) => b.id === blockId ? { ...b, content: newContent } : b));
@@ -1232,9 +1655,127 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
     setSaveLabel("Unsaved changes");
   }
 
-  /* ── save all dirty blocks with description ── */
+  /* ── block translation change — queued like a primary-content edit ── */
+  function saveBlockTranslation(blockId, language, partialContent) {
+    setBlocks((prev) => prev.map((b) => b.id === blockId
+      ? { ...b, translations: { ...b.translations, [language]: { ...(b.translations?.[language] || {}), ...partialContent } } }
+      : b
+    ));
+    setDirtyTranslations((prev) => ({
+      ...prev,
+      [blockId]: { ...(prev[blockId] || {}), [language]: { ...(prev[blockId]?.[language] || {}), ...partialContent } },
+    }));
+    setSaveLabel("Unsaved changes");
+  }
+
+  function extractTranslatableFields(block) {
+    const c = block.content || {};
+    switch (block.block_type) {
+      case "PARAGRAPH": {
+        const tmp = document.createElement("div");
+        tmp.innerHTML = c.html || c.text || "";
+        return { kind: "html", text: tmp.textContent || "" };
+      }
+      case "HEADING":  return { kind: "text",       text: c.text || "" };
+      case "LIST":     return { kind: "items",      items: c.items || [] };
+      case "IMAGE":    return { kind: "image",      caption: c.caption || "", alt: c.alt || "" };
+      case "IMAGE_GRID": return { kind: "image_grid", cols: (c.cols || []).map((col) => ({ caption: col.caption || "", alt: col.alt || "" })) };
+      case "TABLE":
+        if (c.source === "form_import") return null;
+        return { kind: "table", headers: c.headers || [], rows: c.rows || [] };
+      default: return null;
+    }
+  }
+
+  async function autoTranslateBlock(block) {
+    const extracted = extractTranslatableFields(block);
+    if (!extracted) return null;
+    const translateOne = async (text) => {
+      const res  = await apiFetch("/api/report-integration/translate", { method: "POST", body: JSON.stringify({ text }) });
+      const data = await res.json();
+      return data?.data?.hi || "";
+    };
+    const translateMany = async (texts) => {
+      const res  = await apiFetch("/api/report-integration/translate", { method: "POST", body: JSON.stringify({ texts }) });
+      const data = await res.json();
+      return data?.data?.translations || texts.map(() => "");
+    };
+    switch (extracted.kind) {
+      case "html": {
+        if (!extracted.text.trim()) return null;
+        return { html: `<p>${await translateOne(extracted.text)}</p>`, _stale: false };
+      }
+      case "text": {
+        if (!extracted.text.trim()) return null;
+        return { text: await translateOne(extracted.text), _stale: false };
+      }
+      case "items": {
+        if (!extracted.items.some(Boolean)) return null;
+        return { items: await translateMany(extracted.items), _stale: false };
+      }
+      case "image": {
+        if (!extracted.caption && !extracted.alt) return null;
+        const [capHi, altHi] = await translateMany([extracted.caption, extracted.alt]);
+        return { caption: capHi, alt: altHi, _stale: false };
+      }
+      case "image_grid": {
+        const flat = extracted.cols.flatMap((col) => [col.caption, col.alt]);
+        if (!flat.some(Boolean)) return null;
+        const translated = await translateMany(flat);
+        const cols = extracted.cols.map((_, i) => ({ caption: translated[i * 2], alt: translated[i * 2 + 1] }));
+        return { cols, _stale: false };
+      }
+      case "table": {
+        const flat = [...extracted.headers, ...extracted.rows.flat()];
+        if (!flat.some(Boolean)) return null;
+        const translated = await translateMany(flat);
+        const headers   = translated.slice(0, extracted.headers.length);
+        const cellsFlat = translated.slice(extracted.headers.length);
+        const rows = [];
+        let idx = 0;
+        for (const r of extracted.rows) { rows.push(cellsFlat.slice(idx, idx + r.length)); idx += r.length; }
+        return { headers, rows, _stale: false };
+      }
+      default: return null;
+    }
+  }
+
+  function openSaveFlow() {
+    const blocksNeedingPrompt = [...dirtyBlocks]
+      .map((id) => blocks.find((b) => b.id === id))
+      .filter((b) => b && b.translations?.hi && Object.keys(b.translations.hi).length > 0 && extractTranslatableFields(b));
+    if (blocksNeedingPrompt.length > 0) {
+      setTranslatePromptModal({ open: true, blocks: blocksNeedingPrompt });
+    } else {
+      setSaveDescModal({ open: true, desc: "", error: "" });
+    }
+  }
+
+  async function handleTranslateBeforeSave() {
+    const targets = translatePromptModal.blocks;
+    setTranslatePromptModal({ open: false, blocks: [] });
+    setTranslatingBeforeSave(true);
+    try {
+      for (const block of targets) {
+        const partial = await autoTranslateBlock(block).catch(() => null);
+        if (partial) saveBlockTranslation(block.id, "hi", partial);
+      }
+    } finally {
+      setTranslatingBeforeSave(false);
+      setSaveDescModal({ open: true, desc: "", error: "" });
+    }
+  }
+
+  function handleSkipTranslateBeforeSave() {
+    const targets = translatePromptModal.blocks;
+    setTranslatePromptModal({ open: false, blocks: [] });
+    for (const block of targets) saveBlockTranslation(block.id, "hi", { _stale: true });
+    setSaveDescModal({ open: true, desc: "", error: "" });
+  }
+
+  /* ── save all dirty blocks (+ pending translations) with description ── */
   async function executeSave(description) {
-    if (dirtyBlocks.size === 0 || saving) return;
+    if ((dirtyBlocks.size === 0 && Object.keys(dirtyTranslations).length === 0) || saving) return;
     setSaving(true);
     setSaveLabel("Saving…");
     let currentLock = section?.version_lock ?? 0;
@@ -1247,11 +1788,7 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
         const res  = await apiFetch(`/api/builder/blocks/${blockId}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            content:      block.content,
-            description,
-            version_lock: currentLock,
-          }),
+          body: JSON.stringify({ content: block.content, description, version_lock: currentLock }),
         });
         const json = await res.json();
         if (res.status === 409) {
@@ -1268,7 +1805,17 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
         }
       }
       if (!conflictOccurred) {
+        for (const [blockId, langs] of Object.entries(dirtyTranslations)) {
+          for (const [language, partial] of Object.entries(langs)) {
+            await apiFetch(`/api/builder/blocks/${blockId}/translations/${language}`, {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ content: partial }),
+            }).catch(() => {});
+          }
+        }
         setDirtyBlocks(new Set());
+        setDirtyTranslations({});
         setSaveLabel("✓ Saved");
         setTimeout(() => setSaveLabel(""), 2000);
         loadBlockCounts();
@@ -1354,9 +1901,11 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
     setKpiImportWizard({ open: false, afterIndex: undefined, orderIndex: undefined });
   }
 
-  function handleBlockRefetched(blockId, newContent) {
-    setBlocks((prev) => prev.map((b) => b.id === blockId ? { ...b, content: newContent } : b));
-    // Does NOT add to dirtyBlocks — DB was already updated by the refetch/reimport endpoint
+  function handleBlockRefetched(blockId, newContent, translations) {
+    setBlocks((prev) => prev.map((b) => b.id === blockId
+      ? { ...b, content: newContent, ...(translations && Object.keys(translations).length ? { translations } : {}) }
+      : b
+    ));
   }
 
   async function deleteBlock(blockId) {
@@ -1470,17 +2019,15 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
       <div style={{
         background: "linear-gradient(135deg, #ffffff 0%, #f8faff 100%)",
         borderBottom: "1px solid #e2e8f0",
-        padding: "0 20px", display: "flex", alignItems: "center", gap: 10,
-        flexShrink: 0, height: 56,
+        padding: "8px 20px", display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, rowGap: 8,
+        flexShrink: 0, minHeight: 56,
         boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
       }}>
-        {/* Back button */}
         <button onClick={onBack} style={{
           display: "flex", alignItems: "center", gap: 5, padding: "5px 12px",
           border: "1.5px solid #e2e8f0", borderRadius: 8,
           background: "#fff", fontSize: 12, fontWeight: 600,
-          color: "#475569", cursor: "pointer", flexShrink: 0,
-          transition: "all 0.15s",
+          color: "#475569", cursor: "pointer", flexShrink: 0, transition: "all 0.15s",
         }}
           onMouseEnter={e => { e.currentTarget.style.borderColor = "#94a3b8"; e.currentTarget.style.color = "#1e293b"; }}
           onMouseLeave={e => { e.currentTarget.style.borderColor = "#e2e8f0"; e.currentTarget.style.color = "#475569"; }}
@@ -1491,7 +2038,6 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
 
         <div style={{ width: 1, height: 22, background: "#e2e8f0", flexShrink: 0 }} />
 
-        {/* Breadcrumb + title */}
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 10, color: "#94a3b8", marginBottom: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", letterSpacing: 0.2 }}>
             {reportTitle}
@@ -1514,190 +2060,112 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
           </div>
         </div>
 
-        {/* Save indicator */}
+        {/* Content language toggle */}
+        <div title="Author content in English or Hindi"
+          style={{ display: "flex", border: "1.5px solid #e2e8f0", borderRadius: 8, overflow: "hidden", flexShrink: 0 }}
+        >
+          {[["en", "EN"], ["hi", "HI"]].map(([val, label]) => (
+            <button key={val} onClick={() => setContentLang(val)} style={{
+              padding: "5px 12px", border: "none", cursor: "pointer",
+              fontSize: 12, fontWeight: 700, fontFamily: "inherit",
+              background: contentLang === val ? "#7c3aed" : "#fff",
+              color: contentLang === val ? "#fff" : "#64748b",
+              transition: "all 0.15s",
+            }}>{label}</button>
+          ))}
+        </div>
+
+        <div style={{ width: 1, height: 22, background: "#e2e8f0", flexShrink: 0 }} />
+
+        {/* Document tools */}
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+          <ExportMenu onWord={handleExportDocx} onPdf={handleExportPdf} exporting={exporting} disabled={blocks.length === 0} />
+          <ToolBtn onClick={() => setVersionHistOpen(o => !o)} active={versionHistOpen} title="Version history">
+            <svg width="12" height="12" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="10" cy="10" r="8"/><path d="M10 6v4l3 3"/></svg>
+            History
+          </ToolBtn>
+          {!hidePreview && (
+            <ToolBtn onClick={() => setPreviewOpen(o => !o)} active={previewOpen} title="Live document preview">
+              <svg width="12" height="12" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2"><path d="M2 10s3-6 8-6 8 6 8 6-3 6-8 6-8-6-8-6z"/><circle cx="10" cy="10" r="2.5"/></svg>
+              Preview
+            </ToolBtn>
+          )}
+        </div>
+
+        <div style={{ width: 1, height: 22, background: "#e2e8f0", flexShrink: 0 }} />
+
+        <ToolBtn onClick={() => setChatOpen(o => !o)} active={chatOpen} title={chatOpen ? "Hide comments" : "Show comments"}>
+          <svg width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2"><path d="M2 5a2 2 0 012-2h12a2 2 0 012 2v7a2 2 0 01-2 2H7l-4 3v-3H4a2 2 0 01-2-2V5z"/></svg>
+          Comments
+        </ToolBtn>
+
+        <div style={{ width: 1, height: 22, background: "#e2e8f0", flexShrink: 0 }} />
+
         {saveLabel && (
           <div style={{
             display: "flex", alignItems: "center", gap: 5, flexShrink: 0,
             fontSize: 11, fontWeight: 500,
             color: saveLabel.startsWith("✓") ? "#15803d" : saveLabel.startsWith("⚠") ? "#b91c1c" : saveLabel === "Unsaved changes" ? "#b45309" : "#64748b",
-            background: saveLabel.startsWith("✓") ? "#f0fdf4" : saveLabel.startsWith("⚠") ? "#fef2f2" : saveLabel === "Unsaved changes" ? "#fef3c7" : "#f8fafc",
-            padding: "4px 10px", borderRadius: 20,
-            border: `1px solid ${saveLabel.startsWith("✓") ? "#bbf7d0" : saveLabel.startsWith("⚠") ? "#fecaca" : saveLabel === "Unsaved changes" ? "#fcd34d" : "#e2e8f0"}`,
           }}>
             {saveLabel}
           </div>
         )}
 
-        {/* Export to Word */}
-        <button
-          onClick={handleExportDocx}
-          disabled={exporting || blocks.length === 0}
-          title="Download as Word document (.docx)"
-          style={{
-            display: "flex", alignItems: "center", gap: 6, padding: "6px 14px",
-            border: "1.5px solid #d1fae5",
-            borderRadius: 20, flexShrink: 0,
-            background: exporting
-              ? "#f0fdf4"
-              : "linear-gradient(135deg,#ecfdf5,#d1fae5)",
-            fontSize: 12, fontWeight: 700,
-            color: exporting ? "#6ee7b7" : "#047857",
-            cursor: exporting || blocks.length === 0 ? "not-allowed" : "pointer",
-            opacity: blocks.length === 0 ? 0.5 : 1,
-            transition: "all 0.18s",
-            boxShadow: "0 1px 4px rgba(5,150,105,0.12)",
-          }}
-          onMouseEnter={e => { if (!exporting && blocks.length > 0) e.currentTarget.style.boxShadow = "0 3px 10px rgba(5,150,105,0.22)"; }}
-          onMouseLeave={e => { e.currentTarget.style.boxShadow = "0 1px 4px rgba(5,150,105,0.12)"; }}
-        >
-          {exporting ? (
-            <>⏳ Exporting…</>
-          ) : (
-            <>
-              <svg width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M4 16v1a1 1 0 001 1h10a1 1 0 001-1v-1M10 3v10m0 0l-3-3m3 3l3-3" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-              Convert to Word
-            </>
-          )}
-        </button>
-
-        {/* Convert to PDF */}
-        <button
-          onClick={handleExportPdf}
-          disabled={blocks.length === 0}
-          title="Print / Save as PDF"
-          style={{
-            display: "flex", alignItems: "center", gap: 6, padding: "6px 14px",
-            border: "1.5px solid #bfdbfe",
-            borderRadius: 20, flexShrink: 0,
-            background: "linear-gradient(135deg,#eff6ff,#dbeafe)",
-            fontSize: 12, fontWeight: 700,
-            color: "#1d4ed8",
-            cursor: blocks.length === 0 ? "not-allowed" : "pointer",
-            opacity: blocks.length === 0 ? 0.5 : 1,
-            transition: "all 0.18s",
-            boxShadow: "0 1px 4px rgba(59,130,246,0.12)",
-          }}
-          onMouseEnter={e => { if (blocks.length > 0) e.currentTarget.style.boxShadow = "0 3px 10px rgba(59,130,246,0.22)"; }}
-          onMouseLeave={e => { e.currentTarget.style.boxShadow = "0 1px 4px rgba(59,130,246,0.12)"; }}
-        >
-          <svg width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M7 7H5a2 2 0 00-2 2v6a2 2 0 002 2h10a2 2 0 002-2V9a2 2 0 00-2-2h-2M7 7V5a2 2 0 012-2h2a2 2 0 012 2v2M7 7h6" strokeLinecap="round" strokeLinejoin="round"/>
-            <path d="M10 13v-2m0 4h.01" strokeLinecap="round"/>
-          </svg>
-          Convert to PDF
-        </button>
-
-        {/* Version history */}
-        <button
-          onClick={() => setVersionHistOpen(o => !o)}
-          title="Version history"
-          style={{
-            display: "flex", alignItems: "center", gap: 5, padding: "6px 12px",
-            border: `1.5px solid ${versionHistOpen ? "#818cf8" : "#e2e8f0"}`,
-            borderRadius: 20, flexShrink: 0,
-            background: versionHistOpen ? "#eef2ff" : "#fff",
-            fontSize: 12, fontWeight: 700,
-            color: versionHistOpen ? "#4338ca" : "#64748b",
-            cursor: "pointer", transition: "all 0.18s",
-          }}
-        >
-          <svg width="12" height="12" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2">
-            <circle cx="10" cy="10" r="8"/><path d="M10 6v4l3 3"/>
-          </svg>
-          History
-        </button>
-
-        {/* Comments toggle */}
-        <button
-          onClick={() => setChatOpen(o => !o)}
-          title={chatOpen ? "Hide comments" : "Show comments"}
-          style={{
-            display: "flex", alignItems: "center", gap: 6, padding: "6px 14px",
-            border: `1.5px solid ${chatOpen ? "#818cf8" : "#e2e8f0"}`,
-            borderRadius: 20, flexShrink: 0,
-            background: chatOpen ? "linear-gradient(135deg,#eef2ff,#ede9fe)" : "#fff",
-            fontSize: 12, fontWeight: 700,
-            color: chatOpen ? "#4338ca" : "#64748b",
-            cursor: "pointer",
-            transition: "all 0.18s",
-            boxShadow: chatOpen ? "0 2px 8px rgba(79,70,229,0.15)" : "none",
-          }}
-          onMouseEnter={e => { if (!chatOpen) { e.currentTarget.style.borderColor = "#c7d2fe"; e.currentTarget.style.color = "#4f46e5"; }}}
-          onMouseLeave={e => { if (!chatOpen) { e.currentTarget.style.borderColor = "#e2e8f0"; e.currentTarget.style.color = "#64748b"; }}}
-        >
-          <svg width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M2 5a2 2 0 012-2h12a2 2 0 012 2v7a2 2 0 01-2 2H7l-4 3v-3H4a2 2 0 01-2-2V5z"/>
-          </svg>
-          {chatOpen ? "Hide Comments" : "Comments"}
-        </button>
-
-        {/* Save button — shown when dirty */}
-        {canEdit && !statusLock && dirtyBlocks.size > 0 && (
-          <button
-            onClick={() => setSaveDescModal({ open: true, desc: "", error: "" })}
-            disabled={saving}
-            style={{
-              display: "flex", alignItems: "center", gap: 6, padding: "7px 16px",
-              background: saving ? "#a3e635" : "linear-gradient(135deg,#16a34a,#15803d)",
-              color: "#fff", border: "none", borderRadius: 20, fontSize: 12,
-              fontWeight: 700, cursor: saving ? "not-allowed" : "pointer",
-              flexShrink: 0, boxShadow: saving ? "none" : "0 2px 8px rgba(22,163,74,0.3)",
-              transition: "all 0.15s",
-            }}
-          >
-            {saving ? "Saving…" : `Save Changes (${dirtyBlocks.size})`}
+        {canEdit && !statusLock && hasUnsavedChanges && (
+          <button onClick={openSaveFlow} disabled={saving} style={{
+            display: "flex", alignItems: "center", gap: 6, padding: "7px 16px",
+            background: saving ? "#a3e635" : "linear-gradient(135deg,#16a34a,#15803d)",
+            color: "#fff", border: "none", borderRadius: 8, fontSize: 12,
+            fontWeight: 700, cursor: saving ? "not-allowed" : "pointer",
+            flexShrink: 0, boxShadow: saving ? "none" : "0 2px 8px rgba(22,163,74,0.3)",
+            transition: "all 0.15s",
+          }}>
+            {saving ? "Saving…" : `Save Changes (${dirtyBlockCount})`}
           </button>
         )}
 
-        {/* Status-based action buttons */}
         {canEdit && (section?.status === "NOT_STARTED" || section?.status === "IN_PROGRESS") && (
           <button onClick={openSubmitModal} disabled={submitting} style={{
-            display: "flex", alignItems: "center", gap: 6, padding: "7px 18px",
+            display: "flex", alignItems: "center", gap: 6, padding: "7px 16px",
             background: submitting ? "#93c5fd" : "linear-gradient(135deg, #2563eb, #4f46e5)",
-            color: "#fff", border: "none", borderRadius: 20, fontSize: 12,
+            color: "#fff", border: "none", borderRadius: 8, fontSize: 12,
             fontWeight: 700, cursor: submitting ? "not-allowed" : "pointer",
             flexShrink: 0, boxShadow: submitting ? "none" : "0 2px 8px rgba(37,99,235,0.3)",
             transition: "all 0.15s",
-          }}>
-            Request Review →
-          </button>
+          }}>Request Review →</button>
         )}
 
         {canEdit && section?.status === "SENT_BACK" && (
           <button onClick={openSubmitModal} disabled={submitting} style={{
-            display: "flex", alignItems: "center", gap: 6, padding: "7px 18px",
+            display: "flex", alignItems: "center", gap: 6, padding: "7px 16px",
             background: submitting ? "#fca5a5" : "linear-gradient(135deg,#dc2626,#b91c1c)",
-            color: "#fff", border: "none", borderRadius: 20, fontSize: 12,
+            color: "#fff", border: "none", borderRadius: 8, fontSize: 12,
             fontWeight: 700, cursor: submitting ? "not-allowed" : "pointer",
             flexShrink: 0, boxShadow: submitting ? "none" : "0 2px 8px rgba(220,38,38,0.3)",
             transition: "all 0.15s",
-          }}>
-            Re-request Review →
-          </button>
+          }}>Re-request Review →</button>
         )}
 
         {section?.status === "SUBMITTED" && (
-          <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0, padding: "5px 12px", background: "#eff6ff", borderRadius: 20, border: "1px solid #bfdbfe" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0, padding: "5px 12px", background: "#eff6ff", borderRadius: 8, border: "1px solid #bfdbfe" }}>
             <span style={{ fontSize: 12 }}>⏳</span>
             <span style={{ fontSize: 11, fontWeight: 600, color: "#1d4ed8" }}>Pending Review…</span>
           </div>
         )}
         {section?.status === "UNDER_REVIEW" && (
-          <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0, padding: "5px 12px", background: "#f5f3ff", borderRadius: 20, border: "1px solid #ddd6fe" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0, padding: "5px 12px", background: "#f5f3ff", borderRadius: 8, border: "1px solid #ddd6fe" }}>
             <span style={{ fontSize: 12 }}>👁</span>
             <span style={{ fontSize: 11, fontWeight: 600, color: "#6d28d9" }}>Under Review</span>
           </div>
         )}
         {section?.status === "APPROVED" && (
-          <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0, padding: "5px 12px", background: "#f0fdf4", borderRadius: 20, border: "1px solid #bbf7d0" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0, padding: "5px 12px", background: "#f0fdf4", borderRadius: 8, border: "1px solid #bbf7d0" }}>
             <span style={{ fontSize: 12 }}>✓</span>
             <span style={{ fontSize: 11, fontWeight: 600, color: "#15803d" }}>Approved ✓</span>
           </div>
         )}
         {section?.status === "LOCKED" && (
-          <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0, padding: "5px 12px", background: "#f1f5f9", borderRadius: 20, border: "1px solid #cbd5e1" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0, padding: "5px 12px", background: "#f1f5f9", borderRadius: 8, border: "1px solid #cbd5e1" }}>
             <span style={{ fontSize: 12 }}>🔒</span>
             <span style={{ fontSize: 11, fontWeight: 600, color: "#475569" }}>Locked</span>
           </div>

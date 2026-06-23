@@ -29,6 +29,7 @@ import React from "react";
 import ReportBuilderListPage        from "../../pages/Roles/shared/builder/ReportBuilderListPage";
 import MyAssignedSectionsPage       from "../../pages/Roles/shared/builder/MyAssignedSectionsPage";
 import TemplateListPage              from "../../pages/Roles/shared/builder/TemplateListPage";
+import ReportAuditLogsPage          from "../../pages/Roles/shared/builder/ReportAuditLogsPage";
 
 /* ── Super Admin page imports ───────────────────────────────── */
 import SuperAdminOverviewPage    from "../../pages/Roles/superadmin/SuperAdminOverviewPage";
@@ -266,8 +267,9 @@ export const ROLE_CONFIG = {
       {
         group: "Reports",
         items: [
-          { id: "report-builder", label: "Report Builder", icon: "BookOpen",  permission: null, slug: "report-builder", subRoutes: REPORT_BUILDER_SUB },
-          { id: "sa-my-sections", label: "My Sections",    icon: "FileEdit",  permission: null, slug: "my-sections",    subRoutes: MY_SECTIONS_SUB },
+          { id: "report-builder",    label: "Reports",          icon: "BookOpen",   permission: null, slug: "report-builder",    subRoutes: REPORT_BUILDER_SUB },
+          { id: "sa-my-sections",    label: "My Sections",      icon: "FileEdit",   permission: null, slug: "my-sections",       subRoutes: MY_SECTIONS_SUB },
+          { id: "sa-report-audit",   label: "Report Audit Logs",icon: "ScrollText", permission: null, slug: "report-audit-logs" },
         ],
       },
     ],
@@ -278,9 +280,10 @@ export const ROLE_CONFIG = {
       institutions: <InstitutionManagementPage />,
       committees: <CommitteeManagementPage />,
       "role-access": <RoleAccessPage />,
-      "audit-logs":     <AuditLogsPage />,
-      "report-builder": <ReportBuilderListPage />,
-      "sa-my-sections": <MyAssignedSectionsPage />,
+      "audit-logs":       <AuditLogsPage />,
+      "report-builder":   <ReportBuilderListPage />,
+      "sa-my-sections":   <MyAssignedSectionsPage />,
+      "sa-report-audit":  <ReportAuditLogsPage />,
     },
     defaultPage: "overview",
     user: { name: "Super Admin", initials: "SA", org: "PragatiMitra HQ" },
@@ -335,7 +338,7 @@ export const ROLE_CONFIG = {
         items: [
           { id: "ia-report-cycles",   label: "Report Cycles",   icon: "CalendarDays",  permission: null, slug: "report-cycles" },
           { id: "ia-kpi",             label: "KPI Charts",      icon: "BarChart2",     permission: null, slug: "kpi-management",  subRoutes: KPI_INSTITUTE_SUB },
-          { id: "ia-report-builder",  label: "Report Builder",  icon: "BookOpen",      permission: null, slug: "report-builder",  subRoutes: REPORT_BUILDER_SUB },
+          { id: "ia-report-builder",  label: "Reports",         icon: "BookOpen",      permission: null, slug: "report-builder",  subRoutes: REPORT_BUILDER_SUB },
           { id: "ia-my-sections",     label: "My Sections",     icon: "FileEdit",      permission: null, slug: "my-sections",     subRoutes: MY_SECTIONS_SUB },
           { id: "ia-review-queue",    label: "Review Queue",    icon: "ClipboardList", permission: null, slug: "review-queue",    subRoutes: REVIEW_QUEUE_SUB },
         ],

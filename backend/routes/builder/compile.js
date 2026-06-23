@@ -644,6 +644,7 @@ async function generateDocx(report, sections, outPath, opts) {
 
     const headerRow = new TableRow({
       tableHeader: true,
+      cantSplit: true,
       children: headers.map(h => new TableCell({
         width: { size: colWidth, type: WidthType.DXA },
         shading: { type: ShadingType.CLEAR, fill: C.tblHead },
@@ -655,6 +656,7 @@ async function generateDocx(report, sections, outPath, opts) {
     });
 
     const bodyRows = dataRows.map((row, ri) => new TableRow({
+      cantSplit: row.some(v => String(v).length > 200),
       children: row.map(val => new TableCell({
         width: { size: colWidth, type: WidthType.DXA },
         shading: ri % 2 === 1 ? { type: ShadingType.CLEAR, fill: C.tblAlt } : undefined,
@@ -1559,10 +1561,11 @@ hr.divider { border: none; border-top: 1px solid #9ca3af; margin: 10px 0 12px; }
 
 /* ── Tables ── */
 .data-tbl { border-collapse: collapse; width: 100%; margin: 8px 0 12px; font-size: 10pt; }
-.data-tbl th { background: #D0CECE; font-weight: 700; padding: 4px 7px; text-align: left; border: 1px solid #9ca3af; color: #111827; }
-.data-tbl td { border: 1px solid #9ca3af; padding: 4px 7px; color: #111827; vertical-align: top; }
+.data-tbl thead { display: table-header-group; }
+.data-tbl th { background: #D0CECE; font-weight: 700; padding: 5px 8px; text-align: left; border: 1px solid #9ca3af; color: #111827; }
+.data-tbl td { border: 1px solid #9ca3af; padding: 5px 8px; color: #111827; vertical-align: top; word-break: break-word; }
 .data-tbl tr.alt td { background: #f9fafb; }
-.data-tbl tr.tot td { background: #D0CECE; font-weight: 700; }
+.data-tbl tr.tot td, .data-tbl tr.tot th { background: #D0CECE; font-weight: 700; }
 
 /* ── KPI ── */
 .kpi-block { margin: 8px 0 12px; }
@@ -1592,6 +1595,15 @@ hr.divider { border: none; border-top: 1px solid #9ca3af; margin: 10px 0 12px; }
   .page-wrapper { box-shadow: none; margin: 0; padding: 0; }
   .section[style*="page-break-before"] { page-break-before: always; }
   .toc-page { page-break-after: always; }
+  /* Table: repeat header row on every page, avoid mid-row breaks */
+  .data-tbl thead { display: table-header-group; }
+  .data-tbl tfoot { display: table-footer-group; }
+  .data-tbl tr { page-break-inside: avoid; }
+  /* Keep images with their captions */
+  .img-wrap, .kpi-block { page-break-inside: avoid; }
+  /* Avoid orphaned section headings */
+  .sec-h1, .sec-h2, .sec-h3 { page-break-after: avoid; }
+  .ch1, .ch2, .ch3 { page-break-after: avoid; }
 }
 ${hasBg ? `
 /* ── Background image: white text so content is visible over the image ── */
