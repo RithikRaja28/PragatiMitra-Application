@@ -145,9 +145,25 @@ router.get("/institution-forms", async (req, res) => {
     }
 
     /* ── Contributor visibility: a pure contributor only sees forms ASSIGNED to
-       them for the selected academic year (year-scoped). Other roles unaffected. ── */
+       them for the selected academic year (year-scoped). Other roles unaffected.
+       isContributorOnly uses dbRoles (no NOA inflation) so a NOA-elevated contributor
+       is still filtered to their assignments — they're acting as a contributor here,
+       not as an admin. */
     if (isContributorOnly(req)) {
-      const y = req.query.year != null ? Number(req.query.year) : new Date().getFullYear();
+      // Safety: if filterDomain is null (e.g., institute_admin from NOA bypassed the
+      // domain filter), re-apply the contributor's stored domain from the DB so
+      // hospital/finance forms never leak through to an academic contributor.
+      if (!filterDomain) {
+        const { rows: uRows } = await pool.query(
+          "SELECT COALESCE(role_domain, 'academic') AS d FROM users WHERE id = $1",
+          [req.user.userId]
+        );
+        const contribDomain = uRows[0]?.d || "academic";
+        rows = rows.filter((f) => (f.form_domain || "academic") === contribDomain);
+      }
+      const headerYear = Number(req.get("X-Academic-Year"));
+      const y = req.query.year != null ? Number(req.query.year)
+              : (Number.isInteger(headerYear) && headerYear > 0 ? headerYear : new Date().getFullYear());
       const assignedIds = new Set(await getAssignedFormIds(pool, req.user.userId, y));
       rows = rows.filter((f) => assignedIds.has(String(f.id)));
     }

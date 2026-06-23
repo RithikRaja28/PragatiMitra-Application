@@ -1,5 +1,6 @@
 "use strict";
 
+
 const { randomUUID } = require("crypto");
 const express  = require("express");
 const multer   = require("multer");
@@ -17,11 +18,14 @@ const { resolveEffectiveDepartment, getDepartmentWriteBlock } = require("../serv
 const { ensureSchemaExists } = require("../services/schemaPropagationService");
 const { isFormAssigned, isContributorOnly } = require("./formAssignments");
 
+
 /* 7 days — maximum presigned URL lifetime for long-term IAM credentials */
 const DOC_URL_TTL = 7 * 24 * 3600;
 
+
 /* Regex for Devanagari script — used to validate stored Hindi labels. */
 const DEVANAGARI_RE = /[ऀ-ॿ]/;
+
 
 /* Resolve a single UI label to the target language.
    Priority order:
@@ -32,21 +36,26 @@ const DEVANAGARI_RE = /[ऀ-ॿ]/;
 async function resolveLabel(source, language) {
   if (language === "en" || !source) return source;
 
+
   // 0. Predefined lookup — avoids wrong phonetic for common words
   const fromMap = lookupLabel(source, language);
   if (fromMap) return fromMap;
 
+
   // 1. Google Translate
   const translated = await translateSentence(source).catch(() => source);
   if (DEVANAGARI_RE.test(translated)) return translated;
+
 
   // 2. Word-by-word + phonetic fallback
   const phonetic = await transliteratePhrase(source).catch(() => "");
   return DEVANAGARI_RE.test(phonetic) ? phonetic : source;
 }
 
+
 const router = express.Router();
 router.use(verifyToken);
+
 
 /* Bug 16 — precompute the institution's ACTIVE academic year once per request
    (only when no explicit year is supplied) so the contributor import/export guard
@@ -65,6 +74,7 @@ router.use(async (req, _res, next) => {
   next();
 });
 
+
 /* Domain isolation guard for every :formName route (import / export). Mirrors
    formData.js: a non-super-admin can only import/export a form in their own
    domain. Academic default → unchanged. */
@@ -73,6 +83,7 @@ router.param("formName", async (req, res, next, formName) => {
   try {
     const acc = await assertFormDomainAccess(pool, req, formName);
     if (!acc.allowed) return res.status(acc.status || 403).json({ success: false, message: acc.message });
+
 
     // Contributor: only their assigned forms FOR THE SELECTED ACADEMIC YEAR (Bug 7).
     // Import/export authorization must be year-scoped exactly like record entry —
@@ -99,6 +110,7 @@ router.param("formName", async (req, res, next, formName) => {
   }
 });
 
+
 /* ── Multer: memory storage, 50 MB limit (raised for 10k rows) ── */
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -108,6 +120,7 @@ const upload = multer({
     cb(ok ? null : new Error("Only CSV and Excel files (.csv, .xlsx, .xls) are allowed"), ok);
   },
 });
+
 
 function handleUpload(req, res, next) {
   upload.single("file")(req, res, (err) => {
@@ -120,10 +133,12 @@ function handleUpload(req, res, next) {
   });
 }
 
+
 /* ── helpers ── */
 function validateFormName(name) { return /^[a-z][a-z0-9_]*$/.test(name); }
 function dbCol(col) { return col.trim().toLowerCase().replace(/\s+/g, "_"); }
 function normalize(s) { return String(s).toLowerCase().replace(/[\s_\-\.]+/g, ""); }
+
 
 /* ── Date export formatting ────────────────────────────────────────────────
    With the pg DATE type-parser fix in server.js, date values arrive as plain
@@ -142,6 +157,7 @@ function formatExportDate(val) {
   return s.length > 10 ? s.slice(0, 10) : s; // strip time component if present
 }
 
+
 /* ── Date parsing ──────────────────────────────────────────────────────────
    Supports, in priority order:
      1. JS Date object  — from XLSX cellDates mode
@@ -154,6 +170,7 @@ function formatExportDate(val) {
    Returns "YYYY-MM-DD" string, or null when the value cannot be parsed.
    Caller should treat null as a validation error for required fields. */
 
+
 function _utcDate(y, m, d) {
   if (m < 1 || m > 12 || d < 1 || d > 31 || y < 1900 || y > 2100) return null;
   const dt = new Date(Date.UTC(y, m - 1, d));
@@ -161,16 +178,20 @@ function _utcDate(y, m, d) {
   return dt.toISOString().slice(0, 10);
 }
 
+
 function parseImportDate(val) {
   if (val == null || val === "") return null;
+
 
   /* 1. JS Date object (XLSX cellDates: true) */
   if (val instanceof Date) {
     return isNaN(val.getTime()) ? null : val.toISOString().slice(0, 10);
   }
 
+
   const str = String(val).trim();
   if (!str) return null;
+
 
   /* 2. Excel serial number — positive integer in plausible date range */
   const num = Number(str);
@@ -179,9 +200,11 @@ function parseImportDate(val) {
     return isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
   }
 
+
   /* 3. ISO: YYYY[-/.]MM[-/.]DD */
   const isoM = str.match(/^(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})$/);
   if (isoM) return _utcDate(+isoM[1], +isoM[2], +isoM[3]);
+
 
   /* 4 & 5. D/M/Y patterns — handles 4-digit or 2-digit year */
   const dmyM = str.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})$/);
@@ -190,21 +213,26 @@ function parseImportDate(val) {
     let y = +dmyM[3];
     if (y < 100) y += y < 50 ? 2000 : 1900;   // 2-digit year pivot at 50
 
+
     /* Try DD/MM/YYYY first (Indian/European standard) */
     const dmy = _utcDate(y, b, a);
     if (dmy) return dmy;
+
 
     /* Fallback: MM/DD/YYYY (US format) when DD/MM produces an invalid month */
     const mdy = _utcDate(y, a, b);
     if (mdy) return mdy;
 
+
     return null;
   }
+
 
   /* 6. Native JS parse — last resort (handles ISO 8601 variants, RFC 2822, etc.) */
   const d = new Date(str);
   return isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
 }
+
 
 /* ════════════════════════════════════════════════════════════════
    resolveUserContext
@@ -212,6 +240,7 @@ function parseImportDate(val) {
 async function resolveUserContext(pool, req) {
   const roles = req.user.roles || [];
   const isSuperAdmin = roles.includes("super_admin");
+
 
   if (isSuperAdmin) {
     return {
@@ -221,11 +250,14 @@ async function resolveUserContext(pool, req) {
     };
   }
 
+
   const isDeptAdmin = roles.includes("department_admin") || roles.includes("nodal_officer");
+
 
   // EFFECTIVE (nodal-aware) context — exports/imports must scope to the Nodal
   // Officer's NODAL department, matching records & assignments (Bug 4).
   const { institutionId, departmentId } = await resolveEffectiveDepartment(pool, req);
+
 
   return {
     institutionId: institutionId || null,
@@ -233,6 +265,7 @@ async function resolveUserContext(pool, req) {
     role: isDeptAdmin ? "department_admin" : "institute_admin",
   };
 }
+
 
 /* ── fetch active schema fields ── */
 async function getSchemaFields(pool, formName, institutionId, year) {
@@ -243,6 +276,7 @@ async function getSchemaFields(pool, formName, institutionId, year) {
   if (year) { q += ` AND year = $3`; params.push(year); }
   q += ` ORDER BY year DESC LIMIT 1`;
   const { rows } = await pool.query(q, params);
+
 
   let schemaRow = rows[0];
   if (!schemaRow) {
@@ -258,6 +292,7 @@ async function getSchemaFields(pool, formName, institutionId, year) {
   }
   if (!schemaRow) return null;
 
+
   const schema   = schemaRow;
   const excluded = new Set(schema.schema?.excluded_fixed_columns || []);
   const seen     = new Set();
@@ -270,6 +305,7 @@ async function getSchemaFields(pool, formName, institutionId, year) {
   });
   return { schemaRow: schema, fields };
 }
+
 
 /* ── auto-map file columns → schema columns ── */
 function buildAutoMapping(fileColumns, schemaFields) {
@@ -284,6 +320,7 @@ function buildAutoMapping(fileColumns, schemaFields) {
   return mapping;
 }
 
+
 /* ── shared row processor: validate + cast one row ── */
 function processRow(row, fields, fieldToCol, rowNum) {
   const getValue = (schemaCol) => {
@@ -291,11 +328,13 @@ function processRow(row, fields, fieldToCol, rowNum) {
     return fileCol !== undefined ? String(row[fileCol] ?? "").trim() : null;
   };
 
+
   const rowData = {};
   for (const field of fields) {
     const col   = dbCol(field.column_name);
     const val   = getValue(col);
     const label = field.label?.en || field.column_name;
+
 
     if (field.required && (val === null || val === "")) {
       return { error: { row: rowNum, field: col, error: `${label} is required` } };
@@ -325,6 +364,7 @@ function processRow(row, fields, fieldToCol, rowNum) {
   return { rowData };
 }
 
+
 /* ═══════════════════════════════════════════════════════════════
    GET /api/form-data/:formName/departments
 ═══════════════════════════════════════════════════════════════ */
@@ -334,6 +374,7 @@ router.get("/:formName/departments", async (req, res) => {
     const ctx = await resolveUserContext(pool, req);
     if (!ctx.institutionId)
       return res.status(400).json({ success: false, message: "Institution ID required." });
+
 
     const { rows } = await pool.query(
       `SELECT department_id AS id, name FROM departments
@@ -348,6 +389,7 @@ router.get("/:formName/departments", async (req, res) => {
   }
 });
 
+
 /* ═══════════════════════════════════════════════════════════════
    POST /api/form-data/:formName/import/parse
    Parses file, returns columns + schema + all rows for client-side chunking.
@@ -358,15 +400,18 @@ router.post("/:formName/import/parse", handleUpload, async (req, res) => {
   const { formName } = req.params;
   const { year } = req.body;
 
+
   if (!validateFormName(formName))
     return res.status(400).json({ success: false, message: "Invalid form name." });
   if (!req.file)
     return res.status(400).json({ success: false, message: "No file uploaded." });
 
+
   try {
     const ctx = await resolveUserContext(pool, req);
     if (!ctx.institutionId)
       return res.status(400).json({ success: false, message: "Institution ID required." });
+
 
     // Bug 11 — an inactive department blocks import (a write). Contributors are
     // already gated by the assignment param guard; this covers dept admins.
@@ -374,11 +419,14 @@ router.post("/:formName/import/parse", handleUpload, async (req, res) => {
     if (deptBlock.blocked)
       return res.status(403).json({ success: false, message: deptBlock.message });
 
+
     const result = await getSchemaFields(pool, formName, ctx.institutionId, year);
     if (!result)
       return res.status(404).json({ success: false, message: "No active schema found for this form." });
 
+
     const { fields } = result;
+
 
     const { rows: lockRows } = await pool.query(
       `SELECT is_locked FROM form_lock_config WHERE form_name = $1 AND institution_id = $2`,
@@ -387,14 +435,17 @@ router.post("/:formName/import/parse", handleUpload, async (req, res) => {
     if (lockRows[0]?.is_locked)
       return res.status(403).json({ success: false, message: "This form is locked. Import is disabled." });
 
+
     // Archive write policy — an archived form is view-only (import blocked).
     const archiveBlock = await getFormArchiveBlockForReq(pool, req, ctx.institutionId, formName, Number(year) || null);
     if (archiveBlock.blocked)
       return res.status(403).json({ success: false, message: archiveBlock.message });
 
+
     const ext       = req.file.originalname.toLowerCase().split(".").pop();
     const encoding  = req.body.encoding  || "UTF-8";
     const delimiter = req.body.delimiter || ",";
+
 
     let wb;
     if (ext === "csv") {
@@ -404,7 +455,9 @@ router.post("/:formName/import/parse", handleUpload, async (req, res) => {
       wb = XLSX.read(req.file.buffer, { type: "buffer" });
     }
 
+
     const ws = wb.Sheets[wb.SheetNames[0]];
+
 
     /* ── Row limit check BEFORE sheet_to_json (HIGH-5) ──────────────────────
        XLSX.utils.sheet_to_json allocates the entire dataset as JS objects before
@@ -420,12 +473,16 @@ router.post("/:formName/import/parse", handleUpload, async (req, res) => {
     if (estimatedRows > 10500)
       return res.status(400).json({ success: false, message: "File has more than 10,500 rows. Please split into smaller batches." });
 
+
     const rows = XLSX.utils.sheet_to_json(ws, { defval: "" });
+
 
     if (!rows.length)
       return res.status(400).json({ success: false, message: "File is empty or has no data rows." });
 
+
     const fileColumns = Object.keys(rows[0]);
+
 
     return res.json({
       success:         true,
@@ -450,10 +507,12 @@ router.post("/:formName/import/parse", handleUpload, async (req, res) => {
   }
 });
 
+
 /* ═══════════════════════════════════════════════════════════════
    POST /api/form-data/:formName/import/execute-chunk
    Processes one chunk of rows (500–1000 recommended).
    Called repeatedly by the frontend for chunked imports.
+
 
    Body:
    {
@@ -483,15 +542,18 @@ router.post("/:formName/import/execute-chunk", async (req, res) => {
     importSessionId = null, // CRIT-2: opaque UUID from parse response; null = old clients
   } = req.body;
 
+
   if (!validateFormName(formName))
     return res.status(400).json({ success: false, message: "Invalid form name." });
   if (!mapping || !Array.isArray(chunk) || !chunk.length)
     return res.status(400).json({ success: false, message: "mapping and chunk are required." });
 
+
   try {
     const ctx = await resolveUserContext(pool, req);
     if (!ctx.institutionId)
       return res.status(400).json({ success: false, message: "Institution ID required." });
+
 
     // Bug 11 — an inactive department blocks import (a write). Dept admins gated
     // here; contributors are already blocked by the assignment param guard.
@@ -499,10 +561,12 @@ router.post("/:formName/import/execute-chunk", async (req, res) => {
     if (deptBlock.blocked)
       return res.status(403).json({ success: false, message: deptBlock.message });
 
+
     /* SECURITY: dept admin cannot override their own department */
     const resolvedDeptId = ctx.role === "department_admin"
       ? ctx.departmentId
       : (departmentId || null);
+
 
     /* Bug 13 — re-check the manual form lock on EVERY chunk so locking the form
        mid-import stops remaining chunks immediately.
@@ -540,6 +604,7 @@ router.post("/:formName/import/execute-chunk", async (req, res) => {
       }
     }
 
+
     /* ── M-2 fix — ONE resolved academic year drives BOTH the schema lookup and the
        year every imported row is stored under, so an import batch can never tag rows
        to one year while referencing another year's schema. Resolve the effective
@@ -552,11 +617,13 @@ router.post("/:formName/import/execute-chunk", async (req, res) => {
       || (Number.isInteger(importHeaderYear) && importHeaderYear > 0 ? importHeaderYear : null)
       || (Number.isInteger(req.institutionAcademicYear) ? req.institutionAcademicYear : null);
 
+
     let result = await getSchemaFields(pool, formName, ctx.institutionId, effectiveYear);
     if (!result && effectiveYear != null)
       result = await getSchemaFields(pool, formName, ctx.institutionId, null); // latest active fallback
     if (!result)
       return res.status(404).json({ success: false, message: "No active schema found." });
+
 
     /* Bug 17 — imported rows must reference the CONSUMER institution's own schema
        copy (for the SAME year), never the creator's. */
@@ -570,6 +637,7 @@ router.post("/:formName/import/execute-chunk", async (req, res) => {
       }
     }
 
+
     const { schemaRow, fields } = result;
     // SINGLE SOURCE OF TRUTH: imported rows' year == the year of the schema used.
     const formYear = schemaRow.year;
@@ -579,6 +647,7 @@ router.post("/:formName/import/execute-chunk", async (req, res) => {
         resolved_year: effectiveYear, schema_year: formYear,
       });
     }
+
 
     /* N-2 — honor the PER-YEAR deadline lock (form_year_deadlines) exactly like the
        record-save path's getLockBlock, so import and manual entry resolve the SAME
@@ -602,6 +671,7 @@ router.post("/:formName/import/execute-chunk", async (req, res) => {
       }
     }
 
+
     /* Academic-year lock — checks the SELECTED year (header), blocks import.
        Bug 13 — re-evaluated on EVERY chunk (was chunk 0 only) so a year lock /
        archive / deadline that lands mid-import stops the remaining chunks at once. */
@@ -610,10 +680,12 @@ router.post("/:formName/import/execute-chunk", async (req, res) => {
       if (ayLock.locked)
         return res.status(403).json({ success: false, message: ayLock.message });
 
+
       // Archive write policy — an archived form is view-only (import blocked).
       const archiveBlock = await getFormArchiveBlockForReq(pool, req, ctx.institutionId, formName, formYear);
       if (archiveBlock.blocked)
         return res.status(403).json({ success: false, message: archiveBlock.message });
+
 
       /* Issue 5 — per-year deadline lock: if the SELECTED year's deadline has
          passed (or its row is locked), import into that year is disabled. Forms
@@ -636,15 +708,18 @@ router.post("/:formName/import/execute-chunk", async (req, res) => {
       }
     }
 
+
     /* Build fileCol → schemaCol lookup */
     const fieldToCol = {};
     for (const [schemaCol, fileCol] of Object.entries(mapping)) {
       if (fileCol) fieldToCol[schemaCol] = fileCol;
     }
 
+
     /* Validate + cast all rows in this chunk */
     const errors   = [];
     const prepared = [];
+
 
     for (let i = 0; i < chunk.length; i++) {
       const globalRowNum = chunkStartIndex + i + 1;
@@ -653,6 +728,7 @@ router.post("/:formName/import/execute-chunk", async (req, res) => {
       else prepared.push(rowData);
     }
 
+
     /* Persist valid rows inside a single transaction */
     const client = await pool.connect();
     let success  = 0;
@@ -660,11 +736,14 @@ router.post("/:formName/import/execute-chunk", async (req, res) => {
     const recordsTable = `${formName}_records`;
     const fieldCols    = fields.map((f) => dbCol(f.column_name));
 
+
     /* Track inserted English rows so Hindi mirrors can be created afterward */
     const insertedRows = [];
 
+
     try {
       await client.query("BEGIN");
+
 
       /* Ensure source_row_id and import_session_id columns exist. */
       await client.query(
@@ -676,10 +755,12 @@ router.post("/:formName/import/execute-chunk", async (req, res) => {
         );
       }
 
+
       /* Bug 14 — batched duplicate detection. The previous code ran ONE SELECT per
          row (10k rows → 10k sequential scans, the dominant import cost). Instead we
          pre-resolve every existing match for this chunk in a SINGLE query, then
          decide skip/overwrite/insert in memory.
+
 
          Correctness: the match runs in SQL via an ordinal-tagged VALUES join with
          each key column CAST to its real column type, so it is byte-identical to the
@@ -695,6 +776,7 @@ router.post("/:formName/import/execute-chunk", async (req, res) => {
       const requiredTypes  = requiredFields.map((f) => PG_TYPE[f.type] || "TEXT");
       const dedupActive    = duplicateHandling !== "new" && requiredCols.length > 0;
       const keyOf = (rd) => JSON.stringify(requiredCols.map((c) => rd[c] ?? null));
+
 
       const preloadMap = new Map();   // prepared-row ordinal → existing row id
       if (dedupActive && prepared.length > 0) {
@@ -718,6 +800,7 @@ router.post("/:formName/import/execute-chunk", async (req, res) => {
         for (const m of matches) if (!preloadMap.has(m.ord)) preloadMap.set(m.ord, m.id);
       }
 
+
       const seenInChunk = new Map();  // intra-chunk key → inserted id
       const stdCols = ["form_name", "institution_id", "department_id", "year", "schema_id", "language"];
       const stdVals = [formName, ctx.institutionId, resolvedDeptId, formYear, schemaRow.id, language];
@@ -725,8 +808,10 @@ router.post("/:formName/import/execute-chunk", async (req, res) => {
       if (importSessionId) { stdCols.push("import_session_id"); stdVals.push(importSessionId); }
       const allCols = [...stdCols, ...fieldCols];
 
+
       for (let ord = 0; ord < prepared.length; ord++) {
         const rowData = prepared[ord];
+
 
         if (dedupActive) {
           let existingId = preloadMap.get(ord);
@@ -746,6 +831,7 @@ router.post("/:formName/import/execute-chunk", async (req, res) => {
           }
         }
 
+
         /* INSERT — capture the new row's id for Hindi linking */
         const allVals = [...stdVals, ...fieldCols.map((col) => rowData[col] ?? null)];
         const placeholders = allVals.map((_, i) => `$${i + 1}`).join(", ");
@@ -758,6 +844,7 @@ router.post("/:formName/import/execute-chunk", async (req, res) => {
         success++;
       }
 
+
       await client.query("COMMIT");
     } catch (err) {
       await client.query("ROLLBACK");
@@ -766,46 +853,51 @@ router.post("/:formName/import/execute-chunk", async (req, res) => {
       client.release();
     }
 
-    /* ── Async Hindi mirror rows ──────────────────────────────────────────
-       Mirrors the formData.js POST behaviour: for each newly imported English
-       row, translate the text fields and insert a linked Hindi row.
-       Runs after the response is sent so import speed is unaffected. */
+
+    /* ── Hindi mirror rows ────────────────────────────────────────────────
+       For each newly imported English row, translate text fields and insert
+       a linked Hindi row. Runs BEFORE the response so import success
+       guarantees that Hindi rows exist. All rows are processed concurrently
+       (translation caches deduplicate repeat values across the chunk).
+       Individual row failures are retried up to 3 times; persistent failures
+       are counted and surfaced as `hindiWarnings` in the response rather than
+       silently swallowed. */
+    let hindiWarnings = 0;
     if (language === "en" && insertedRows.length > 0) {
       const hindiEnabled = await pool
         .query(`SELECT COALESCE(translate_to_hindi, true) AS enabled FROM table_list WHERE form_name = $1`, [formName])
         .then(r => r.rows[0]?.enabled !== false)
         .catch(() => true);
 
+
       if (hindiEnabled) {
         const fieldModes = {};
         for (const f of fields) fieldModes[dbCol(f.column_name)] = resolveTranslationMode(f);
 
-        setImmediate(async () => {
-          for (const { id: srcId, rowData } of insertedRows) {
-            let lastErr;
-            for (let attempt = 1; attempt <= 3; attempt++) {
-              try {
-                const hiData  = await translateRow(rowData, fieldModes);
-                const hiCols  = ["form_name", "institution_id", "department_id", "year", "schema_id", "language", "source_row_id", ...fieldCols];
-                const hiVals  = [formName, ctx.institutionId, resolvedDeptId, formYear, schemaRow.id, "hi", srcId, ...fieldCols.map(c => hiData[c] ?? null)];
-                // Carry the session ID so a rollback DELETE also removes Hindi mirrors.
-                if (importSessionId) { hiCols.push("import_session_id"); hiVals.push(importSessionId); }
-                const hiPh    = hiVals.map((_, i) => `$${i + 1}`).join(", ");
-                await pool.query(`INSERT INTO ${recordsTable} (${hiCols.join(", ")}) VALUES (${hiPh})`, hiVals);
-                lastErr = null;
-                break;
-              } catch (e) {
-                lastErr = e;
-                if (attempt < 3) await new Promise(r => setTimeout(r, 200 * attempt));
-              }
-            }
-            if (lastErr) {
-              logger.error(`Hindi import mirror exhausted (3 attempts) for ${formName}/${srcId}`, { message: lastErr.message });
+
+        await Promise.all(insertedRows.map(async ({ id: srcId, rowData }) => {
+          let lastErr;
+          for (let attempt = 1; attempt <= 3; attempt++) {
+            try {
+              const hiData = await translateRow(rowData, fieldModes);
+              const hiCols = ["form_name", "institution_id", "department_id", "year", "schema_id", "language", "source_row_id", ...fieldCols];
+              const hiVals = [formName, ctx.institutionId, resolvedDeptId, formYear, schemaRow.id, "hi", srcId, ...fieldCols.map(c => hiData[c] ?? null)];
+              // Carry the session ID so a rollback DELETE also removes Hindi mirrors.
+              if (importSessionId) { hiCols.push("import_session_id"); hiVals.push(importSessionId); }
+              const hiPh = hiVals.map((_, i) => `$${i + 1}`).join(", ");
+              await pool.query(`INSERT INTO ${recordsTable} (${hiCols.join(", ")}) VALUES (${hiPh})`, hiVals);
+              return;
+            } catch (e) {
+              lastErr = e;
+              if (attempt < 3) await new Promise(r => setTimeout(r, 200 * attempt));
             }
           }
-        });
+          logger.error(`Hindi import mirror exhausted (3 attempts) for ${formName}/${srcId}`, { message: lastErr.message });
+          hindiWarnings++;
+        }));
       }
     }
+
 
     // Log once: on the last chunk, or every call when totalChunks is not provided.
     const isLastChunk = totalChunks === null || chunkIndex + 1 >= Number(totalChunks);
@@ -826,6 +918,7 @@ router.post("/:formName/import/execute-chunk", async (req, res) => {
       });
     }
 
+
     return res.json({
       success:  true,
       imported: success,
@@ -833,12 +926,14 @@ router.post("/:formName/import/execute-chunk", async (req, res) => {
       failed:   errors.length,
       errors,
       chunkIndex,
+      ...(hindiWarnings > 0 ? { hindiWarnings } : {}),
     });
   } catch (err) {
     logger.error(`POST /api/form-data/${formName}/import/execute-chunk`, { ...getLogContext(req), stack: err.stack });
     return res.status(500).json({ success: false, message: `Chunk import failed: ${err.message}` });
   }
 });
+
 
 /* ═══════════════════════════════════════════════════════════════
    POST /api/form-data/:formName/import/execute   (kept for backward compat)
@@ -865,6 +960,7 @@ router.post("/:formName/import/execute", async (req, res) => {
   );
 });
 
+
 /* ═══════════════════════════════════════════════════════════════
    GET /api/form-data/:formName/export
 ═══════════════════════════════════════════════════════════════ */
@@ -873,30 +969,37 @@ router.get("/:formName/export", async (req, res) => {
   const { formName } = req.params;
   const { format = "csv", year, language = "en" } = req.query;
 
+
   if (!validateFormName(formName))
     return res.status(400).json({ success: false, message: "Invalid form name." });
+
 
   try {
     const ctx = await resolveUserContext(pool, req);
     if (!ctx.institutionId)
       return res.status(400).json({ success: false, message: "Institution ID required." });
 
+
     const result = await getSchemaFields(pool, formName, ctx.institutionId, year);
     if (!result)
       return res.status(404).json({ success: false, message: "No active schema found." });
+
 
     const { fields } = result;
     const fieldCols    = fields.map((f) => dbCol(f.column_name));
     const recordsTable = `${formName}_records`;
 
+
     /* Build WHERE clause — scoped by role + language */
     let whereClause = "WHERE institution_id = $1";
     let queryParams = [ctx.institutionId];
+
 
     if (ctx.departmentId) {
       whereClause += " AND department_id = $2";
       queryParams.push(ctx.departmentId);
     }
+
 
     /* Language filter: English rows have language='en' or NULL; other languages are exact */
     if (language === "en") {
@@ -906,6 +1009,7 @@ router.get("/:formName/export", async (req, res) => {
       queryParams.push(language);
     }
 
+
     /* Issue 7 — STREAMING export. Records are read in fixed-size batches and
        written straight to the response (CSV via res.write; XLSX via the ExcelJS
        streaming WorkbookWriter) so peak memory stays bounded regardless of row
@@ -913,12 +1017,14 @@ router.get("/:formName/export", async (req, res) => {
        CSV string in memory). Output columns/labels/formatting are unchanged. */
     const EXPORT_BATCH = 2000;
 
+
     // Total count (for the audit log) — does not load any row data.
     const { rows: cntRows } = await pool.query(
       `SELECT COUNT(*)::int AS n FROM ${recordsTable} ${whereClause}`,
       queryParams
     );
     const recordCount = cntRows[0]?.n ?? 0;
+
 
     await writeAuditLog(req, {
       actionType: "FORM_DATA_EXPORTED",
@@ -934,6 +1040,7 @@ router.get("/:formName/export", async (req, res) => {
       message: `Form Data Exported - "${formName}" (${recordCount} record${recordCount !== 1 ? "s" : ""})`,
     });
 
+
     /* Dept names (EN + HI) for the institute-admin export — fetched once for the
        whole institution (bounded, small) so each batch can resolve names without
        re-querying. */
@@ -946,9 +1053,11 @@ router.get("/:formName/export", async (req, res) => {
       depts.forEach(d => { deptMap[d.department_id] = { name: d.name, name_hi: d.name_hi }; });
     }
 
+
     /* "Department" column header and fallback in the export language */
     const deptColHeader   = language === "hi" ? "विभाग"        : "Department";
     const institutionWide = language === "hi" ? "संस्था-व्यापी" : "Institution-wide";
+
 
     /* ── Resolve column headers ───────────────────────────────────────────
        For non-English exports:
@@ -961,10 +1070,12 @@ router.get("/:formName/export", async (req, res) => {
     ─────────────────────────────────────────────────────────────────────── */
     const isTargetScript = (text) => language === "en" || DEVANAGARI_RE.test(text);
 
+
     const fieldLabelMap  = {};
     const createdAtLabel = language !== "en"
       ? await resolveLabel("Created At", language)
       : "Created At";
+
 
     if (language !== "en") {
       await Promise.all(fields.map(async (f) => {
@@ -984,6 +1095,7 @@ router.get("/:formName/export", async (req, res) => {
       });
     }
 
+
     /* Document fields → presigned URLs. getReadUrl is local HMAC (no S3 network
        call); resolved lazily per key with a cache so each unique file is signed
        once across all batches. Legacy local URLs (http://…) pass through as-is. */
@@ -1001,11 +1113,13 @@ router.get("/:formName/export", async (req, res) => {
       return keyToUrl[val];
     }
 
+
     /* ── Ordered header list ──────────────────────────────────────────── */
     const headers = [];
     if (!ctx.departmentId) headers.push(deptColHeader);
     fields.forEach((f) => headers.push(fieldLabelMap[dbCol(f.column_name)]));
     headers.push(createdAtLabel);
+
 
     /* Track which column indices (0-based) hold document URLs for XLSX hyperlinks */
     const hasDeptCol    = !ctx.departmentId;
@@ -1015,6 +1129,7 @@ router.get("/:formName/export", async (req, res) => {
         return acc;
       }, [])
     );
+
 
     /* Build one export row array from a DB record (signs document URLs). */
     async function buildRow(rec) {
@@ -1035,6 +1150,7 @@ router.get("/:formName/export", async (req, res) => {
       return row;
     }
 
+
     /* Read the next batch. A stable `id` tiebreaker is appended to the original
        ordering so OFFSET paging can't skip/duplicate rows sharing a
        (department_id, created_at). */
@@ -1049,19 +1165,23 @@ router.get("/:formName/export", async (req, res) => {
       ).then((r) => r.rows);
     }
 
+
     const ts       = new Date().toISOString().slice(0, 10);
     const langTag  = language !== "en" ? `_${language}` : "";
     const baseName = `${formName}${langTag}_${ts}`;
+
 
     /* ── XLSX export — ExcelJS streaming WorkbookWriter ───────────────── */
     if (format === "xlsx") {
       res.setHeader("Content-Disposition", `attachment; filename="${baseName}.xlsx"`);
       res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
 
+
       const workbook  = new ExcelJS.stream.xlsx.WorkbookWriter({ stream: res, useStyles: true, useSharedStrings: true });
       const worksheet = workbook.addWorksheet(formName);
       worksheet.views   = [{ state: "frozen", ySplit: 1 }]; // freeze header row
       worksheet.columns = headers.map((h) => ({ width: Math.max(String(h).length + 4, 12) }));
+
 
       /* Header row — bold white text on blue background */
       const headerRow = worksheet.addRow(headers);
@@ -1073,6 +1193,7 @@ router.get("/:formName/export", async (req, res) => {
       });
       headerRow.height = 20;
       headerRow.commit();
+
 
       let rowIdx = 0;
       for (let offset = 0; ; offset += EXPORT_BATCH) {
@@ -1100,10 +1221,12 @@ router.get("/:formName/export", async (req, res) => {
         if (batch.length < EXPORT_BATCH) break;
       }
 
+
       await worksheet.commit();
       await workbook.commit(); // finalises + ends the response stream
       return;
     }
+
 
     /* ── CSV export — streamed line-by-line ───────────────────────────── */
     const escape = (v) => {
@@ -1113,7 +1236,7 @@ router.get("/:formName/export", async (req, res) => {
     };
     res.setHeader("Content-Disposition", `attachment; filename="${baseName}.csv"`);
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
-    res.write("﻿" + headers.map(escape).join(",") + "\r\n"); // BOM for Excel UTF-8 detection
+    res.write("�" + headers.map(escape).join(",") + "\r\n"); // BOM for Excel UTF-8 detection
     for (let offset = 0; ; offset += EXPORT_BATCH) {
       const batch = await fetchBatch(offset);
       if (!batch.length) break;
@@ -1131,6 +1254,7 @@ router.get("/:formName/export", async (req, res) => {
   }
 });
 
+
 /* ═══════════════════════════════════════════════════════════════
    GET /api/form-data/:formName/export/sample
 ═══════════════════════════════════════════════════════════════ */
@@ -1139,19 +1263,24 @@ router.get("/:formName/export/sample", async (req, res) => {
   const { formName } = req.params;
   const { format = "csv", year } = req.query;
 
+
   if (!validateFormName(formName))
     return res.status(400).json({ success: false, message: "Invalid form name." });
+
 
   try {
     const ctx = await resolveUserContext(pool, req);
     if (!ctx.institutionId)
       return res.status(400).json({ success: false, message: "Institution ID required." });
 
+
     const result = await getSchemaFields(pool, formName, ctx.institutionId, year);
     if (!result)
       return res.status(404).json({ success: false, message: "No active schema found." });
 
+
     const { fields } = result;
+
 
     const samplePlaceholder = (field) => {
       if (field.type === "number")   return "0";
@@ -1163,15 +1292,18 @@ router.get("/:formName/export/sample", async (req, res) => {
       return "Sample Value";
     };
 
+
     const sampleRows = [1, 2].map(() => {
       const row = {};
       fields.forEach((f) => { row[f.label?.en || f.column_name] = samplePlaceholder(f); });
       return row;
     });
 
+
     const ws = XLSX.utils.json_to_sheet(sampleRows);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Sample");
+
 
     if (format === "xlsx") {
       const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
@@ -1179,6 +1311,7 @@ router.get("/:formName/export/sample", async (req, res) => {
       res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
       return res.send(buf);
     }
+
 
     const csv = XLSX.utils.sheet_to_csv(ws);
     res.setHeader("Content-Disposition", `attachment; filename="${formName}_sample.csv"`);
@@ -1190,4 +1323,6 @@ router.get("/:formName/export/sample", async (req, res) => {
   }
 });
 
+
 module.exports = router;
+

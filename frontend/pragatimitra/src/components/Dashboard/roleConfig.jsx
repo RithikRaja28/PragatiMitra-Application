@@ -42,7 +42,6 @@ import RoleAccessPage            from "../../pages/Roles/superadmin/RoleAccessPa
 /* ── Institute Admin page imports ───────────────────────────── */
 import InstitutionAdminOverviewPage     from "../../pages/Roles/institutionadmin/InstitutionAdminOverviewPage";
 import DomainDashboardPage              from "../../pages/Roles/shared/DomainDashboardPage";
-import ReportSetupPage                  from "../../pages/Roles/institutionadmin/ReportSetupPage";
 import InstituteAdminUserManagementPage from "../../pages/Roles/institutionadmin/InstituteAdminUserManagementPage";
 import InstituteAdminDepartmentPage     from "../../pages/Roles/institutionadmin/InstituteAdminDepartmentPage";
 import InstituteKpiPage                  from "../../pages/Roles/institutionadmin/InstituteKpiPage";
@@ -71,6 +70,9 @@ import DepartmentFormFillPage from "../../pages/Forms/DepartmentFormFillPage";
 import FinanceOverviewPage from "../../pages/Roles/financeofficer/FinanceOverviewPage";
 import EstimatesPage       from "../../pages/Roles/financeofficer/EstimatesPage";
 import BalanceSheetPage    from "../../pages/Roles/financeofficer/BalanceSheetPage";
+
+/* ── Contributor & Domain-shared page imports ───────────────── */
+import ContributorDashboardPage from "../../pages/Roles/contributor/ContributorDashboardPage";
 
 
 /* ── Re-export so existing imports of PlaceholderPage from this file still work ── */
@@ -319,7 +321,6 @@ export const ROLE_CONFIG = {
         group: "Reports",
         items: [
           { id: "ia-report-cycles",   label: "Report Cycles",   icon: "CalendarDays",  permission: null, slug: "report-cycles" },
-          { id: "ia-report-setup",    label: "Report Setup",    icon: "FileText",      permission: null, slug: "report-management" },
           { id: "ia-kpi",             label: "KPI Charts",      icon: "BarChart2",     permission: null, slug: "kpi-management",  subRoutes: KPI_INSTITUTE_SUB },
           { id: "ia-report-builder",  label: "Report Builder",  icon: "BookOpen",      permission: null, slug: "report-builder",  subRoutes: REPORT_BUILDER_SUB },
           { id: "ia-my-sections",     label: "My Sections",     icon: "FileEdit",      permission: null, slug: "my-sections",     subRoutes: MY_SECTIONS_SUB },
@@ -345,7 +346,6 @@ export const ROLE_CONFIG = {
       "ia-departments":       <InstituteAdminDepartmentPage />,
       "ia-form-management":   <InstituteFormManagementPage />,
       "ia-report-cycles":     <ReportCyclePage />,
-      "ia-report-setup":      <ReportSetupPage />,
       "ia-kpi":               <InstituteKpiPage />,
       "ia-report-builder":    <ReportBuilderListPage />,
       "ia-my-sections":       <MyAssignedSectionsPage />,
@@ -482,18 +482,6 @@ export const ROLE_CONFIG = {
               { path: "user-management/create", element: <DeptUsersPage /> },
               { path: "user-management/edit",   element: <DeptUsersPage /> },
             ],
-          },
-        ],
-      },
-      {
-        group: "Tasks",
-        items: [
-          {
-            id: "da-tasks",
-            label: "Task Overview",
-            icon: "ListChecks",
-            permission: null,
-            slug: "task-overview",
           },
         ],
       },
@@ -644,6 +632,12 @@ export const ROLE_CONFIG = {
   contributor: {
     navItems: [
       {
+        group: "",
+        items: [
+          { id: "c-overview", label: "Dashboard", icon: "LayoutDashboard", permission: null, slug: "overview" },
+        ],
+      },
+      {
         group: "Forms",
         items: [
           { id: "c-form-data", label: "Forms & Data Entry", icon: "ClipboardList", permission: null, slug: "form-data", subRoutes: FORM_DATA_SUB },
@@ -661,11 +655,12 @@ export const ROLE_CONFIG = {
       },
     ],
     pages: {
+      "c-overview":   <ContributorDashboardPage />,
       "c-form-data":  <FormDataPage />,
       "c-dept-forms": <DepartmentFormFillPage />,
       "c-sections":   <MyAssignedSectionsPage />,
     },
-    defaultPage: "c-form-data",
+    defaultPage: "c-overview",
     user: { name: "Contributor", initials: "CT", org: "PragatiMitra" },
   },
 
@@ -753,12 +748,12 @@ export const ROLE_CONFIG = {
     navItems: [
       { group: "", items: [{ id: "ha-overview", label: "Dashboard", icon: "LayoutDashboard", permission: null, slug: "overview" }] },
       { group: "Forms", items: [{ id: "ha-form-data", label: "Forms & Data Entry", icon: "ClipboardList", permission: null, slug: "form-data", subRoutes: FORM_DATA_SUB }] },
-      { group: "Reports", items: [{ id: "ha-report-setup", label: "Reports", icon: "FileText", permission: null, slug: "report-management" }] },
+      { group: "KPI", items: [{ id: "ha-kpi", label: "KPI Charts", icon: "BarChart2", permission: null, slug: "kpi-management", subRoutes: KPI_INSTITUTE_SUB }] },
     ],
     pages: {
-      "ha-overview":     <DomainDashboardPage domain="hospital" />,
-      "ha-form-data":    <FormDataPage />,
-      "ha-report-setup": <ReportSetupPage />,
+      "ha-overview":  <DomainDashboardPage domain="hospital" />,
+      "ha-form-data": <FormDataPage />,
+      "ha-kpi":       <InstituteKpiPage />,
     },
     defaultPage: "ha-overview",
     user: { name: "Hospital Admin", initials: "HA", org: "PragatiMitra" },
@@ -771,12 +766,12 @@ export const ROLE_CONFIG = {
     navItems: [
       { group: "", items: [{ id: "fa-overview", label: "Dashboard", icon: "LayoutDashboard", permission: null, slug: "overview" }] },
       { group: "Forms", items: [{ id: "fa-form-data", label: "Forms & Data Entry", icon: "ClipboardList", permission: null, slug: "form-data", subRoutes: FORM_DATA_SUB }] },
-      { group: "Reports", items: [{ id: "fa-report-setup", label: "Reports", icon: "FileText", permission: null, slug: "report-management" }] },
+      { group: "KPI", items: [{ id: "fa-kpi", label: "KPI Charts", icon: "BarChart2", permission: null, slug: "kpi-management", subRoutes: KPI_INSTITUTE_SUB }] },
     ],
     pages: {
-      "fa-overview":     <DomainDashboardPage domain="finance" />,
-      "fa-form-data":    <FormDataPage />,
-      "fa-report-setup": <ReportSetupPage />,
+      "fa-overview":  <DomainDashboardPage domain="finance" />,
+      "fa-form-data": <FormDataPage />,
+      "fa-kpi":       <InstituteKpiPage />,
     },
     defaultPage: "fa-overview",
     user: { name: "Finance Admin", initials: "FA", org: "PragatiMitra" },

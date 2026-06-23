@@ -1,11 +1,14 @@
 "use strict";
 
+
 const path = require("path");
 const { Translate } = require("@google-cloud/translate").v2;
+
 
 const translate = new Translate({
   keyFilename: path.join(__dirname, "../config/pragatimitra-497416-6a889477f089.json"),
 });
+
 
 // 5-second hard deadline for every Google Translate API call.
 // The callers' existing catch blocks already fall back to phonetic/original on any
@@ -23,6 +26,7 @@ function withTranslateTimeout(apiCall) {
   ]);
 }
 
+
 // Caches (all persist for process lifetime):
 //   wordCache      — individual word → Hindi   (transliteration path)
 //   phraseCache    — full phrase → Hindi        (transliteration path)
@@ -31,10 +35,12 @@ const wordCache = new Map();
 const phraseCache = new Map();
 const sentenceCache = new Map();
 
+
 // Only process pure English alphabetic text
 const PURE_TEXT_RE = /^[A-Za-z\s]+$/;
 const HAS_ALPHA_RE = /[A-Za-z]/;
 const DEVANAGARI_RE = /[ऀ-ॿ]/;
+
 
 /* ── Predefined label lookup (Hindi) ──────────────────────────────────────
    Common English form-field label words → correct Hindi equivalents.
@@ -143,6 +149,7 @@ const LABEL_MAP_HI = new Map([
   ["blood group",     "रक्त समूह"],
 ]);
 
+
 /**
  * Look up a label in the predefined Hindi map.
  * Returns the Hindi string if found, otherwise undefined.
@@ -154,11 +161,13 @@ function lookupLabel(source, language) {
   return LABEL_MAP_HI.get(source.trim().toLowerCase());
 }
 
+
 function isTranslatableText(value) {
   if (typeof value !== "string") return false;
   const t = value.trim();
   return t.length > 0 && PURE_TEXT_RE.test(t);
 }
+
 
 /* ─── Translation modes ──────────────────────────────────────────────────────
    transliterate — phonetic/script conversion, good for names & proper nouns
@@ -166,6 +175,7 @@ function isTranslatableText(value) {
    translate     — actual language translation of full sentences, good for
                    descriptions/remarks (I am walking → मैं चल रहा हूँ).
    none          — value copied verbatim (numbers, dates, emails, files, etc.).
+
 
    The mode for a field is taken from its explicit `translation_mode` when set;
    otherwise it falls back to a sensible default derived from the field type.
@@ -183,12 +193,15 @@ const DEFAULT_MODE_BY_TYPE = {
   document:    "none",
 };
 
+
 const VALID_MODES = new Set(["transliterate", "translate", "none"]);
+
 
 function resolveTranslationMode(field) {
   if (field && VALID_MODES.has(field.translation_mode)) return field.translation_mode;
   return DEFAULT_MODE_BY_TYPE[field?.type] || "transliterate";
 }
+
 
 // ─── English letter names in Devanagari (for ALL-CAPS abbreviations) ────────
 const LETTER_NAME = {
@@ -198,6 +211,7 @@ const LETTER_NAME = {
   s: "एस", t: "टी", u: "यू", v: "वी", w: "डब्ल्यू",
   x: "एक्स", y: "वाई", z: "ज़ेड",
 };
+
 
 // ─── Phonetic rules: English → Devanagari ────────────────────────────────────
 // Vowel pairs  [pattern, fullForm, matraForm]
@@ -212,6 +226,7 @@ const VOWEL_SINGLE = [
 ];
 const VOWELS = new Set("aeiou");
 
+
 // Multi-char consonant clusters (longest-first for greedy match)
 const CONSONANT_MULTI = [
   ["ksh", "क्ष"], ["shr", "श्र"], ["thr", "त्र"],
@@ -224,12 +239,14 @@ const CONSONANT_MULTI = [
   ["ff",  "फ्फ"], ["gg",  "ग्ग"],
 ];
 
+
 // Single consonants
 const CONSONANT_SINGLE = {
   b:"ब", c:"क", d:"द", f:"फ", g:"ग", h:"ह", j:"ज", k:"क", l:"ल",
   m:"म", n:"न", p:"प", q:"क", r:"र", s:"स", t:"त", v:"व", w:"व",
   x:"क्स", y:"य", z:"ज़",
 };
+
 
 /**
  * Rule-based phonetic transliteration for a single English word.
@@ -242,20 +259,25 @@ function phoneticWord(originalWord) {
     return originalWord.toLowerCase().split("").map((c) => LETTER_NAME[c] || c).join("");
   }
 
+
   let w = originalWord.toLowerCase();
+
 
   // Strip a trailing silent 'e' when preceded by a consonant  (e.g. "Vellore" → "vellor")
   if (w.length > 3 && w.endsWith("e") && !VOWELS.has(w[w.length - 2])) {
     w = w.slice(0, -1);
   }
 
+
   let output = "";
   let pos = 0;
   let prevWasConsonant = false;
 
+
   while (pos < w.length) {
     const rest = w.slice(pos);
     let matched = false;
+
 
     // ── 1. Multi-char vowel pairs ─────────────────────────────────────────
     for (const [pat, full, matra] of VOWEL_PAIRS) {
@@ -269,6 +291,7 @@ function phoneticWord(originalWord) {
     }
     if (matched) continue;
 
+
     // ── 2. Multi-char consonant clusters ─────────────────────────────────
     for (const [pat, deva] of CONSONANT_MULTI) {
       if (rest.startsWith(pat)) {
@@ -281,6 +304,7 @@ function phoneticWord(originalWord) {
       }
     }
     if (matched) continue;
+
 
     // ── 3. Single vowel ──────────────────────────────────────────────────
     const ch = rest[0];
@@ -306,8 +330,9 @@ function phoneticWord(originalWord) {
         }
       }
     }
-    
+   
     if (matched) continue;
+
 
     // ── 4. Single consonant ──────────────────────────────────────────────
     if (CONSONANT_SINGLE[ch]) {
@@ -322,8 +347,10 @@ function phoneticWord(originalWord) {
     }
   }
 
+
   return output || originalWord;
 }
+
 
 /**
  * Translate a phrase to Hindi using:
@@ -338,20 +365,25 @@ async function transliteratePhrase(phrase) {
   const trimmed = phrase.trim();
   if (phraseCache.has(trimmed)) return phraseCache.get(trimmed);
 
+
   const words = trimmed.split(/\s+/);
+
 
   // Collect unique words not yet cached
   const uncached = [...new Set(words.filter((w) => !wordCache.has(w.toLowerCase())))];
+
 
   if (uncached.length > 0) {
     // Separate abbreviations (ALL-CAPS) from normal words
     const abbrevs = uncached.filter((w) => /^[A-Z]{2,}$/.test(w));
     const normals = uncached.filter((w) => !/^[A-Z]{2,}$/.test(w));
 
+
     // Abbreviations → phonetic letter names (no API needed)
     for (const w of abbrevs) {
       wordCache.set(w.toLowerCase(), phoneticWord(w));
     }
+
 
     // Normal words → Google Translate (one batch call)
     if (normals.length > 0) {
@@ -378,10 +410,12 @@ async function transliteratePhrase(phrase) {
     }
   }
 
+
   const hindi = words.map((w) => wordCache.get(w.toLowerCase()) ?? phoneticWord(w)).join(" ");
   phraseCache.set(trimmed, hindi);
   return hindi;
 }
+
 
 /**
  * Translate a full sentence to Hindi using Google Translate as ONE phrase
@@ -400,6 +434,7 @@ async function translateSentence(sentence) {
   const trimmed = sentence.trim();
   if (sentenceCache.has(trimmed)) return sentenceCache.get(trimmed);
 
+
   try {
     const [result] = await withTranslateTimeout(translate.translate(trimmed, "hi"));
     const out = Array.isArray(result) ? result[0] : result;
@@ -411,11 +446,13 @@ async function translateSentence(sentence) {
     // fall through to phonetic
   }
 
+
   // Google Translate unavailable, timed out, or returned non-Devanagari.
   // Use word-by-word phonetic so no English ever appears in Hindi columns.
   // Not cached at sentence level: next call will retry Google Translate.
   return transliteratePhrase(trimmed);
 }
+
 
 /**
  * Convert all eligible string fields in a data row to Hindi, respecting each
@@ -440,13 +477,16 @@ async function translateRow(dataMap, fieldModes = null) {
   const result = { ...dataMap };
   const tasks = [];
 
+
   for (const [col, val] of Object.entries(dataMap)) {
     if (typeof val !== "string" || !val.trim()) continue;
     const trimmed = val.trim();
 
+
     // No fieldModes → legacy transliterate-everything behavior.
     const mode = fieldModes ? (fieldModes[col] || "transliterate") : "transliterate";
     if (mode === "none") continue;
+
 
     if (mode === "translate") {
       if (!HAS_ALPHA_RE.test(trimmed)) continue; // nothing to translate (e.g. "78")
@@ -462,16 +502,26 @@ async function translateRow(dataMap, fieldModes = null) {
           .then((hi) => { if (hi) result[col] = hi; })
       );
     } else {
-      // transliterate — keep the strict pure-text gate so values like emails,
-      // dates or mixed alphanumerics are never mangled.
-      if (!isTranslatableText(val)) continue;
-      tasks.push(transliteratePhrase(trimmed).then((hi) => { if (hi) result[col] = hi; }));
+      // transliterate — attempt phonetic conversion for any value that contains
+      // alphabetic text. Mixed values ("Roll 10", "B.Tech") are partially
+      // transliterated; pure non-text values are excluded by mode=none at the
+      // schema level and will not reach this branch. We only store the result
+      // when it actually contains Devanagari so pure-numeric or unknown-char
+      // values never overwrite with a non-script string.
+      if (!HAS_ALPHA_RE.test(val)) continue;
+      tasks.push(
+        transliteratePhrase(trimmed).then((hi) => {
+          if (hi && DEVANAGARI_RE.test(hi)) result[col] = hi;
+        })
+      );
     }
   }
+
 
   await Promise.all(tasks);
   return result;
 }
+
 
 /**
  * Enrich a schema row's field labels with translated values for the requested
@@ -492,16 +542,20 @@ async function translateRow(dataMap, fieldModes = null) {
 async function enrichSchemaLabels(schemaRow, language) {
   if (!schemaRow || language === "en") return schemaRow;
 
+
   const clone  = JSON.parse(JSON.stringify(schemaRow));
   const fields = clone.schema?.fields;
   if (!Array.isArray(fields)) return clone;
+
 
   await Promise.all(fields.map(async (field) => {
     const stored = field.label?.[language];
     if (stored && DEVANAGARI_RE.test(stored)) return; // already a valid script label
 
+
     const source = field.label?.en || field.column_name;
     if (!source) return;
+
 
     // 0. Predefined lookup — correct Hindi for common field-label words
     const fromMap = lookupLabel(source, language);
@@ -511,6 +565,7 @@ async function enrichSchemaLabels(schemaRow, language) {
       return;
     }
 
+
     // 1‑2. Google Translate (full sentence) → if it returns Devanagari, use it
     const translated = await translateSentence(source).catch(() => source);
     if (DEVANAGARI_RE.test(translated)) {
@@ -519,13 +574,17 @@ async function enrichSchemaLabels(schemaRow, language) {
       return;
     }
 
+
     // 3. Word-by-word + phonetic fallback
     const phonetic = await transliteratePhrase(source).catch(() => "");
     if (!field.label) field.label = {};
     field.label[language] = DEVANAGARI_RE.test(phonetic) ? phonetic : source;
   }));
 
+
   return clone;
 }
 
+
 module.exports = { isTranslatableText, translateRow, resolveTranslationMode, translateSentence, transliteratePhrase, enrichSchemaLabels, lookupLabel };
+
