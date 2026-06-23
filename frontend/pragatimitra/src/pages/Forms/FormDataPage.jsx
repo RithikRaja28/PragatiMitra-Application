@@ -309,20 +309,14 @@ function RecordEditPage({ fields, record, onSave, onBack, getToken, formName, fo
     setSaving(true); setError("");
     const res = await onSave(formData);
     if (res?.success) {
-      if (!isEdit) {
-        // New record added → return to the list. Prevents a second click from
-        // re-submitting the still-populated form (duplicate record).
-        onBack();
-        return;
-      }
-      // Edit: stay on the page and refresh the Hindi preview once the
-      // server-side translation has had a moment to run (async on the backend).
-      setSaving(false);
-      if (showReference) setTimeout(refetchCounterpart, 1200);
-    } else {
-      setSaving(false);
-      setError(res?.message || "Failed to save record.");
+      // Both new and updated records return to the list immediately — Update
+      // Record now matches the Create Record flow. onBack() also reloads the
+      // list so the saved changes show up right away (no manual back needed).
+      onBack();
+      return;
     }
+    setSaving(false);
+    setError(res?.message || "Failed to save record.");
   }
 
   const noFields = <div style={{ textAlign: "center", color: "#94a3b8", fontSize: 13, padding: "24px 0" }}>No schema fields configured for this form.</div>;
@@ -1241,6 +1235,14 @@ export default function FormDataPage() {
       const data = await res.json();
       if (data.success) {
         showToast(data.message);
+        // The edit page stays open after a save (see comment above), so a second
+        // Save in the same session must compare against the row's NEW updated_at —
+        // otherwise it sends the stale value from when the page first opened and
+        // false-conflicts against its own prior save. Sync editTarget from the
+        // server's RETURNING * row (data.record) before the next save can fire.
+        if (editing && data.record) {
+          setEditTarget((prev) => (prev && prev !== "new" ? { ...prev, ...data.record } : prev));
+        }
         loadRecords(formEntity);
         return { success: true, message: data.message };
       }

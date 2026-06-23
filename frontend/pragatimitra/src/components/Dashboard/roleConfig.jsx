@@ -42,6 +42,7 @@ import RoleAccessPage            from "../../pages/Roles/superadmin/RoleAccessPa
 /* ── Institute Admin page imports ───────────────────────────── */
 import InstitutionAdminOverviewPage     from "../../pages/Roles/institutionadmin/InstitutionAdminOverviewPage";
 import DomainDashboardPage              from "../../pages/Roles/shared/DomainDashboardPage";
+import DomainKpiPage                    from "../../pages/Roles/shared/DomainKpiPage";
 import InstituteAdminUserManagementPage from "../../pages/Roles/institutionadmin/InstituteAdminUserManagementPage";
 import InstituteAdminDepartmentPage     from "../../pages/Roles/institutionadmin/InstituteAdminDepartmentPage";
 import InstituteKpiPage                  from "../../pages/Roles/institutionadmin/InstituteKpiPage";
@@ -138,6 +139,18 @@ const KPI_DEPT_SUB = [
   { path: "kpi-management/create",  element: <DeptKpiPage /> },
   { path: "kpi-management/edit",    element: <DeptKpiPage /> },
   { path: "kpi-management/preview", element: <DeptKpiPage /> },
+];
+
+const KPI_HOSPITAL_SUB = [
+  { path: "kpi-management/create",  element: <DomainKpiPage domain="hospital" /> },
+  { path: "kpi-management/edit",    element: <DomainKpiPage domain="hospital" /> },
+  { path: "kpi-management/preview", element: <DomainKpiPage domain="hospital" /> },
+];
+
+const KPI_FINANCE_SUB = [
+  { path: "kpi-management/create",  element: <DomainKpiPage domain="finance" /> },
+  { path: "kpi-management/edit",    element: <DomainKpiPage domain="finance" /> },
+  { path: "kpi-management/preview", element: <DomainKpiPage domain="finance" /> },
 ];
 
 /* ══════════════════════════════════════════════════════════════
@@ -748,12 +761,12 @@ export const ROLE_CONFIG = {
     navItems: [
       { group: "", items: [{ id: "ha-overview", label: "Dashboard", icon: "LayoutDashboard", permission: null, slug: "overview" }] },
       { group: "Forms", items: [{ id: "ha-form-data", label: "Forms & Data Entry", icon: "ClipboardList", permission: null, slug: "form-data", subRoutes: FORM_DATA_SUB }] },
-      { group: "KPI", items: [{ id: "ha-kpi", label: "KPI Charts", icon: "BarChart2", permission: null, slug: "kpi-management", subRoutes: KPI_INSTITUTE_SUB }] },
+      { group: "KPI", items: [{ id: "ha-kpi", label: "KPI Charts", icon: "BarChart2", permission: null, slug: "kpi-management", subRoutes: KPI_HOSPITAL_SUB }] },
     ],
     pages: {
       "ha-overview":  <DomainDashboardPage domain="hospital" />,
       "ha-form-data": <FormDataPage />,
-      "ha-kpi":       <InstituteKpiPage />,
+      "ha-kpi":       <DomainKpiPage domain="hospital" />,
     },
     defaultPage: "ha-overview",
     user: { name: "Hospital Admin", initials: "HA", org: "PragatiMitra" },
@@ -766,12 +779,12 @@ export const ROLE_CONFIG = {
     navItems: [
       { group: "", items: [{ id: "fa-overview", label: "Dashboard", icon: "LayoutDashboard", permission: null, slug: "overview" }] },
       { group: "Forms", items: [{ id: "fa-form-data", label: "Forms & Data Entry", icon: "ClipboardList", permission: null, slug: "form-data", subRoutes: FORM_DATA_SUB }] },
-      { group: "KPI", items: [{ id: "fa-kpi", label: "KPI Charts", icon: "BarChart2", permission: null, slug: "kpi-management", subRoutes: KPI_INSTITUTE_SUB }] },
+      { group: "KPI", items: [{ id: "fa-kpi", label: "KPI Charts", icon: "BarChart2", permission: null, slug: "kpi-management", subRoutes: KPI_FINANCE_SUB }] },
     ],
     pages: {
       "fa-overview":  <DomainDashboardPage domain="finance" />,
       "fa-form-data": <FormDataPage />,
-      "fa-kpi":       <InstituteKpiPage />,
+      "fa-kpi":       <DomainKpiPage domain="finance" />,
     },
     defaultPage: "fa-overview",
     user: { name: "Finance Admin", initials: "FA", org: "PragatiMitra" },

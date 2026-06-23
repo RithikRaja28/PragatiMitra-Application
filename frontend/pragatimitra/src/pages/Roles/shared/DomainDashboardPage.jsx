@@ -141,7 +141,7 @@ export default function DomainDashboardPage({ domain: domainProp }) {
         <div style={{ fontSize: 11, color: C.textSub, marginBottom: 12 }}>
           {t("Charts from KPIs pinned to the dashboard — configure in KPI Charts", lang)}
         </div>
-        <KpiDashboardPanel scope="institute" />
+        <KpiDashboardPanel scope={domain === "hospital" || domain === "finance" ? domain : "institute"} />
       </div>
     </div>
   );
