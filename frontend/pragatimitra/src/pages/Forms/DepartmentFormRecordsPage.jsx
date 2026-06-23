@@ -6,12 +6,12 @@ import { Toast, isAuthError } from "../../components/shared/formUtils";
 import { color, Button, PageHeader, Badge, EmptyState, Modal, DataTable, Dropdown, MenuItem, MenuLabel, Input, Textarea, FieldLabel } from "../../ui";
 import { useLanguage } from "../../i18n/LanguageContext";
 import { t } from "../../i18n/translations";
+import api from "../../services/api";
 
 async function downloadDeptExport(formId, format, accessToken, year) {
-  const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
   const yq = year != null ? `&year=${year}` : "";
-  const res = await fetch(`${API_BASE}/api/department-form-data/${formId}/export?format=${format}${yq}`,
-    { headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {} });
+  const res = await api.get(`/api/department-form-data/${formId}/export?format=${format}${yq}`,
+    { token: accessToken });
   if (!res.ok) return;
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);

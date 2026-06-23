@@ -1474,10 +1474,10 @@ function buildHtml(report, sections, opts, assets = {}) {
     return `<div class="section" style="${pb}">${sectionHeaderHtml(s)}${blocks}</div>`;
   }).join("\n");
 
-  /* ── Cover image — full-page first page ── */
+  /* ── Cover image — full-page first page (placed OUTSIDE page-wrapper) ── */
   const coverSrc = coverDataUrl || (report.cover_image_url ? escHtml(report.cover_image_url) : null);
   const coverHtml = coverSrc
-    ? `<div style="page-break-after:always;margin:-72px -72px 72px;padding:0;height:297mm;overflow:hidden;line-height:0;">
+    ? `<div class="cover-page" style="page-break-after:always;width:100%;height:100vh;overflow:hidden;line-height:0;margin:0;padding:0;">
         <img src="${coverSrc}" style="width:100%;height:100%;object-fit:cover;display:block;">
        </div>`
     : "";
@@ -1584,9 +1584,11 @@ hr.divider { border: none; border-top: 1px solid #9ca3af; margin: 10px 0 12px; }
 .file-blk a { color: #1d4ed8; text-decoration: underline; }
 
 /* ── Page/print ── */
+@page :first { margin: 0; size: A4 portrait; }
 @page { margin: 20mm 25mm; size: A4 portrait; }
 @media print {
   body { background: white; padding: 0; }
+  .cover-page { width: 100vw !important; height: 100vh !important; margin: 0 !important; }
   .page-wrapper { box-shadow: none; margin: 0; padding: 0; }
   .section[style*="page-break-before"] { page-break-before: always; }
   .toc-page { page-break-after: always; }
@@ -1613,8 +1615,8 @@ body, .page-wrapper,
 </head>
 <body style="position:relative;">
 ${bgOverlayHtml}
-<div class="page-wrapper" style="position:relative;z-index:1;">
 ${coverHtml}
+<div class="page-wrapper" style="position:relative;z-index:1;">
 ${titleHtml}
 ${tocHtml}
 ${contentHtml}

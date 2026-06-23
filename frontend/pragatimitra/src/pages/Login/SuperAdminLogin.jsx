@@ -3,8 +3,7 @@ import { useState, useEffect } from "react";
 import { useNavigate }         from "react-router-dom";
 import { useAuth, ROLE_ROUTES } from "../../store/AuthContext";
 import { Mail, Lock, Eye, EyeOff, AlertCircle, ShieldCheck, Loader2 } from "lucide-react";
-
-const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
+import { authApi } from "../../services";
 
 function injectCSS(id, css) {
   if (typeof document === "undefined") return;
@@ -139,12 +138,7 @@ export default function SuperAdminLogin() {
     setError("");
 
     try {
-      const res  = await fetch(`${API_BASE}/api/auth/super-admin/login`, {
-        method:      "POST",
-        credentials: "include",
-        headers:     { "Content-Type": "application/json" },
-        body:        JSON.stringify({ email: email.trim().toLowerCase(), password }),
-      });
+      const res  = await authApi.superAdminLogin({ email: email.trim().toLowerCase(), password });
       const data = await res.json();
 
       if (!res.ok || !data.success) {

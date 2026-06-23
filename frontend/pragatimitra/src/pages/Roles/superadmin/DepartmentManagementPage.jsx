@@ -14,8 +14,6 @@ import { Button, Badge, EmptyState, DataTable, Dropdown, MenuItem, MenuLabel } f
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { t } from "../../../i18n/translations";
 
-const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
-
 /* ─── Department Form (create + edit) ───────────────────────────
    Rendered as a full screen instead of an overlay modal.
    mode === 'create' → shows institution selector, no status field

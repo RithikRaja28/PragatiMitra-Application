@@ -9,12 +9,12 @@ import PageHeader from "../../../ui/PageHeader";
 const SLUG = "review-queue";
 
 const C = {
-  primary:   "#1d4ed8",
+  primary:   "#2563eb",
   primaryLt: "#dbeafe",
   text:      "#0f172a",
   textSub:   "#64748b",
-  border:    "rgba(29,78,216,0.12)",
-  bg:        "#f0f4ff",
+  border:    "rgba(37,99,235,0.12)",
+  bg:        "#f0f6ff",
   surface:   "#ffffff",
 };
 

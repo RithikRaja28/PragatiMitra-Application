@@ -5,8 +5,7 @@ import PageHeader from "../../../components/shared/PageHeader";
 import { tableCardStyle } from "../../../components/shared/ui";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { t } from "../../../i18n/translations";
-
-const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+import api from "../../../services/api";
 
 /* ═══════════════════════════════════════════════════════════════
    NAVIGATION CONFIG — category groups + per-entity chips
@@ -894,7 +893,7 @@ export default function AuditLogsPage() {
 
   useEffect(() => {
     if (!accessToken) return;
-    fetch(`${BASE_URL}/audit-logs/summary`, { credentials: "include", headers: authHeaders() })
+    api.get("/api/audit-logs/summary", { credentials: "include", headers: authHeaders() })
       .then((r) => r.json()).then((r) => r.success && setSummary(r.data)).catch(() => {});
   }, [accessToken, authHeaders]);
 
@@ -910,7 +909,7 @@ export default function AuditLogsPage() {
         if (catEntities.length > 0) params.set("entity_types", catEntities.map((e) => e.key).join(","));
       }
       if (debouncedSearch) params.set("search", debouncedSearch);
-      const res = await fetch(`${BASE_URL}/audit-logs?${params}`, { credentials: "include", headers: authHeaders() });
+      const res = await api.get(`/api/audit-logs?${params}`, { credentials: "include", headers: authHeaders() });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const result = await res.json();
       if (result.success) { setLogs(result.data); setTotalPages(result.pagination.totalPages); setTotal(result.pagination.total); }

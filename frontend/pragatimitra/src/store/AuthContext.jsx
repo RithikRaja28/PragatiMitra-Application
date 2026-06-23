@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useEffect, useRef, useCallback } from "react";
 import { getRoleDefaultSlug } from "../components/Dashboard/roleConfig";
+import { authApi } from "../services";
 
-const API_BASE         = import.meta.env.VITE_API_URL || "http://localhost:5000";
 const IDLE_TIMEOUT     = 60 * 60 * 1000;
 const REFRESH_INTERVAL = 14 * 60 * 1000;
 
@@ -56,10 +56,7 @@ export function AuthProvider({ children }) {
     clearTimeout(idleTimer.current);
     clearInterval(refreshTimer.current);
     if (message) setMsg(message);
-    fetch(`${API_BASE}/api/auth/logout`, {
-      method: "POST",
-      credentials: "include",
-    }).catch(() => {});
+    authApi.logout().catch(() => {});
   }, []);
 
   const resetIdle = useCallback(() => {
@@ -77,10 +74,7 @@ export function AuthProvider({ children }) {
 
   const refreshAccess = useCallback(async () => {
     try {
-      const res  = await fetch(`${API_BASE}/api/auth/refresh`, {
-        method:      "POST",
-        credentials: "include",
-      });
+      const res  = await authApi.refresh();
       const data = await res.json();
       if (!data.success) {
         logout(data.expired ? "Your session expired. Please sign in again." : "");
@@ -103,7 +97,7 @@ export function AuthProvider({ children }) {
       catch { return null; }
     })();
 
-    fetch(`${API_BASE}/api/auth/me`, { credentials: "include" })
+    authApi.me()
       .then((r) => r.json())
       .then((data) => {
         if (!data.success) {

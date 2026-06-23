@@ -1,8 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate }         from "react-router-dom";
 import { Mail, Lock, Eye, EyeOff, AlertCircle, ShieldCheck, Loader2, User, KeyRound, CheckCircle2 } from "lucide-react";
-
-const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
+import { authApi } from "../../services";
 
 function injectCSS(id, css) {
   if (typeof document === "undefined") return;
@@ -135,15 +134,11 @@ export default function SuperAdminSignup() {
     setError("");
 
     try {
-      const res  = await fetch(`${API_BASE}/api/auth/super-admin/register`, {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({
-          fullName: fullName.trim(),
-          email:    email.trim().toLowerCase(),
-          password,
-          setupKey,
-        }),
+      const res  = await authApi.superAdminRegister({
+        fullName: fullName.trim(),
+        email:    email.trim().toLowerCase(),
+        password,
+        setupKey,
       });
       const data = await res.json();
 

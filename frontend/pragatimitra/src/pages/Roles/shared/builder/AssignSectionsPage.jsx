@@ -11,12 +11,12 @@ async function apiJson(apiFetch, path, opts) {
 }
 
 const C = {
-  primary: "#4f8ef7", primaryDark: "#1565c0", primaryLt: "#e8f0fe",
-  success: "#43a047", successLt: "#e8f5e9",
-  danger: "#e53935", dangerLt: "#fef2f2",
-  warning: "#f9a825", warningLt: "#fffde7",
-  text: "#1a1a2e", textSub: "#555", border: "#e0e4ea",
-  bg: "#f7f8fa", surface: "#fff",
+  primary: "#2563eb", primaryDark: "#1d4ed8", primaryLt: "#dbeafe",
+  success: "#16a34a", successLt: "#dcfce7",
+  danger: "#dc2626", dangerLt: "#fef2f2",
+  warning: "#d97706", warningLt: "#fef3c7",
+  text: "#111827", textSub: "#6b7280", border: "#e5e7eb",
+  bg: "#f8fafc", surface: "#fff",
 };
 
 const STATUS_META = {
@@ -31,12 +31,14 @@ const STATUS_META = {
 
 const inp = {
   width: "100%", boxSizing: "border-box", padding: "8px 12px", fontSize: 13,
-  border: `1px solid ${C.border}`, borderRadius: 7, outline: "none",
+  border: `1.5px solid ${C.border}`, borderRadius: 8, outline: "none",
   fontFamily: "inherit", background: C.surface, color: C.text,
 };
 const primaryBtn = {
-  padding: "8px 18px", background: C.primary, color: "#fff",
-  border: "none", borderRadius: 7, cursor: "pointer", fontSize: 13, fontWeight: 600,
+  display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6,
+  padding: "0 18px", height: 38,
+  background: C.primary, color: "#fff",
+  border: "none", borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: 600,
 };
 
 /* Build recursive tree from flat sections array */
@@ -61,10 +63,11 @@ function flattenTree(nodes, depth = 0) {
 export default function AssignSectionsPage({ reportId, onBack }) {
   const { apiFetch }       = useApi();
   const { user: authUser } = useAuth();
-  const [flatSections, setFlatSections] = useState([]); // raw flat list from API
-  const [tree,         setTree]         = useState([]); // recursive tree
+  const [flatSections, setFlatSections] = useState([]);
+  const [tree,         setTree]         = useState([]);
   const [users,        setUsers]        = useState([]);
   const [departments,  setDepartments]  = useState([]);
+  const [roles,        setRoles]        = useState([]);
   const [selected,     setSelected]     = useState(new Set());
   const [assignments,  setAssignments]  = useState({});
   const [loading,      setLoading]      = useState(true);
@@ -72,9 +75,11 @@ export default function AssignSectionsPage({ reportId, onBack }) {
   const [busy,         setBusy]         = useState(false);
 
   /* assignment form state */
+  const [assignType,   setAssignType]   = useState("user");  // "user"|"role"|"dept"
   const [assignUserId, setAssignUserId] = useState("");
   const [assignRole,   setAssignRole]   = useState("CONTRIBUTOR");
   const [assignDeptId, setAssignDeptId] = useState("");
+  const [assignRoleName, setAssignRoleName] = useState("");
   const [assignDue,    setAssignDue]    = useState("");
   const [userSearch,   setUserSearch]   = useState("");
   const [activeTab,    setActiveTab]    = useState("user");
@@ -87,10 +92,11 @@ export default function AssignSectionsPage({ reportId, onBack }) {
       const instId = authUser?.institutionId || authUser?.institution_id || "";
       const deptUrl = instId ? `/api/departments?institution_id=${instId}` : "/api/departments";
 
-      const [repRes, userRes, deptRes] = await Promise.all([
+      const [repRes, userRes, deptRes, roleRes] = await Promise.all([
         apiJson(apiFetch, `/api/builder/reports/${reportId}`),
         apiJson(apiFetch, "/api/users"),
         apiJson(apiFetch, deptUrl),
+        apiJson(apiFetch, "/api/roles").catch(() => ({ data: [] })),
       ]);
 
       const raw = repRes.data?.sections || [];
@@ -98,6 +104,7 @@ export default function AssignSectionsPage({ reportId, onBack }) {
       setTree(buildTree(raw));
       setUsers(userRes.users || userRes.data || []);
       setDepartments(deptRes.data || []);
+      setRoles(roleRes.data || []);
     } catch {
       setToast({ type: "error", message: "Failed to load data" });
     } finally {
@@ -144,7 +151,9 @@ export default function AssignSectionsPage({ reportId, onBack }) {
   /* ── bulk assign ── */
   const handleBulkAssign = async () => {
     if (!selected.size) return setToast({ type: "error", message: "Select at least one section" });
-    if (!assignUserId && !assignDeptId) return setToast({ type: "error", message: "Select a user or department" });
+    if (assignType === "user"  && !assignUserId)   return setToast({ type: "error", message: "Select a user" });
+    if (assignType === "role"  && !assignRoleName) return setToast({ type: "error", message: "Select a role" });
+    if (assignType === "dept"  && !assignDeptId)   return setToast({ type: "error", message: "Select a department" });
     setBusy(true);
     try {
       await apiJson(apiFetch, `/api/builder/assignments/report/${reportId}/bulk`, {
@@ -152,15 +161,16 @@ export default function AssignSectionsPage({ reportId, onBack }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           section_ids:   [...selected],
-          user_id:       assignUserId || undefined,
-          department_id: assignDeptId || undefined,
+          user_id:       assignType === "user" ? assignUserId   : undefined,
+          department_id: assignType === "dept" ? assignDeptId   : undefined,
+          role_name:     assignType === "role" ? assignRoleName : undefined,
           role:          assignRole,
-          due_at:        assignDue   || undefined,
+          due_at:        assignDue || undefined,
         }),
       });
       setToast({ type: "success", message: `Assigned to ${selected.size} section(s)` });
       setSelected(new Set());
-      setAssignUserId(""); setAssignDeptId(""); setAssignDue(""); setUserSearch("");
+      setAssignUserId(""); setAssignDeptId(""); setAssignRoleName(""); setAssignDue(""); setUserSearch("");
       if (selSection) await loadAssignments(selSection);
     } catch (err) {
       setToast({ type: "error", message: err.message || "Assignment failed" });
@@ -174,6 +184,8 @@ export default function AssignSectionsPage({ reportId, onBack }) {
     try {
       if (type === "user") {
         await apiJson(apiFetch, `/api/builder/assignments/${assignId}`, { method: "DELETE" });
+      } else if (type === "workflow") {
+        await apiJson(apiFetch, `/api/builder/assignments/workflow/${assignId}`, { method: "DELETE" });
       } else {
         const [secId, deptId] = assignId.split("::");
         await apiJson(apiFetch, `/api/builder/assignments/section/${secId}/departments/${deptId}`, { method: "DELETE" });
@@ -199,22 +211,57 @@ export default function AssignSectionsPage({ reportId, onBack }) {
     : null;
 
   if (loading) return (
-    <div style={{ minHeight: "60vh", display: "flex", alignItems: "center", justifyContent: "center",
-                  fontFamily: "'Plus Jakarta Sans', sans-serif", color: C.textSub }}>
-      Loading assignment data…
+    <div style={{ minHeight: "60vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+                  fontFamily: "'Plus Jakarta Sans', sans-serif", gap: 12 }}>
+      <div style={{ width: 32, height: 32, border: "3px solid #e2e8f0", borderTopColor: "#2563eb", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      <span style={{ fontSize: 13, color: C.textSub }}>Loading assignment data…</span>
     </div>
   );
 
   return (
     <div style={{ minHeight: "100vh", background: "transparent", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       {toast && <Toast {...toast} onClose={() => setToast(null)} />}
 
       {/* header */}
-      <header style={{ background: C.surface, borderBottom: `1px solid ${C.border}`,
-                       padding: "16px 32px", display: "flex", alignItems: "center", gap: 16 }}>
-        <button style={{ background: "none", border: "none", cursor: "pointer", fontSize: 16, color: C.primary }} onClick={onBack}>←</button>
-        <div style={{ flex: 1, fontSize: 18, fontWeight: 700, color: C.text }}>Assign Sections</div>
-        <div style={{ fontSize: 12, color: C.textSub }}>{selected.size} section(s) selected</div>
+      <header style={{
+        background: C.surface, borderBottom: `1px solid ${C.border}`,
+        padding: "14px 32px", display: "flex", alignItems: "center", gap: 14,
+      }}>
+        <button onClick={onBack} style={{
+          display: "inline-flex", alignItems: "center", gap: 6,
+          padding: "7px 14px", borderRadius: 8,
+          border: "1.5px solid #e5e7eb", background: "#fff",
+          fontSize: 13, fontWeight: 600, color: "#374151", cursor: "pointer", flexShrink: 0,
+        }}
+          onMouseEnter={e => { e.currentTarget.style.background = "#f3f4f6"; e.currentTarget.style.borderColor = "#d1d5db"; }}
+          onMouseLeave={e => { e.currentTarget.style.background = "#fff";    e.currentTarget.style.borderColor = "#e5e7eb"; }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M19 12H5M12 5l-7 7 7 7"/>
+          </svg>
+          Back
+        </button>
+        <div style={{ width: 1, height: 28, background: C.border, flexShrink: 0 }} />
+        <div style={{ flex: 1 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 1 }}>
+            <span style={{ fontSize: 11, color: C.textSub }}>Report Builder</span>
+            <span style={{ fontSize: 11, color: "#d1d5db" }}>›</span>
+            <span style={{ fontSize: 11, color: C.primary, fontWeight: 600 }}>Assign Sections</span>
+          </div>
+          <div style={{ fontSize: 16, fontWeight: 700, color: C.text }}>Assign Sections</div>
+        </div>
+        {selected.size > 0 && (
+          <div style={{
+            display: "inline-flex", alignItems: "center", gap: 6,
+            padding: "5px 12px", borderRadius: 20,
+            background: C.primaryLt, color: C.primary,
+            fontSize: 12, fontWeight: 700,
+          }}>
+            <span style={{ width: 6, height: 6, borderRadius: "50%", background: C.primary }} />
+            {selected.size} section{selected.size !== 1 ? "s" : ""} selected
+          </div>
+        )}
       </header>
 
       <main style={{ maxWidth: 1200, margin: "0 auto", padding: "28px 24px", display: "flex", gap: 24 }}>
@@ -271,7 +318,8 @@ export default function AssignSectionsPage({ reportId, onBack }) {
                   <Tabs active={activeTab} onChange={setActiveTab}
                     tabs={[
                       { id: "user", label: `Users (${assignments[selSection]?.users?.length || 0})` },
-                      { id: "dept", label: `Departments (${assignments[selSection]?.departments?.length || 0})` },
+                      { id: "role", label: `Roles (${assignments[selSection]?.roles?.length || 0})` },
+                      { id: "dept", label: `Depts (${assignments[selSection]?.departments?.length || 0})` },
                     ]} />
 
                   {activeTab === "user" && (
@@ -282,6 +330,19 @@ export default function AssignSectionsPage({ reportId, onBack }) {
                       {assignments[selSection]?.users?.map(a => (
                         <AssignmentRow key={a.id} name={a.full_name} email={a.email} role={a.role}
                           due={a.due_at} onRemove={() => removeAssignment(a.id, "user")} />
+                      ))}
+                    </div>
+                  )}
+
+                  {activeTab === "role" && (
+                    <div style={{ marginTop: 12 }}>
+                      {!assignments[selSection]?.roles?.length && (
+                        <div style={{ fontSize: 12, color: "#bbb", textAlign: "center", padding: "20px 0" }}>No role assignments</div>
+                      )}
+                      {assignments[selSection]?.roles?.map(r => (
+                        <AssignmentRow key={r.id} name={r.role_name} role="ROLE"
+                          due={r.due_at}
+                          onRemove={() => removeAssignment(r.id, "workflow")} />
                       ))}
                     </div>
                   )}
@@ -307,60 +368,100 @@ export default function AssignSectionsPage({ reportId, onBack }) {
         {/* ── RIGHT: assignment form ── */}
         <div style={{ width: 320, flexShrink: 0 }}>
           <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: 20 }}>
-            <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 16 }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 14 }}>
               Bulk Assign
             </div>
 
+            {/* Assign type switcher */}
             <div style={{ marginBottom: 14 }}>
-              <label style={lbl}>User</label>
-              <input style={inp} placeholder="Search user…" value={userSearch}
-                onChange={e => { setUserSearch(e.target.value); if (!e.target.value) setAssignUserId(""); }} />
-              {userSearch && (
-                <div style={{ maxHeight: 180, overflowY: "auto", border: `1px solid ${C.border}`, borderRadius: 6, marginTop: 4 }}>
-                  {filteredUsers.slice(0, 12).map(u => (
-                    <div key={u.id}
-                      style={{ padding: "7px 10px", cursor: "pointer", fontSize: 12, color: C.text,
-                               background: assignUserId === u.id ? C.primaryLt : "transparent",
-                               borderBottom: `1px solid ${C.border}` }}
-                      onClick={() => { setAssignUserId(u.id); setUserSearch(u.full_name); }}>
-                      <div style={{ fontWeight: 600 }}>{u.full_name}</div>
-                      <div style={{ color: C.textSub, fontSize: 11 }}>{u.email}</div>
+              <label style={lbl}>Assign By</label>
+              <div style={{ display: "flex", gap: 4 }}>
+                {[["user","👤 User"],["role","🏷 Role"],["dept","🏢 Dept"]].map(([t, label]) => (
+                  <button key={t} type="button"
+                    onClick={() => { setAssignType(t); setAssignUserId(""); setAssignRoleName(""); setAssignDeptId(""); setUserSearch(""); }}
+                    style={{ flex: 1, padding: "6px 4px", border: "none", borderRadius: 7, cursor: "pointer", fontSize: 11, fontWeight: 700,
+                             background: assignType === t ? C.primary : "#f1f5f9", color: assignType === t ? "#fff" : C.textSub }}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* USER fields */}
+            {assignType === "user" && (
+              <>
+                <div style={{ marginBottom: 14 }}>
+                  <label style={lbl}>User</label>
+                  <input style={inp} placeholder="Search user…" value={userSearch}
+                    onChange={e => { setUserSearch(e.target.value); if (!e.target.value) setAssignUserId(""); }} />
+                  {userSearch && (
+                    <div style={{ maxHeight: 180, overflowY: "auto", border: `1px solid ${C.border}`, borderRadius: 6, marginTop: 4 }}>
+                      {filteredUsers.slice(0, 12).map(u => (
+                        <div key={u.id}
+                          style={{ padding: "7px 10px", cursor: "pointer", fontSize: 12, color: C.text,
+                                   background: assignUserId === u.id ? C.primaryLt : "transparent",
+                                   borderBottom: `1px solid ${C.border}` }}
+                          onClick={() => { setAssignUserId(u.id); setUserSearch(u.full_name); }}>
+                          <div style={{ fontWeight: 600 }}>{u.full_name}</div>
+                          <div style={{ color: C.textSub, fontSize: 11 }}>{u.email}</div>
+                        </div>
+                      ))}
+                      {filteredUsers.length === 0 && (
+                        <div style={{ padding: "10px", fontSize: 12, color: C.textSub, textAlign: "center" }}>No users found</div>
+                      )}
                     </div>
-                  ))}
-                  {filteredUsers.length === 0 && (
-                    <div style={{ padding: "10px", fontSize: 12, color: C.textSub, textAlign: "center" }}>No users found</div>
+                  )}
+                  {assignUserId && (
+                    <div style={{ marginTop: 4, fontSize: 11, color: C.primary }}>
+                      ✓ {users.find(u => u.id === assignUserId)?.full_name || "User selected"}
+                      <button onClick={() => { setAssignUserId(""); setUserSearch(""); }}
+                        style={{ marginLeft: 6, background: "none", border: "none", cursor: "pointer", color: C.danger, fontSize: 11 }}>✕</button>
+                    </div>
                   )}
                 </div>
-              )}
-              {assignUserId && (
-                <div style={{ marginTop: 4, fontSize: 11, color: C.primary }}>
-                  ✓ {filteredUsers.find(u => u.id === assignUserId)?.full_name || "User selected"}
-                  <button onClick={() => { setAssignUserId(""); setUserSearch(""); }}
-                    style={{ marginLeft: 6, background: "none", border: "none", cursor: "pointer", color: C.danger, fontSize: 11 }}>✕</button>
+                <div style={{ marginBottom: 14 }}>
+                  <label style={lbl}>Section Role</label>
+                  <select style={inp} value={assignRole} onChange={e => setAssignRole(e.target.value)}>
+                    <option value="OWNER">Owner</option>
+                    <option value="CONTRIBUTOR">Contributor</option>
+                    <option value="REVIEWER">Reviewer</option>
+                  </select>
                 </div>
-              )}
-            </div>
+              </>
+            )}
 
-            <div style={{ marginBottom: 14 }}>
-              <label style={lbl}>Role</label>
-              <select style={inp} value={assignRole} onChange={e => setAssignRole(e.target.value)}>
-                <option value="OWNER">Owner</option>
-                <option value="CONTRIBUTOR">Contributor</option>
-                <option value="REVIEWER">Reviewer</option>
-              </select>
-            </div>
+            {/* ROLE fields */}
+            {assignType === "role" && (
+              <div style={{ marginBottom: 14 }}>
+                <label style={lbl}>System Role</label>
+                <select style={inp} value={assignRoleName} onChange={e => setAssignRoleName(e.target.value)}>
+                  <option value="">— Select a role —</option>
+                  {roles.map(r => (
+                    <option key={r.id || r.name} value={r.name}>{r.display_name || r.name}</option>
+                  ))}
+                </select>
+                {assignRoleName && (
+                  <div style={{ marginTop: 4, fontSize: 11, color: C.textSub }}>
+                    All members with role <strong>{assignRoleName}</strong> will access selected sections.
+                  </div>
+                )}
+              </div>
+            )}
 
-            <div style={{ marginBottom: 14 }}>
-              <label style={lbl}>Department (optional)</label>
-              <select style={inp} value={assignDeptId} onChange={e => setAssignDeptId(e.target.value)}>
-                <option value="">— None —</option>
-                {departments.map(d => (
-                  <option key={d.department_id || d.id} value={d.department_id || d.id}>
-                    {d.name || d.department_name}
-                  </option>
-                ))}
-              </select>
-            </div>
+            {/* DEPT fields */}
+            {assignType === "dept" && (
+              <div style={{ marginBottom: 14 }}>
+                <label style={lbl}>Department</label>
+                <select style={inp} value={assignDeptId} onChange={e => setAssignDeptId(e.target.value)}>
+                  <option value="">— Select department —</option>
+                  {departments.map(d => (
+                    <option key={d.department_id || d.id} value={d.department_id || d.id}>
+                      {d.name || d.department_name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             <div style={{ marginBottom: 20 }}>
               <label style={lbl}>Due Date (optional)</label>
@@ -368,10 +469,25 @@ export default function AssignSectionsPage({ reportId, onBack }) {
             </div>
 
             <button
-              style={{ ...primaryBtn, width: "100%", opacity: (busy || (!assignUserId && !assignDeptId) || !selected.size) ? 0.55 : 1 }}
-              disabled={busy || (!assignUserId && !assignDeptId) || !selected.size}
+              style={{
+                ...primaryBtn, width: "100%", height: 40,
+                opacity: (busy || !selected.size) ? 0.6 : 1,
+                cursor: (busy || !selected.size) ? "not-allowed" : "pointer",
+                boxShadow: selected.size ? "0 2px 8px rgba(37,99,235,0.22)" : "none",
+              }}
+              disabled={busy || !selected.size}
               onClick={handleBulkAssign}>
-              {busy ? "Assigning…" : `Assign to ${selected.size || 0} Section(s)`}
+              {busy ? (
+                <>
+                  <div style={{ width: 13, height: 13, border: "2px solid rgba(255,255,255,0.35)", borderTopColor: "#fff", borderRadius: "50%", animation: "spin .7s linear infinite" }} />
+                  Assigning…
+                </>
+              ) : (
+                <>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                  Assign to {selected.size || 0} Section{selected.size !== 1 ? "s" : ""}
+                </>
+              )}
             </button>
 
             {!selected.size && (
@@ -507,8 +623,8 @@ function SectionTreeNode({ node, depth, selected, onToggle, onToggleSubtree, sel
 
 /* ── helpers ─────────────────────────────────────────────────────────────── */
 const lbl = {
-  display: "block", fontSize: 11, fontWeight: 700, color: C.textSub,
-  textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4,
+  display: "block", fontSize: 12, fontWeight: 600, color: "#374151",
+  marginBottom: 5,
 };
 
 function AssignmentRow({ name, email, role, due, onRemove }) {
@@ -523,8 +639,13 @@ function AssignmentRow({ name, email, role, due, onRemove }) {
       <span style={{ padding: "2px 7px", borderRadius: 5, fontSize: 10, fontWeight: 700,
                      background: C.primaryLt, color: C.primary }}>{role}</span>
       <button onClick={onRemove}
-        style={{ background: "none", border: "none", cursor: "pointer", color: C.danger, fontSize: 14, padding: "0 4px" }}>
-        ×
+        style={{ background: "none", border: "none", cursor: "pointer", color: "#cbd5e1", padding: "3px 4px", borderRadius: 5, lineHeight: 0 }}
+        onMouseEnter={e => e.currentTarget.style.color = C.danger}
+        onMouseLeave={e => e.currentTarget.style.color = "#cbd5e1"}>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/>
+          <path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/>
+        </svg>
       </button>
     </div>
   );

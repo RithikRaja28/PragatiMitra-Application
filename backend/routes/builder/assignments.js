@@ -38,7 +38,7 @@ router.get("/section/:sectionId", async (req, res) => {
     const { sectionId } = req.params;
     if (!isUUID(sectionId)) return res.status(400).json({ success: false, message: "Invalid section id" });
 
-    const [userRes, deptRes] = await Promise.all([
+    const [userRes, deptRes, roleRes] = await Promise.all([
       pool.query(
         `SELECT a.*, u.full_name, u.email
          FROM public.section_assignments a
@@ -53,16 +53,24 @@ router.get("/section/:sectionId", async (req, res) => {
          WHERE sda.section_id = $1
          ORDER BY d.name`, [sectionId]
       ),
+      pool.query(
+        `SELECT swa.id, swa.role_name, swa.due_at, swa.assigned_at
+         FROM public.section_workflow_assignments swa
+         WHERE swa.section_id = $1
+           AND swa.assignee_type = 'ROLE'
+           AND swa.workflow_step_id IS NULL
+         ORDER BY swa.role_name`, [sectionId]
+      ),
     ]);
 
-    return res.json({ success: true, data: { users: userRes.rows, departments: deptRes.rows } });
+    return res.json({ success: true, data: { users: userRes.rows, departments: deptRes.rows, roles: roleRes.rows } });
   } catch (err) {
     logger.error("assignments GET /section/:id", { ...getLogContext(req), err: err.message });
     return res.status(500).json({ success: false, message: "Failed to list assignments" });
   }
 });
 
-/* ── POST /section/:sectionId — assign single user ──────────────────────────── */
+/* ── POST /section/:sectionId — assign user / role / department ──────────────── */
 router.post(
   "/section/:sectionId",
   requireRole(["super_admin", "institute_admin"]),
@@ -70,18 +78,64 @@ router.post(
     const pool = req.app.locals.pool;
     try {
       const { sectionId } = req.params;
-      const { user_id, role = "CONTRIBUTOR", due_at } = req.body;
+      const { assignee_type = "USER", user_id, role = "CONTRIBUTOR", due_at, role_name, department_id } = req.body;
 
       if (!isUUID(sectionId)) return res.status(400).json({ success: false, message: "Invalid section id" });
-      if (!isUUID(user_id))   return res.status(400).json({ success: false, message: "user_id (UUID) required" });
+
+      const sr = await pool.query(
+        `SELECT id, report_id FROM public.report_sections WHERE id = $1 AND deleted_at IS NULL`, [sectionId]
+      );
+      if (!sr.rows.length) return res.status(404).json({ success: false, message: "Section not found" });
+      const reportId = sr.rows[0].report_id;
+
+      /* ── ROLE assignment ── */
+      if (assignee_type === "ROLE") {
+        if (!role_name?.trim()) return res.status(400).json({ success: false, message: "role_name required" });
+        const { rows } = await pool.query(
+          `INSERT INTO public.section_workflow_assignments
+             (report_id, section_id, workflow_step_id, assignee_type, role_name, due_at, assigned_by)
+           VALUES ($1,$2,NULL,'ROLE',$3,$4,$5)
+           ON CONFLICT ON CONSTRAINT section_workflow_assignments_section_id_workflow_step_id_as_key
+           DO UPDATE SET due_at = EXCLUDED.due_at, assigned_by = EXCLUDED.assigned_by
+           RETURNING id, role_name, due_at, assigned_at`,
+          [reportId, sectionId, role_name.trim(), due_at || null, req.user.userId]
+        );
+        return res.status(201).json({ success: true, data: rows[0] });
+      }
+
+      /* ── DEPARTMENT assignment ── */
+      if (assignee_type === "DEPARTMENT") {
+        if (!isUUID(department_id)) return res.status(400).json({ success: false, message: "department_id (UUID) required" });
+        // Insert into legacy section_department_assignments (for display) AND section_workflow_assignments (for My Sections)
+        const [sdaRows] = await Promise.all([
+          pool.query(
+            `INSERT INTO public.section_department_assignments (section_id, department_id, due_at, assigned_by)
+             VALUES ($1,$2,$3,$4)
+             ON CONFLICT (section_id, department_id) DO UPDATE SET due_at=EXCLUDED.due_at, assigned_by=EXCLUDED.assigned_by
+             RETURNING *`,
+            [sectionId, department_id, due_at || null, req.user.userId]
+          ),
+          pool.query(
+            `INSERT INTO public.section_workflow_assignments
+               (report_id, section_id, workflow_step_id, assignee_type, department_id, due_at, assigned_by)
+             VALUES ($1,$2,NULL,'DEPARTMENT',$3,$4,$5)
+             ON CONFLICT ON CONSTRAINT section_workflow_assignments_section_id_workflow_step_id_as_key
+             DO UPDATE SET due_at = EXCLUDED.due_at, assigned_by = EXCLUDED.assigned_by`,
+            [reportId, sectionId, department_id, due_at || null, req.user.userId]
+          ),
+        ]);
+        const d = await pool.query(
+          `SELECT name AS department_name FROM public.departments WHERE department_id = $1`, [department_id]
+        );
+        return res.status(201).json({ success: true, data: { ...sdaRows.rows[0], department_name: d.rows[0]?.department_name } });
+      }
+
+      /* ── USER assignment (default) ── */
+      if (!isUUID(user_id)) return res.status(400).json({ success: false, message: "user_id (UUID) required" });
       if (!VALID_ROLES.includes(role.toUpperCase()))
         return res.status(400).json({ success: false, message: `role must be one of: ${VALID_ROLES.join(", ")}` });
 
-      const [sr, ur] = await Promise.all([
-        pool.query(`SELECT id FROM public.report_sections WHERE id = $1 AND deleted_at IS NULL`, [sectionId]),
-        pool.query(`SELECT id, full_name FROM public.users WHERE id = $1`, [user_id]),
-      ]);
-      if (!sr.rows.length) return res.status(404).json({ success: false, message: "Section not found" });
+      const ur = await pool.query(`SELECT id, full_name FROM public.users WHERE id = $1`, [user_id]);
       if (!ur.rows.length) return res.status(404).json({ success: false, message: "User not found" });
 
       const { rows } = await pool.query(
@@ -95,11 +149,9 @@ router.post(
         [sectionId, user_id, role.toUpperCase(), due_at || null, req.user.userId]
       );
 
-      // Notify the assigned user
       await pool.query(
         `INSERT INTO public.notifications (user_id, type, title, body, entity_type, entity_id)
-         VALUES ($1, 'SECTION_ASSIGNED', 'Section assigned to you',
-                 $2, 'SECTION', $3)`,
+         VALUES ($1, 'SECTION_ASSIGNED', 'Section assigned to you', $2, 'SECTION', $3)`,
         [user_id, `You have been assigned a new section as ${role}`, sectionId]
       ).catch(() => {});
 
@@ -114,7 +166,7 @@ router.post(
       if (err.code === "23505")
         return res.status(409).json({ success: false, message: "Section already has an active OWNER" });
       logger.error("assignments POST /section/:id", { ...getLogContext(req), err: err.message });
-      return res.status(500).json({ success: false, message: "Failed to assign user" });
+      return res.status(500).json({ success: false, message: "Failed to assign" });
     }
   }
 );
@@ -169,7 +221,7 @@ router.post(
     const pool = req.app.locals.pool;
     try {
       const { reportId } = req.params;
-      const { section_ids = [], user_id, department_id, role = "CONTRIBUTOR", due_at } = req.body;
+      const { section_ids = [], user_id, department_id, role_name, role = "CONTRIBUTOR", due_at } = req.body;
       if (!isUUID(reportId)) return res.status(400).json({ success: false, message: "Invalid report id" });
       if (!Array.isArray(section_ids) || !section_ids.length)
         return res.status(400).json({ success: false, message: "section_ids[] required" });
@@ -190,15 +242,37 @@ router.post(
           created.push({ type: "user", ...rows[0] });
         }
         if (isUUID(department_id)) {
+          const [sdaRes] = await Promise.all([
+            pool.query(
+              `INSERT INTO public.section_department_assignments (section_id, department_id, due_at, assigned_by)
+               VALUES ($1,$2,$3,$4)
+               ON CONFLICT (section_id, department_id) DO UPDATE
+                 SET due_at=EXCLUDED.due_at, assigned_by=EXCLUDED.assigned_by
+               RETURNING *`,
+              [secId, department_id, due_at || null, req.user.userId]
+            ),
+            pool.query(
+              `INSERT INTO public.section_workflow_assignments
+                 (report_id, section_id, workflow_step_id, assignee_type, department_id, due_at, assigned_by)
+               VALUES ($1,$2,NULL,'DEPARTMENT',$3,$4,$5)
+               ON CONFLICT ON CONSTRAINT section_workflow_assignments_section_id_workflow_step_id_as_key
+               DO UPDATE SET due_at=EXCLUDED.due_at, assigned_by=EXCLUDED.assigned_by`,
+              [reportId, secId, department_id, due_at || null, req.user.userId]
+            ),
+          ]);
+          created.push({ type: "department", ...sdaRes.rows[0] });
+        }
+        if (role_name?.trim()) {
           const { rows } = await pool.query(
-            `INSERT INTO public.section_department_assignments (section_id, department_id, due_at, assigned_by)
-             VALUES ($1,$2,$3,$4)
-             ON CONFLICT (section_id, department_id) DO UPDATE
-               SET due_at=EXCLUDED.due_at, assigned_by=EXCLUDED.assigned_by
-             RETURNING *`,
-            [secId, department_id, due_at || null, req.user.userId]
+            `INSERT INTO public.section_workflow_assignments
+               (report_id, section_id, workflow_step_id, assignee_type, role_name, due_at, assigned_by)
+             VALUES ($1,$2,NULL,'ROLE',$3,$4,$5)
+             ON CONFLICT ON CONSTRAINT section_workflow_assignments_section_id_workflow_step_id_as_key
+             DO UPDATE SET due_at=EXCLUDED.due_at, assigned_by=EXCLUDED.assigned_by
+             RETURNING id, role_name, due_at, assigned_at`,
+            [reportId, secId, role_name.trim(), due_at || null, req.user.userId]
           );
-          created.push({ type: "department", ...rows[0] });
+          created.push({ type: "role", ...rows[0] });
         }
       }
 
@@ -209,6 +283,23 @@ router.post(
     }
   }
 );
+
+/* ── DELETE /workflow/:swaId — remove role or dept workflow assignment ────────── */
+router.delete("/workflow/:swaId", requireRole(["super_admin", "institute_admin"]), async (req, res) => {
+  const pool = req.app.locals.pool;
+  try {
+    const { swaId } = req.params;
+    if (!isUUID(swaId)) return res.status(400).json({ success: false, message: "Invalid id" });
+    const { rows } = await pool.query(
+      `DELETE FROM public.section_workflow_assignments WHERE id = $1 RETURNING id`, [swaId]
+    );
+    if (!rows.length) return res.status(404).json({ success: false, message: "Assignment not found" });
+    return res.json({ success: true });
+  } catch (err) {
+    logger.error("assignments DELETE /workflow/:id", { ...getLogContext(req), err: err.message });
+    return res.status(500).json({ success: false, message: "Failed to remove assignment" });
+  }
+});
 
 /* ── DELETE /:id — remove user assignment ───────────────────────────────────── */
 router.delete("/:id", requireRole(["super_admin", "institute_admin"]), async (req, res) => {

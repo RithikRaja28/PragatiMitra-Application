@@ -3,8 +3,7 @@ import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { useAuth, redirectByRole, ROLE_ROUTES } from "../../store/AuthContext";
 import { Mail, Lock, Eye, EyeOff, AlertCircle, Info, Loader2, User, Building2, Landmark } from "lucide-react";
-
-const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
+import { authApi } from "../../services";
 
 /* ── Same injectCSS utility as AppShell ── */
 function injectCSS(id, css) {
@@ -248,12 +247,7 @@ export default function Login() {
     if (sessionMsg) setMsg("");
 
     try {
-      const res  = await fetch(`${API_BASE}/api/auth/login`, {
-        method:      "POST",
-        credentials: "include",
-        headers:     { "Content-Type": "application/json" },
-        body:        JSON.stringify({ email: email.trim().toLowerCase(), password }),
-      });
+      const res  = await authApi.login({ email: email.trim().toLowerCase(), password });
       const data = await res.json();
 
       if (!res.ok || !data.success) {

@@ -27,7 +27,8 @@
       "Bash(node -c routes/nodalOfficerAssignments.js)",
       "Bash(node -c middleware/auth.js)",
       "Bash(node -c routes/users.js)",
-      "Bash(node -c routes/importExport.js)"
+      "Bash(node -c routes/importExport.js)",
+      "Bash(git push *)"
     ]
   }
 }

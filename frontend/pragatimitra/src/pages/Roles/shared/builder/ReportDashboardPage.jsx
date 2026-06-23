@@ -11,13 +11,13 @@ async function apiJson(apiFetch, path, opts) {
 }
 
 const C = {
-  primary: "#4f8ef7", primaryLt: "#e8f0fe",
-  success: "#43a047", successLt: "#e8f5e9",
-  danger: "#e53935", dangerLt: "#fef2f2",
-  warning: "#f9a825", warningLt: "#fffde7",
-  text: "#1a1a2e", textSub: "#555", border: "#e0e4ea",
-  bg: "#f7f8fa", surface: "#fff",
-  purple: "#7c4dff", purpleLt: "#ede7f6",
+  primary: "#2563eb", primaryLt: "#dbeafe",
+  success: "#16a34a", successLt: "#dcfce7",
+  danger: "#dc2626", dangerLt: "#fef2f2",
+  warning: "#d97706", warningLt: "#fef3c7",
+  text: "#111827", textSub: "#6b7280", border: "#e5e7eb",
+  bg: "#f8fafc", surface: "#fff",
+  purple: "#7c3aed", purpleLt: "#ede9fe",
 };
 
 const STATUS_META = {
@@ -86,9 +86,11 @@ export default function ReportDashboardPage({ reportId, onNavigate }) {
   const userProg    = dash?.users || [];
 
   if (loading) return (
-    <div style={{ minHeight: "60vh", display: "flex", alignItems: "center", justifyContent: "center",
-                  fontFamily: "'Plus Jakarta Sans', sans-serif", color: C.textSub }}>
-      Loading dashboard…
+    <div style={{ minHeight: "60vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+                  fontFamily: "'Plus Jakarta Sans', sans-serif", gap: 12 }}>
+      <div style={{ width: 32, height: 32, border: "3px solid #e2e8f0", borderTopColor: "#2563eb", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      <span style={{ fontSize: 13, color: C.textSub }}>Loading dashboard…</span>
     </div>
   );
 
@@ -97,19 +99,67 @@ export default function ReportDashboardPage({ reportId, onNavigate }) {
       {toast && <Toast {...toast} onClose={() => setToast(null)} />}
 
       {/* ── header ── */}
-      <header style={{ background: C.surface, borderBottom: `1px solid ${C.border}`, padding: "16px 32px",
-                       display: "flex", alignItems: "center", gap: 16 }}>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 20, fontWeight: 700, color: C.text }}>{report?.title}</div>
-          <div style={{ fontSize: 12, color: C.textSub, marginTop: 2 }}>
-            {report?.report_type} · {report?.academic_year} ·{" "}
+      <header style={{
+        background: C.surface, borderBottom: `1px solid ${C.border}`,
+        padding: "14px 32px", display: "flex", alignItems: "center", gap: 14,
+      }}>
+        <button onClick={() => onNavigate?.("list")} style={{
+          display: "inline-flex", alignItems: "center", gap: 6,
+          padding: "7px 14px", borderRadius: 8,
+          border: "1.5px solid #e5e7eb", background: "#fff",
+          fontSize: 13, fontWeight: 600, color: "#374151", cursor: "pointer", flexShrink: 0,
+        }}
+          onMouseEnter={e => { e.currentTarget.style.background = "#f3f4f6"; e.currentTarget.style.borderColor = "#d1d5db"; }}
+          onMouseLeave={e => { e.currentTarget.style.background = "#fff";    e.currentTarget.style.borderColor = "#e5e7eb"; }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M19 12H5M12 5l-7 7 7 7"/>
+          </svg>
+          Reports
+        </button>
+        <div style={{ width: 1, height: 28, background: C.border, flexShrink: 0 }} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
+            <span style={{ fontSize: 11, color: C.textSub }}>Report Builder</span>
+            <span style={{ fontSize: 11, color: "#d1d5db" }}>›</span>
+            <span style={{ fontSize: 11, color: C.primary, fontWeight: 600 }}>Dashboard</span>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ fontSize: 16, fontWeight: 700, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 420 }}>
+              {report?.title}
+            </span>
             <StatusBadge status={report?.status} />
           </div>
         </div>
-        <div style={{ display: "flex", gap: 10 }}>
-          <button style={outlineBtn} onClick={() => onNavigate?.("structure", reportId)}>Structure</button>
-          <button style={outlineBtn} onClick={() => onNavigate?.("assign", reportId)}>Assign</button>
-          <Button variant="primary" onClick={() => onNavigate?.("compile", reportId)}>Compile</Button>
+        <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+          {[
+            { label: "Structure", icon: "⬡", view: "structure" },
+            { label: "Assign",    icon: "👥", view: "assign"    },
+          ].map(({ label, icon, view }) => (
+            <button key={view} onClick={() => onNavigate?.(view, reportId)} style={{
+              display: "inline-flex", alignItems: "center", gap: 5,
+              padding: "7px 14px", borderRadius: 8,
+              border: "1.5px solid #e5e7eb", background: "#fff",
+              fontSize: 12.5, fontWeight: 600, color: "#374151", cursor: "pointer",
+            }}
+              onMouseEnter={e => { e.currentTarget.style.background = "#f3f4f6"; e.currentTarget.style.borderColor = "#d1d5db"; }}
+              onMouseLeave={e => { e.currentTarget.style.background = "#fff";    e.currentTarget.style.borderColor = "#e5e7eb"; }}>
+              <span style={{ fontSize: 13 }}>{icon}</span>{label}
+            </button>
+          ))}
+          <button onClick={() => onNavigate?.("compile", reportId)} style={{
+            display: "inline-flex", alignItems: "center", gap: 6,
+            padding: "7px 16px", borderRadius: 8,
+            border: "none", background: C.primary,
+            fontSize: 12.5, fontWeight: 700, color: "#fff", cursor: "pointer",
+            boxShadow: "0 2px 6px rgba(37,99,235,0.25)",
+          }}
+            onMouseEnter={e => e.currentTarget.style.background = "#1d4ed8"}
+            onMouseLeave={e => e.currentTarget.style.background = C.primary}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+              <circle cx="12" cy="12" r="3"/><path d="M19.07 4.93A10 10 0 1 0 4.93 19.07"/>
+            </svg>
+            Compile
+          </button>
         </div>
       </header>
 
@@ -296,10 +346,15 @@ function formatActivity(a) {
 }
 
 const primaryBtn = {
-  padding: "8px 18px", background: C.primary, color: "#fff",
-  border: "none", borderRadius: 7, cursor: "pointer", fontSize: 13, fontWeight: 600,
+  display: "inline-flex", alignItems: "center", gap: 6,
+  padding: "0 18px", height: 38,
+  background: C.primary, color: "#fff",
+  border: "none", borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: 600,
 };
-const outlineBtn = { ...primaryBtn, background: "transparent", color: C.primary, border: `1px solid ${C.primary}` };
+const outlineBtn = {
+  ...primaryBtn, background: "transparent", color: C.primary,
+  border: `1.5px solid ${C.primary}`,
+};
 
 function StatusBadge({ status }) {
   const m = STATUS_META[status] || { label: status, color: C.textSub, bg: "#f0f0f0" };

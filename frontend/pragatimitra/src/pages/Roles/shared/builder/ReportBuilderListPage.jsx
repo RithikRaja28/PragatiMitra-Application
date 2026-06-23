@@ -25,7 +25,7 @@ function fmtDate(iso) {
 
 /* ─── status meta ────────────────────────────────────────────────────────── */
 const STATUS_META = {
-  DRAFT:     { bg: "#f1f5f9", color: "#475569", dot: "#94a3b8",  bar: "#7c3aed", label: "Draft"     },
+  DRAFT:     { bg: "#f1f5f9", color: "#475569", dot: "#94a3b8",  bar: "#94a3b8", label: "Draft"     },
   PUBLISHED: { bg: "#dcfce7", color: "#15803d", dot: "#22c55e",  bar: "#22c55e", label: "Published" },
   ARCHIVED:  { bg: "#fee2e2", color: "#b91c1c", dot: "#ef4444",  bar: "#ef4444", label: "Archived"  },
 };
@@ -153,10 +153,10 @@ function ReportCard({ report, prog, onOpen, onEdit, onStats, onDelete, deleting 
       onClick={onOpen}
       style={{
         background: "#fff",
-        border: `1.5px solid ${hover ? "rgba(124,58,237,0.25)" : "rgba(0,0,0,0.07)"}`,
+        border: `1.5px solid ${hover ? "rgba(37,99,235,0.25)" : "rgba(0,0,0,0.07)"}`,
         borderRadius: 16,
         boxShadow: hover
-          ? "0 8px 28px rgba(124,58,237,0.10)"
+          ? "0 8px 28px rgba(37,99,235,0.10)"
           : "0 1px 6px rgba(0,0,0,0.05)",
         overflow: "hidden",
         cursor: "pointer",
@@ -212,7 +212,7 @@ function ReportCard({ report, prog, onOpen, onEdit, onStats, onDelete, deleting 
           {report.cycle_name && (
             <>
               <span style={{ color: "#e2e8f0" }}>·</span>
-              <span style={{ color: "#7c3aed", fontWeight: 600 }}>{report.cycle_name}</span>
+              <span style={{ color: "#2563eb", fontWeight: 600 }}>{report.cycle_name}</span>
             </>
           )}
         </div>
@@ -246,7 +246,7 @@ function ReportCard({ report, prog, onOpen, onEdit, onStats, onDelete, deleting 
         padding: "12px 16px",
         borderTop: "1px solid #f1f5f9",
         display: "flex", gap: 8, alignItems: "center",
-        background: hover ? "#faf9ff" : "#fff",
+        background: hover ? "#f0f7ff" : "#fff",
         transition: "background 0.18s",
       }}>
         {/* Open */}
@@ -254,8 +254,8 @@ function ReportCard({ report, prog, onOpen, onEdit, onStats, onDelete, deleting 
           onClick={(e) => { e.stopPropagation(); onOpen(); }}
           style={{
             flex: 1, padding: "7px 0", borderRadius: 8, border: "none",
-            background: hover ? "#7c3aed" : "#ede9fe",
-            color: hover ? "#fff" : "#5b21b6",
+            background: hover ? "#2563eb" : "#dbeafe",
+            color: hover ? "#fff" : "#1d4ed8",
             fontSize: 12, fontWeight: 700, cursor: "pointer",
             transition: "background 0.18s, color 0.18s",
             display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
@@ -274,12 +274,12 @@ function ReportCard({ report, prog, onOpen, onEdit, onStats, onDelete, deleting 
             style={{
               padding: "7px 12px", borderRadius: 8,
               border: "1px solid #e2e8f0", background: "#fff",
-              fontSize: 11, fontWeight: 600, color: "#7c3aed",
+              fontSize: 11, fontWeight: 600, color: "#2563eb",
               cursor: "pointer", flexShrink: 0,
               display: "flex", alignItems: "center", gap: 4,
               transition: "border-color 0.15s, background 0.15s",
             }}
-            onMouseEnter={e => { e.currentTarget.style.borderColor = "#c4b5fd"; e.currentTarget.style.background = "#f5f3ff"; }}
+            onMouseEnter={e => { e.currentTarget.style.borderColor = "#93c5fd"; e.currentTarget.style.background = "#eff6ff"; }}
             onMouseLeave={e => { e.currentTarget.style.borderColor = "#e2e8f0"; e.currentTarget.style.background = "#fff"; }}
             title="Continue editing this draft"
           >
@@ -302,7 +302,7 @@ function ReportCard({ report, prog, onOpen, onEdit, onStats, onDelete, deleting 
             display: "flex", alignItems: "center", gap: 4,
             transition: "border-color 0.15s, color 0.15s",
           }}
-          onMouseEnter={e => { e.currentTarget.style.borderColor = "#c4b5fd"; e.currentTarget.style.color = "#5b21b6"; }}
+          onMouseEnter={e => { e.currentTarget.style.borderColor = "#93c5fd"; e.currentTarget.style.color = "#1d4ed8"; }}
           onMouseLeave={e => { e.currentTarget.style.borderColor = "#e2e8f0"; e.currentTarget.style.color = "#64748b"; }}
         >
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -368,7 +368,7 @@ function CreateReportForm({ onBack, onCreate }) {
       formTitle="New Report"
       formSubtitle="Create a new collaborative institutional report"
       icon="📋"
-      iconBg="#ede9fe"
+      iconBg="#dbeafe"
       onBack={onBack}
       onSubmit={handleSubmit}
       submitting={saving}
@@ -619,9 +619,9 @@ export default function ReportBuilderListPage() {
             onClick={() => navFn(`${listPath}/create`)}
             style={{
               display: "flex", alignItems: "center", gap: 7, padding: "10px 20px",
-              background: "#7c3aed", color: "#fff", border: "none", borderRadius: 10,
+              background: "#2563eb", color: "#fff", border: "none", borderRadius: 10,
               fontSize: 13, fontWeight: 700, cursor: "pointer", flexShrink: 0,
-              boxShadow: "0 2px 10px rgba(124,58,237,0.28)",
+              boxShadow: "0 2px 10px rgba(37,99,235,0.28)",
             }}
           >
             <span style={{ fontSize: 18, lineHeight: 1 }}>＋</span> {t("New Report", lang)}
@@ -633,7 +633,7 @@ export default function ReportBuilderListPage() {
       {!loading && reports.length > 0 && (
         <div style={{ display: "flex", gap: 10, marginBottom: 22, flexWrap: "wrap" }}>
           {[
-            { label: "Total",     val: reports.length, bg: "#f8fafc",  color: "#1e293b", dot: "#7c3aed" },
+            { label: "Total",     val: reports.length, bg: "#f8fafc",  color: "#1e293b", dot: "#2563eb" },
             { label: "Draft",     val: totalDraft,     bg: "#f8fafc",  color: "#475569", dot: "#94a3b8" },
             { label: "Published", val: totalPublished, bg: "#f0fdf4",  color: "#15803d", dot: "#22c55e" },
             { label: "Archived",  val: totalArchived,  bg: "#fff1f2",  color: "#b91c1c", dot: "#ef4444" },
@@ -748,9 +748,9 @@ export default function ReportBuilderListPage() {
             <button
               onClick={() => navFn(`${listPath}/create`)}
               style={{
-                padding: "10px 24px", background: "#7c3aed", color: "#fff",
+                padding: "10px 24px", background: "#2563eb", color: "#fff",
                 border: "none", borderRadius: 10, fontSize: 13, fontWeight: 700,
-                cursor: "pointer", boxShadow: "0 2px 10px rgba(124,58,237,0.28)",
+                cursor: "pointer", boxShadow: "0 2px 10px rgba(37,99,235,0.28)",
               }}
             >
               ＋ Create First Report
