@@ -34,9 +34,16 @@ router.get("/section/:sectionId", async (req, res) => {
     if (!isUUID(sectionId)) return res.status(400).json({ success: false, message: "Invalid section id" });
 
     const { rows } = await pool.query(
-      `SELECT * FROM public.section_blocks
-       WHERE section_id = $1 AND deleted_at IS NULL
-       ORDER BY order_index`,
+      `SELECT b.*,
+              COALESCE(
+                jsonb_object_agg(bt.language, bt.content) FILTER (WHERE bt.language IS NOT NULL),
+                '{}'::jsonb
+              ) AS translations
+       FROM public.section_blocks b
+       LEFT JOIN public.block_translations bt ON bt.block_id = b.id
+       WHERE b.section_id = $1 AND b.deleted_at IS NULL
+       GROUP BY b.id
+       ORDER BY b.order_index`,
       [sectionId]
     );
 
@@ -248,6 +255,49 @@ router.put("/:id", async (req, res) => {
     return res.status(500).json({ success: false, message: "Failed to update block" });
   } finally {
     client.release();
+  }
+});
+
+/* ─── PUT /:id/translations/:lang — upsert block translation (partial merge) ── */
+router.put("/:id/translations/:lang", async (req, res) => {
+  const pool = req.app.locals.pool;
+  try {
+    const { id, lang } = req.params;
+    if (!isUUID(id)) return res.status(400).json({ success: false, message: "Invalid block id" });
+    const ALLOWED_LANGS = ["hi", "en", "ta", "mr", "gu", "bn", "te", "kn", "ml"];
+    if (!ALLOWED_LANGS.includes(lang))
+      return res.status(400).json({ success: false, message: "Invalid language code" });
+
+    const { content } = req.body;
+    if (!content || typeof content !== "object")
+      return res.status(400).json({ success: false, message: "content object required" });
+
+    // Verify block exists
+    const { rows: bRows } = await pool.query(
+      `SELECT id FROM public.section_blocks WHERE id = $1 AND deleted_at IS NULL`,
+      [id]
+    );
+    if (!bRows.length) return res.status(404).json({ success: false, message: "Block not found" });
+
+    // Merge partial content into existing translation (coalesce so untouched fields survive)
+    const { rows } = await pool.query(
+      `INSERT INTO public.block_translations (block_id, language, content, status, created_by, updated_by)
+       VALUES ($1, $2, $3::jsonb, 'DRAFT', $4, $4)
+       ON CONFLICT (block_id, language) DO UPDATE
+         SET content    = block_translations.content || EXCLUDED.content,
+             updated_by = EXCLUDED.updated_by,
+             status     = CASE
+                            WHEN block_translations.status = 'APPROVED' THEN 'DRAFT'
+                            ELSE block_translations.status
+                          END
+       RETURNING *`,
+      [id, lang, JSON.stringify(content), req.user.userId]
+    );
+
+    return res.json({ success: true, data: rows[0] });
+  } catch (err) {
+    logger.error("builder/blocks PUT /:id/translations/:lang", { ...getLogContext(req), err: err.message });
+    return res.status(500).json({ success: false, message: "Failed to save translation" });
   }
 });
 

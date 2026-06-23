@@ -39,6 +39,11 @@ const FORMAT_OPTIONS = [
   { value: "json", label: "JSON", icon: "{ }", desc: "Structured data — for integrations" },
 ];
 
+const LANG_OPTIONS = [
+  { value: "en", label: "English", short: "EN", desc: "Compile using English block content" },
+  { value: "hi", label: "हिंदी",   short: "HI", desc: "Compile using Hindi translations" },
+];
+
 /* ═══════════════════════════════════════════════════════════════════════════ */
 export default function CompileReportPage({ reportId, onBack }) {
   const { apiFetch } = useApi();
@@ -46,6 +51,7 @@ export default function CompileReportPage({ reportId, onBack }) {
   const [status,    setStatus]    = useState(null);
   const [history,   setHistory]   = useState([]);
   const [format,    setFormat]    = useState("pdf");
+  const [language,  setLanguage]  = useState("en");
   const [loading,   setLoading]   = useState(true);
   const [compiling, setCompiling] = useState(false);
   const [progress,  setProgress]  = useState(0);
@@ -79,7 +85,7 @@ export default function CompileReportPage({ reportId, onBack }) {
       const res = await apiJson(apiFetch, `/api/builder/compile/report/${reportId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ format }),
+        body: JSON.stringify({ format, language }),
       });
       clearInterval(prog);
       setProgress(100);
@@ -174,6 +180,61 @@ export default function CompileReportPage({ reportId, onBack }) {
         {/* ── pre-compile readiness check ── */}
         <ReadinessPanel status={status} readyCount={readyCount} totalCount={totalCount} notReadyCount={notReadyCount} />
 
+        {/* ── language selector ── */}
+        <div style={{ marginTop: 28, background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: 20 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 4 }}>Output Language</div>
+          <div style={{ fontSize: 12, color: C.textSub, marginBottom: 14 }}>
+            Choose whether the compiled document uses English content or Hindi translations.
+          </div>
+          <div style={{ display: "flex", gap: 14 }}>
+            {LANG_OPTIONS.map(l => (
+              <div
+                key={l.value}
+                onClick={() => setLanguage(l.value)}
+                style={{
+                  flex: 1, border: `2px solid ${language === l.value ? C.primary : C.border}`,
+                  borderRadius: 9, padding: "14px 16px", cursor: "pointer",
+                  background: language === l.value ? C.primaryLt : C.surface,
+                  transition: "all .12s", display: "flex", alignItems: "center", gap: 12,
+                }}
+              >
+                <div style={{
+                  width: 38, height: 38, borderRadius: 8, flexShrink: 0,
+                  background: language === l.value ? C.primary : "#f1f5f9",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 13, fontWeight: 800,
+                  color: language === l.value ? "#fff" : C.textSub,
+                  fontFamily: l.value === "hi" ? "'Noto Sans Devanagari', 'Mangal', sans-serif" : "inherit",
+                }}>
+                  {l.short}
+                </div>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: language === l.value ? C.primary : C.text,
+                                fontFamily: l.value === "hi" ? "'Noto Sans Devanagari', 'Mangal', sans-serif" : "inherit" }}>
+                    {l.label}
+                  </div>
+                  <div style={{ fontSize: 11, color: C.textSub, marginTop: 2 }}>{l.desc}</div>
+                </div>
+                {language === l.value && (
+                  <div style={{ marginLeft: "auto", width: 18, height: 18, borderRadius: "50%",
+                                background: C.primary, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="20 6 9 17 4 12"/>
+                    </svg>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+          {language === "hi" && (
+            <div style={{ marginTop: 10, padding: "8px 12px", background: "#fefce8", border: "1px solid #fde047",
+                          borderRadius: 6, fontSize: 11, color: "#92400e", display: "flex", alignItems: "flex-start", gap: 6 }}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" style={{ flexShrink: 0, marginTop: 1 }}><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+              Hindi compilation uses saved translations. Blocks without Hindi translations will fall back to English content.
+            </div>
+          )}
+        </div>
+
         {/* ── format selector ── */}
         <div style={{ marginTop: 28 }}>
           <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 14 }}>Output Format</div>
@@ -191,7 +252,7 @@ export default function CompileReportPage({ reportId, onBack }) {
             <div style={{ marginBottom: 20 }}>
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12,
                             color: C.textSub, marginBottom: 6 }}>
-                <span>Generating {format.toUpperCase()}…</span>
+                <span>Generating {format.toUpperCase()} ({language.toUpperCase()})…</span>
                 <span>{progress}%</span>
               </div>
               <div style={{ height: 8, background: C.border, borderRadius: 4, overflow: "hidden" }}>
@@ -227,7 +288,7 @@ export default function CompileReportPage({ reportId, onBack }) {
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                     <circle cx="12" cy="12" r="3"/><path d="M19.07 4.93A10 10 0 1 0 4.93 19.07"/>
                   </svg>
-                  Generate {format.toUpperCase()}
+                  Generate {format.toUpperCase()} · {language.toUpperCase()}
                 </>
               )}
             </button>
@@ -248,7 +309,7 @@ export default function CompileReportPage({ reportId, onBack }) {
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                 <thead>
                   <tr style={{ background: C.bg }}>
-                    {["Format", "Status", "Generated At", "Size", "Actions"].map(h => (
+                    {["Format", "Language", "Generated At", "Size", "Actions"].map(h => (
                       <th key={h} style={{ padding: "10px 14px", textAlign: "left", fontSize: 11,
                                            fontWeight: 700, color: C.textSub, borderBottom: `1px solid ${C.border}` }}>
                         {h}
@@ -266,7 +327,11 @@ export default function CompileReportPage({ reportId, onBack }) {
                         </span>
                       </td>
                       <td style={{ padding: "10px 14px" }}>
-                        <StatusDot status={item.compile_status || "DONE"} />
+                        <span style={{ padding: "2px 8px", borderRadius: 5, fontSize: 11, fontWeight: 700,
+                                       background: item.language === "hi" ? "#fdf4ff" : "#f0fdf4",
+                                       color: item.language === "hi" ? "#7c3aed" : "#16a34a" }}>
+                          {item.language === "hi" ? "HI" : "EN"}
+                        </span>
                       </td>
                       <td style={{ padding: "10px 14px", color: C.textSub, fontSize: 12 }}>
                         {item.compiled_at ? new Date(item.compiled_at).toLocaleString() : "—"}

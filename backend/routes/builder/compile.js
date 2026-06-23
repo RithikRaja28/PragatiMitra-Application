@@ -239,7 +239,15 @@ router.post(
            SELECT json_agg(
              json_build_object(
                'id', b.id, 'block_type', b.block_type,
-               'content', b.content, 'order_index', b.order_index
+               'content', b.content, 'order_index', b.order_index,
+               'translations', (
+                 SELECT COALESCE(
+                   jsonb_object_agg(bt.language, bt.content) FILTER (WHERE bt.language IS NOT NULL),
+                   '{}'::jsonb
+                 )
+                 FROM public.block_translations bt
+                 WHERE bt.block_id = b.id
+               )
              ) ORDER BY b.order_index
            ) AS blocks
            FROM public.section_blocks b
@@ -385,6 +393,8 @@ async function generateDocx(report, sections, outPath, opts) {
   };
 
   const sectionNumbers = opts.include_numbering ? buildSectionNumbers(sections) : new Map();
+  const lang    = opts.language === "hi" ? "hi" : "en";
+  const docFont = lang === "hi" ? "Mangal" : "Times New Roman";
 
   /* ── Inline style → formatting properties ── */
   function cssColorToHex(val) {
@@ -464,7 +474,7 @@ async function generateDocx(report, sections, outPath, opts) {
         italics:    fmt.italic  || undefined,
         size:       fmt.size    || 22,
         color:      fmt.color   || C.body,
-        font:       "Times New Roman",
+        font:       docFont,
         underline:  fmt.underline  ? { type: UnderlineType.SINGLE } : undefined,
         strike:     fmt.strike     || undefined,
         superScript: fmt.superScript || undefined,
@@ -586,13 +596,13 @@ async function generateDocx(report, sections, outPath, opts) {
     if (depth === 0) {
       return [
         new Paragraph({
-          children: [new TextRun({ text: label, bold: true, size: 30, color: C.primary })],
+          children: [new TextRun({ text: label, bold: true, size: 30, color: C.primary, font: docFont })],
           border: { bottom: { color: C.primary, space: 1, style: BorderStyle.SINGLE, size: 12 } },
           spacing: { before: 240, after: 120 },
           pageBreakBefore: undefined,
         }),
         ...(section.description ? [new Paragraph({
-          children: [new TextRun({ text: section.description, italics: true, size: 18, color: C.gray })],
+          children: [new TextRun({ text: section.description, italics: true, size: 18, color: C.gray, font: docFont })],
           spacing: { after: 80 },
         })] : []),
       ];
@@ -600,23 +610,23 @@ async function generateDocx(report, sections, outPath, opts) {
     if (depth === 1) {
       return [
         new Paragraph({
-          children: [new TextRun({ text: label, bold: true, size: 24, color: C.secondary })],
+          children: [new TextRun({ text: label, bold: true, size: 24, color: C.secondary, font: docFont })],
           spacing: { before: 180, after: 80 },
         }),
         ...(section.description ? [new Paragraph({
-          children: [new TextRun({ text: section.description, italics: true, size: 18, color: C.gray })],
+          children: [new TextRun({ text: section.description, italics: true, size: 18, color: C.gray, font: docFont })],
           spacing: { after: 60 },
         })] : []),
       ];
     }
     return [
       new Paragraph({
-        children: [new TextRun({ text: label, bold: true, size: 22, color: C.tertiary })],
+        children: [new TextRun({ text: label, bold: true, size: 22, color: C.tertiary, font: docFont })],
         indent: { left: 180 },
         spacing: { before: 120, after: 60 },
       }),
       ...(section.description ? [new Paragraph({
-        children: [new TextRun({ text: section.description, italics: true, size: 16, color: C.gray })],
+        children: [new TextRun({ text: section.description, italics: true, size: 16, color: C.gray, font: docFont })],
         indent: { left: 180 },
         spacing: { after: 60 },
       })] : []),
@@ -624,19 +634,26 @@ async function generateDocx(report, sections, outPath, opts) {
   }
 
   /* ── TABLE builder — handles both manual and form_import formats ── */
-  function buildTable(c) {
+  function buildTable(c, translations) {
+    let hi = null;
+    if (lang === "hi" && translations) {
+      const t = typeof translations === "string" ? (() => { try { return JSON.parse(translations); } catch { return {}; } })() : (translations || {});
+      hi = t.hi || null;
+    }
     const isFormImport = c.source === "form_import" || (c.columns && !Array.isArray(c.headers));
     let headers, dataRows;
 
     if (isFormImport) {
-      const cols = c.columns || [];
+      const cols = (hi && hi.columns) ? hi.columns : (c.columns || []);
       if (!cols.length) return null;
       headers  = cols.map(col => col.label || col.key);
-      dataRows = (c.rows || []).map(row => cols.map(col => String(row[col.key] ?? "")));
+      const srcRows = (hi && hi.rows) ? hi.rows : (c.rows || []);
+      dataRows = srcRows.map(row => cols.map(col => String(row[col.key] ?? "")));
     } else {
-      headers  = c.headers || [];
+      headers  = (hi && hi.headers) ? hi.headers : (c.headers || []);
       if (!headers.length) return null;
-      dataRows = (c.rows || []).map(row => Array.isArray(row) ? row.map(v => String(v ?? "")) : headers.map(() => ""));
+      const srcRows = (hi && hi.rows) ? hi.rows : (c.rows || []);
+      dataRows = srcRows.map(row => Array.isArray(row) ? row.map(v => String(v ?? "")) : headers.map(() => ""));
     }
 
     const colCount = headers.length;
@@ -649,7 +666,7 @@ async function generateDocx(report, sections, outPath, opts) {
         width: { size: colWidth, type: WidthType.DXA },
         shading: { type: ShadingType.CLEAR, fill: C.tblHead },
         children: [new Paragraph({
-          children: [new TextRun({ text: String(h), bold: true, size: 20, color: C.body })],
+          children: [new TextRun({ text: String(h), bold: true, size: 20, color: C.body, font: docFont })],
           spacing: { after: 0 },
         })],
       })),
@@ -661,7 +678,7 @@ async function generateDocx(report, sections, outPath, opts) {
         width: { size: colWidth, type: WidthType.DXA },
         shading: ri % 2 === 1 ? { type: ShadingType.CLEAR, fill: C.tblAlt } : undefined,
         children: [new Paragraph({
-          children: [new TextRun({ text: val, size: 20, color: C.body })],
+          children: [new TextRun({ text: val, size: 20, color: C.body, font: docFont })],
           spacing: { after: 0 },
         })],
       })),
@@ -767,32 +784,44 @@ async function generateDocx(report, sections, outPath, opts) {
       try { c = JSON.parse(c); } catch { c = { html: c }; }
     }
     c = c || {};
+
+    // Resolve block translations (may arrive as string from json_build_object nesting)
+    let bTrans = block.translations;
+    if (typeof bTrans === "string") {
+      try { bTrans = JSON.parse(bTrans); } catch { bTrans = {}; }
+    }
+    bTrans = bTrans || {};
+    const hi = lang === "hi" ? (bTrans.hi || {}) : {};
+
     const els  = [];
     const gap  = () => new Paragraph({ text: "", spacing: { after: 60 } });
 
     switch (block.block_type) {
 
       case "PARAGRAPH": {
-        const raw = c.html || c.text || c.body || c.value
-          || (typeof c.content === "string" ? c.content : "")
-          || (typeof block.content === "string" ? block.content : "")
-          || "";
+        const raw = lang === "hi"
+          ? (hi.html || hi.text || c.html || c.text || c.body || c.value || "")
+          : (c.html || c.text || c.body || c.value
+              || (typeof c.content === "string" ? c.content : "")
+              || (typeof block.content === "string" ? block.content : "")
+              || "");
         if (raw) {
           els.push(...htmlToParagraphs(raw));
         } else {
           // Empty paragraph spacer so sections don't collapse
-          els.push(new Paragraph({ children: [new TextRun({ text: "" })], spacing: { after: 60 } }));
+          els.push(new Paragraph({ children: [new TextRun({ text: "", font: docFont })], spacing: { after: 60 } }));
         }
         break;
       }
 
       case "HEADING": {
-        const lvl   = Math.max(1, Math.min(3, c.level || 2));
-        const sizes = [36, 28, 24];  // 18pt, 14pt, 12pt
+        const lvl    = Math.max(1, Math.min(3, c.level || 2));
+        const sizes  = [36, 28, 24];  // 18pt, 14pt, 12pt
         const colors = [C.primary, C.secondary, C.tertiary];
         const hasBorder = lvl === 1;
+        const headText  = lang === "hi" ? (hi.text || c.text || "") : (c.text || "");
         els.push(new Paragraph({
-          children: [new TextRun({ text: c.text || "", bold: true, size: sizes[lvl - 1], color: colors[lvl - 1] })],
+          children: [new TextRun({ text: headText, bold: true, size: sizes[lvl - 1], color: colors[lvl - 1], font: docFont })],
           spacing: { before: lvl === 1 ? 180 : lvl === 2 ? 140 : 100, after: lvl === 1 ? 80 : 60 },
           border: hasBorder ? { bottom: { color: C.primary, space: 1, style: BorderStyle.SINGLE, size: 8 } } : undefined,
         }));
@@ -807,13 +836,13 @@ async function generateDocx(report, sections, outPath, opts) {
         break;
 
       case "LIST": {
-        const items   = c.items || [];
-        const ordered = !!c.ordered;
+        const items   = lang === "hi" ? (hi.items || c.items || []) : (c.items || []);
+        const ordered = !!(hi.ordered ?? c.ordered);
         items.forEach((item, i) => {
           els.push(new Paragraph({
             children: [
-              new TextRun({ text: ordered ? `${i + 1}.  ` : "•  ", bold: false, size: 22, color: C.body }),
-              new TextRun({ text: String(item || ""), size: 22, color: C.body }),
+              new TextRun({ text: ordered ? `${i + 1}.  ` : "•  ", bold: false, size: 22, color: C.body, font: docFont }),
+              new TextRun({ text: String(item || ""), size: 22, color: C.body, font: docFont }),
             ],
             indent: { left: 360 },
             spacing: { after: 40 },
@@ -856,7 +885,7 @@ async function generateDocx(report, sections, outPath, opts) {
       }
 
       case "TABLE": {
-        const tbl = buildTable(c);
+        const tbl = buildTable(c, bTrans);
         if (tbl) { els.push(tbl); els.push(gap()); }
         break;
       }
@@ -1044,7 +1073,7 @@ async function generateDocx(report, sections, outPath, opts) {
 
     // "TABLE OF CONTENTS" heading — starts on its own page
     children.push(new Paragraph({
-      children: [new TextRun({ text: "TABLE OF CONTENTS", bold: true, size: 28, color: C.primary })],
+      children: [new TextRun({ text: lang === "hi" ? "विषय-सूची" : "TABLE OF CONTENTS", bold: true, size: 28, color: C.primary, font: docFont })],
       alignment: AlignmentType.CENTER,
       border: { bottom: { color: C.primary, space: 1, style: BorderStyle.SINGLE, size: 8 } },
       spacing: { before: 0, after: 240 },
@@ -1061,9 +1090,9 @@ async function generateDocx(report, sections, outPath, opts) {
 
       children.push(new Paragraph({
         children: [
-          new TextRun({ text: label, size: isH1 ? 22 : 20, bold: isH1, color: isH1 ? C.primary : C.body }),
-          new TextRun({ text: "\t", size: isH1 ? 22 : 20 }),
-          new TextRun({ text: pgNum, size: isH1 ? 22 : 20, bold: isH1, color: isH1 ? C.primary : C.body }),
+          new TextRun({ text: label, size: isH1 ? 22 : 20, bold: isH1, color: isH1 ? C.primary : C.body, font: docFont }),
+          new TextRun({ text: "\t", size: isH1 ? 22 : 20, font: docFont }),
+          new TextRun({ text: pgNum, size: isH1 ? 22 : 20, bold: isH1, color: isH1 ? C.primary : C.body, font: docFont }),
         ],
         indent: { left: indent },
         tabStops: [{ type: TabStopType.RIGHT, position: TabStopPosition.MAX, leader: dotLeader }],
@@ -1225,7 +1254,7 @@ async function generateDocx(report, sections, outPath, opts) {
     styles: {
       default: {
         document: {
-          run: { font: "Times New Roman", size: 22, color: C.body },
+          run: { font: docFont, size: 22, color: C.body },
           paragraph: { spacing: { line: 432, lineRule: "auto" } },
         },
       },
@@ -1308,29 +1337,45 @@ async function generatePdf(report, sections, outPath, opts) {
 
 function buildHtml(report, sections, opts, assets = {}) {
   const { logoDataUrl = null, bgDataUrl = null, coverDataUrl = null } = assets;
-  const hasBg = !!(bgDataUrl || report.bg_image_url);
+  const hasBg  = !!(bgDataUrl || report.bg_image_url);
+  const hlang  = opts.language === "hi" ? "hi" : "en";
+  const isHindi = hlang === "hi";
   const sectionNumbers = opts.include_numbering ? buildSectionNumbers(sections) : new Map();
 
   /* ── Block → HTML, matching WordBlock component ── */
   function blockHtml(block) {
-    const c = block.content || {};
+    let c = block.content || {};
+    if (typeof c === "string") { try { c = JSON.parse(c); } catch { c = { html: c }; } }
+
+    // Resolve translations
+    let bTrans = block.translations;
+    if (typeof bTrans === "string") { try { bTrans = JSON.parse(bTrans); } catch { bTrans = {}; } }
+    const hi = isHindi ? ((bTrans || {}).hi || {}) : {};
+
     switch (block.block_type) {
 
-      case "PARAGRAPH":
-        return `<div class="para">${c.html || escHtml(c.text || "")}</div>`;
+      case "PARAGRAPH": {
+        const rawHtml = isHindi
+          ? (hi.html || hi.text || c.html || c.text || "")
+          : (c.html || escHtml(c.text || ""));
+        return `<div class="para">${rawHtml}</div>`;
+      }
 
       case "HEADING": {
-        const lvl = Math.max(1, Math.min(3, c.level || 2));
-        return `<div class="ch${lvl}">${escHtml(c.text || "")}</div>`;
+        const lvl  = Math.max(1, Math.min(3, c.level || 2));
+        const text = isHindi ? (hi.text || c.text || "") : (c.text || "");
+        return `<div class="ch${lvl}">${escHtml(text)}</div>`;
       }
 
       case "DIVIDER":
         return `<hr class="divider">`;
 
       case "LIST": {
-        const tag   = c.ordered ? "ol" : "ul";
-        const items = (c.items || []).map(i => `<li>${escHtml(i)}</li>`).join("");
-        return `<${tag} class="blk-list">${items}</${tag}>`;
+        const items   = isHindi ? (hi.items || c.items || []) : (c.items || []);
+        const ordered = !!(hi.ordered ?? c.ordered);
+        const tag     = ordered ? "ol" : "ul";
+        const itemsHtml = items.map(i => `<li>${escHtml(i)}</li>`).join("");
+        return `<${tag} class="blk-list">${itemsHtml}</${tag}>`;
       }
 
       case "KPI": {
@@ -1364,18 +1409,20 @@ function buildHtml(report, sections, opts, assets = {}) {
       case "TABLE": {
         const isForm = c.source === "form_import" || (c.columns && !Array.isArray(c.headers));
         if (isForm) {
-          const cols = c.columns || [];
+          const cols = (isHindi && hi.columns) ? hi.columns : (c.columns || []);
           if (!cols.length) return "";
+          const rows = (isHindi && hi.rows) ? hi.rows : (c.rows || []);
           const head = `<thead><tr>${cols.map(col => `<th>${escHtml(col.label || col.key)}</th>`).join("")}</tr></thead>`;
-          const body = `<tbody>${(c.rows || []).map((row, ri) =>
+          const body = `<tbody>${rows.map((row, ri) =>
             `<tr class="${ri % 2 === 1 ? "alt" : ""}">${cols.map(col => `<td>${escHtml(String(row[col.key] ?? ""))}</td>`).join("")}</tr>`
           ).join("")}</tbody>`;
           return `<table class="data-tbl">${head}${body}</table>`;
         }
-        const hdrs = c.headers || [];
+        const hdrs = (isHindi && hi.headers) ? hi.headers : (c.headers || []);
         if (!hdrs.length) return "";
+        const srcRows = (isHindi && hi.rows) ? hi.rows : (c.rows || []);
         const head = `<thead><tr>${hdrs.map(h => `<th>${escHtml(h)}</th>`).join("")}</tr></thead>`;
-        const body = `<tbody>${(c.rows || []).map((row, ri) => {
+        const body = `<tbody>${srcRows.map((row, ri) => {
           const cells = Array.isArray(row) ? row : hdrs.map(() => "");
           return `<tr class="${ri % 2 === 1 ? "alt" : ""}">${cells.map(v => `<td>${escHtml(String(v ?? ""))}</td>`).join("")}</tr>`;
         }).join("")}</tbody>`;
@@ -1463,7 +1510,7 @@ function buildHtml(report, sections, opts, assets = {}) {
       </div>`;
     }).join("");
     tocHtml = `<div class="toc-page">
-      <div class="sec-h1" style="text-align:center;margin-top:0;margin-bottom:24px">TABLE OF CONTENTS</div>
+      <div class="sec-h1" style="text-align:center;margin-top:0;margin-bottom:24px">${isHindi ? "विषय-सूची" : "TABLE OF CONTENTS"}</div>
       ${rows}
     </div>`;
   }
@@ -1509,14 +1556,15 @@ function buildHtml(report, sections, opts, assets = {}) {
     </div>`;
 
   return `<!DOCTYPE html>
-<html lang="en">
+<html lang="${hlang}">
 <head>
 <meta charset="UTF-8">
 <title>${escHtml(report.title)}</title>
 <style>
+${isHindi ? `@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;700&display=swap');` : ""}
 /* ── Base ── */
 body {
-  font-family: 'Times New Roman', Times, serif;
+  font-family: ${isHindi ? "'Noto Sans Devanagari', 'Mangal', 'Lohit Devanagari', 'Arial Unicode MS', sans-serif" : "'Times New Roman', Times, serif"};
   font-size: 12pt; color: #111827; margin: 0; padding: 20px;
   background: #808080;
 }
@@ -1550,10 +1598,10 @@ body {
 .ch3 { font-size: 12px; font-weight: 700; color: #374151; margin-bottom: 5px; margin-top: 10px; }
 
 /* ── Paragraph ── */
-.para { font-family: 'Times New Roman', Times, serif; font-size: 12pt; line-height: 1.8; color: #111827; margin-bottom: 10px; word-break: break-word; }
+.para { font-size: 12pt; line-height: 1.8; color: #111827; margin-bottom: 10px; word-break: break-word; }
 
 /* ── List ── */
-.blk-list { font-family: 'Times New Roman', Times, serif; font-size: 12pt; color: #111827; padding-left: 20px; line-height: 1.75; margin: 4px 0 10px; }
+.blk-list { font-size: 12pt; color: #111827; padding-left: 20px; line-height: 1.75; margin: 4px 0 10px; }
 .blk-list li { margin-bottom: 2px; }
 
 /* ── Divider ── */

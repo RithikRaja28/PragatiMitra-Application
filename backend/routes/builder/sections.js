@@ -217,9 +217,16 @@ router.get("/:id", async (req, res) => {
     if (!sRows.length) return res.status(404).json({ success: false, message: "Section not found" });
 
     const { rows: blocks } = await pool.query(
-      `SELECT * FROM public.section_blocks
-       WHERE section_id = $1 AND deleted_at IS NULL
-       ORDER BY order_index`,
+      `SELECT b.*,
+              COALESCE(
+                jsonb_object_agg(bt.language, bt.content) FILTER (WHERE bt.language IS NOT NULL),
+                '{}'::jsonb
+              ) AS translations
+       FROM public.section_blocks b
+       LEFT JOIN public.block_translations bt ON bt.block_id = b.id
+       WHERE b.section_id = $1 AND b.deleted_at IS NULL
+       GROUP BY b.id
+       ORDER BY b.order_index`,
       [id]
     );
 

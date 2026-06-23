@@ -1239,28 +1239,285 @@ export function KpiImportBlock({ blockId, content, onChange, onRefetched, readOn
   );
 }
 
+/* ── Hindi translation helpers ─────────────────────────────────────────── */
+
+function buildHiContent(blockType, enContent, hiTrans) {
+  const c = enContent || {};
+  const h = hiTrans || {};
+  switch (blockType) {
+    case "PARAGRAPH":
+      return { ...c, html: h.html ?? h.text ?? "" };
+    case "HEADING":
+      return { ...c, text: h.text ?? "" };
+    case "LIST":
+      return { ...c, items: Array.isArray(h.items) ? h.items : [] };
+    case "TABLE":
+      if (c.source === "form_import")
+        return { ...c, columns: h.columns ?? c.columns, rows: h.rows ?? c.rows };
+      return { ...c, headers: h.headers ?? c.headers, rows: h.rows ?? c.rows };
+    case "IMAGE":
+      return { ...c, caption: h.caption ?? "", alt: h.alt ?? "" };
+    case "IMAGE_GRID":
+      return {
+        ...c,
+        cols: (c.cols || []).map((col, i) => ({
+          ...col,
+          caption: (h.cols || [])[i]?.caption ?? col.caption,
+          alt: (h.cols || [])[i]?.alt ?? col.alt,
+        })),
+      };
+    case "FILE":
+      return { ...c, name: h.name ?? c.name };
+    default:
+      return c;
+  }
+}
+
+function extractTranslatablePartial(blockType, newContent) {
+  const c = newContent || {};
+  switch (blockType) {
+    case "PARAGRAPH":  return { html: c.html ?? "" };
+    case "HEADING":    return { text: c.text ?? "" };
+    case "LIST":       return { items: c.items ?? [] };
+    case "TABLE":
+      if (c.source === "form_import") return { columns: c.columns, rows: c.rows };
+      return { headers: c.headers, rows: c.rows };
+    case "IMAGE":      return { caption: c.caption ?? "", alt: c.alt ?? "" };
+    case "IMAGE_GRID": return { cols: (c.cols || []).map(col => ({ caption: col.caption ?? "", alt: col.alt ?? "" })) };
+    case "FILE":       return { name: c.name ?? "" };
+    default:           return c;
+  }
+}
+
+function hasHiTranslation(blockType, hiTrans) {
+  if (!hiTrans) return false;
+  const h = hiTrans;
+  switch (blockType) {
+    case "PARAGRAPH":  return !!(h.html || h.text);
+    case "HEADING":    return !!h.text;
+    case "LIST":       return Array.isArray(h.items) && h.items.some(i => i);
+    case "TABLE":      return !!(h.rows?.length || h.headers?.length || h.columns?.length);
+    case "IMAGE":      return !!(h.caption || h.alt);
+    case "IMAGE_GRID": return !!(h.cols?.some(c => c.caption || c.alt));
+    case "FILE":       return !!h.name;
+    default:           return false;
+  }
+}
+
+async function autoTranslateContent(blockType, content, apiFetch) {
+  const c = content || {};
+  const post = async (texts) => {
+    const r = await apiFetch("/api/report-integration/translate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ texts }),
+    });
+    return r.json();
+  };
+
+  switch (blockType) {
+    case "PARAGRAPH": {
+      const raw = (c.html || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+      if (!raw) return null;
+      const res = await post([raw]);
+      const t = res.data?.translations?.[0] || raw;
+      return { html: `<p>${t}</p>`, text: t };
+    }
+    case "HEADING": {
+      if (!c.text) return null;
+      const res = await post([c.text]);
+      return { text: res.data?.translations?.[0] || c.text };
+    }
+    case "LIST": {
+      const items = (c.items || []).filter(i => i);
+      if (!items.length) return null;
+      const res = await post(items);
+      return { items: res.data?.translations || items };
+    }
+    case "IMAGE": {
+      const toTrans = [c.caption, c.alt].filter(Boolean);
+      if (!toTrans.length) return null;
+      const res = await post(toTrans);
+      const trans = res.data?.translations || toTrans;
+      let ti = 0;
+      return { caption: c.caption ? (trans[ti++] || "") : "", alt: c.alt ? (trans[ti++] || "") : "" };
+    }
+    case "IMAGE_GRID": {
+      const cols = c.cols || [];
+      const toTrans = cols.map(col => col.caption || "").filter(cap => cap);
+      if (!toTrans.length) return null;
+      const res = await post(toTrans);
+      const trans = res.data?.translations || toTrans;
+      let ti = 0;
+      return { cols: cols.map(col => ({ caption: col.caption ? (trans[ti++] || "") : "" })) };
+    }
+    case "FILE": {
+      if (!c.name) return null;
+      const res = await post([c.name]);
+      return { name: res.data?.translations?.[0] || c.name };
+    }
+    case "TABLE": {
+      if (c.source === "form_import") return null;
+      const headers = c.headers || [];
+      const allRows = c.rows || [];
+      const allCells = [...headers, ...allRows.flatMap(row => row)].filter(v => v && typeof v === "string");
+      if (!allCells.length) return null;
+      const res = await post(allCells);
+      const trans = res.data?.translations || allCells;
+      let ti = 0;
+      const tHeaders = headers.map(h => h ? (trans[ti++] || "") : "");
+      const tRows = allRows.map(row => row.map(cell => (cell && typeof cell === "string") ? (trans[ti++] || "") : cell));
+      return { headers: tHeaders, rows: tRows };
+    }
+    default:
+      return null;
+  }
+}
+
+/* ── HI mode top bar ────────────────────────────────────────────────────── */
+function HiModeBar({ blockType, hasTranslation, onTranslate, translating, readOnly }) {
+  const isNeutral = ["DIVIDER", "KPI"].includes(blockType);
+  return (
+    <div style={{
+      display: "flex", alignItems: "center", gap: 8, marginBottom: 8,
+      padding: "5px 10px", background: "#faf5ff",
+      border: "1px solid #e9d5ff", borderRadius: 6,
+    }}>
+      <span style={{
+        fontSize: 9, fontWeight: 800, color: "#7c3aed",
+        background: "#ede9fe", padding: "2px 6px", borderRadius: 4, letterSpacing: 0.5,
+      }}>
+        HI
+      </span>
+      <span style={{ fontSize: 11, color: "#8b5cf6", flex: 1 }}>
+        {isNeutral
+          ? "Language-neutral block"
+          : hasTranslation
+            ? "Editing Hindi translation"
+            : "No Hindi translation yet"}
+      </span>
+      {!isNeutral && !readOnly && (
+        <button
+          onClick={onTranslate}
+          disabled={translating}
+          style={{
+            padding: "3px 12px", borderRadius: 5, fontSize: 11, fontWeight: 600,
+            cursor: translating ? "not-allowed" : "pointer",
+            border: "1px solid #7c3aed",
+            background: translating ? "#f3e8ff" : "#7c3aed",
+            color: translating ? "#7c3aed" : "#fff",
+            opacity: translating ? 0.7 : 1, transition: "all 0.15s",
+          }}
+        >
+          {translating ? "Translating…" : hasTranslation ? "Re-translate" : "Auto-translate"}
+        </button>
+      )}
+    </div>
+  );
+}
+
 /* ── Block router ─────────────────────────────────────────────────────── */
 // kpiScope: "institute" | "department" — controls which KPIs appear in the KPI picker.
 // Pass this from the report builder so the picker only shows KPIs belonging to the
 // same scope as the report being authored.
-export function BlockEditor({ block, onChange, onRefetched, readOnly, kpiScope = "department", blockId, apiFetch }) {
-  const p = { content: block.content, onChange, readOnly };
+export function BlockEditor({ block, onChange, onRefetched, onSaveTranslation, readOnly, kpiScope = "department", blockId, apiFetch, lang = "en" }) {
+  const [translating, setTranslating] = useState(false);
+
+  const isHi      = lang === "hi";
+  const allTrans  = block?.translations || {};
+  const hiTrans   = isHi ? (allTrans.hi || null) : null;
+  const hasHiTrans = isHi && hasHiTranslation(block.block_type, hiTrans);
+
+  // In HI mode: resolve content from translation, falling back to English fields
+  const activeContent = isHi
+    ? buildHiContent(block.block_type, block.content || {}, hiTrans)
+    : (block.content || {});
+
+  // In HI mode: route edits to onSaveTranslation (only the translatable partial)
+  const handleChange = isHi
+    ? (newContent) => onSaveTranslation?.("hi", extractTranslatablePartial(block.block_type, newContent))
+    : onChange;
+
+  const handleTranslate = async () => {
+    setTranslating(true);
+    try {
+      const partial = await autoTranslateContent(block.block_type, block.content || {}, apiFetch);
+      if (partial) onSaveTranslation?.("hi", partial);
+    } catch { /* ignore */ }
+    setTranslating(false);
+  };
+
+  const isNeutral      = ["DIVIDER", "KPI"].includes(block.block_type);
+  // IMAGE/IMAGE_GRID/FILE: always show editor (caption/label are optional; auto-translate fills them)
+  const alwaysEdit     = ["IMAGE", "IMAGE_GRID", "FILE"].includes(block.block_type);
+  const showPlaceholder = isHi && !hasHiTrans && !isNeutral && !alwaysEdit;
+
+  const p = { content: activeContent, onChange: handleChange, readOnly };
+
+  let editorNode;
   switch (block.block_type) {
-    case "PARAGRAPH":  return <RichTextBlock  {...p} />;
-    case "HEADING":    return <HeadingBlock   {...p} />;
-    case "IMAGE":      return <ImageBlock     {...p} />;
-    case "IMAGE_GRID": return <ImageGridBlock {...p} />;
-    case "TABLE":      return <TableBlock     {...p} onRefetched={onRefetched} blockId={blockId || block.id} apiFetch={apiFetch} />;
-    case "LIST":       return <ListBlock      {...p} />;
-    case "DIVIDER":    return <DividerBlock />;
-    case "FILE":       return <FileBlock      {...p} />;
+    case "PARAGRAPH":  editorNode = <RichTextBlock  {...p} />; break;
+    case "HEADING":    editorNode = <HeadingBlock   key={lang} {...p} />; break;
+    case "IMAGE":      editorNode = <ImageBlock     {...p} />; break;
+    case "IMAGE_GRID": editorNode = <ImageGridBlock {...p} />; break;
+    case "TABLE":      editorNode = <TableBlock     {...p} onRefetched={onRefetched} blockId={blockId || block.id} apiFetch={apiFetch} />; break;
+    case "LIST":       editorNode = <ListBlock      {...p} />; break;
+    case "DIVIDER":    editorNode = <DividerBlock />; break;
+    case "FILE":       editorNode = <FileBlock      {...p} />; break;
     case "KPI":
       if ((block.content || {}).source === "kpi_import") {
-        return <KpiImportBlock blockId={blockId || block.id} content={block.content} onChange={onChange} onRefetched={onRefetched} readOnly={readOnly} apiFetch={apiFetch} />;
+        editorNode = <KpiImportBlock blockId={blockId || block.id} content={block.content} onChange={onChange} onRefetched={onRefetched} readOnly={readOnly} apiFetch={apiFetch} />;
+      } else {
+        editorNode = <KpiBlock {...p} kpiScope={kpiScope} />;
       }
-      return <KpiBlock {...p} kpiScope={kpiScope} />;
-    default:           return <div style={{ color: "#94a3b8", fontSize: 13 }}>[{block.block_type}]</div>;
+      break;
+    default:
+      editorNode = <div style={{ color: "#94a3b8", fontSize: 13 }}>[{block.block_type}]</div>;
   }
+
+  if (!isHi) return editorNode;
+
+  return (
+    <div>
+      <HiModeBar
+        blockType={block.block_type}
+        hasTranslation={hasHiTrans}
+        onTranslate={handleTranslate}
+        translating={translating}
+        readOnly={readOnly}
+      />
+      {showPlaceholder ? (
+        <div style={{ position: "relative" }}>
+          <div style={{ opacity: 0.35, pointerEvents: "none", userSelect: "none" }}>
+            {(() => {
+              const ep = { content: block.content || {}, onChange: () => {}, readOnly: true };
+              switch (block.block_type) {
+                case "PARAGRAPH": return <RichTextBlock {...ep} />;
+                case "HEADING":   return <HeadingBlock  {...ep} />;
+                case "LIST":      return <ListBlock     {...ep} />;
+                case "TABLE":     return <TableBlock    {...ep} onRefetched={() => {}} blockId={blockId || block.id} apiFetch={apiFetch} />;
+                default:          return null;
+              }
+            })()}
+          </div>
+          <div style={{
+            position: "absolute", inset: 0,
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}>
+            <span style={{
+              fontSize: 12, color: "#7c3aed", fontStyle: "italic",
+              background: "rgba(255,255,255,0.88)", padding: "4px 12px",
+              borderRadius: 6, border: "1px solid #e9d5ff",
+            }}>
+              Click "Auto-translate" above to generate Hindi content
+            </span>
+          </div>
+        </div>
+      ) : (
+        editorNode
+      )}
+    </div>
+  );
 }
 
 /* ── Default content ──────────────────────────────────────────────────── */
