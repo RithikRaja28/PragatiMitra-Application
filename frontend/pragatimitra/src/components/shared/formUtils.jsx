@@ -199,6 +199,7 @@ export function isAuthError(err) {
 export function formatDate(iso, lang = "en") {
   if (!iso) return "—";
   return new Date(iso).toLocaleDateString(lang === "hi" ? "hi-IN" : "en-US", {
+    day: "numeric",
     month: "short",
     year: "numeric",
   });

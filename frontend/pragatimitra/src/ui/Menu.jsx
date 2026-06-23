@@ -92,11 +92,11 @@ export function Dropdown({ button, children, align = "right", width = 200, menuM
   );
 }
 
-export function MenuItem({ icon, children, onClick, danger = false, disabled = false }) {
+export function MenuItem({ icon, children, onClick, danger = false, disabled = false, title }) {
   return (
     <button
       role="menuitem" disabled={disabled} className="ui-menu-item"
-      onClick={onClick}
+      onClick={onClick} title={title}
       style={{
         display: "flex", alignItems: "center", gap: 10, width: "100%",
         padding: "9px 12px", borderRadius: radius.sm, border: "none",

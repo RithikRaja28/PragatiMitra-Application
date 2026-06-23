@@ -926,32 +926,59 @@ router.put(
       try {
         await client.query("BEGIN");
 
-        // Load current schema row
+        // Try to find an existing schema row for the exact target year.
         const { rows: existing } = await client.query(
           `SELECT id, schema, used_column_names FROM custom_field_schemas
            WHERE form_name = $1 AND institution_id = $2 AND year = $3`,
           [formName, institutionId, formYear]
         );
 
-        if (!existing.length) {
-          await client.query("ROLLBACK");
-          return res.status(404).json({ success: false, message: "Schema not found for this form/institution/year." });
+        // When no row exists for this year, find the most recent year's row to use
+        // as the base (inheriting field definitions and type constraints). A new row
+        // is then INSERTED for formYear so each academic year has its own schema.
+        let currentRow;
+        let isNewYearSchema = false;
+        if (existing.length) {
+          currentRow = existing[0];
+        } else {
+          const { rows: baseRows } = await client.query(
+            `SELECT id, schema, used_column_names FROM custom_field_schemas
+             WHERE form_name = $1 AND institution_id = $2 AND is_active = true
+             ORDER BY year DESC NULLS LAST LIMIT 1`,
+            [formName, institutionId]
+          );
+          if (!baseRows.length) {
+            await client.query("ROLLBACK");
+            return res.status(404).json({ success: false, message: "No existing schema found for this form." });
+          }
+          currentRow = baseRows[0];
+          isNewYearSchema = true;
         }
 
-        const currentRow = existing[0];
-        const usedColumnNames = new Set(currentRow.used_column_names || []);
+        // Collect the union of ALL years' used_column_names so reuse validation
+        // spans the full history — not just the current year's row.
+        const { rows: allUsedRows } = await client.query(
+          `SELECT used_column_names FROM custom_field_schemas
+           WHERE form_name = $1 AND institution_id = $2`,
+          [formName, institutionId]
+        );
+        const allHistoricalCols = new Set(
+          allUsedRows.flatMap((r) => r.used_column_names || [])
+        );
+
         const currentFieldNames = new Set(
           (currentRow.schema?.fields || []).map((f) => f.column_name)
         );
 
-        // Validate: active (non-excluded) incoming fields must not reuse a previously-deleted column name
+        // Validate: active incoming fields must not reuse a column name that was
+        // ever used (and deleted) in any year — to avoid exposing old data.
         const incomingFields = schema.fields || [];
         const excludedFixedCols = new Set(schema.excluded_fixed_columns || []);
 
         const reused = incomingFields
           .filter((f) => !excludedFixedCols.has(f.column_name))
           .map((f) => f.column_name?.trim().toLowerCase().replace(/\s+/g, "_"))
-          .filter((col) => col && usedColumnNames.has(col) && !currentFieldNames.has(col));
+          .filter((col) => col && allHistoricalCols.has(col) && !currentFieldNames.has(col));
 
         if (reused.length > 0) {
           await client.query("ROLLBACK");
@@ -961,11 +988,8 @@ router.put(
           });
         }
 
-        // Bug 9 — an existing field's TYPE is immutable: its records-table column
-        // was created with that type and is never ALTERed, so accepting a changed
-        // type would make the schema disagree with the stored data and corrupt new
-        // writes. Force each already-saved field back to its stored type (the
-        // builder locks this in the UI; this is the defense-in-depth backstop).
+        // Field TYPE is immutable — the physical column was created with a specific
+        // type and is never ALTERed. Lock incoming fields back to their stored type.
         const existingTypeByCol = new Map(
           (currentRow.schema?.fields || []).map((f) => [f.column_name, f.type])
         );
@@ -973,20 +997,33 @@ router.put(
           if (existingTypeByCol.has(f.column_name)) f.type = existingTypeByCol.get(f.column_name);
         }
 
-        // Merge new column names into used_column_names
         const newColNames = collectColumnNames(incomingFields);
-        const mergedUsed = Array.from(new Set([...usedColumnNames, ...newColNames]));
+        const mergedUsed = Array.from(new Set([...allHistoricalCols, ...newColNames]));
 
-        // Update schema in-place
-        const { rows: sRows } = await client.query(
-          `UPDATE custom_field_schemas
-           SET schema = $1::jsonb,
-               used_column_names = $2,
-               updated_by = $3
-           WHERE form_name = $4 AND institution_id = $5 AND year = $6
-           RETURNING id`,
-          [JSON.stringify(schema), mergedUsed, req.user.userId, formName, institutionId, formYear]
-        );
+        let schemaId;
+        if (isNewYearSchema) {
+          // INSERT a new schema row for this academic year.
+          const { rows: sRows } = await client.query(
+            `INSERT INTO custom_field_schemas
+               (form_name, institution_id, year, schema, is_active, created_by, used_column_names)
+             VALUES ($1, $2, $3, $4::jsonb, true, $5, $6)
+             RETURNING id`,
+            [formName, institutionId, formYear, JSON.stringify(schema), req.user.userId, mergedUsed]
+          );
+          schemaId = sRows[0].id;
+        } else {
+          // UPDATE the existing row for this year in-place.
+          const { rows: sRows } = await client.query(
+            `UPDATE custom_field_schemas
+             SET schema = $1::jsonb,
+                 used_column_names = $2,
+                 updated_by = $3
+             WHERE form_name = $4 AND institution_id = $5 AND year = $6
+             RETURNING id`,
+            [JSON.stringify(schema), mergedUsed, req.user.userId, formName, institutionId, formYear]
+          );
+          schemaId = sRows[0].id;
+        }
 
         // Update the form-level Hindi translation toggle (table_list) when provided.
         if (typeof translate_to_hindi === "boolean") {
@@ -997,7 +1034,8 @@ router.put(
           );
         }
 
-        // ADD COLUMN only for fields that are active (not excluded) and genuinely new
+        // ADD COLUMN for fields that are genuinely new to the physical records table
+        // (not present in any prior year's schema). IF NOT EXISTS makes this safe.
         const visibleNewFields = incomingFields.filter(
           (f) => !excludedFixedCols.has(f.column_name) && !currentFieldNames.has(f.column_name)
         );
@@ -1013,17 +1051,22 @@ router.put(
         await client.query("COMMIT");
 
         await writeAuditLog(req, {
-          actionType: "UPDATE_FORM",
+          actionType: isNewYearSchema ? "CREATE_YEAR_SCHEMA" : "UPDATE_FORM",
           entityType: "form",
-          entityId: sRows[0].id,
-          newValue: { form_name: formName, year: formYear, institution_id: institutionId },
-          message: `Form Updated - "${formName}"`,
+          entityId: schemaId,
+          newValue: { form_name: formName, year: formYear, institution_id: institutionId, new_year_schema: isNewYearSchema },
+          message: isNewYearSchema
+            ? `Form schema created for year ${formYear} - "${formName}"`
+            : `Form Updated - "${formName}"`,
         });
 
         return res.json({
           success: true,
-          message: "Schema updated successfully.",
-          schema_id: sRows[0].id,
+          message: isNewYearSchema
+            ? `Schema created for academic year ${formYear}.`
+            : "Schema updated successfully.",
+          schema_id: schemaId,
+          new_year_schema: isNewYearSchema,
         });
       } catch (err) {
         await client.query("ROLLBACK");

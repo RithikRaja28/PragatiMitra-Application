@@ -1185,6 +1185,7 @@ export default function FormDataPage() {
         dir:      sortDir,
       });
       if (searchTerm.trim()) params.set("search", searchTerm.trim());
+      if (selectedYear != null) params.set("year", String(selectedYear));
       const res  = await apiFetch(`/api/form-data/${form.form_name}/records?${params.toString()}`);
       const data = await res.json();
       if (data.success) {
@@ -1197,12 +1198,24 @@ export default function FormDataPage() {
       }
     } catch (err) { if (!isAuthError(err)) setRecsError("Failed to load records."); }
     finally { setRecsLoading(false); }
-  }, [apiFetch, lang, currentPage, pageSize, searchTerm, sortField, sortDir]);
+  }, [apiFetch, lang, currentPage, pageSize, searchTerm, sortField, sortDir, selectedYear]);
 
   /* Re-fetch when the records route loads (formEntity comes from nav state) */
   useEffect(() => {
     if (isRecords && formEntity) loadRecords(formEntity);
   }, [isRecords, formEntity, loadRecords]);
+
+  /* When the academic year changes while viewing a form's records, `loadForms`
+     reloads with the new year. If the current form is no longer in the list
+     (not assigned / not active for that year), redirect to the form list so the
+     user doesn't see stale data for an unrelated year. */
+  useEffect(() => {
+    if (!isRecords || !formEntity || formsLoading || !formsLoadedRef.current) return;
+    const available = forms.some((f) => f.form_name === formEntity.form_name);
+    if (!available) {
+      navigate(listPath, { replace: true });
+    }
+  }, [forms, formsLoading, isRecords, formEntity, navigate, listPath]);
 
   function openForm(form) {
     navigate(`${listPath}/records`, { state: { entity: form } });
@@ -1573,16 +1586,6 @@ export default function FormDataPage() {
             )}
           </>
         }
-        description={
-          <>
-            {recsLoading
-              ? t("Loading…", lang)
-              : searchTerm
-                ? `${totalCount} ${t("matching record", lang)}${totalCount !== 1 ? "s" : ""}`
-                : `${totalCount} ${t("record", lang)}${totalCount !== 1 ? "s" : ""}`}
-            {schema && <span style={{ marginLeft: 8, fontFamily: "monospace", fontSize: 11 }}>· {schema.year}</span>}
-          </>
-        }
         actions={
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <SortDropdown
@@ -1639,11 +1642,6 @@ export default function FormDataPage() {
           <div style={{ padding: "12px 20px", borderBottom: "1px solid #f1f5f9", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: "#1e293b" }}>
               {t("Records", lang)}
-              {searchTerm && (
-                <span style={{ marginLeft: 8, fontSize: 12, fontWeight: 500, color: "#94a3b8" }}>
-                  · {totalCount} {t("matching", lang)}
-                </span>
-              )}
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               {/* Table / Cards view toggle — both reuse the same handlers */}
@@ -1866,31 +1864,12 @@ export default function FormDataPage() {
       {/* ── Pagination — stays mounted while loading so it doesn't pop in/out ── */}
       {totalCount > 0 && (
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 16, padding: "10px 4px", flexWrap: "wrap", gap: 10 }}>
-          {/* Left: rows-per-page + record range */}
+          {/* Left: rows-per-page */}
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <RowsPerPageDropdown pageSize={pageSize} onPageSizeChange={handlePageSizeChange} />
-            <div style={{ fontSize: 13, color: "#64748b" }}>
-              {totalCount <= pageSize ? (
-                <>
-                  <strong style={{ color: "#1e293b" }}>{totalCount.toLocaleString()}</strong>{" "}
-                  {lang === "hi" ? "रिकॉर्ड" : `record${totalCount !== 1 ? "s" : ""}`}
-                  {searchTerm && <span style={{ color: "#94a3b8", marginLeft: 4 }}>({t("matching", lang)})</span>}
-                </>
-              ) : (
-                <>
-                  {t("Showing", lang)}{" "}
-                  <strong style={{ color: "#1e293b" }}>
-                    {(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, totalCount)}
-                  </strong>{" "}
-                  {t("of", lang)}{" "}
-                  <strong style={{ color: "#1e293b" }}>{totalCount.toLocaleString()}</strong>
-                  {searchTerm && <span style={{ color: "#94a3b8", marginLeft: 4 }}>({t("matching", lang)})</span>}
-                </>
-              )}
-              {selectedIds.size > 0 && (
-                <span style={{ marginLeft: 8, color: ACCENT, fontWeight: 700 }}>({selectedIds.size} {t("selected", lang)})</span>
-              )}
-            </div>
+            {selectedIds.size > 0 && (
+              <span style={{ fontSize: 13, color: ACCENT, fontWeight: 700 }}>{selectedIds.size} {t("selected", lang)}</span>
+            )}
           </div>
           {/* Right: page navigation */}
           {totalPages > 1 && (
