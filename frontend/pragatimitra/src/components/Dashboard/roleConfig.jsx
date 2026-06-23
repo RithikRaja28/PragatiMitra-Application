@@ -486,18 +486,6 @@ export const ROLE_CONFIG = {
         ],
       },
       {
-        group: "Tasks",
-        items: [
-          {
-            id: "da-tasks",
-            label: "Task Overview",
-            icon: "ListChecks",
-            permission: null,
-            slug: "task-overview",
-          },
-        ],
-      },
-      {
         group: "Reports",
         items: [
           {

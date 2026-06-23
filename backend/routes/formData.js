@@ -343,7 +343,9 @@ router.get("/:formName/records", async (req, res) => {
     if (!ctx.institutionId)
       return res.status(400).json({ success: false, message: "Institution ID required." });
 
-    const schema = await getActiveSchema(pool, formName, ctx.institutionId, year);
+    let schema = await getActiveSchema(pool, formName, ctx.institutionId, year);
+    if (!schema && year != null)
+      schema = await getActiveSchema(pool, formName, ctx.institutionId, null);
     if (!schema)
       return res.status(404).json({ success: false, message: "No active schema found for this form." });
 
@@ -351,6 +353,17 @@ router.get("/:formName/records", async (req, res) => {
     const deptClause  = (ctx.role === "department_admin" && ctx.departmentId)
       ? (() => { queryParams.push(ctx.departmentId); return `AND (department_id = $${queryParams.length} OR department_id IS NULL)`; })()
       : "";
+
+    /* Year filter — restrict records to the selected academic year so each year's
+       data is isolated. Records saved before this feature existed carry year=NULL
+       and are included when no year is provided (legacy callers); when a year IS
+       provided they are excluded so the view stays year-clean. */
+    let yearClause = "";
+    const parsedYear = year != null ? Number(year) : NaN;
+    if (Number.isInteger(parsedYear) && parsedYear > 0) {
+      queryParams.push(parsedYear);
+      yearClause = `AND year = $${queryParams.length}`;
+    }
 
     /* Issue 7 — opt-in server pagination + search + sort. All three are OFF unless
        their query params are present, so existing callers get the byte-identical
@@ -387,7 +400,7 @@ router.get("/:formName/records", async (req, res) => {
       const sc = searchClause();
       recordsQuery = `SELECT * FROM ${formName}_records
                       WHERE institution_id = $1 AND (language = 'en' OR language IS NULL)
-                      ${deptClause} ${sc}
+                      ${deptClause} ${yearClause} ${sc}
                       ${orderBy}`;
     } else {
       /* For non-English: return translated rows where they exist, PLUS English
@@ -403,10 +416,12 @@ router.get("/:formName/records", async (req, res) => {
           WHERE  language = ${langParam}
             AND  source_row_id IS NOT NULL
             AND  institution_id = $1
+            ${yearClause}
         )
         SELECT * FROM ${formName}_records
         WHERE institution_id = $1
           ${deptClause}
+          ${yearClause}
           AND (
             language = ${langParam}
             OR (
@@ -634,19 +649,12 @@ router.post("/:formName/records", async (req, res) => {
     const fields    = activeFields(schema);
     const fieldCols = fields.map((f) => dbCol(f.column_name));
     const fieldModes = buildFieldModes(fields);
-    // SINGLE SOURCE OF TRUTH: the record's year is the year of the schema it uses.
-    const formYear  = schema.year;
+    // The record's year is the OPERATING year (navbar/X-Academic-Year), not the
+    // schema's creation year. This allows proper per-academic-year data separation:
+    // records entered in 2024 are tagged year=2024 even when the schema was first
+    // created in 2023 (single schema shared across years via fallback lookup).
+    const formYear  = effectiveYear ?? schema.year;
     const createdBy = req.user.userId || null;
-
-    // Diagnostics only (M-2) — record_year/schema_year/resolved_year. After the
-    // resolution above record.year always equals schema.year; this logs the rare
-    // case where the SELECTED year had no schema and we fell back to another year's.
-    if (effectiveYear != null && Number(effectiveYear) !== Number(formYear)) {
-      logger.warn("formData record year fell back to schema year (selected year has no schema)", {
-        formName, institutionId: ctx.institutionId,
-        resolved_year: effectiveYear, schema_year: formYear, record_year: formYear,
-      });
-    }
 
     // Academic-year lock — checks the SELECTED year (X-Academic-Year header),
     // falling back to the schema year. View-only when locked.
@@ -749,18 +757,29 @@ router.put("/:formName/records/:id", async (req, res) => {
       return res.status(403).json({ success: false, message: lockBlock.message });
     }
 
-    const schema = await getActiveSchema(pool, formName, ctx.institutionId, null);
+    /* Fetch the record first so its own year drives the schema lookup.
+       A 2023 record must be validated/saved against the 2023 schema (a,b,c),
+       not the latest schema (which may be 2024: a,b,c,d). */
+    const { rows: targetRows } = await pool.query(
+      `SELECT language, year, updated_at FROM ${formName}_records WHERE id = $1 AND institution_id = $2`,
+      [id, ctx.institutionId]
+    );
+    if (!targetRows.length)
+      return res.status(404).json({ success: false, message: "Record not found." });
+    const editedLanguage = targetRows[0].language === "hi" ? "hi" : "en";
+    const recordYear = targetRows[0].year != null ? Number(targetRows[0].year) : null;
+
+    const schema = await getActiveSchema(pool, formName, ctx.institutionId, recordYear);
     if (!schema)
       return res.status(404).json({ success: false, message: "No active schema found." });
 
-    // Academic-year lock — checks the SELECTED year (header), falling back to
-    // the schema year. View-only when locked.
-    const ayLock = await getAcademicYearLockBlockForReq(pool, req, ctx.institutionId, schema.year);
+    // Academic-year lock — checks the record's own year.
+    const ayLock = await getAcademicYearLockBlockForReq(pool, req, ctx.institutionId, recordYear ?? schema.year);
     if (ayLock.locked)
       return res.status(403).json({ success: false, message: ayLock.message });
 
     // Archive write policy (highest precedence) — archived form is view-only.
-    const archiveBlock = await getFormArchiveBlockForReq(pool, req, ctx.institutionId, formName, schema.year);
+    const archiveBlock = await getFormArchiveBlockForReq(pool, req, ctx.institutionId, formName, recordYear ?? schema.year);
     if (archiveBlock.blocked)
       return res.status(403).json({ success: false, message: archiveBlock.message });
 
@@ -768,17 +787,24 @@ router.put("/:formName/records/:id", async (req, res) => {
     const fieldCols = fields.map((f) => dbCol(f.column_name));
     const fieldModes = buildFieldModes(fields);
 
-    /* Determine which language row is being edited so we apply the right rule:
-         en → update the English row AND regenerate its linked Hindi mirror
-         hi → update ONLY this Hindi row (English untouched, no reverse translation)
-       The language is read from the DB (not trusted from the client). */
-    const { rows: targetRows } = await pool.query(
-      `SELECT language, year FROM ${formName}_records WHERE id = $1 AND institution_id = $2`,
-      [id, ctx.institutionId]
-    );
-    if (!targetRows.length)
-      return res.status(404).json({ success: false, message: "Record not found." });
-    const editedLanguage = targetRows[0].language === "hi" ? "hi" : "en";
+    /* Optimistic concurrency: when the client sends the updated_at it loaded,
+       block the save if the DB row has since changed. Compare in JS, not SQL: the
+       column is TIMESTAMPTZ (microsecond precision via now()), but the value the
+       client holds round-tripped through a JS Date / JSON, which truncates to
+       milliseconds. We compare the client value against the DB value read back
+       through that SAME pg→JS path, so both sides are millisecond-precision Dates
+       and an unchanged row matches reliably — no false "modified by another user". */
+    if (updated_at) {
+      const clientMs = new Date(updated_at).getTime();
+      const dbMs     = targetRows[0].updated_at ? new Date(targetRows[0].updated_at).getTime() : null;
+      if (dbMs != null && Number.isFinite(clientMs) && clientMs !== dbMs) {
+        return res.status(409).json({
+          success: false,
+          conflict: true,
+          message: "This record was modified by another user. Please refresh and try again.",
+        });
+      }
+    }
 
     /* H-2 — enforce lock/archive/academic-year against the record's OWN year, so a
        view-only old-year record can't be edited by selecting a different active
@@ -802,14 +828,6 @@ router.put("/:formName/records/:id", async (req, res) => {
       whereVals.push(ctx.departmentId);
     }
 
-    // Optimistic concurrency: when the client sends the updated_at it loaded, add
-    // it to the WHERE so a concurrent save by another session causes a 0-row result
-    // rather than silently overwriting their change.
-    if (updated_at) {
-      whereClause += ` AND updated_at = $${idx++}`;
-      whereVals.push(new Date(updated_at));
-    }
-
     const vals = [...fieldCols.map((col) => data[col] ?? null), ...whereVals];
 
     const { rows } = await pool.query(
@@ -818,20 +836,15 @@ router.put("/:formName/records/:id", async (req, res) => {
     );
 
     if (!rows.length) {
-      // Distinguish a genuine 404 from a concurrency conflict.
-      if (updated_at) {
-        const { rows: still } = await pool.query(
-          `SELECT 1 FROM ${formName}_records WHERE id = $1 AND institution_id = $2 LIMIT 1`,
-          [id, ctx.institutionId]
-        );
-        if (still.length) {
-          return res.status(409).json({
-            success: false,
-            conflict: true,
-            message: "This record was modified by another user. Please refresh and try again.",
-          });
-        }
-      }
+      // Concurrency is already checked above. A 0-row result here means the row
+      // exists but is outside this user's writable scope (e.g. a department admin
+      // editing another department's record), or it no longer exists.
+      const { rows: still } = await pool.query(
+        `SELECT 1 FROM ${formName}_records WHERE id = $1 AND institution_id = $2 LIMIT 1`,
+        [id, ctx.institutionId]
+      );
+      if (still.length)
+        return res.status(403).json({ success: false, message: "You do not have permission to edit this record." });
       return res.status(404).json({ success: false, message: "Record not found." });
     }
 

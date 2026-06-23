@@ -792,6 +792,24 @@ async function setYearLock(req, res, locked) {
     if (error) return res.status(404).json({ success: false, message: error });
     const year = resolveYear(req);
 
+    // Block unlock when the deadline has already passed — the deadline-based
+    // lock is still active regardless of the manual is_locked flag, so
+    // "unlocking" would show success but the form stays locked. User must
+    // remove the deadline first.
+    if (!locked) {
+      const { rows: dlRows } = await pool.query(
+        `SELECT deadline_at FROM department_form_deadline_config
+         WHERE department_form_id = $1 AND academic_year = $2 LIMIT 1`,
+        [form.id, year]
+      );
+      if (dlRows.length && dlRows[0].deadline_at && new Date(dlRows[0].deadline_at) <= new Date()) {
+        return res.status(409).json({
+          success: false,
+          message: "Cannot unlock: the submission deadline has expired. Remove the deadline first, then unlock the form.",
+        });
+      }
+    }
+
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
