@@ -53,6 +53,8 @@ export default function ReportStructurePage({ reportId, onNavigate }) {
   const [hover,    setHover]    = useState(null);
   const [addingTo, setAddingTo] = useState(null);
   const [newSecTitle, setNewSecTitle] = useState("");
+  const [newSecTitleHi, setNewSecTitleHi] = useState("");
+  const [translating, setTranslating] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
@@ -83,6 +85,19 @@ export default function ReportStructurePage({ reportId, onNavigate }) {
 
   const toggleExpand = (id) => setExpanded(p => ({ ...p, [id]: !p[id] }));
 
+  const autoTranslateTitle = async () => {
+    if (!newSecTitle.trim()) return;
+    setTranslating(true);
+    try {
+      const res  = await apiFetch("/api/report-integration/translate", {
+        method: "POST", body: JSON.stringify({ text: newSecTitle.trim() }),
+      });
+      const data = await res.json();
+      if (data.success) setNewSecTitleHi(data.data.hi || "");
+    } catch { /* ignore */ }
+    finally { setTranslating(false); }
+  };
+
   const addSection = async (parentId = null) => {
     if (!newSecTitle.trim()) return;
     setBusy(true);
@@ -95,13 +110,15 @@ export default function ReportStructurePage({ reportId, onNavigate }) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          report_id:   reportId,
-          parent_id:   parentId || undefined,
-          title:       newSecTitle.trim(),
-          order_index: maxOrder + 1000,
+          report_id:        reportId,
+          parent_id:        parentId || undefined,
+          title:            newSecTitle.trim(),
+          title_translations: newSecTitleHi.trim() ? { hi: newSecTitleHi.trim() } : undefined,
+          order_index:      maxOrder + 1000,
         }),
       });
       setNewSecTitle("");
+      setNewSecTitleHi("");
       setAddingTo(null);
       await load();
     } catch {
@@ -167,7 +184,9 @@ export default function ReportStructurePage({ reportId, onNavigate }) {
             {addingTo === "root" && (
               <AddSectionInline
                 value={newSecTitle} onChange={setNewSecTitle}
-                onAdd={() => addSection(null)} onCancel={() => { setAddingTo(null); setNewSecTitle(""); }}
+                valueHi={newSecTitleHi} onChangeHi={setNewSecTitleHi}
+                onAutoTranslate={autoTranslateTitle} translating={translating}
+                onAdd={() => addSection(null)} onCancel={() => { setAddingTo(null); setNewSecTitle(""); setNewSecTitleHi(""); }}
                 busy={busy} />
             )}
 
@@ -270,16 +289,36 @@ function SectionCard({ sec, depth, expanded, onToggle, hover, onHover,
   );
 }
 
-function AddSectionInline({ value, onChange, onAdd, onCancel, busy }) {
+function AddSectionInline({ value, onChange, valueHi, onChangeHi, onAutoTranslate, translating, onAdd, onCancel, busy }) {
   return (
-    <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6,
-                  background: C.primaryLt, padding: "8px 12px", borderRadius: 8, border: `1px solid ${C.primary}33` }}>
-      <input style={{ ...inp, flex: 1 }} placeholder="Section title…" value={value} onChange={e => onChange(e.target.value)}
-        onKeyDown={e => e.key === "Enter" && onAdd()} autoFocus />
-      <button style={{ ...primaryBtn, padding: "6px 14px", fontSize: 12 }} disabled={busy || !value.trim()} onClick={onAdd}>
-        {busy ? "…" : "Add"}
-      </button>
-      <button style={{ ...outlineBtn, padding: "6px 10px", fontSize: 12 }} onClick={onCancel}>✕</button>
+    <div style={{ marginBottom: 6, background: C.primaryLt, padding: "10px 12px", borderRadius: 8, border: `1px solid ${C.primary}33` }}>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: onChangeHi ? 8 : 0 }}>
+        <input style={{ ...inp, flex: 1 }} placeholder="Section title…" value={value} onChange={e => onChange(e.target.value)}
+          onKeyDown={e => e.key === "Enter" && onAdd()} autoFocus />
+        <button style={{ ...primaryBtn, padding: "6px 14px", fontSize: 12 }} disabled={busy || !value.trim()} onClick={onAdd}>
+          {busy ? "…" : "Add"}
+        </button>
+        <button style={{ ...outlineBtn, padding: "6px 10px", fontSize: 12 }} onClick={onCancel}>✕</button>
+      </div>
+      {onChangeHi && (
+        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          <input
+            style={{ ...inp, flex: 1, fontSize: 12, borderColor: "#fcd34d", background: "#fffbeb" }}
+            placeholder="हिंदी शीर्षक (optional)…"
+            value={valueHi || ""}
+            onChange={e => onChangeHi(e.target.value)}
+          />
+          <button
+            onClick={onAutoTranslate}
+            disabled={translating || !value.trim()}
+            style={{
+              padding: "5px 10px", borderRadius: 6, border: "1px solid #fcd34d",
+              background: "#fef3c7", color: "#b45309", cursor: translating || !value.trim() ? "not-allowed" : "pointer",
+              fontSize: 11, fontWeight: 700, fontFamily: "inherit", whiteSpace: "nowrap",
+            }}
+          >{translating ? "…" : "⚡ Auto"}</button>
+        </div>
+      )}
     </div>
   );
 }

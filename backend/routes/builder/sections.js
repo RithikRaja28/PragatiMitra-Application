@@ -21,6 +21,7 @@ const { createSectionSnapshot } = require("../../utils/snapshotHelper");
 const logger            = require("../../utils/logger");
 const { getLogContext } = logger;
 
+
 const router = express.Router();
 router.use(verifyToken);
 
@@ -129,7 +130,7 @@ router.get("/assigned", async (req, res) => {
 router.post("/", async (req, res) => {
   const pool = req.app.locals.pool;
   try {
-    const { report_id, parent_id, title, description, order_index } = req.body;
+    const { report_id, parent_id, title, description, order_index, title_translations } = req.body;
     if (!isUUID(report_id)) return res.status(400).json({ success: false, message: "report_id (UUID) required" });
     if (!title?.trim())     return res.status(400).json({ success: false, message: "title required" });
 
@@ -164,6 +165,15 @@ router.post("/", async (req, res) => {
       [report_id, parent_id || null, title.trim(), description || null, oi, req.user.userId]
     );
     const section = rows[0];
+
+    if (title_translations && typeof title_translations === "object" && Object.keys(title_translations).length > 0) {
+      try {
+        await pool.query(
+          `UPDATE public.report_sections SET title_translations = title_translations || $1 WHERE id = $2`,
+          [JSON.stringify(title_translations), section.id]
+        );
+      } catch { /* column not yet migrated */ }
+    }
 
     await writeAuditLog(req, {
       actionType: "SECTION_CREATED",
@@ -225,6 +235,7 @@ router.put("/:id", async (req, res) => {
     const { id } = req.params;
     if (!isUUID(id)) return res.status(400).json({ success: false, message: "Invalid section id" });
 
+    const { title_translations } = req.body;
     const allowed = ["title", "description", "order_index", "workflow_template_id"];
     const sets    = [];
     const params  = [];
@@ -258,6 +269,14 @@ router.put("/:id", async (req, res) => {
       if (!rows.length)
         return res.status(409).json({ success: false, message: "Conflict: section was modified by another user. Please reload." });
 
+      if (title_translations && typeof title_translations === "object") {
+        try {
+          await pool.query(
+            `UPDATE public.report_sections SET title_translations = title_translations || $1 WHERE id = $2`,
+            [JSON.stringify(title_translations), id]
+          );
+        } catch { /* column not yet migrated */ }
+      }
       return res.json({ success: true, data: rows[0] });
     }
 
@@ -273,6 +292,12 @@ router.put("/:id", async (req, res) => {
     );
     if (!rows.length) return res.status(404).json({ success: false, message: "Section not found" });
 
+    if (title_translations && typeof title_translations === "object") {
+      await pool.query(
+        `UPDATE public.report_sections SET title_translations = title_translations || $1 WHERE id = $2`,
+        [JSON.stringify(title_translations), id]
+      );
+    }
     return res.json({ success: true, data: rows[0] });
   } catch (err) {
     logger.error("builder/sections PUT /:id", { ...getLogContext(req), err: err.message });

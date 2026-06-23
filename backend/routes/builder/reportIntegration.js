@@ -106,7 +106,7 @@ function resolveFieldLabel(field, language) {
   return lbl || field?.column_name;
 }
 
-function buildSelectClause(safeSelected, schemaFields, language = "en") {
+function buildSelectClause(safeSelected, schemaFields, language = "en", physicalCols = null) {
   const hasDept = safeSelected.includes("department_id");
   const hasUser = safeSelected.includes("created_by");
 
@@ -118,14 +118,17 @@ function buildSelectClause(safeSelected, schemaFields, language = "en") {
     // Schema fields key on column_name, not "name" — match correctly so labels actually resolve.
     const field = (schemaFields || []).find(f => f.column_name === col);
     const label = field ? resolveFieldLabel(field, language) : col;
-    return `r."${col}" AS "${label}"`;
+    // Fields added after form creation live in custom_fields JSONB, not as physical columns.
+    const isPhysical = !physicalCols || physicalCols.has(col);
+    const source = isPhysical ? `r."${col}"` : `r.custom_fields->>'${col}'`;
+    return `${source} AS "${label}"`;
   });
 
   return { hasDept, hasUser, selectParts };
 }
 
-function buildFullQuery(tableName, safeSelected, institutionId, year, schemaFields, language = "en") {
-  const { hasDept, hasUser, selectParts } = buildSelectClause(safeSelected, schemaFields, language);
+function buildFullQuery(tableName, safeSelected, institutionId, year, schemaFields, language = "en", physicalCols = null) {
+  const { hasDept, hasUser, selectParts } = buildSelectClause(safeSelected, schemaFields, language, physicalCols);
   const select = [`r.id AS "__row_id"`, ...selectParts].join(", ");
 
   let q = `SELECT ${select}\nFROM public.${tableName} r`;
@@ -154,15 +157,28 @@ function buildColumnMeta(safeSelected, schemaFields, language = "en") {
   });
 }
 
-async function validateColumns(pool, tableName, requested) {
+async function getPhysicalCols(pool, tableName) {
   const { rows } = await pool.query(
     `SELECT column_name FROM information_schema.columns
-     WHERE table_schema='public' AND table_name=$1 AND column_name=ANY($2)`,
-    [tableName, requested]
+     WHERE table_schema='public' AND table_name=$1`,
+    [tableName]
   );
-  const validSet = new Set(rows.map(r => r.column_name));
-  // department_id / created_by are handled via JOINs — allow even if not a physical column
-  return requested.filter(c => validSet.has(c) || c === "department_id" || c === "created_by");
+  return new Set(rows.map(r => r.column_name));
+}
+
+// Validates requested column names against the table. Physical columns and system
+// join-columns (department_id, created_by) always pass. Schema fields that are NOT
+// physical columns are allowed when custom_fields JSONB exists on the table — these
+// are fields added after form creation that are stored in the JSONB column.
+function validateColumns(requested, physicalCols, schemaFields = []) {
+  const schemaColSet = new Set((schemaFields || []).map(f => f.column_name));
+  const hasCustomFields = physicalCols.has("custom_fields");
+  const systemCols = new Set(["department_id", "created_by", "created_at", "year"]);
+  return requested.filter(c =>
+    systemCols.has(c) ||
+    physicalCols.has(c) ||
+    (hasCustomFields && schemaColSet.has(c))
+  );
 }
 
 /* ── GET /forms — list forms accessible to the user's institution ─── */
@@ -277,11 +293,9 @@ router.get("/forms/:formName/preview", async (req, res) => {
     const requested = (columns || "").split(",").map(c => c.trim()).filter(Boolean);
     if (!requested.length) return res.status(400).json({ success: false, message: "columns required" });
 
-    const safeSelected = await validateColumns(pool, tableName, requested);
-    if (!safeSelected.length) return res.status(400).json({ success: false, message: "No valid columns" });
-
-    // Resolve current schema labels so preview rows are keyed the same way the
-    // column picker (and the eventual imported block) label them.
+    // Resolve schema labels and physical-column set before validation so JSONB
+    // fields (added after form creation) are accepted alongside physical columns.
+    const physicalCols = await getPhysicalCols(pool, tableName);
     let schemaFields = [];
     if (await tableExists(pool, "custom_field_schemas")) {
       const qParams = [formName, iid];
@@ -293,7 +307,10 @@ router.get("/forms/:formName/preview", async (req, res) => {
       schemaFields = Array.isArray(rows[0]?.fields) ? rows[0].fields : [];
     }
 
-    const baseQuery  = buildFullQuery(tableName, safeSelected, iid, year, schemaFields, language);
+    const safeSelected = validateColumns(requested, physicalCols, schemaFields);
+    if (!safeSelected.length) return res.status(400).json({ success: false, message: "No valid columns" });
+
+    const baseQuery  = buildFullQuery(tableName, safeSelected, iid, year, schemaFields, language, physicalCols);
     const langClause = language === "hi" ? `r.language='hi'` : `(r.language='en' OR r.language IS NULL)`;
     const countSql   = `SELECT COUNT(*) AS cnt FROM public.${tableName} r
                         WHERE r.institution_id='${iid}'${year ? ` AND r.year=${Number(year)}` : ""}
@@ -344,10 +361,11 @@ router.post("/sections/:sectionId/blocks/table-import", async (req, res) => {
     );
     if (!secRows.length) return res.status(404).json({ success: false, message: "Section not found" });
 
-    const safeSelected = await validateColumns(pool, tableName, selectedColumns);
+    const physicalCols = await getPhysicalCols(pool, tableName);
+    const safeSelected = validateColumns(selectedColumns, physicalCols, schemaFields);
     if (!safeSelected.length) return res.status(400).json({ success: false, message: "No valid columns" });
 
-    const storedQuery  = buildFullQuery(tableName, safeSelected, iid, year, schemaFields, language);
+    const storedQuery  = buildFullQuery(tableName, safeSelected, iid, year, schemaFields, language, physicalCols);
     const columnMeta   = buildColumnMeta(safeSelected, schemaFields, language);
     const columnMap    = [{ key: "__row_id", label: "Row ID", hidden: true }, ...columnMeta];
     const importedAt   = new Date().toISOString();
@@ -414,20 +432,20 @@ router.post("/sections/:sectionId/blocks/table-import", async (req, res) => {
       // explicitly imported the Hindi data as primary, there's no English translation to add.
       let translations = {};
       if (language === "en") {
-        const hiQuery = buildFullQuery(tableName, safeSelected, iid, year, schemaFields, "hi");
+        const hiColumnMeta = buildColumnMeta(safeSelected, schemaFields, "hi");
+        const hiQuery = buildFullQuery(tableName, safeSelected, iid, year, schemaFields, "hi", physicalCols);
         const { rows: hiRows } = await client.query(hiQuery);
-        if (hiRows.length) {
-          const hiColumnMeta = buildColumnMeta(safeSelected, schemaFields, "hi");
-          const hiContent = { columns: hiColumnMeta, rows: hiRows };
-          await client.query(
-            `INSERT INTO public.block_translations (block_id, language, content, status, created_by, updated_by)
-             VALUES ($1,'hi',$2::jsonb,'DRAFT',$3,$3)
-             ON CONFLICT (block_id, language) DO UPDATE
-               SET content = EXCLUDED.content, updated_by = EXCLUDED.updated_by`,
-            [newBlock.id, JSON.stringify(hiContent), req.user.userId]
-          );
-          translations = { hi: hiContent };
-        }
+        // Always persist Hindi column metadata so headers render in Hindi even when
+        // no Hindi data rows exist yet (schema labels come from custom_field_schemas.label.hi).
+        const hiContent = { columns: hiColumnMeta, rows: hiRows };
+        await client.query(
+          `INSERT INTO public.block_translations (block_id, language, content, status, created_by, updated_by)
+           VALUES ($1,'hi',$2::jsonb,'DRAFT',$3,$3)
+           ON CONFLICT (block_id, language) DO UPDATE
+             SET content = EXCLUDED.content, updated_by = EXCLUDED.updated_by`,
+          [newBlock.id, JSON.stringify(hiContent), req.user.userId]
+        );
+        translations = { hi: hiContent };
       }
 
       // 4. Snapshot
@@ -471,10 +489,39 @@ router.post("/blocks/:blockId/refetch", async (req, res) => {
     const block = blkRows[0];
     if (block.block_type !== "TABLE")
       return res.status(422).json({ success: false, message: "Not a TABLE block" });
-    if (!block.ds_id || !block.ds_query)
+    if (!block.ds_id || !block.ds_params)
       return res.status(422).json({ success: false, message: "Block has no form data source" });
 
-    const { rows: freshRows } = await pool.query(block.ds_query);
+    // Rebuild the primary query from stored params rather than using the cached ds_query
+    // so JSONB-column fields (added after form creation) are always extracted correctly.
+    const dsParams = block.ds_params;
+    const primaryFormName = dsParams.form_name;
+    const primaryYear     = dsParams.academic_year;
+    const primaryLanguage2 = dsParams.language === "hi" ? "hi" : "en";
+    const primarySelected  = dsParams.selected_columns || [];
+    const primaryTable     = `${primaryFormName}_records`;
+
+    if (!primaryFormName || !primarySelected.length || !isValidRecordsTable(primaryTable))
+      return res.status(422).json({ success: false, message: "Data source is missing import parameters" });
+
+    const primaryIid = await resolveInstitutionId(pool, req.user.userId, null);
+    if (!primaryIid) return res.status(400).json({ success: false, message: "Could not determine institution" });
+
+    const primaryPhysical = await getPhysicalCols(pool, primaryTable);
+    let primarySchema = [];
+    if (await tableExists(pool, "custom_field_schemas")) {
+      const qps = [primaryFormName, primaryIid];
+      let sq = `SELECT schema -> 'fields' AS fields FROM public.custom_field_schemas
+                WHERE form_name=$1 AND institution_id=$2 AND is_active=TRUE`;
+      if (primaryYear) { qps.push(Number(primaryYear)); sq += ` AND year=$${qps.length}`; }
+      sq += ` ORDER BY created_at DESC LIMIT 1`;
+      const { rows: sfr } = await pool.query(sq, qps);
+      primarySchema = Array.isArray(sfr[0]?.fields) ? sfr[0].fields : [];
+    }
+    const primarySafe = validateColumns(primarySelected, primaryPhysical, primarySchema);
+    const rebuiltQuery = buildFullQuery(primaryTable, primarySafe, primaryIid, primaryYear, primarySchema, primaryLanguage2, primaryPhysical);
+
+    const { rows: freshRows } = await pool.query(rebuiltQuery);
     const importedAt = new Date().toISOString();
 
     // Update block content — replace rows + imported_at
@@ -507,8 +554,8 @@ router.post("/blocks/:blockId/refetch", async (req, res) => {
         const tableName = `${formName}_records`;
         if (isValidRecordsTable(tableName)) {
           const iid = await resolveInstitutionId(pool, req.user.userId, null);
-          const safeSelected = await validateColumns(pool, tableName, selected);
-          if (iid && safeSelected.length) {
+          if (iid) {
+            const physicalCols = await getPhysicalCols(pool, tableName);
             let schemaFields = [];
             if (await tableExists(pool, "custom_field_schemas")) {
               const qParams = [formName, iid];
@@ -519,20 +566,23 @@ router.post("/blocks/:blockId/refetch", async (req, res) => {
               const { rows } = await pool.query(sq, qParams);
               schemaFields = Array.isArray(rows[0]?.fields) ? rows[0].fields : [];
             }
-            const hiQuery = buildFullQuery(tableName, safeSelected, iid, year, schemaFields, "hi");
-            const { rows: hiRows } = await pool.query(hiQuery);
+            const safeSelected = validateColumns(selected, physicalCols, schemaFields);
+          if (safeSelected.length) {
             const hiColumnMeta = buildColumnMeta(safeSelected, schemaFields, "hi");
-            if (hiRows.length) {
-              const hiContent = { columns: hiColumnMeta, rows: hiRows };
-              await pool.query(
-                `INSERT INTO public.block_translations (block_id, language, content, status, created_by, updated_by)
-                 VALUES ($1,'hi',$2::jsonb,'DRAFT',$3,$3)
-                 ON CONFLICT (block_id, language) DO UPDATE
-                   SET content = EXCLUDED.content, updated_by = EXCLUDED.updated_by`,
-                [blockId, JSON.stringify(hiContent), req.user.userId]
-              );
-              translations = { hi: hiContent };
-            }
+            const hiQuery = buildFullQuery(tableName, safeSelected, iid, year, schemaFields, "hi", physicalCols);
+            const { rows: hiRows } = await pool.query(hiQuery);
+            // Always persist Hindi column metadata so headers render in Hindi even when
+            // no Hindi data rows exist yet (labels come from custom_field_schemas.label.hi).
+            const hiContent = { columns: hiColumnMeta, rows: hiRows };
+            await pool.query(
+              `INSERT INTO public.block_translations (block_id, language, content, status, created_by, updated_by)
+               VALUES ($1,'hi',$2::jsonb,'DRAFT',$3,$3)
+               ON CONFLICT (block_id, language) DO UPDATE
+                 SET content = EXCLUDED.content, updated_by = EXCLUDED.updated_by`,
+              [blockId, JSON.stringify(hiContent), req.user.userId]
+            );
+            translations = { hi: hiContent };
+          }
           }
         }
       } catch (e) {
@@ -595,10 +645,9 @@ router.post("/blocks/:blockId/switch-language", async (req, res) => {
     const iid = await resolveInstitutionId(pool, req.user.userId, null);
     if (!iid) return res.status(400).json({ success: false, message: "Could not determine institution" });
 
-    const safeSelected = await validateColumns(pool, tableName, selected);
-    if (!safeSelected.length) return res.status(400).json({ success: false, message: "No valid columns" });
-
-    // Re-fetch current schema labels so column headers stay consistent with the original import
+    // Fetch physical-column set and schema before validation so JSONB fields
+    // (added after form creation) are included alongside physical columns.
+    const physicalCols = await getPhysicalCols(pool, tableName);
     let schemaFields = [];
     if (await tableExists(pool, "custom_field_schemas")) {
       const qParams = [formName, iid];
@@ -610,7 +659,10 @@ router.post("/blocks/:blockId/switch-language", async (req, res) => {
       schemaFields = Array.isArray(rows[0]?.fields) ? rows[0].fields : [];
     }
 
-    const newQuery  = buildFullQuery(tableName, safeSelected, iid, year, schemaFields, language);
+    const safeSelected = validateColumns(selected, physicalCols, schemaFields);
+    if (!safeSelected.length) return res.status(400).json({ success: false, message: "No valid columns" });
+
+    const newQuery  = buildFullQuery(tableName, safeSelected, iid, year, schemaFields, language, physicalCols);
     const columnMeta = buildColumnMeta(safeSelected, schemaFields, language);
     const importedAt = new Date().toISOString();
 

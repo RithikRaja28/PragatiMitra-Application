@@ -128,7 +128,7 @@ router.get("/:id", async (req, res) => {
          ) FILTER (WHERE tb.id IS NOT NULL) AS blocks
          FROM tree t
          LEFT JOIN public.template_blocks tb ON tb.template_section_id = t.id
-         GROUP BY t.id, t.template_id, t.parent_id, t.title, t.description, t.order_index,
+         GROUP BY t.id, t.template_id, t.parent_id, t.title, t.title_translations, t.description, t.order_index,
                   t.workflow_template_id, t.data_source_id, t.created_by, t.created_at, t.updated_at, t.depth
          ORDER BY t.depth, t.order_index`, [id]
       ),
@@ -213,7 +213,7 @@ router.post("/:id/sections", requireRole(["super_admin", "institute_admin", "pub
     const { id } = req.params;
     if (!isUUID(id)) return res.status(400).json({ success: false, message: "Invalid template id" });
 
-    const { title, description, parent_id, order_index } = req.body;
+    const { title, description, parent_id, order_index, title_translations } = req.body;
     if (!title?.trim()) return res.status(400).json({ success: false, message: "title required" });
 
     let oi = order_index != null ? Number(order_index) : null;
@@ -231,6 +231,15 @@ router.post("/:id/sections", requireRole(["super_admin", "institute_admin", "pub
        VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
       [id, isUUID(parent_id) ? parent_id : null, title.trim(), description || null, oi, req.user.userId]
     );
+    // Merge title_translations if column exists (added by migration 016)
+    if (title_translations && typeof title_translations === "object" && Object.keys(title_translations).length > 0) {
+      try {
+        await pool.query(
+          `UPDATE public.template_sections SET title_translations = title_translations || $1 WHERE id = $2`,
+          [JSON.stringify(title_translations), rows[0].id]
+        );
+      } catch { /* column not yet migrated — safe to ignore */ }
+    }
 
     return res.status(201).json({ success: true, data: rows[0] });
   } catch (err) {
@@ -244,11 +253,24 @@ router.put("/:id/sections/:secId", requireRole(["super_admin", "institute_admin"
   const pool = req.app.locals.pool;
   try {
     const { id, secId } = req.params;
+    const { title_translations: tmplTitleTrans } = req.body;
     const allowed = ["title", "description", "order_index", "workflow_template_id"];
     const sets = [], params = [];
     for (const f of allowed) {
       if (req.body[f] !== undefined) { params.push(req.body[f]); sets.push(`${f} = $${params.length}`); }
     }
+
+    // title_translations-only update: skip the main UPDATE, go straight to JSONB merge
+    if (!sets.length && tmplTitleTrans && typeof tmplTitleTrans === "object") {
+      try {
+        await pool.query(
+          `UPDATE public.template_sections SET title_translations = title_translations || $1 WHERE id = $2 AND template_id = $3`,
+          [JSON.stringify(tmplTitleTrans), secId, id]
+        );
+      } catch { /* column not yet migrated */ }
+      return res.json({ success: true, data: { id: secId } });
+    }
+
     if (!sets.length) return res.status(400).json({ success: false, message: "Nothing to update" });
     params.push(secId); params.push(id);
     const { rows } = await pool.query(
@@ -256,6 +278,15 @@ router.put("/:id/sections/:secId", requireRole(["super_admin", "institute_admin"
       params
     );
     if (!rows.length) return res.status(404).json({ success: false, message: "Section not found" });
+
+    if (tmplTitleTrans && typeof tmplTitleTrans === "object") {
+      try {
+        await pool.query(
+          `UPDATE public.template_sections SET title_translations = title_translations || $1 WHERE id = $2`,
+          [JSON.stringify(tmplTitleTrans), secId]
+        );
+      } catch { /* column not yet migrated */ }
+    }
     return res.json({ success: true, data: rows[0] });
   } catch (err) {
     logger.error("templates PUT section", { ...getLogContext(req), err: err.message });
