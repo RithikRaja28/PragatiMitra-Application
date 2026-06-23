@@ -9,16 +9,45 @@
  * GET  /forms/:formName/preview                       5-row preview + count
  * POST /sections/:sectionId/blocks/table-import       create block from form data
  * POST /blocks/:blockId/refetch                       re-execute stored query
+ * POST /blocks/:blockId/switch-language                re-fetch the same table in en/hi
+ * POST /translate                                     translate text/texts to Hindi
  */
 
 const express           = require("express");
 const { verifyToken }   = require("../../middleware/auth");
 const { createSectionSnapshot } = require("../../utils/snapshotHelper");
+const { translateSentence }     = require("../../services/translationService");
 const logger            = require("../../utils/logger");
 const { getLogContext } = logger;
 
 const router = express.Router();
 router.use(verifyToken);
+
+/* ── POST /translate — on-demand EN→HI translation for section editor blocks ──
+   Accepts either { text } for a single string or { texts: string[] } for a
+   batch (e.g. list items, table cells). translateSentence never rejects for a
+   valid non-empty string — it falls back through transliteration/phonetics
+   internally — so the only realistic failure here is bad input. */
+router.post("/translate", async (req, res) => {
+  const { text, texts } = req.body;
+  try {
+    if (Array.isArray(texts)) {
+      if (!texts.length || !texts.every((t) => typeof t === "string"))
+        return res.status(400).json({ success: false, message: "texts must be a non-empty string array" });
+      const translations = await Promise.all(
+        texts.map((t) => (t.trim() ? translateSentence(t) : Promise.resolve("")))
+      );
+      return res.json({ success: true, data: { translations } });
+    }
+    if (typeof text !== "string" || !text.trim())
+      return res.status(400).json({ success: false, message: "text is required" });
+    const hi = await translateSentence(text.trim());
+    return res.json({ success: true, data: { hi } });
+  } catch (err) {
+    logger.error("report-integration POST /translate", { ...getLogContext(req), err: err.message });
+    return res.status(500).json({ success: false, message: "Translation failed" });
+  }
+});
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const isUUID  = v => typeof v === "string" && UUID_RE.test(v);
@@ -68,7 +97,16 @@ async function getDbColumns(pool, tableName) {
  * Columns that map to a JOIN (department_id → departments, created_by → users)
  * are replaced with human-readable aliases; all others use the schema label.
  */
-function buildSelectClause(safeSelected, schemaFields) {
+// Schema field labels are stored as { en, hi, ta, ... } (set during form creation in the
+// Form Builder, optionally auto-filled by translationService). Extract the label for the
+// requested language, falling back to English, then to the raw column name.
+function resolveFieldLabel(field, language) {
+  const lbl = field?.label;
+  if (lbl && typeof lbl === "object") return lbl[language] || lbl.en || field.column_name;
+  return lbl || field?.column_name;
+}
+
+function buildSelectClause(safeSelected, schemaFields, language = "en") {
   const hasDept = safeSelected.includes("department_id");
   const hasUser = safeSelected.includes("created_by");
 
@@ -77,16 +115,17 @@ function buildSelectClause(safeSelected, schemaFields) {
     if (col === "created_by")    return `u.full_name AS "Submitted By"`;
     if (col === "created_at")    return `TO_CHAR(r.created_at, 'DD Mon YYYY HH24:MI') AS "Submitted At"`;
     if (col === "year")          return `r.year AS "Academic Year"`;
-    const field = (schemaFields || []).find(f => f.name === col);
-    const label = field?.label || col;
+    // Schema fields key on column_name, not "name" — match correctly so labels actually resolve.
+    const field = (schemaFields || []).find(f => f.column_name === col);
+    const label = field ? resolveFieldLabel(field, language) : col;
     return `r."${col}" AS "${label}"`;
   });
 
   return { hasDept, hasUser, selectParts };
 }
 
-function buildFullQuery(tableName, safeSelected, institutionId, year, schemaFields) {
-  const { hasDept, hasUser, selectParts } = buildSelectClause(safeSelected, schemaFields);
+function buildFullQuery(tableName, safeSelected, institutionId, year, schemaFields, language = "en") {
+  const { hasDept, hasUser, selectParts } = buildSelectClause(safeSelected, schemaFields, language);
   const select = [`r.id AS "__row_id"`, ...selectParts].join(", ");
 
   let q = `SELECT ${select}\nFROM public.${tableName} r`;
@@ -94,12 +133,13 @@ function buildFullQuery(tableName, safeSelected, institutionId, year, schemaFiel
   if (hasUser) q += `\nLEFT JOIN public.users u ON u.id = r.created_by`;
   q += `\nWHERE r.institution_id = '${institutionId}'`;
   if (year)    q += `\n  AND r.year = ${Number(year)}`;
-  q += `\n  AND (r.language = 'en' OR r.language IS NULL)\nORDER BY r.created_at DESC`;
+  const langClause = language === "hi" ? `r.language = 'hi'` : `(r.language = 'en' OR r.language IS NULL)`;
+  q += `\n  AND ${langClause}\nORDER BY r.created_at DESC`;
 
   return q;
 }
 
-function buildColumnMeta(safeSelected, schemaFields) {
+function buildColumnMeta(safeSelected, schemaFields, language = "en") {
   return safeSelected.map(col => {
     let label;
     if (col === "department_id") label = "Department";
@@ -107,8 +147,8 @@ function buildColumnMeta(safeSelected, schemaFields) {
     else if (col === "created_at") label = "Submitted At";
     else if (col === "year")       label = "Academic Year";
     else {
-      const f = (schemaFields || []).find(f => f.name === col);
-      label = f?.label || col;
+      const f = (schemaFields || []).find(f => f.column_name === col);
+      label = f ? resolveFieldLabel(f, language) : col;
     }
     return { key: label, label, type: "text", hidden: false };
   });
@@ -167,6 +207,7 @@ router.get("/forms/:formName/columns", async (req, res) => {
   try {
     const { formName } = req.params;
     const { year }     = req.query;
+    const language = req.query.language === "hi" ? "hi" : "en";
     const iid = await resolveInstitutionId(pool, req.user.userId, req.query.institution_id);
 
     const tableName = `${formName}_records`;
@@ -192,9 +233,11 @@ router.get("/forms/:formName/columns", async (req, res) => {
       schemaFields = Array.isArray(rows[0]?.fields) ? rows[0].fields : [];
     }
 
+    // Schema fields key on column_name (not "name") — match correctly so labels resolve,
+    // and extract the requested language from the { en, hi, ... } label object.
     let dynamicCols = schemaFields
-      .filter(f => f.name && dbCols.has(f.name) && !EXCLUDED_COLS.has(f.name))
-      .map(f => ({ key: f.name, label: f.label || f.name }));
+      .filter(f => f.column_name && dbCols.has(f.column_name) && !EXCLUDED_COLS.has(f.column_name))
+      .map(f => ({ key: f.column_name, label: resolveFieldLabel(f, language) }));
 
     // Fallback: if no schema, surface DB columns directly (minus hidden ones)
     if (!dynamicCols.length) {
@@ -221,6 +264,7 @@ router.get("/forms/:formName/preview", async (req, res) => {
   try {
     const { formName }     = req.params;
     const { year, columns } = req.query;
+    const language = req.query.language === "hi" ? "hi" : "en";
     const iid = await resolveInstitutionId(pool, req.user.userId, req.query.institution_id);
     if (!iid) return res.status(400).json({ success: false, message: "institution_id required" });
 
@@ -236,10 +280,24 @@ router.get("/forms/:formName/preview", async (req, res) => {
     const safeSelected = await validateColumns(pool, tableName, requested);
     if (!safeSelected.length) return res.status(400).json({ success: false, message: "No valid columns" });
 
-    const baseQuery = buildFullQuery(tableName, safeSelected, iid, year, []);
-    const countSql  = `SELECT COUNT(*) AS cnt FROM public.${tableName} r
+    // Resolve current schema labels so preview rows are keyed the same way the
+    // column picker (and the eventual imported block) label them.
+    let schemaFields = [];
+    if (await tableExists(pool, "custom_field_schemas")) {
+      const qParams = [formName, iid];
+      let sq = `SELECT schema -> 'fields' AS fields FROM public.custom_field_schemas
+                WHERE form_name=$1 AND institution_id=$2 AND is_active=TRUE`;
+      if (year) { qParams.push(Number(year)); sq += ` AND year=$${qParams.length}`; }
+      sq += ` ORDER BY created_at DESC LIMIT 1`;
+      const { rows } = await pool.query(sq, qParams);
+      schemaFields = Array.isArray(rows[0]?.fields) ? rows[0].fields : [];
+    }
+
+    const baseQuery  = buildFullQuery(tableName, safeSelected, iid, year, schemaFields, language);
+    const langClause = language === "hi" ? `r.language='hi'` : `(r.language='en' OR r.language IS NULL)`;
+    const countSql   = `SELECT COUNT(*) AS cnt FROM public.${tableName} r
                         WHERE r.institution_id='${iid}'${year ? ` AND r.year=${Number(year)}` : ""}
-                          AND (r.language='en' OR r.language IS NULL)`;
+                          AND ${langClause}`;
 
     const [pvRes, cntRes] = await Promise.all([
       pool.query(baseQuery.replace(/ORDER BY.*$/, "") + "\nORDER BY r.created_at DESC LIMIT 5"),
@@ -266,6 +324,7 @@ router.post("/sections/:sectionId/blocks/table-import", async (req, res) => {
     const selectedColumns = req.body.selectedColumns || req.body.columns;
     const schemaFields    = req.body.schemaFields    || req.body.schema_fields || [];
     const orderIndex      = req.body.orderIndex      != null ? req.body.orderIndex : req.body.order_index;
+    const language        = req.body.language === "hi" ? "hi" : "en";
 
     if (!formName || !Array.isArray(selectedColumns) || !selectedColumns.length)
       return res.status(400).json({ success: false, message: "form_name and columns are required" });
@@ -288,8 +347,8 @@ router.post("/sections/:sectionId/blocks/table-import", async (req, res) => {
     const safeSelected = await validateColumns(pool, tableName, selectedColumns);
     if (!safeSelected.length) return res.status(400).json({ success: false, message: "No valid columns" });
 
-    const storedQuery  = buildFullQuery(tableName, safeSelected, iid, year, schemaFields);
-    const columnMeta   = buildColumnMeta(safeSelected, schemaFields);
+    const storedQuery  = buildFullQuery(tableName, safeSelected, iid, year, schemaFields, language);
+    const columnMeta   = buildColumnMeta(safeSelected, schemaFields, language);
     const columnMap    = [{ key: "__row_id", label: "Row ID", hidden: true }, ...columnMeta];
     const importedAt   = new Date().toISOString();
 
@@ -311,7 +370,7 @@ router.post("/sections/:sectionId/blocks/table-import", async (req, res) => {
           `Form Import — ${formName} (${year})`,
           `Auto-generated from form: ${formName}, year: ${year}`,
           storedQuery,
-          JSON.stringify({ form_name: formName, academic_year: Number(year), selected_columns: safeSelected, imported_at: importedAt }),
+          JSON.stringify({ form_name: formName, academic_year: Number(year), selected_columns: safeSelected, language, imported_at: importedAt }),
           JSON.stringify(columnMap),
           req.user.userId,
         ]
@@ -334,6 +393,7 @@ router.post("/sections/:sectionId/blocks/table-import", async (req, res) => {
         source:        "form_import",
         form_name:     formName,
         academic_year: Number(year),
+        language,
         imported_at:   importedAt,
         columns:       columnMeta,
         rows:          dataRows,
@@ -346,6 +406,29 @@ router.post("/sections/:sectionId/blocks/table-import", async (req, res) => {
          RETURNING *`,
         [sectionId, oIdx, dataSourceId, JSON.stringify(blockContent), req.user.userId]
       );
+      const newBlock = blkRows[0];
+
+      // 3b. Auto-fetch + persist the Hindi mirror data as a block_translations row,
+      // so the Hindi version is available immediately without a manual "switch language"
+      // step. Only applies when the import's primary content is English — if the user
+      // explicitly imported the Hindi data as primary, there's no English translation to add.
+      let translations = {};
+      if (language === "en") {
+        const hiQuery = buildFullQuery(tableName, safeSelected, iid, year, schemaFields, "hi");
+        const { rows: hiRows } = await client.query(hiQuery);
+        if (hiRows.length) {
+          const hiColumnMeta = buildColumnMeta(safeSelected, schemaFields, "hi");
+          const hiContent = { columns: hiColumnMeta, rows: hiRows };
+          await client.query(
+            `INSERT INTO public.block_translations (block_id, language, content, status, created_by, updated_by)
+             VALUES ($1,'hi',$2::jsonb,'DRAFT',$3,$3)
+             ON CONFLICT (block_id, language) DO UPDATE
+               SET content = EXCLUDED.content, updated_by = EXCLUDED.updated_by`,
+            [newBlock.id, JSON.stringify(hiContent), req.user.userId]
+          );
+          translations = { hi: hiContent };
+        }
+      }
 
       // 4. Snapshot
       try {
@@ -354,7 +437,9 @@ router.post("/sections/:sectionId/blocks/table-import", async (req, res) => {
       } catch {}
 
       await client.query("COMMIT");
-      return res.json({ success: true, data: blkRows[0] });
+      // Attach translations to the response so the just-created block shows Hindi data
+      // immediately in this session, without requiring a page reload.
+      return res.json({ success: true, data: { ...newBlock, translations } });
     } catch (e2) {
       await client.query("ROLLBACK");
       throw e2;
@@ -375,7 +460,7 @@ router.post("/blocks/:blockId/refetch", async (req, res) => {
     if (!isUUID(blockId)) return res.status(400).json({ success: false, message: "Invalid block id" });
 
     const { rows: blkRows } = await pool.query(
-      `SELECT b.*, ds.query AS ds_query, ds.id AS ds_id
+      `SELECT b.*, ds.query AS ds_query, ds.id AS ds_id, ds.params AS ds_params
        FROM public.section_blocks b
        LEFT JOIN public.data_sources ds ON ds.id = b.data_source_id
        WHERE b.id=$1 AND b.deleted_at IS NULL`,
@@ -412,6 +497,49 @@ router.post("/blocks/:blockId/refetch", async (req, res) => {
       [JSON.stringify({ imported_at: importedAt }), req.user.userId, block.ds_id]
     ).catch(() => {});
 
+    // Keep the Hindi block_translations row in sync whenever the primary content
+    // (English) is refreshed, so re-fetching doesn't go stale relative to the translation.
+    const primaryLanguage = (block.content || {}).language === "hi" ? "hi" : "en";
+    let translations = {};
+    if (primaryLanguage === "en" && block.ds_params?.form_name && block.ds_params?.selected_columns?.length) {
+      try {
+        const { form_name: formName, academic_year: year, selected_columns: selected } = block.ds_params;
+        const tableName = `${formName}_records`;
+        if (isValidRecordsTable(tableName)) {
+          const iid = await resolveInstitutionId(pool, req.user.userId, null);
+          const safeSelected = await validateColumns(pool, tableName, selected);
+          if (iid && safeSelected.length) {
+            let schemaFields = [];
+            if (await tableExists(pool, "custom_field_schemas")) {
+              const qParams = [formName, iid];
+              let sq = `SELECT schema -> 'fields' AS fields FROM public.custom_field_schemas
+                        WHERE form_name=$1 AND institution_id=$2 AND is_active=TRUE`;
+              if (year) { qParams.push(Number(year)); sq += ` AND year=$${qParams.length}`; }
+              sq += ` ORDER BY created_at DESC LIMIT 1`;
+              const { rows } = await pool.query(sq, qParams);
+              schemaFields = Array.isArray(rows[0]?.fields) ? rows[0].fields : [];
+            }
+            const hiQuery = buildFullQuery(tableName, safeSelected, iid, year, schemaFields, "hi");
+            const { rows: hiRows } = await pool.query(hiQuery);
+            const hiColumnMeta = buildColumnMeta(safeSelected, schemaFields, "hi");
+            if (hiRows.length) {
+              const hiContent = { columns: hiColumnMeta, rows: hiRows };
+              await pool.query(
+                `INSERT INTO public.block_translations (block_id, language, content, status, created_by, updated_by)
+                 VALUES ($1,'hi',$2::jsonb,'DRAFT',$3,$3)
+                 ON CONFLICT (block_id, language) DO UPDATE
+                   SET content = EXCLUDED.content, updated_by = EXCLUDED.updated_by`,
+                [blockId, JSON.stringify(hiContent), req.user.userId]
+              );
+              translations = { hi: hiContent };
+            }
+          }
+        }
+      } catch (e) {
+        logger.error("report-integration refetch: hi translation sync failed", { ...getLogContext(req), err: e.message });
+      }
+    }
+
     // Snapshot
     try {
       const formName = (block.content || {}).form_name || "form";
@@ -419,10 +547,106 @@ router.post("/blocks/:blockId/refetch", async (req, res) => {
         `Re-fetched from ${formName} — ${freshRows.length} rows`);
     } catch {}
 
-    return res.json({ success: true, data: { rows: freshRows, imported_at: importedAt, count: freshRows.length } });
+    return res.json({ success: true, data: { rows: freshRows, imported_at: importedAt, count: freshRows.length, translations } });
   } catch (err) {
     logger.error("report-integration POST /blocks/:blockId/refetch", { ...getLogContext(req), err: err.message });
     return res.status(500).json({ success: false, message: "Failed to re-fetch: " + err.message });
+  }
+});
+
+/* ── POST /blocks/:blockId/switch-language — re-fetch the SAME form-import
+   TABLE block in a different language (en/hi), e.g. when the editor's EN/HI
+   content toggle doesn't match the language this block was last imported in.
+   Unlike /refetch (which just re-runs the stored query verbatim), this
+   rebuilds the query with a different language filter. ─────────────── */
+router.post("/blocks/:blockId/switch-language", async (req, res) => {
+  const pool = req.app.locals.pool;
+  try {
+    const { blockId } = req.params;
+    if (!isUUID(blockId)) return res.status(400).json({ success: false, message: "Invalid block id" });
+    const language = req.body.language === "hi" ? "hi" : "en";
+
+    const { rows: blkRows } = await pool.query(
+      `SELECT b.*, ds.id AS ds_id, ds.params AS ds_params
+       FROM public.section_blocks b
+       LEFT JOIN public.data_sources ds ON ds.id = b.data_source_id
+       WHERE b.id=$1 AND b.deleted_at IS NULL`,
+      [blockId]
+    );
+    if (!blkRows.length) return res.status(404).json({ success: false, message: "Block not found" });
+
+    const block = blkRows[0];
+    if (block.block_type !== "TABLE" || (block.content || {}).source !== "form_import")
+      return res.status(422).json({ success: false, message: "Not a form-import TABLE block" });
+    if (!block.ds_id || !block.ds_params)
+      return res.status(422).json({ success: false, message: "Block has no form data source" });
+
+    const dsParams  = block.ds_params;
+    const formName  = dsParams.form_name;
+    const year      = dsParams.academic_year;
+    const selected  = dsParams.selected_columns || [];
+    if (!formName || !selected.length)
+      return res.status(422).json({ success: false, message: "Data source is missing import parameters" });
+
+    const tableName = `${formName}_records`;
+    if (!isValidRecordsTable(tableName))
+      return res.status(400).json({ success: false, message: "Invalid form name" });
+
+    const iid = await resolveInstitutionId(pool, req.user.userId, null);
+    if (!iid) return res.status(400).json({ success: false, message: "Could not determine institution" });
+
+    const safeSelected = await validateColumns(pool, tableName, selected);
+    if (!safeSelected.length) return res.status(400).json({ success: false, message: "No valid columns" });
+
+    // Re-fetch current schema labels so column headers stay consistent with the original import
+    let schemaFields = [];
+    if (await tableExists(pool, "custom_field_schemas")) {
+      const qParams = [formName, iid];
+      let sq = `SELECT schema -> 'fields' AS fields FROM public.custom_field_schemas
+                WHERE form_name=$1 AND institution_id=$2 AND is_active=TRUE`;
+      if (year) { qParams.push(Number(year)); sq += ` AND year=$${qParams.length}`; }
+      sq += ` ORDER BY created_at DESC LIMIT 1`;
+      const { rows } = await pool.query(sq, qParams);
+      schemaFields = Array.isArray(rows[0]?.fields) ? rows[0].fields : [];
+    }
+
+    const newQuery  = buildFullQuery(tableName, safeSelected, iid, year, schemaFields, language);
+    const columnMeta = buildColumnMeta(safeSelected, schemaFields, language);
+    const importedAt = new Date().toISOString();
+
+    const { rows: dataRows } = await pool.query(newQuery);
+
+    const { rows: updRows } = await pool.query(
+      `UPDATE public.section_blocks
+       SET content    = content
+                     || jsonb_build_object('rows', $1::jsonb)
+                     || jsonb_build_object('columns', $2::jsonb)
+                     || jsonb_build_object('language', $3::text)
+                     || jsonb_build_object('imported_at', $4::text),
+           updated_by = $5
+       WHERE id=$6 AND deleted_at IS NULL
+       RETURNING content`,
+      [JSON.stringify(dataRows), JSON.stringify(columnMeta), language, importedAt, req.user.userId, blockId]
+    );
+
+    await pool.query(
+      `UPDATE public.data_sources
+       SET query      = $1,
+           params     = params || $2::jsonb,
+           updated_by = $3
+       WHERE id=$4`,
+      [newQuery, JSON.stringify({ language, imported_at: importedAt }), req.user.userId, block.ds_id]
+    ).catch(() => {});
+
+    try {
+      await createSectionSnapshot(pool, block.section_id, "MANUAL", req.user.userId, null,
+        `Switched ${formName} table to ${language === "hi" ? "Hindi" : "English"} — ${dataRows.length} rows`);
+    } catch {}
+
+    return res.json({ success: true, data: updRows[0].content });
+  } catch (err) {
+    logger.error("report-integration POST /blocks/:blockId/switch-language", { ...getLogContext(req), err: err.message });
+    return res.status(500).json({ success: false, message: "Failed to switch language: " + err.message });
   }
 });
 

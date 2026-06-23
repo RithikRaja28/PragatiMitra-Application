@@ -82,6 +82,7 @@ async function verifyToken(req, res, next) {
        authoritative within a live session. A query failure falls through to the
        catch below → 500 (deny), never a stale-role allow. */
     const dbRoles = rows[0].db_roles || [];
+    req.user.dbRoles = dbRoles; // live DB roles only — never includes NOA-computed roles
     const roles = [...dbRoles];
     if (req.user.noaActiveYears?.length && !roles.includes("department_admin"))
       roles.unshift("department_admin");

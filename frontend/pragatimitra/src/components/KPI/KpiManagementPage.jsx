@@ -861,10 +861,15 @@ export default function KpiManagementPage({ scope = "institute" }) {
   }, []);
 
 
-  const scopeLabel = scope==="department" ? t("Department KPI", lang) : t("Institute KPI", lang);
-  const scopeDesc  = scope==="department"
-    ? t("Configure and export KPI charts for your department's annual report.", lang)
-    : t("Configure and export KPI charts for the institute's annual report.", lang);
+  const SCOPE_META = {
+    department: { crumb: "Department", label: "Department KPI", desc: "Configure and export KPI charts for your department's annual report." },
+    hospital:   { crumb: "Hospital",   label: "Hospital KPI",    desc: "Configure and export KPI charts for the hospital module's annual report." },
+    finance:    { crumb: "Finance",    label: "Finance KPI",     desc: "Configure and export KPI charts for the finance module's annual report." },
+    institute:  { crumb: "Institute",  label: "Institute KPI",   desc: "Configure and export KPI charts for the institute's annual report." },
+  };
+  const scopeMeta  = SCOPE_META[scope] || SCOPE_META.institute;
+  const scopeLabel = t(scopeMeta.label, lang);
+  const scopeDesc  = t(scopeMeta.desc, lang);
 
   const listPath = `/${SLUG}`;
   const isCreate  = location.pathname.endsWith("/create");
@@ -1092,9 +1097,7 @@ export default function KpiManagementPage({ scope = "institute" }) {
       <div style={{ padding:"32px 36px", fontFamily:"'Plus Jakarta Sans',sans-serif", minHeight:"100%" }}>
 
         <PageHeader
-          breadcrumb={scope === "department"
-            ? [t("Home", lang), t("Department", lang), { label: t("KPI Charts", lang), onClick: () => navFn(listPath) }, cfgTitle(previewCfg, lang)]
-            : [t("Home", lang), t("Institute", lang), { label: t("KPI Charts", lang), onClick: () => navFn(listPath) }, cfgTitle(previewCfg, lang)]}
+          breadcrumb={[t("Home", lang), t(scopeMeta.crumb, lang), { label: t("KPI Charts", lang), onClick: () => navFn(listPath) }, cfgTitle(previewCfg, lang)]}
           title={cfgTitle(previewCfg, lang)}
           description={formatTableName(previewCfg.table_name)}
         />
@@ -1253,6 +1256,9 @@ export default function KpiManagementPage({ scope = "institute" }) {
               <div style={{ fontSize:12, color:"#94a3b8", marginTop:2 }}>{t("Saves the rendered SVG permanently. Only export when data is finalised.", lang)}</div>
             </div>
             <div style={{ display:"flex", gap:8 }}>
+              <button onClick={()=>navFn(listPath)} style={{ padding:"9px 16px", borderRadius:9, border:"1.5px solid #e2e8f0", background:"#fff", fontSize:13, fontWeight:600, color:"#475569", cursor:"pointer" }}>
+                ← {t("Back to KPI List", lang)}
+              </button>
               <button onClick={()=>regenerate(activeCfg)} disabled={generating} style={{ padding:"9px 16px", borderRadius:9, border:"1.5px solid #e2e8f0", background:"#fff", fontSize:13, fontWeight:600, color:"#475569", cursor:"pointer" }}>
                 {generating ? t("Refreshing…", lang) : t("Refresh Data", lang)}
               </button>
@@ -1283,9 +1289,7 @@ export default function KpiManagementPage({ scope = "institute" }) {
 
   // ── List view ────────────────────────────────────────────────────────────────
   const STROKE = 1.75;
-  const kpiBreadcrumb = scope === "department"
-    ? [t("Home", lang), t("Department", lang), t("KPI Charts", lang)]
-    : [t("Home", lang), t("Institute", lang), t("KPI Charts", lang)];
+  const kpiBreadcrumb = [t("Home", lang), t(scopeMeta.crumb, lang), t("KPI Charts", lang)];
 
   const listColumns = [
     {

@@ -378,20 +378,11 @@ router.post("/login", loginLimiter, async (req, res) => {
 });
 
 /* ── POST /api/auth/super-admin/register ──
-   Creates a new super admin account.
-   Protected by SUPER_ADMIN_SETUP_KEY from .env so only authorised
-   personnel (who know the key) can register a super admin account. ── */
+   Creates a new super admin account. ── */
 router.post("/super-admin/register", superAdminLoginLimiter, async (req, res) => {
   const pool = req.app.locals.pool;
-  const { fullName, email, password, setupKey } = req.body;
+  const { fullName, email, password } = req.body;
 
-  // Validate setup key first — fail fast before touching the DB
-  const expectedKey = process.env.SUPER_ADMIN_SETUP_KEY;
-  if (!expectedKey || setupKey !== expectedKey)
-    return res.status(403).json({ success: false, message: "Invalid setup key." });
-
-  if (!fullName || typeof fullName !== "string" || !fullName.trim())
-    return res.status(400).json({ success: false, message: "Full name is required." });
   if (!email || typeof email !== "string")
     return res.status(400).json({ success: false, message: "Email is required." });
   if (!password || typeof password !== "string")
@@ -421,6 +412,7 @@ router.post("/super-admin/register", superAdminLoginLimiter, async (req, res) =>
 
     const superAdminRoleId = roleRows[0].id;
     const passwordHash     = await bcrypt.hash(password, 12);
+    const displayName      = (fullName?.trim()) || normalizedEmail.split("@")[0];
 
     const client = await pool.connect();
     let newUserId;
@@ -432,7 +424,7 @@ router.post("/super-admin/register", superAdminLoginLimiter, async (req, res) =>
            (full_name, email, password_hash, account_status, must_change_password, is_temporary_password)
          VALUES ($1, $2, $3, 'ACTIVE', false, false)
          RETURNING id`,
-        [fullName.trim(), normalizedEmail, passwordHash]
+        [displayName, normalizedEmail, passwordHash]
       );
       newUserId = id;
 

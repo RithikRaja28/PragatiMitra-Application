@@ -272,44 +272,64 @@ async function validateColumns(pool, tableName, xCol, yCols, groupByCol, aggType
 
 function getRoleContext(req) {
   const roles = new Set(req.user?.roles || []);
+  const isHospitalAdmin = roles.has("hospital_admin");
+  const isFinanceAdmin  = roles.has("finance_admin");
   return {
-    isInstAdmin:  roles.has("institute_admin"),
-    isDeptAdmin:  roles.has("department_admin"),
+    isInstAdmin:    roles.has("institute_admin"),
+    isDeptAdmin:    roles.has("department_admin"),
+    isHospitalAdmin,
+    isFinanceAdmin,
+    // Domain for hospital/finance scope — 'academic' for all other roles.
+    role_domain: isHospitalAdmin ? "hospital" : isFinanceAdmin ? "finance" : "academic",
     institute_id:  String(req.user?.institutionId ?? ""),
     department_id: String(req.user?.departmentId  ?? ""),
     user_id:       String(req.user?.userId        ?? ""),
   };
 }
 
-// Returns { clause, params } — KPIs are Institute Admin / Department Admin only.
+// Each role maps to exactly one scope value — institute / department / hospital / finance
+// are mutually exclusive and never overlap, even when they share the same institute_id.
+// kpi_config.scope is the sole partition key; institute_id / department_id only
+// disambiguate WITHIN a scope (which institute, which department).
+const SCOPE_RULES = {
+  institute:  { role: "isInstAdmin",     idField: "institute_id"  },
+  department: { role: "isDeptAdmin",     idField: "department_id" },
+  hospital:   { role: "isHospitalAdmin", idField: "institute_id"  },
+  finance:    { role: "isFinanceAdmin",  idField: "institute_id"  },
+};
+
+// Returns { clause, params }.
 //
-// requestedScope ("institute" | "department" | null):
-//   When provided (from ?scope= query param), only that scope is returned, and the
-//   caller must actually hold the matching role.  This prevents a dual-role user
-//   (institute_admin + department_admin via NOA) from seeing institute KPIs on
-//   department pages just because institute_admin has higher priority in the fallback.
-//   When null the old role-priority fallback is used (institute first).
+// requestedScope ("institute" | "department" | "hospital" | "finance" | null):
+//   When provided (from ?scope= query param), ONLY that scope is returned, and the
+//   caller must actually hold the matching role. This prevents a dual-role user
+//   (e.g. institute_admin + department_admin via NOA) from seeing institute KPIs on
+//   the department page, or a hospital/finance admin's KPIs leaking into the
+//   institute admin's own list just because they share an institute_id.
+//   When null, every scope the caller legitimately holds is returned (OR'd).
 function buildScopeWhere(ctx, alias = "c", requestedScope = null) {
   const a = alias ? `${alias}.` : "";
 
-  if (requestedScope === "institute") {
-    if (ctx.isInstAdmin && ctx.institute_id)
-      return { clause: `WHERE ${a}scope = 'institute' AND ${a}institute_id = $1`, params: [ctx.institute_id] };
+  const rule = SCOPE_RULES[requestedScope];
+  if (rule) {
+    const id = ctx[rule.idField];
+    if (ctx[rule.role] && id)
+      return { clause: `WHERE ${a}scope = '${requestedScope}' AND ${a}${rule.idField} = $1`, params: [id] };
     return { clause: "WHERE 1=0", params: [] };
   }
 
-  if (requestedScope === "department") {
-    if (ctx.isDeptAdmin && ctx.department_id)
-      return { clause: `WHERE ${a}scope = 'department' AND ${a}department_id = $1`, params: [ctx.department_id] };
-    return { clause: "WHERE 1=0", params: [] };
+  // No explicit scope — return every scope this caller holds (OR'd), not a priority pick.
+  const conditions = [];
+  const params = [];
+  for (const [scopeName, r] of Object.entries(SCOPE_RULES)) {
+    const id = ctx[r.idField];
+    if (ctx[r.role] && id) {
+      params.push(id);
+      conditions.push(`(${a}scope = '${scopeName}' AND ${a}${r.idField} = $${params.length})`);
+    }
   }
-
-  // No explicit scope requested — fall back to role-priority (institute first)
-  if (ctx.isInstAdmin && ctx.institute_id)
-    return { clause: `WHERE ${a}scope = 'institute' AND ${a}institute_id = $1`, params: [ctx.institute_id] };
-  if (ctx.isDeptAdmin && ctx.department_id)
-    return { clause: `WHERE ${a}scope = 'department' AND ${a}department_id = $1`, params: [ctx.department_id] };
-  return { clause: "WHERE 1=0", params: [] };
+  if (!conditions.length) return { clause: "WHERE 1=0", params: [] };
+  return { clause: `WHERE ${conditions.join(" OR ")}`, params };
 }
 
 // Append an extra AND condition to an existing scope result
@@ -327,23 +347,24 @@ function appendAnd(scope, condition, ...newParams) {
 }
 
 async function checkOwnership(pool, configId, ctx) {
-  // Mirror buildScopeWhere's role priority — match ONLY the caller's own scope.
-  // (An OR across both scopes would let a department admin "own" institute-scoped
-  // configs from their own institution, and vice versa.)
-  let condition, param;
-  if (ctx.isInstAdmin && ctx.institute_id) {
-    condition = "scope = 'institute' AND institute_id = $2";
-    param = ctx.institute_id;
-  } else if (ctx.isDeptAdmin && ctx.department_id) {
-    condition = "scope = 'department' AND department_id = $2";
-    param = ctx.department_id;
-  } else {
-    return false;
+  // A user may have multiple roles (e.g. NOA-elevated dept admin also has institute_admin).
+  // Accept ownership for ANY scope the caller legitimately controls — OR logic.
+  const conditions = [];
+  const params = [configId];
+
+  for (const [scopeName, rule] of Object.entries(SCOPE_RULES)) {
+    const id = ctx[rule.idField];
+    if (ctx[rule.role] && id) {
+      params.push(id);
+      conditions.push(`(scope = '${scopeName}' AND ${rule.idField} = $${params.length})`);
+    }
   }
 
+  if (!conditions.length) return false;
+
   const { rows } = await pool.query(
-    `SELECT id FROM kpi_config WHERE id = $1 AND ${condition}`,
-    [configId, param]
+    `SELECT id FROM kpi_config WHERE id = $1 AND (${conditions.join(" OR ")})`,
+    params
   );
   return rows.length > 0;
 }
@@ -630,15 +651,23 @@ async function runConfigQuery(pool, cfg, lang = "en") {
 
 router.get("/tables", async (req, res) => {
   const { schema = "public" } = req.query;
+  const ctx = getRoleContext(req);
   try {
     await ensureTables(req.pool);
-    // Use pg_class.reltuples (planner estimate) as primary row count — n_live_tup from
-    // pg_stat_user_tables is 0 until ANALYZE runs, so it's unreliable for new tables.
-    // Only list tables generated by the Dynamic Form Creation module: every such
-    // table is named "<form_name>_records" and has a matching row in table_list.
-    // Joining against table_list (rather than a hardcoded exclusion list) means
-    // new dynamic-form tables appear automatically and system/predefined tables
-    // never do.
+    // Only list tables from the Dynamic Form Creation module (<form_name>_records).
+    // hospital_admin / finance_admin: restrict to their domain's form tables so they
+    // cannot build KPIs against another domain's data.
+    // department_admin: restrict to academic-domain forms only — they must never see
+    // hospital/finance tables in the Source Table dropdown. A dual-role NOA user who
+    // also holds institute_admin keeps the unfiltered institute_admin view (unchanged).
+    const params = [schema];
+    let domainFilter = "";
+    if (ctx.isHospitalAdmin || ctx.isFinanceAdmin) {
+      domainFilter = `AND COALESCE(tl.form_domain, 'academic') = $${params.push(ctx.role_domain)}`;
+    } else if (ctx.isDeptAdmin && !ctx.isInstAdmin) {
+      domainFilter = `AND COALESCE(tl.form_domain, 'academic') = $${params.push("academic")}`;
+    }
+
     const { rows } = await req.pool.query(
       `SELECT t.table_name,
               t.table_schema AS schema_name
@@ -652,8 +681,9 @@ router.get("/tables", async (req, res) => {
              AND c.relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = t.table_schema)
        WHERE  t.table_schema = $1
          AND  t.table_type   = 'BASE TABLE'
+         ${domainFilter}
        ORDER  BY t.table_name`,
-      [schema]
+      params
     );
     res.json({ ok: true, data: rows });
   } catch (err) {
@@ -767,8 +797,8 @@ router.get("/tables/:tableName/columns", async (req, res) => {
 
 router.post("/configs", async (req, res) => {
   const ctx = getRoleContext(req);
-  if (!ctx.isInstAdmin && !ctx.isDeptAdmin)
-    return res.status(403).json({ ok: false, error: "Only Institute Admin or Department Admin can create KPIs." });
+  if (!ctx.isInstAdmin && !ctx.isDeptAdmin && !ctx.isHospitalAdmin && !ctx.isFinanceAdmin)
+    return res.status(403).json({ ok: false, error: "Only Institute Admin, Department Admin, Hospital Admin, or Finance Admin can create KPIs." });
 
   const {
     title                  = "KPI Chart",
@@ -790,14 +820,29 @@ router.post("/configs", async (req, res) => {
   if (!x_col)         return res.status(400).json({ ok: false, error: "x_col is required" });
   if (!y_cols.length) return res.status(400).json({ ok: false, error: "y_cols must not be empty" });
 
-  // Priority must match buildScopeWhere/checkOwnership (institute admin first) so a
-  // dual-role user (e.g. holding both via Nodal Officer Assignments) creates a config
-  // under the exact scope they'll later see and manage it in.
+  // Each role maps to exactly one scope value — hospital_admin/finance_admin always
+  // get their own scope (never 'institute'), so their KPIs never leak into the
+  // institute admin's list even though they share the same institute_id.
+  // For users who hold both institute_admin and department_admin (e.g. NOA-elevated),
+  // honour the client's requested scope so DeptKpiPage creates dept-scoped KPIs.
+  const requestedScope = req.body.scope;
   let scope, institute_id, department_id;
-  if (ctx.isInstAdmin) {
-    scope = "institute"; institute_id = ctx.institute_id; department_id = null;
-  } else {
+  if (ctx.isHospitalAdmin) {
+    scope = "hospital"; institute_id = ctx.institute_id; department_id = null;
+  } else if (ctx.isFinanceAdmin) {
+    scope = "finance"; institute_id = ctx.institute_id; department_id = null;
+  } else if (requestedScope === "department" && ctx.isDeptAdmin) {
+    if (!ctx.department_id)
+      return res.status(400).json({ ok: false, error: "No department is associated with your account." });
     scope = "department"; institute_id = null; department_id = ctx.department_id;
+  } else if (ctx.isInstAdmin) {
+    scope = "institute"; institute_id = ctx.institute_id; department_id = null;
+  } else if (ctx.isDeptAdmin) {
+    if (!ctx.department_id)
+      return res.status(400).json({ ok: false, error: "No department is associated with your account." });
+    scope = "department"; institute_id = null; department_id = ctx.department_id;
+  } else {
+    return res.status(403).json({ ok: false, error: "Not authorized to create KPIs." });
   }
 
   try {
@@ -807,20 +852,38 @@ router.post("/configs", async (req, res) => {
     validateAggType(aggregation_type);
     validateChartType(chart_type);
     await validateTableWhitelist(req.pool, table_name);
+
+    // hospital_admin / finance_admin: block creation of KPIs against another domain's
+    // form tables. Fail closed — if the table is not in their domain, reject.
+    if (ctx.isHospitalAdmin || ctx.isFinanceAdmin) {
+      const { rows: domainRows } = await req.pool.query(
+        `SELECT 1 FROM table_list
+         WHERE form_name || '_records' = $1
+           AND COALESCE(form_domain, 'academic') = $2
+         LIMIT 1`,
+        [table_name, ctx.role_domain]
+      );
+      if (!domainRows.length)
+        return res.status(403).json({
+          ok: false,
+          error: `Table "${table_name}" does not belong to the ${ctx.role_domain} domain.`,
+        });
+    }
     await validateColumns(req.pool, table_name, x_col, y_cols, group_by_column, aggregation_type);
 
     // ── Duplicate detection ────────────────────────────────────────────────────
     // Warn (not block) if an identical KPI config already exists for this scope.
     const effectiveGroupBy = group_by_column || null;
-    const dupScope = scope === "institute" ? "institute_id = $5" : "department_id = $5";
-    const dupId    = scope === "institute" ? institute_id : department_id;
+    const dupIdField = SCOPE_RULES[scope].idField; // 'institute_id' or 'department_id'
+    const dupId       = scope === "department" ? department_id : institute_id;
     const { rows: dupRows } = await req.pool.query(
       `SELECT id, title FROM kpi_config
        WHERE  table_name        = $1
          AND  x_col             = $2
          AND  y_cols            = $3
          AND  aggregation_type  = $4
-         AND  ${dupScope}
+         AND  scope             = '${scope}'
+         AND  ${dupIdField}     = $5
          AND  (academic_year IS NOT DISTINCT FROM $6)
          AND  (group_by_column  IS NOT DISTINCT FROM $7)
        LIMIT 3`,
@@ -891,7 +954,7 @@ router.post("/configs", async (req, res) => {
 router.get("/configs", async (req, res) => {
   const ctx  = getRoleContext(req);
   let scope  = buildScopeWhere(ctx, "c", req.query.scope || null);
-  if (req.query.year) scope = appendAnd(scope, "c.academic_year = $?", req.query.year);
+  if (req.query.year) scope = appendAnd(scope, "(c.academic_year = $? OR c.academic_year IS NULL)", req.query.year);
 
   try {
     await ensureTables(req.pool);
@@ -1172,7 +1235,7 @@ router.get("/configs/:id/svg", async (req, res) => {
 router.get("/dashboard-charts", async (req, res) => {
   const ctx  = getRoleContext(req);
   let scope  = buildScopeWhere(ctx, "c", req.query.scope || null);
-  if (req.query.year) scope = appendAnd(scope, "c.academic_year = $?", req.query.year);
+  if (req.query.year) scope = appendAnd(scope, "(c.academic_year = $? OR c.academic_year IS NULL)", req.query.year);
 
   try {
     await ensureTables(req.pool);
@@ -1236,7 +1299,7 @@ router.get("/dashboard-charts", async (req, res) => {
 // Returns unique dashboard group names for the caller's scope (used in ConfigDrawer)
 router.get("/dashboard-groups", async (req, res) => {
   const ctx   = getRoleContext(req);
-  const scope = buildScopeWhere(ctx, "c", req.query.scope || null);
+  let scope   = buildScopeWhere(ctx, "c", req.query.scope || null);
   try {
     await ensureTables(req.pool);
     const { rows } = await req.pool.query(
@@ -1259,7 +1322,7 @@ router.get("/dashboard-groups", async (req, res) => {
 
 router.get("/dashboard-kpi", async (req, res) => {
   const ctx = getRoleContext(req);
-  const scope = buildScopeWhere(ctx, "c", req.query.scope || null);
+  let scope = buildScopeWhere(ctx, "c", req.query.scope || null);
   const { kpi_config_id } = req.query;
   try {
     await ensureTables(req.pool);
@@ -1298,8 +1361,16 @@ router.post("/dashboard-kpi", async (req, res) => {
 });
 
 router.delete("/dashboard-kpi/:id", async (req, res) => {
+  const ctx = getRoleContext(req);
   try {
-    const { rowCount } = await req.pool.query(`DELETE FROM dashboard_kpi WHERE id=$1`, [req.params.id]);
+    const { rows: dkRows } = await req.pool.query(
+      "SELECT kpi_config_id FROM dashboard_kpi WHERE id = $1",
+      [req.params.id]
+    );
+    if (!dkRows.length) return res.status(404).json({ ok: false, error: "Entry not found" });
+    if (!await checkOwnership(req.pool, dkRows[0].kpi_config_id, ctx))
+      return res.status(403).json({ ok: false, error: "Not authorized." });
+    const { rowCount } = await req.pool.query("DELETE FROM dashboard_kpi WHERE id = $1", [req.params.id]);
     if (!rowCount) return res.status(404).json({ ok: false, error: "Entry not found" });
     res.json({ ok: true, deleted: parseInt(req.params.id) });
   } catch (err) {

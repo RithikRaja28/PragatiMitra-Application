@@ -57,9 +57,13 @@ async function ensureFormAssignmentsTable(pool) {
 /* ── Helpers shared with forms.js / formData.js ── */
 
 /* A "pure" contributor — has the contributor role and none of the elevated form
-   roles. Only these users are visibility-restricted to their assigned forms. */
+   roles. Only these users are visibility-restricted to their assigned forms.
+   Uses dbRoles (live DB-only) so NOA-computed roles (department_admin / institute_admin
+   injected by auth.js) never accidentally bypass the assignment filter for a user
+   whose primary DB role is 'contributor'. Falls back to req.user.roles when
+   dbRoles is absent (non-auth-middleware callers). */
 function isContributorOnly(req) {
-  const roles = req.user?.roles || [];
+  const roles = req.user?.dbRoles || req.user?.roles || [];
   if (!roles.includes("contributor")) return false;
   const elevated = ["super_admin", "institute_admin", "department_admin", "nodal_officer", "hospital_admin", "finance_admin"];
   return !roles.some((r) => elevated.includes(r));
@@ -159,9 +163,10 @@ router.use(async (req, _res, next) => {
   next();
 });
 
-/* Only Department Admin / Nodal Officer may assign (super_admin allowed as god).
-   Contributors / Faculty / Hospital / Finance can NOT assign. */
-const ASSIGN_ROLES = ["super_admin", "department_admin", "nodal_officer"];
+/* Department Admin / Nodal Officer / Hospital Admin / Finance Admin may assign
+   within their own domain (super_admin allowed as god). assertFormDomainAccess
+   inside POST / already prevents cross-domain assignments. */
+const ASSIGN_ROLES = ["super_admin", "department_admin", "nodal_officer", "hospital_admin", "finance_admin"];
 
 /* GET /api/form-assignments/contributors?form_id=&year=
    Assignable contributors for the assigner's department + the form's current
@@ -169,16 +174,21 @@ const ASSIGN_ROLES = ["super_admin", "department_admin", "nodal_officer"];
 router.get("/contributors", requireRole(ASSIGN_ROLES), async (req, res) => {
   const pool = req.app.locals.pool;
   try {
-    const { institutionId, departmentId } = await assignerContext(pool, req);
+    const { institutionId: instFromCtx, departmentId: deptFromCtx } = await assignerContext(pool, req);
+    /* Fall back to JWT values when the DB lookup returns null (e.g. the dept
+       admin record has no department_id stored yet); mirrors how users.js
+       GET /api/users resolves the dept admin's scope. */
+    const institutionId = instFromCtx || req.user.institutionId || null;
+    const departmentId  = deptFromCtx || req.user.departmentId  || null;
     if (!departmentId) return res.json({ success: true, contributors: [], assigned: [] });
     const year   = resolveYear(req);
     const formId = req.query.form_id || null;
 
     /* Assignable contributors: same institution + same department + active +
        role 'contributor', EXCLUDING (a) the assigner themselves and (b) any
-       contributor who already holds a Nodal Officer capability (an active
-       nodal_officer_assignments row) — a nodal contributor is an assigner, not
-       an assignee. Reuses the existing nodal_officer_assignments table. */
+       contributor who is the Nodal Officer for THIS SPECIFIC department (they
+       are assigners here, not assignees). Contributors who are NOAs in other
+       departments remain eligible. */
     const { rows: contributors } = await pool.query(
       `SELECT u.id, u.full_name, u.email
        FROM users u
@@ -189,7 +199,7 @@ router.get("/contributors", requireRole(ASSIGN_ROLES), async (req, res) => {
          AND u.id <> $3
          AND NOT EXISTS (
            SELECT 1 FROM nodal_officer_assignments noa
-           WHERE noa.user_id = u.id AND noa.is_active = TRUE AND noa.department_id IS NOT NULL
+           WHERE noa.user_id = u.id AND noa.is_active = TRUE AND noa.department_id = $2
          )
        ORDER BY u.full_name`,
       [institutionId, departmentId, req.user.userId]
@@ -387,6 +397,97 @@ router.get("/my", async (req, res) => {
   } catch (err) {
     logger.error("GET /api/form-assignments/my", { stack: err.stack });
     return res.status(500).json({ success: false, message: "Failed to load assignments." });
+  }
+});
+
+/* GET /api/form-assignments/dashboard-stats?year=
+   Contributor dashboard summary: counts of assigned / pending / locked / expired
+   forms for the selected academic year. Scoped to the caller's department.
+   - assigned_forms: total active assignments for the year
+   - locked_forms:   assigned forms whose form_lock_config shows is_locked = true
+   - expired_forms:  assigned forms whose effective deadline is in the past
+   - pending_forms:  assigned forms that are neither locked nor expired (still open) */
+router.get("/dashboard-stats", async (req, res) => {
+  const pool = req.app.locals.pool;
+  try {
+    const userId        = req.user.userId;
+    const institutionId = req.user.institutionId || null;
+    const year          = resolveYear(req);
+    const now           = new Date();
+
+    // All active assignments for this user + year (department-scoped)
+    const { rows: assignments } = await pool.query(
+      `SELECT fa.form_id, fa.form_name, tl.form_name AS tl_name
+         FROM form_assignments fa
+         JOIN table_list tl ON tl.id = fa.form_id
+        WHERE fa.assigned_to   = $1
+          AND fa.academic_year = $2
+          AND fa.is_active     = true
+          AND fa.department_id = (SELECT department_id FROM users WHERE id = $1)
+          AND EXISTS (
+            SELECT 1 FROM departments d
+            WHERE d.department_id = fa.department_id AND d.status = 'ACTIVE'
+          )`,
+      [userId, year]
+    );
+
+    const total = assignments.length;
+    if (!total || !institutionId) {
+      return res.json({
+        success: true,
+        year,
+        data: { assigned_forms: total, pending_forms: 0, locked_forms: 0, expired_forms: 0 },
+      });
+    }
+
+    const formNames = assignments.map(a => a.tl_name || a.form_name).filter(Boolean);
+
+    // Lock + deadline info per form (one query for all assigned form names)
+    const { rows: lockRows } = await pool.query(
+      `SELECT form_name, COALESCE(is_locked, false) AS is_locked, deadline_at
+         FROM form_lock_config
+        WHERE form_name = ANY($1::text[]) AND institution_id = $2`,
+      [formNames, institutionId]
+    );
+    const lockMap = {};
+    for (const r of lockRows) lockMap[r.form_name] = r;
+
+    // Per-year deadline overrides (same logic as dashboard.js)
+    const { rows: ydRows } = await pool.query(
+      `SELECT form_name, deadline_at FROM form_year_deadlines
+        WHERE institution_id = $1 AND academic_year = $2`,
+      [institutionId, year]
+    );
+    const yearDeadline = new Map(ydRows.map(r => [r.form_name, r.deadline_at]));
+
+    let lockedCount  = 0;
+    let expiredCount = 0;
+
+    for (const name of formNames) {
+      const cfg = lockMap[name];
+      const isLocked = cfg?.is_locked ?? false;
+      const dl = yearDeadline.has(name) ? yearDeadline.get(name) : cfg?.deadline_at ?? null;
+      const isExpired = dl && new Date(dl).getTime() <= now.getTime();
+
+      if (isLocked)        lockedCount++;
+      else if (isExpired)  expiredCount++;
+    }
+
+    const pendingCount = total - lockedCount - expiredCount;
+
+    return res.json({
+      success: true,
+      year,
+      data: {
+        assigned_forms: total,
+        pending_forms:  Math.max(0, pendingCount),
+        locked_forms:   lockedCount,
+        expired_forms:  expiredCount,
+      },
+    });
+  } catch (err) {
+    logger.error("GET /api/form-assignments/dashboard-stats", { stack: err.stack });
+    return res.status(500).json({ success: false, message: "Failed to load dashboard stats." });
   }
 });
 

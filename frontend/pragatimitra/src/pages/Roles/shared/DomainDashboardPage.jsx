@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from "react";
-import { FileStack, FileCheck2, Clock, CheckCircle2, Users, Activity } from "lucide-react";
+import { FileStack, Unlock, Lock, AlertCircle, Activity, BarChart2 } from "lucide-react";
 import { useApi } from "../../../hooks/useApi";
 import { useAuth } from "../../../store/AuthContext";
 import { useAcademicYear } from "../../../store/AcademicYearContext";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { t } from "../../../i18n/translations";
 import PageHeader from "../../../components/shared/PageHeader";
+import KpiDashboardPanel from "../../../components/KPI/KpiDashboardPanel";
 
 /* Part 2 — data-driven Hospital / Finance dashboard. One small component, fed by
    GET /api/dashboard/summary (domain-scoped, live DB). No academic widgets, no
@@ -64,11 +65,10 @@ export default function DomainDashboardPage({ domain: domainProp }) {
   const subtitle = user?.institutionName || meta.module;
 
   const cards = [
-    { label: "Total Forms",       value: m.total_forms,       icon: <FileStack size={18} />,   color: "#2563eb", bg: "#dbeafe" },
-    { label: "Active Forms",      value: m.active_forms,      icon: <FileCheck2 size={18} />,  color: "#059669", bg: "#ecfdf5" },
-    { label: "Pending Deadlines", value: m.pending_deadlines, icon: <Clock size={18} />,       color: "#d97706", bg: "#fffbeb" },
-    { label: meta.records,        value: m.total_records,     icon: <CheckCircle2 size={18} />, color: "#7c3aed", bg: "#f5f3ff" },
-    { label: "Assigned Users",    value: m.assigned_users,    icon: <Users size={18} />,       color: "#0891b2", bg: "#ecfeff" },
+    { label: "Assigned Forms", value: m.assigned_forms ?? m.total_forms,  icon: <FileStack size={18} />,  color: "#2563eb", bg: "#dbeafe" },
+    { label: "Open Forms",     value: m.open_forms     ?? m.active_forms, icon: <Unlock size={18} />,     color: "#059669", bg: "#ecfdf5" },
+    { label: "Locked Forms",   value: m.locked_forms   ?? 0,              icon: <Lock size={18} />,       color: "#7c3aed", bg: "#f5f3ff" },
+    { label: "Expired Forms",  value: m.expired_forms  ?? 0,              icon: <AlertCircle size={18} />,color: "#dc2626", bg: "#fef2f2" },
   ];
 
   return (
@@ -130,6 +130,18 @@ export default function DomainDashboardPage({ domain: domainProp }) {
         ) : (
           <div style={{ fontSize: 12.5, color: C.textSub }}>{t("No recent activity yet.", lang)}</div>
         ))}
+      </div>
+
+      {/* KPI Dashboard Panel — domain-scoped, year-aware */}
+      <div style={{ ...card, padding: "16px 20px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2 }}>
+          <BarChart2 size={15} color="#2563eb" />
+          <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{t("KPI Overview", lang)}</div>
+        </div>
+        <div style={{ fontSize: 11, color: C.textSub, marginBottom: 12 }}>
+          {t("Charts from KPIs pinned to the dashboard — configure in KPI Charts", lang)}
+        </div>
+        <KpiDashboardPanel scope={domain === "hospital" || domain === "finance" ? domain : "institute"} />
       </div>
     </div>
   );

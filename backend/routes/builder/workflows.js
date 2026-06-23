@@ -33,6 +33,36 @@ function callerInstitution(req) {
   return req.user.institutionId || null;
 }
 
+/* Idempotent — adds domain column to workflow_templates on first request. */
+let _wfDomainColEnsured = false;
+async function ensureWfDomainColumn(pool) {
+  if (_wfDomainColEnsured) return;
+  try {
+    await pool.query(
+      `ALTER TABLE public.workflow_templates
+       ADD COLUMN IF NOT EXISTS domain TEXT NOT NULL DEFAULT 'academic'`
+    );
+  } catch (_) {}
+  _wfDomainColEnsured = true;
+}
+
+/* Returns the caller's business domain string, or null for cross-domain admins
+   (super_admin / institute_admin) who see all workflows. Fails-open to 'academic'
+   on a query error so a transient DB fault does not lock the user out entirely;
+   the domain filter is a visibility concern, not a security boundary here because
+   hospital/finance admins cannot CREATE workflows (POST is still restricted). */
+async function resolveCallerDomain(pool, req) {
+  const roles = req.user?.roles || [];
+  if (roles.includes("super_admin") || roles.includes("institute_admin")) return null;
+  try {
+    const { rows } = await pool.query(
+      "SELECT COALESCE(role_domain, 'academic') AS d FROM users WHERE id = $1",
+      [req.user.userId]
+    );
+    return rows[0]?.d || "academic";
+  } catch { return "academic"; }
+}
+
 /* ── GET /roles ── roles available for workflow step assignment ─────────────── */
 router.get("/roles", async (req, res) => {
   const pool = req.app.locals.pool;
@@ -53,8 +83,17 @@ router.get("/roles", async (req, res) => {
 router.get("/", async (req, res) => {
   const pool = req.app.locals.pool;
   try {
+    await ensureWfDomainColumn(pool);
     const instId = callerInstitution(req);
     if (!instId) return res.status(400).json({ success: false, message: "institution_id required" });
+
+    // Domain filter — hospital/finance admins only see workflows in their domain.
+    // super_admin and institute_admin are cross-domain (callerDomain = null → no filter).
+    const callerDomain = await resolveCallerDomain(pool, req);
+    const queryParams  = [instId];
+    const domainClause = callerDomain
+      ? `AND COALESCE(wt.domain, 'academic') = $${queryParams.push(callerDomain)}`
+      : "";
 
     const { rows: templates } = await pool.query(
       `SELECT wt.*,
@@ -65,9 +104,9 @@ router.get("/", async (req, res) => {
        LEFT JOIN public.users u ON u.id = wt.created_by
        LEFT JOIN public.workflow_steps ws ON ws.template_id = wt.id
        LEFT JOIN public.report_sections rs ON rs.workflow_template_id = wt.id
-       WHERE wt.institution_id = $1
+       WHERE wt.institution_id = $1 ${domainClause}
        GROUP BY wt.id, u.full_name
-       ORDER BY wt.is_default DESC, wt.name`, [instId]
+       ORDER BY wt.is_default DESC, wt.name`, queryParams
     );
 
     // Include steps for each template so dropdowns/cards can render them
