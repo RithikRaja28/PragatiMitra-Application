@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useApi } from "../../../../hooks/useApi";
 import Toast from "../../../../components/shared/Toast";
+import BuilderHeader from "./BuilderHeader";
 
 async function apiJson(apiFetch, path, opts) {
   const res  = await apiFetch(path, opts);
@@ -33,10 +34,10 @@ const C = {
 };
 
 const FORMAT_OPTIONS = [
-  { value: "pdf",  label: "PDF",  icon: "📄", desc: "Portable Document Format — best for sharing" },
-  { value: "docx", label: "DOCX", icon: "📝", desc: "Microsoft Word — editable document" },
-  { value: "html", label: "HTML", icon: "🌐", desc: "Web page — view in browser" },
-  { value: "json", label: "JSON", icon: "{ }", desc: "Structured data — for integrations" },
+  { value: "pdf",  label: "PDF",  icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/></svg>, desc: "Portable Document Format — best for sharing" },
+  { value: "docx", label: "DOCX", icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/></svg>, desc: "Microsoft Word — editable document" },
+  { value: "html", label: "HTML", icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>, desc: "Web page — view in browser" },
+  { value: "json", label: "JSON", icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>, desc: "Structured data — for integrations" },
 ];
 
 const LANG_OPTIONS = [
@@ -137,34 +138,11 @@ export default function CompileReportPage({ reportId, onBack }) {
       {toast && <Toast {...toast} onClose={() => setToast(null)} />}
 
       {/* header */}
-      <header style={{ background: C.surface, borderBottom: `1px solid ${C.border}`,
-                       padding: "14px 32px", display: "flex", alignItems: "center", gap: 14 }}>
-        <button onClick={onBack} style={{
-          display: "inline-flex", alignItems: "center", gap: 6,
-          padding: "7px 14px", borderRadius: 8,
-          border: "1.5px solid #e5e7eb", background: "#fff",
-          fontSize: 13, fontWeight: 600, color: "#374151", cursor: "pointer",
-          flexShrink: 0,
-        }}
-          onMouseEnter={e => { e.currentTarget.style.background = "#f3f4f6"; e.currentTarget.style.borderColor = "#d1d5db"; }}
-          onMouseLeave={e => { e.currentTarget.style.background = "#fff";    e.currentTarget.style.borderColor = "#e5e7eb"; }}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M19 12H5M12 5l-7 7 7 7"/>
-          </svg>
-          Back
-        </button>
-        <div style={{ width: 1, height: 28, background: C.border, flexShrink: 0 }} />
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ fontSize: 11, color: C.textSub }}>Report Builder</span>
-            <span style={{ fontSize: 11, color: "#d1d5db" }}>›</span>
-            <span style={{ fontSize: 11, color: C.primary, fontWeight: 600 }}>Compile</span>
-          </div>
-          <div style={{ fontSize: 17, fontWeight: 700, color: C.text, marginTop: 1 }}>
-            Compile Report
-          </div>
-        </div>
-        {report?.title && (
+      <BuilderHeader
+        onBack={onBack}
+        breadcrumb={["Report Builder", "Compile"]}
+        title="Compile Report"
+        right={report?.title && (
           <div style={{
             padding: "6px 14px", borderRadius: 8, background: C.bg,
             fontSize: 12, color: C.textSub, border: `1px solid ${C.border}`,
@@ -173,7 +151,7 @@ export default function CompileReportPage({ reportId, onBack }) {
             {report.title}
           </div>
         )}
-      </header>
+      />
 
       <main style={{ maxWidth: 900, margin: "0 auto", padding: "32px 24px" }}>
 
@@ -374,7 +352,11 @@ function ReadinessPanel({ status, readyCount, totalCount, notReadyCount }) {
     <div style={{ border: `2px solid ${border}`, borderRadius: 10, padding: 20,
                   background: ready ? C.successLt : C.warningLt }}>
       <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-        <div style={{ fontSize: 32 }}>{ready ? "✅" : "⚠️"}</div>
+        <div style={{ width: 40, height: 40, borderRadius: 10, background: ready ? "#dcfce7" : "#fef3c7", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+          {ready
+            ? <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#15803d" strokeWidth="2.2"><circle cx="12" cy="12" r="10"/><polyline points="8 12 11 15 16 9"/></svg>
+            : <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2.2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>}
+        </div>
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 15, fontWeight: 700, color: C.text }}>
             {ready ? "Ready to Compile" : "Sections Not Ready"}

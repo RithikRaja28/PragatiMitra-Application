@@ -433,7 +433,10 @@ function KpiForm({ cfg, tables, tabStatus, existingConfigs, scope, onBack, onSav
       pageTitle={t("KPI Charts", lang)}
       formTitle={isEdit ? t("Edit KPI Chart", lang) : t("New KPI Chart", lang)}
       formSubtitle={isEdit ? t("Update the chart configuration.", lang) : t("Configure a new KPI chart for the annual report.", lang)}
-      icon={isEdit ? "✏️" : "📊"}
+      icon={isEdit
+        ? <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+        : <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+      }
       iconBg={isEdit ? "#fef3c7" : "#eff6ff"}
       onBack={onBack}
       onSubmit={handleSubmit}

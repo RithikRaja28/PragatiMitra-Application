@@ -123,9 +123,11 @@ const pool = new Pool({
   database: process.env.DB_NAME,
   password: process.env.DB_PASSWORD,
   port:     Number(process.env.DB_PORT) || 5432,
-  max:      30,
-  idleTimeoutMillis:       30_000,
-  connectionTimeoutMillis:  5_000,
+  // Pool sizing is env-tunable; defaults preserve the previous hardcoded values.
+  max:                     Number(process.env.DB_POOL_MAX)           || 30,
+  min:                     Number(process.env.DB_POOL_MIN)           || 0,
+  idleTimeoutMillis:       Number(process.env.DB_IDLE_TIMEOUT)       || 30_000,
+  connectionTimeoutMillis: Number(process.env.DB_CONNECTION_TIMEOUT) || 5_000,
   ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false,
 });
 
@@ -412,7 +414,6 @@ app.use("/api/lookup",       lookupRoutes);
 app.use("/api/roles",        require("./routes/roles"));
 app.use("/api/departments",  departmentRoutes);
 app.use("/api/institutions", institutionRoutes);
-app.use("/api/committees",   require("./routes/committees"));
 app.use("/api/audit-logs",   auditLogRoutes);
 app.use("/api/upload",       uploadRoutes);
 app.use("/api/notification-templates", notificationTemplatesRouter);

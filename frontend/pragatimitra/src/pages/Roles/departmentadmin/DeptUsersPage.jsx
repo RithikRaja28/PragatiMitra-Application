@@ -6,7 +6,7 @@ import { useAuth } from "../../../store/AuthContext";
 const SLUG = "user-management";
 import { S, Toast } from "../../../components/shared/formUtils";
 import FormScreen from "../../../components/shared/FormScreen";
-import PageHeader from "../../../components/shared/PageHeader";
+import { PageContainer, PageHeader, Toolbar, SearchInput, Button, Card, ErrorState } from "../../../ui";
 import { ActionButton, ActionButtonGroup } from "../../../components/shared/ActionButtons";
 import { StatusBadge, Select } from "../../../components/shared/ui";
 import { useLanguage } from "../../../i18n/LanguageContext";
@@ -266,7 +266,7 @@ function UserForm({
       pageTitle={t("User Management", lang)}
       formTitle={isEdit ? t("Edit User", lang) : t("New User", lang)}
       formSubtitle={isEdit ? entity.full_name : t("Add a new user to your department", lang)}
-      icon="👤"
+      icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#059669" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>}
       iconBg="#d1fae5"
       onBack={onBack}
       onSubmit={handleSubmit}
@@ -446,15 +446,15 @@ function UserList({ apiFetch, onEdit }) {
 
   if (loading) return <Spinner />;
   if (error) return (
-    <div style={{ padding: 24, background: "#fef2f2", borderRadius: 10, color: "#dc2626", fontSize: 13 }}>
-      {error}
-    </div>
+    <Card padding={0}>
+      <ErrorState title={t("Couldn’t load users", lang)} description={error} />
+    </Card>
   );
 
   return (
     <>
       {/* Role filter row */}
-      <div style={{ display: "flex", gap: 10, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
+      <Toolbar style={{ marginBottom: 12 }}>
         <Select
           fullWidth={false}
           value={filterRole}
@@ -476,27 +476,17 @@ function UserList({ apiFetch, onEdit }) {
         </Select>
 
         {filterRole && (
-          <button
-            onClick={() => setFilterRole("")}
-            style={{
-              padding: "8px 14px", borderRadius: 8,
-              border: "1.5px solid #e2e8f0", background: "#fff",
-              fontSize: 12, fontWeight: 600, color: "#64748b",
-              cursor: "pointer", whiteSpace: "nowrap",
-            }}
-          >
-            Clear Filter
-          </button>
+          <Button variant="secondary" onClick={() => setFilterRole("")}>Clear Filter</Button>
         )}
-      </div>
+      </Toolbar>
 
       {/* Search + status filter */}
-      <div style={{ display: "flex", gap: 10, marginBottom: 20, flexWrap: "wrap" }}>
-        <input
-          placeholder={t("Search name or email…", lang)}
+      <Toolbar>
+        <SearchInput
+          placeholder={t("Search by name or email…", lang)}
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          style={{ ...S.input(false), flex: 1, minWidth: 200 }}
+          onChange={setSearch}
+          style={{ flex: 1, width: "auto" }}
         />
         <Select
           fullWidth={false}
@@ -509,13 +499,10 @@ function UserList({ apiFetch, onEdit }) {
             <option key={s} value={s}>{t(s.charAt(0) + s.slice(1).toLowerCase(), lang)}</option>
           ))}
         </Select>
-      </div>
+      </Toolbar>
 
       {/* Table */}
-      <div style={{
-        background: "#fff", border: "1px solid rgba(0,0,0,0.07)",
-        borderRadius: 14, overflow: "hidden", boxShadow: "0 1px 4px rgba(0,0,0,0.05)",
-      }}>
+      <Card padding={0} style={{ overflow: "hidden" }}>
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
             <tr style={{ background: "#f8fafc", borderBottom: "1px solid rgba(0,0,0,0.06)" }}>
@@ -605,7 +592,7 @@ function UserList({ apiFetch, onEdit }) {
             )}
           </tbody>
         </table>
-      </div>
+      </Card>
     </>
   );
 }
@@ -653,7 +640,7 @@ export default function DepartmentAdminUserManagementPage() {
   }
 
   return (
-    <div style={{ padding: "32px 36px", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+    <PageContainer>
       {toast && <Toast message={toast.message} type={toast.type} />}
 
       <PageHeader
@@ -683,6 +670,6 @@ export default function DepartmentAdminUserManagementPage() {
         apiFetch={apiFetch}
         onEdit={(u) => navigate(`${listPath}/edit`, { state: { entity: u } })}
       />
-    </div>
+    </PageContainer>
   );
 }

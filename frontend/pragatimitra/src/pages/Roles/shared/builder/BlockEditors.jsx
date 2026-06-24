@@ -99,7 +99,7 @@ function TranslateButton({ apiFetch, getSource, onTranslated, label = "Translate
           display: "flex", alignItems: "center", gap: 5, whiteSpace: "nowrap",
         }}
       >
-        {busy ? "Translating…" : `🌐 ${label}`}
+        {busy ? "Translating…" : label}
       </button>
       {err && <div style={{ fontSize: 10, color: "#b91c1c" }}>{err}</div>}
     </div>
@@ -371,8 +371,8 @@ export function RichTextBlock({ content, onChange, readOnly, lang = "en", apiFet
         <Sep />
 
         {/* ─ Link ─ */}
-        <TBtn onClick={insertLink}             title="Insert link"   style={{ fontSize: 12 }}>🔗</TBtn>
-        <TBtn onClick={() => exec("unlink")}   title="Remove link"   style={{ fontSize: 10 }}>🔗✕</TBtn>
+        <TBtn onClick={insertLink}           title="Insert link"  style={{ lineHeight: 0 }}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></TBtn>
+        <TBtn onClick={() => exec("unlink")} title="Remove link" style={{ lineHeight: 0, color: "#9ca3af" }}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/><line x1="4" y1="4" x2="20" y2="20"/></svg></TBtn>
         <Sep />
 
         {/* ─ Clear ─ */}
@@ -1173,7 +1173,7 @@ export function KpiBlock({ content, onChange, readOnly, kpiScope = "department" 
     );
     return (
       <div style={{ padding:"12px 16px", background:"#eff6ff", border:"1px solid #bfdbfe", borderRadius:8, display:"flex", alignItems:"center", gap:10 }}>
-        <span style={{ fontSize:18, color:"#2563eb" }}>📊</span>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2" style={{ flexShrink: 0 }}><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
         <div>
           <div style={{ fontSize:13, fontWeight:600, color:"#1e40af" }}>
             {(lang === "hi" && content.kpi_title_hi) ? content.kpi_title_hi : (content.kpi_title || `KPI #${selectedId}`)}
@@ -1198,7 +1198,7 @@ export function KpiBlock({ content, onChange, readOnly, kpiScope = "department" 
       {/* Current selection display */}
       {selected ? (
         <div style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 14px", background:"#eff6ff", border:"1.5px solid #bfdbfe", borderRadius:9 }}>
-          <span style={{ fontSize:20, color:"#2563eb" }}>{CHART_ICON[selected.chart_type] || "📊"}</span>
+          <span style={{ fontSize:20, color:"#2563eb", lineHeight:1 }}>{CHART_ICON[selected.chart_type] || <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>}</span>
           <div style={{ flex:1, minWidth:0 }}>
             <div style={{ fontSize:13, fontWeight:600, color:"#1e40af", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{cfgTitle(selected, lang)}</div>
             {selected.description && <div style={{ fontSize:11, color:"#3b82f6", marginTop:1 }}>{(lang === "hi" && selected.description_hi) ? selected.description_hi : selected.description}</div>}
@@ -1218,7 +1218,7 @@ export function KpiBlock({ content, onChange, readOnly, kpiScope = "department" 
       ) : (
         <button onClick={() => setOpen(v => !v)}
           style={{ padding:"10px 14px", border:"1.5px dashed #bfdbfe", borderRadius:9, background:"#f8fafc", fontSize:13, color:"#64748b", cursor:"pointer", textAlign:"left" }}>
-          {loading ? "Loading KPIs…" : "📊 Click to select a KPI chart"}
+          {loading ? "Loading KPIs…" : "Click to select a KPI chart"}
         </button>
       )}
 
@@ -1246,7 +1246,7 @@ export function KpiBlock({ content, onChange, readOnly, kpiScope = "department" 
               onMouseEnter={e => e.currentTarget.style.background = "#f8fafc"}
               onMouseLeave={e => e.currentTarget.style.background = "transparent"}
             >
-              <span style={{ fontSize:16, color:"#2563eb", flexShrink:0, marginTop:1 }}>{CHART_ICON[k.chart_type] || "📊"}</span>
+              <span style={{ fontSize:16, color:"#2563eb", flexShrink:0, marginTop:1, lineHeight:1 }}>{CHART_ICON[k.chart_type] || <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>}</span>
               <div style={{ flex:1, minWidth:0 }}>
                 <div style={{ fontSize:13, fontWeight:600, color:"#1e293b", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{cfgTitle(k, lang)}</div>
                 {k.description && (
@@ -1351,7 +1351,7 @@ export function KpiImportBlock({ blockId, content, onChange, onRefetched, readOn
         borderRadius: 8, marginBottom: 10,
       }}>
         <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ fontSize: 14 }}>📊</span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" strokeWidth="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
           <div style={{ minWidth: 0 }}>
             <div style={{ fontSize: 12, fontWeight: 700, color: "#4c1d95", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {content.title || "KPI Chart"}
@@ -1384,7 +1384,7 @@ export function KpiImportBlock({ blockId, content, onChange, onRefetched, readOn
                 cursor: reimporting ? "not-allowed" : "pointer", fontFamily: "inherit",
               }}
             >
-              {reimporting ? "Importing…" : "🔄 Re-import"}
+              {reimporting ? "Importing…" : "Re-import"}
             </button>
           </div>
         )}

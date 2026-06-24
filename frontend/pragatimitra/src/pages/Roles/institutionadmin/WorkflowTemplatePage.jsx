@@ -1,8 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useApi }  from "../../../hooks/useApi";
 import { useAuth } from "../../../store/AuthContext";
-import PageHeader from "../../../ui/PageHeader";
-import { Button } from "../../../ui";
+import { PageContainer, PageHeader, Button, Card, EmptyState } from "../../../ui";
 import { Plus } from "lucide-react";
 import { S, Toast, ConfirmDialog, isAuthError } from "../../../components/shared/formUtils";
 import { useLanguage } from "../../../i18n/LanguageContext";
@@ -450,7 +449,7 @@ function WorkflowForm({ mode, entity, onSaved, onBack }) {
           borderRadius: 12, padding: "14px 20px", marginBottom: 24,
           display: "flex", gap: 12, alignItems: "center",
         }}>
-          <span style={{ fontSize: 18, flexShrink: 0 }}>👁️</span>
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#0369a1" strokeWidth="2" style={{ flexShrink: 0 }}><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
           <div style={{ fontSize: 13, color: "#0369a1", lineHeight: 1.5 }}>
             <strong>Read-only view.</strong> This workflow is assigned to{" "}
             <strong>{entity?.usage_count} section{Number(entity?.usage_count) !== 1 ? "s" : ""}</strong> and cannot be modified.
@@ -466,7 +465,7 @@ function WorkflowForm({ mode, entity, onSaved, onBack }) {
           borderRadius: 12, padding: "18px 22px", marginBottom: 24,
           display: "flex", gap: 14, alignItems: "flex-start",
         }}>
-          <div style={{ fontSize: 24, flexShrink: 0, marginTop: 2 }}>🔒</div>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#b91c1c" strokeWidth="1.8" style={{ flexShrink: 0, marginTop: 2 }}><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
           <div>
             <div style={{ fontSize: 14, fontWeight: 700, color: "#b91c1c", marginBottom: 4 }}>
               This workflow cannot be edited
@@ -762,10 +761,10 @@ function TemplateCard({ template, onEdit, onView, onSetDefault, onDelete, settin
                   </div>
                   <div style={{ fontSize: 10, color: C.textSub, marginLeft: 23, marginTop: 1 }}>
                     {s.approver_user_id
-                      ? <span>👤 {s.approver_name || "Specific user"}</span>
+                      ? <span><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ display: "inline", verticalAlign: "middle", marginRight: 3 }}><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>{s.approver_name || "Specific user"}</span>
                       : s.approver_role
                         ? <span>
-                            🎭 {s.approver_role.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())}
+                            {s.approver_role.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())}
                             {s.approver_department_name
                               ? <span style={{ color: "#94a3b8" }}> @ {s.approver_department_name}</span>
                               : <span style={{ color: "#cbd5e1" }}> (all depts)</span>
@@ -805,7 +804,7 @@ function TemplateCard({ template, onEdit, onView, onSetDefault, onDelete, settin
               fontSize: 12, fontWeight: 600, color: "#0369a1", cursor: "pointer",
             }}
           >
-            👁 View
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg> View
           </button>
         ) : (
           <button
@@ -969,7 +968,7 @@ export default function WorkflowTemplatePage() {
   const totalSteps = templates.reduce((s, t) => s + Number(t.step_count || 0), 0);
 
   return (
-    <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", background: "transparent", minHeight: "100%", padding: 28 }}>
+    <PageContainer>
       {toast && <Toast message={toast.message} type={toast.type} />}
       {confirm && <ConfirmDialog {...confirm} onCancel={() => setConfirm(null)} />}
       <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}} @keyframes spin{to{transform:rotate(360deg)}}`}</style>
@@ -988,9 +987,9 @@ export default function WorkflowTemplatePage() {
       {/* ── Summary stats ── */}
       <div style={{ display: "flex", gap: 14, marginBottom: 24, flexWrap: "wrap" }}>
         {[
-          { label: "Total Templates",    value: templates.length, icon: "🔗", color: "#6366f1" },
-          { label: "Total Steps (all)",  value: totalSteps,       icon: "📋", color: C.primary },
-          { label: "Default Template",   value: defaultTemplate?.name || "—", icon: "⭐", color: "#d97706", isText: true },
+          { label: "Total Templates",    value: templates.length, icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>, color: "#6366f1" },
+          { label: "Total Steps (all)",  value: totalSteps,       icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg>, color: C.primary },
+          { label: "Default Template",   value: defaultTemplate?.name || "—", icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>, color: "#d97706", isText: true },
         ].map(s => (
           <div key={s.label} style={{
             ...card, padding: "16px 20px", flex: 1, minWidth: 180,
@@ -1000,7 +999,7 @@ export default function WorkflowTemplatePage() {
               width: 40, height: 40, borderRadius: 10,
               background: s.color + "22", display: "flex",
               alignItems: "center", justifyContent: "center",
-              fontSize: 17, flexShrink: 0,
+              color: s.color, flexShrink: 0,
             }}>
               {s.icon}
             </div>
@@ -1040,27 +1039,20 @@ export default function WorkflowTemplatePage() {
           {[1, 2, 3].map(i => <SkeletonCard key={i} />)}
         </div>
       ) : templates.length === 0 ? (
-        <div style={{
-          ...card, padding: "56px 32px", textAlign: "center",
-        }}>
-          <div style={{ fontSize: 40, marginBottom: 12 }}>🔗</div>
-          <div style={{ fontSize: 15, fontWeight: 700, color: C.text, marginBottom: 6 }}>
-            No workflow templates yet
-          </div>
-          <div style={{ fontSize: 13, color: C.textSub, marginBottom: 20 }}>
-            Create your first workflow to define the approval chain for report sections.
-          </div>
-          <button
-            onClick={() => setScreen("create")}
-            style={{
-              padding: "9px 20px", borderRadius: 10, border: "none",
-              background: C.primary, color: "#fff",
-              fontSize: 13, fontWeight: 700, cursor: "pointer",
-            }}
-          >
-            Create First Workflow
-          </button>
-        </div>
+        <Card padding={0}>
+          <EmptyState
+            icon={
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+              </svg>
+            }
+            title="No workflow templates yet"
+            description="Create your first workflow to define the approval chain for report sections."
+            action={
+              <Button variant="primary" onClick={() => setScreen("create")}>Create First Workflow</Button>
+            }
+          />
+        </Card>
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))", gap: 18 }}>
           {templates.map(t => (
@@ -1077,6 +1069,6 @@ export default function WorkflowTemplatePage() {
           ))}
         </div>
       )}
-    </div>
+    </PageContainer>
   );
 }

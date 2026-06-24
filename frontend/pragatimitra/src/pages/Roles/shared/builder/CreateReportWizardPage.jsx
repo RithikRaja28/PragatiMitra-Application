@@ -160,6 +160,34 @@ export default function CreateReportWizardPage({ onCreated, onCancel, initialRep
       });
   }, [reportId, secFetched]);
 
+  /* ── load section-specific access once sections are fetched (edit mode) ── */
+  useEffect(() => {
+    if (!initialReportId || !secFetched || sections.length === 0) return;
+    // Only run once — stop if sectionAccess already populated
+    const alreadyLoaded = sections.some(s => sectionAccess[s.id]?.length > 0);
+    if (alreadyLoaded) return;
+    (async () => {
+      const accessMap = {};
+      for (const sec of sections) {
+        try {
+          const r = await apiFetch(`/api/builder/sections/${sec.id}/access`);
+          const j = await r.json();
+          if (j.success && j.data?.length) {
+            accessMap[sec.id] = j.data.map(g => ({
+              localId:  g.id,
+              type:     g.role_name ? "ROLE" : g.user_id ? "USER" : "DEPT",
+              roleName: g.role_name    || "",
+              userId:   g.user_id      || "",
+              deptId:   g.department_id || "",
+            }));
+          }
+        } catch { /* best-effort */ }
+      }
+      if (Object.keys(accessMap).length > 0) setSectionAccess(accessMap);
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialReportId, secFetched, sections.length]);
+
   /* ── load existing draft report for editing/continuing ──────── */
   useEffect(() => {
     if (!initialReportId) return;
@@ -202,6 +230,9 @@ export default function CreateReportWizardPage({ onCreated, onCancel, initialRep
         }
         if (Object.keys(dlMap).length) setDeptDl(dlMap);
       }).catch(() => {});
+
+    // Step 3b — section-specific access (loaded after sections are fetched — see secFetched effect)
+    // Handled in the secFetched useEffect below so section IDs are available.
 
     // Step 5 — workflow assignments (author + review steps)
     apj(apiFetch, `/api/builder/reports/${initialReportId}/workflow-assignments`)
@@ -616,7 +647,7 @@ export default function CreateReportWizardPage({ onCreated, onCancel, initialRep
         {/* ═══ STEP 1 — Report Details ═══ */}
         {step === 1 && (
           <div>
-            <StepHeading icon="📋" title="Report Details"
+            <StepHeading title="Report Details"
               subtitle={reportId ? "Update report details below." : "A draft report will be created when you click Next."} />
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 28px" }}>
               <div style={{ gridColumn: "1/-1" }}>
@@ -729,7 +760,7 @@ export default function CreateReportWizardPage({ onCreated, onCancel, initialRep
         {/* ═══ STEP 2 — Section Structure ═══ */}
         {step === 2 && (
           <div>
-            <StepHeading icon="🗂" title="Section Structure"
+            <StepHeading title="Section Structure"
               subtitle="Sections pre-loaded from template. Reorder, add, or remove as needed." />
 
             {!secFetched && (
@@ -776,7 +807,7 @@ export default function CreateReportWizardPage({ onCreated, onCancel, initialRep
                   <div style={{ padding: "12px 16px", minHeight: 200, maxHeight: 520, overflowY: "auto" }}>
                     {sections.length === 0 ? (
                       <div style={{ textAlign: "center", padding: "56px 20px" }}>
-                        <div style={{ fontSize: 36, marginBottom: 10 }}>📄</div>
+                        <div style={{ width: 40, height: 48, background: "#e2e8f0", borderRadius: 4, margin: "0 auto 10px", display: "flex", alignItems: "center", justifyContent: "center" }}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div>
                         <div style={{ fontSize: 13, fontWeight: 600, color: C.text, marginBottom: 6 }}>No sections yet</div>
                         <div style={{ fontSize: 12, color: C.textSub, marginBottom: 16 }}>
                           Click <b>+ Add Section</b> to build the report structure.
@@ -824,7 +855,7 @@ export default function CreateReportWizardPage({ onCreated, onCancel, initialRep
         {/* ═══ STEP 3 — Access ═══ */}
         {step === 3 && (
           <div>
-            <StepHeading icon="🔐" title="Access Configuration"
+            <StepHeading title="Access Configuration"
               subtitle="Choose which roles can view this report. Institute Admins always have full access." />
 
             {/* Tab bar */}
@@ -1002,7 +1033,7 @@ export default function CreateReportWizardPage({ onCreated, onCancel, initialRep
         {/* ═══ STEP 4 — Dept Deadlines ═══ */}
         {step === 4 && (
           <div>
-            <StepHeading icon="📅" title="Department Deadlines"
+            <StepHeading title="Department Deadlines"
               subtitle="Set default deadlines per department. Leave blank to inherit the report-level deadlines." />
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
               <div style={{ fontSize: 12, color: C.textSub }}>
@@ -1071,7 +1102,7 @@ export default function CreateReportWizardPage({ onCreated, onCancel, initialRep
         {/* ═══ STEP 5 — Assignments ═══ */}
         {step === 5 && (
           <div>
-            <StepHeading icon="⚙" title="Workflow Assignments"
+            <StepHeading title="Workflow Assignments"
               subtitle="Assign who authors each section and who reviews it at each workflow step." />
 
             {!defaultWfId && (
@@ -1151,19 +1182,19 @@ export default function CreateReportWizardPage({ onCreated, onCancel, initialRep
             <div style={{ marginTop: 28, border: `1px solid ${C.border}`, borderRadius: 12, overflow: "hidden" }}>
               <div style={{ padding: "12px 18px", background: C.bg, borderBottom: `1px solid ${C.border}`,
                 display: "flex", alignItems: "center", gap: 10 }}>
-                <span style={{ fontSize: 16 }}>🖼</span>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={C.primary} strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
                 <span style={{ fontSize: 13, fontWeight: 700, color: C.text }}>Branding Assets</span>
                 <span style={{ fontSize: 11, color: C.textMuted, marginLeft: 4 }}>(optional — uploaded to S3 on save)</span>
               </div>
               <div style={{ padding: "16px 18px", display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14 }}>
                 {[
-                  { key: "COVER_IMAGE", label: "Cover Image", icon: "🖼" },
-                  { key: "LOGO",        label: "Logo",        icon: "🏷" },
-                  { key: "BG_IMAGE",    label: "Background",  icon: "🎨" },
+                  { key: "COVER_IMAGE", label: "Cover Image" },
+                  { key: "LOGO",        label: "Logo" },
+                  { key: "BG_IMAGE",    label: "Background" },
                 ].map(asset => (
                   <div key={asset.key}>
                     <div style={{ fontSize: 11, fontWeight: 700, color: C.textSub, textTransform: "uppercase",
-                      letterSpacing: "0.07em", marginBottom: 6 }}>{asset.icon} {asset.label}</div>
+                      letterSpacing: "0.07em", marginBottom: 6 }}>{asset.label}</div>
                     <label style={{ display: "block", cursor: "pointer" }}>
                       <div style={{
                         border: `1.5px dashed ${brandingFiles[asset.key] ? C.primary : C.border}`,
@@ -1202,13 +1233,13 @@ export default function CreateReportWizardPage({ onCreated, onCancel, initialRep
         {/* ═══ STEP 6 — Summary ═══ */}
         {step === 6 && (
           <div>
-            <StepHeading icon="✅" title="Summary" subtitle="Report created. Review the configuration below." />
+            <StepHeading title="Summary" subtitle="Report created. Review the configuration below." />
 
             <div style={{
               padding: "16px 20px", background: C.successLt, border: "1px solid #86efac",
               borderRadius: 10, marginBottom: 24, display: "flex", alignItems: "center", gap: 12,
             }}>
-              <div style={{ fontSize: 28 }}>🎉</div>
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><circle cx="12" cy="12" r="10"/><polyline points="8 12 11 15 16 9"/></svg>
               <div>
                 <div style={{ fontSize: 14, fontWeight: 700, color: C.success }}>
                   "{title}" created as Draft
@@ -1220,7 +1251,7 @@ export default function CreateReportWizardPage({ onCreated, onCancel, initialRep
             </div>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              <SumCard label="Report Details" icon="📋">
+              <SumCard label="Report Details">
                 <SumRow k="Name"          v={title} />
                 <SumRow k="Type"          v={repType} />
                 <SumRow k="Academic Year" v={acYear} />
@@ -1230,7 +1261,7 @@ export default function CreateReportWizardPage({ onCreated, onCancel, initialRep
                 <SumRow k="Structure"     v={templates.find(t => t.id === tmplId)?.name || "None"} />
               </SumCard>
 
-              <SumCard label="Structure" icon="🗂">
+              <SumCard label="Structure">
                 <SumRow k="Total sections"
                   v={`${sections.length} section${sections.length!==1?"s":""}, ${sections.reduce((a,s)=>a+(s.subsections?.length||0),0)} subsections`} />
                 {sections.slice(0, 6).map((s, i) => (
@@ -1245,7 +1276,7 @@ export default function CreateReportWizardPage({ onCreated, onCancel, initialRep
                 {sections.length > 6 && <div style={{ fontSize: 11, color: C.textMuted }}>…and {sections.length - 6} more</div>}
               </SumCard>
 
-              <SumCard label="Access" icon="🔐">
+              <SumCard label="Access">
                 {grantedRoles.size === 0
                   ? <span style={{ fontSize: 12, color: C.textMuted, fontStyle: "italic" }}>No additional roles granted</span>
                   : Array.from(grantedRoles).map(rn => {
@@ -1254,7 +1285,7 @@ export default function CreateReportWizardPage({ onCreated, onCancel, initialRep
                   })}
               </SumCard>
 
-              <SumCard label="Dept. Deadlines" icon="📅">
+              <SumCard label="Dept. Deadlines">
                 {Object.entries(deptDl).filter(([, dl]) => dl?.sub || dl?.rev || dl?.app).length === 0
                   ? <span style={{ fontSize: 12, color: C.textMuted, fontStyle: "italic" }}>None configured</span>
                   : Object.entries(deptDl).filter(([, dl]) => dl?.sub || dl?.rev || dl?.app).map(([id, dl]) => {
@@ -1270,7 +1301,7 @@ export default function CreateReportWizardPage({ onCreated, onCancel, initialRep
                   })}
               </SumCard>
 
-              <SumCard label="Assignments" icon="⚙">
+              <SumCard label="Assignments">
                 {(() => {
                   const withAuth = sections.filter(s => assigns[s.id]?.auth?.type).length;
                   const noAuth   = sections.filter(s => !assigns[s.id]?.auth?.type).length;
@@ -1653,12 +1684,11 @@ function Chip({ children, color }) {
 }
 
 /* ══ Shared micro-components ═════════════════════════════════════════════ */
-function SumCard({ label, icon, children }) {
+function SumCard({ label, children }) {
   return (
     <div style={{ border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden" }}>
       <div style={{ padding: "10px 16px", background: C.bg, borderBottom: `1px solid ${C.border}`,
         display: "flex", alignItems: "center", gap: 8 }}>
-        <span style={{ fontSize: 15 }}>{icon}</span>
         <span style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{label}</span>
       </div>
       <div style={{ padding: "12px 16px" }}>{children}</div>
@@ -1673,14 +1703,11 @@ function SumRow({ k, v }) {
     </div>
   );
 }
-function StepHeading({ icon, title, subtitle }) {
+function StepHeading({ title, subtitle }) {
   return (
     <div style={{ marginBottom: 28 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
-        <span style={{ fontSize: 22 }}>{icon}</span>
-        <h2 style={{ fontSize: 20, fontWeight: 700, color: C.text, margin: 0 }}>{title}</h2>
-      </div>
-      <p style={{ fontSize: 13, color: C.textSub, margin: 0, paddingLeft: 34 }}>{subtitle}</p>
+      <h2 style={{ fontSize: 20, fontWeight: 700, color: C.text, margin: "0 0 6px" }}>{title}</h2>
+      <p style={{ fontSize: 13, color: C.textSub, margin: 0 }}>{subtitle}</p>
       <hr style={{ border: "none", borderTop: `1px solid ${C.border}`, marginTop: 16 }} />
     </div>
   );

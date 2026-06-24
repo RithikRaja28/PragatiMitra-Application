@@ -3,7 +3,7 @@ import { useNavigate, useLocation, Navigate } from "react-router-dom";
 import { Users, FileText, BarChart3, Wallet, ShieldCheck, Plus } from "lucide-react";
 import { useApi } from "../../../hooks/useApi";
 import PageHeader from "../../../components/shared/PageHeader";
-import { Button } from "../../../ui";
+import { PageContainer, Button } from "../../../ui";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { t } from "../../../i18n/translations";
 
@@ -1312,7 +1312,7 @@ function RoleList({ roles, onEdit, onDelete, onCreate, deleting }) {
   const customCount = roles.filter((r) => !r.is_system).length;
 
   return (
-    <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+    <PageContainer>
       {/* Header */}
       <PageHeader
         breadcrumb={[t("Home", lang), t("Role & Access Control", lang), t("Roles & Permissions", lang)]}
@@ -1477,7 +1477,7 @@ function RoleList({ roles, onEdit, onDelete, onCreate, deleting }) {
           ))}
         </div>
       )}
-    </div>
+    </PageContainer>
   );
 }
 

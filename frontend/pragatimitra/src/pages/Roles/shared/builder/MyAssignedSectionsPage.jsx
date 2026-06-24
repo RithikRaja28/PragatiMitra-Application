@@ -1,17 +1,17 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate, useLocation, Navigate } from "react-router-dom";
 import { useApi }  from "../../../../hooks/useApi";
-import PageHeader from "../../../../components/shared/PageHeader";
+import { PageContainer, PageHeader, Toolbar, FilterChip, EmptyState, ErrorState, Card } from "../../../../ui";
 import SectionEditorPage from "./SectionEditorPage";
 
 const STATUS_CFG = {
-  NOT_STARTED:  { bg: "#f1f5f9", color: "#64748b",  label: "Not Started",  icon: "📋" },
-  IN_PROGRESS:  { bg: "#dbeafe", color: "#1d4ed8",  label: "In Progress",  icon: "✏️" },
-  SUBMITTED:    { bg: "#fef3c7", color: "#d97706",  label: "Submitted",    icon: "📤" },
-  UNDER_REVIEW: { bg: "#dbeafe", color: "#1e40af",  label: "Under Review", icon: "🔍" },
-  APPROVED:     { bg: "#dcfce7", color: "#15803d",  label: "Approved",     icon: "✅" },
-  SENT_BACK:    { bg: "#fee2e2", color: "#b91c1c",  label: "Sent Back",    icon: "🔄" },
-  LOCKED:       { bg: "#e2e8f0", color: "#475569",  label: "Locked",       icon: "🔒" },
+  NOT_STARTED:  { bg: "#f1f5f9", color: "#64748b",  label: "Not Started"  },
+  IN_PROGRESS:  { bg: "#dbeafe", color: "#1d4ed8",  label: "In Progress"  },
+  SUBMITTED:    { bg: "#fef3c7", color: "#d97706",  label: "Submitted"    },
+  UNDER_REVIEW: { bg: "#dbeafe", color: "#1e40af",  label: "Under Review" },
+  APPROVED:     { bg: "#dcfce7", color: "#15803d",  label: "Approved"     },
+  SENT_BACK:    { bg: "#fee2e2", color: "#b91c1c",  label: "Sent Back"    },
+  LOCKED:       { bg: "#e2e8f0", color: "#475569",  label: "Locked"       },
 };
 
 const ROLE_CFG = {
@@ -24,11 +24,12 @@ function StatusBadge({ status }) {
   const s = STATUS_CFG[status] || STATUS_CFG.NOT_STARTED;
   return (
     <span style={{
-      display: "inline-flex", alignItems: "center", gap: 4,
+      display: "inline-flex", alignItems: "center", gap: 5,
       padding: "2px 10px", borderRadius: 20, fontSize: 11, fontWeight: 600,
       background: s.bg, color: s.color,
     }}>
-      {s.icon} {s.label}
+      <span style={{ width: 6, height: 6, borderRadius: "50%", background: s.color, display: "inline-block", flexShrink: 0 }} />
+      {s.label}
     </span>
   );
 }
@@ -90,7 +91,7 @@ function SectionCard({ section, onEdit }) {
         </div>
         {section.status === "SENT_BACK" && (
           <div style={{ marginTop: 5, fontSize: 11, color: "#b91c1c", fontWeight: 600 }}>
-            🔄 Sent back — please update and resubmit
+            Sent back — please update and resubmit
           </div>
         )}
       </div>
@@ -174,13 +175,13 @@ export default function MyAssignedSectionsPage() {
   const pending = (counts.NOT_STARTED || 0) + (counts.IN_PROGRESS || 0) + (counts.SENT_BACK || 0);
 
   return (
-    <div style={{ padding: "28px 32px", fontFamily: "'Plus Jakarta Sans', sans-serif", maxWidth: 900 }}>
+    <PageContainer>
 
       {/* header */}
       <PageHeader
-        breadcrumb={["Home", "Reports", "My Sections"]}
-        title="My Assigned Sections"
-        description="Report sections assigned directly to you"
+        breadcrumb={["Home", "Reports", "Assigned Sections"]}
+        title="Assigned Sections"
+        description="Report sections assigned directly to you."
       />
 
       {/* summary chips */}
@@ -200,25 +201,20 @@ export default function MyAssignedSectionsPage() {
         </div>
       )}
 
-      {/* status filter */}
+      {/* status filter — standardized FilterChip toolbar */}
       {!loading && sections.length > 0 && (
-        <div style={{ display: "flex", gap: 8, marginBottom: 20, flexWrap: "wrap" }}>
-          {["", "NOT_STARTED", "IN_PROGRESS", "SUBMITTED", "UNDER_REVIEW", "APPROVED", "SENT_BACK"].map(s => {
-            const cfg    = s ? STATUS_CFG[s] : null;
-            const active = filterStatus === s;
-            return (
-              <button key={s} onClick={() => setFilterStatus(s)} style={{
-                padding: "5px 13px", borderRadius: 20, fontSize: 12, fontWeight: 600,
-                border: active ? "none" : "1px solid #e2e8f0",
-                background: active ? (cfg?.bg || "#1e293b") : "#fff",
-                color: active ? (cfg?.color || "#fff") : "#64748b",
-                cursor: "pointer",
-              }}>
-                {s ? (STATUS_CFG[s]?.label || s) : "All"}
-              </button>
-            );
-          })}
-        </div>
+        <Toolbar>
+          {["", "NOT_STARTED", "IN_PROGRESS", "SUBMITTED", "UNDER_REVIEW", "APPROVED", "SENT_BACK"].map(s => (
+            <FilterChip
+              key={s}
+              active={filterStatus === s}
+              count={s ? (counts[s] || 0) : sections.length}
+              onClick={() => setFilterStatus(s)}
+            >
+              {s ? (STATUS_CFG[s]?.label || s) : "All"}
+            </FilterChip>
+          ))}
+        </Toolbar>
       )}
 
       {loading && (
@@ -228,30 +224,29 @@ export default function MyAssignedSectionsPage() {
       )}
 
       {!loading && err && (
-        <div style={{ background: "#fee2e2", color: "#b91c1c", padding: "14px 18px", borderRadius: 10, fontSize: 14 }}>
-          {err}
-        </div>
+        <Card padding={0}>
+          <ErrorState title="Couldn’t load your sections" description={err} />
+        </Card>
       )}
 
       {!loading && !err && sections.length === 0 && (
-        <div style={{
-          background: "#fff", border: "1px solid rgba(0,0,0,0.07)",
-          borderRadius: 14, padding: "60px 40px", textAlign: "center",
-        }}>
-          <div style={{ fontSize: 48, marginBottom: 12 }}>📋</div>
-          <div style={{ fontSize: 16, fontWeight: 700, color: "#1e293b", marginBottom: 8 }}>
-            No sections assigned yet
-          </div>
-          <p style={{ fontSize: 13, color: "#94a3b8", maxWidth: 360, margin: "0 auto" }}>
-            When an administrator assigns you to a report section, it will appear here.
-          </p>
-        </div>
+        <Card padding={0}>
+          <EmptyState
+            icon={
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9 2h6a2 2 0 0 1 2 2v0a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2v0a2 2 0 0 1 2-2z" /><path d="M5 6h14v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6z" /><path d="M9 12h6M9 16h4" />
+              </svg>
+            }
+            title="No sections assigned yet"
+            description="When an administrator assigns you to a report section, it will appear here."
+          />
+        </Card>
       )}
 
       {!loading && !err && groups.map(group => (
         <div key={group.report_title} style={{ marginBottom: 28 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12, paddingBottom: 10, borderBottom: "1px solid #f1f5f9" }}>
-            <span style={{ fontSize: 17 }}>📄</span>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
             <div>
               <div style={{ fontSize: 14, fontWeight: 700, color: "#1e293b" }}>{group.report_title}</div>
               <div style={{ fontSize: 11, color: "#94a3b8" }}>
@@ -273,6 +268,6 @@ export default function MyAssignedSectionsPage() {
           </div>
         </div>
       ))}
-    </div>
+    </PageContainer>
   );
 }

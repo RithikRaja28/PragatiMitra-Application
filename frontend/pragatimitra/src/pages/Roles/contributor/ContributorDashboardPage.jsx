@@ -6,7 +6,7 @@ import { useAuth } from "../../../store/AuthContext";
 import { useAcademicYear } from "../../../store/AcademicYearContext";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { t } from "../../../i18n/translations";
-import PageHeader from "../../../ui/PageHeader";
+import { PageContainer, PageHeader, Card, ErrorState } from "../../../ui";
 
 const C = {
   text:    "#1e293b",
@@ -68,21 +68,20 @@ export default function ContributorDashboardPage() {
   ];
 
   return (
-    <div style={{ padding: "24px 28px", fontFamily: "'Plus Jakarta Sans', sans-serif",
-      display: "flex", flexDirection: "column", gap: 14, minHeight: "100vh" }}>
+    <PageContainer style={{ gap: 14 }}>
 
       <style>{`@keyframes ctSkPulse { 0%,100%{opacity:1} 50%{opacity:0.45} }`}</style>
 
       <PageHeader
         breadcrumb={[t("Home", lang), t("Dashboard", lang)]}
-        title={t("Dashboard", lang)}
+        title={t("My Workspace", lang)}
         description={user?.institutionName || t("Contributor", lang)}
       />
 
       {error && (
-        <div style={{ ...card, color: "#b91c1c", background: "#fef2f2", border: "1px solid #fecaca" }}>
-          {error}
-        </div>
+        <Card padding={0}>
+          <ErrorState title={t("Failed to load dashboard.", lang)} description={error} />
+        </Card>
       )}
 
       {/* Stat cards — live data from /api/form-assignments/dashboard-stats */}
@@ -168,6 +167,6 @@ export default function ContributorDashboardPage() {
           </div>
         )}
       </div>
-    </div>
+    </PageContainer>
   );
 }

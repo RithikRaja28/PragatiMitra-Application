@@ -11,7 +11,7 @@ import { S, Toast } from "../../../components/shared/formUtils";
 import FormScreen from "../../../components/shared/FormScreen";
 import { Select } from "../../../components/shared/ui";
 import PageHeader from "../../../components/shared/PageHeader";
-import { Button, Badge, EmptyState, DataTable, Dropdown, MenuItem } from "../../../ui";
+import { PageContainer, Button, Badge, EmptyState, DataTable, Dropdown, MenuItem } from "../../../ui";
 
 const SLUG = "user-management";
 
@@ -577,8 +577,8 @@ function UserList({ apiFetch, onEdit, institutionId, onToast }) {
         <input
           placeholder={t("Search name or email…", lang)}
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          style={{ ...S.input(false), flex: 1, minWidth: 200 }}
+          onChange={setSearch}
+          style={{ flex: 1, width: "auto" }}
         />
         <Select
           fullWidth={false}
@@ -741,7 +741,7 @@ export default function InstituteAdminUserManagementPage() {
   }
 
   return (
-    <div style={{ padding: "32px 36px", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+    <PageContainer>
       {toast && <Toast message={toast.message} type={toast.type} />}
 
       <PageHeader
@@ -772,6 +772,6 @@ export default function InstituteAdminUserManagementPage() {
         onEdit={(u) => navigate(`${listPath}/edit`, { state: { entity: u } })}
         onToast={showToast}
       />
-    </div>
+    </PageContainer>
   );
 }
