@@ -10,7 +10,7 @@ import FormWizard, { ReviewGroup, ReviewItem } from "../../../components/shared/
 import ImportWizard from "../../../components/shared/ImportWizard";
 import { S, Toast, isAuthError, formatDate } from "../../../components/shared/formUtils";
 import PageHeader from "../../../components/shared/PageHeader";
-import { Button, Badge, EmptyState, DataTable, Dropdown, MenuItem, MenuLabel } from "../../../ui";
+import { PageContainer, Button, Badge, EmptyState, DataTable, Dropdown, MenuItem, MenuLabel } from "../../../ui";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { t } from "../../../i18n/translations";
 
@@ -697,7 +697,7 @@ export default function DepartmentManagementPage() {
     institutions.find((i) => i.institution_id === selectedInstitutionId)?.institution_name || "";
 
   return (
-    <div style={{ padding: "32px 36px", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+    <PageContainer>
       <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.42}}`}</style>
 
       {toast && <Toast message={toast.message} type={toast.type} />}
@@ -705,8 +705,8 @@ export default function DepartmentManagementPage() {
       {/* ── Header ── */}
       <PageHeader
         breadcrumb={[t("Home", lang), t("Dept Management", lang), t("Departments", lang)]}
-        title={t("Departments", lang)}
-        description="Create and manage departments across institutions."
+        title={t("Department Management", lang)}
+        description="Organize and manage departments across institutions."
         actions={
           <div style={{ display: "flex", alignItems: "flex-end", gap: 12, flexWrap: "wrap" }}>
             {/* Institution selector */}
@@ -884,6 +884,6 @@ export default function DepartmentManagementPage() {
           onPageSize={(n) => { setPageSize(n); setPage(1); }}
         />
       )}
-    </div>
+    </PageContainer>
   );
 }

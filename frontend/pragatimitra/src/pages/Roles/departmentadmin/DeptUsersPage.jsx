@@ -453,7 +453,7 @@ function UserList({ apiFetch, onEdit }) {
       {/* Search + status filter */}
       <Toolbar>
         <SearchInput
-          placeholder={t("Search name or email…", lang)}
+          placeholder={t("Search by name or email…", lang)}
           value={search}
           onChange={setSearch}
           style={{ flex: 1, width: "auto" }}

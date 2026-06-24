@@ -90,7 +90,7 @@ export default function ReviewQueuePage() {
       <PageHeader
         breadcrumb={[t("Home", lang), t("Director's Office", lang), t("Review Queue", lang)]}
         title={t("Review Queue", lang)}
-        description={t("Sections awaiting your review — click a row to begin", lang)}
+        description={t("Sections awaiting your review and approval decision.", lang)}
       />
 
       {/* summary chips */}

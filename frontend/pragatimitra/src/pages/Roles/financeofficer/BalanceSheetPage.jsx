@@ -2,7 +2,7 @@ import { useState, useRef, useCallback } from "react";
 import { useNavigate, useLocation, Navigate } from "react-router-dom";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { t } from "../../../i18n/translations";
-import PageHeader from "../../../ui/PageHeader";
+import { PageContainer, PageHeader, Button, Card, EmptyState } from "../../../ui";
 
 const SLUG = "balance-sheet";
 
@@ -902,12 +902,12 @@ export default function BalanceSheetPage() {
   /* Cards view (default at /balance-sheet) */
   if (!isNew) {
     return (
-      <div style={pageStyle}>
+      <PageContainer>
         <PageHeader
           breadcrumb={[t("Home", lang), t("Finance", lang), t("Balance Sheet", lang)]}
           title={t("Balance Sheet", lang)}
           description={`${savedEntries.length} schedule${savedEntries.length !== 1 ? "s" : ""} saved`}
-          actions={<button style={S.btnPrimary} onClick={() => navigate(`${listPath}/new`)}>+ New entry</button>}
+          actions={<Button variant="primary" onClick={() => navigate(`${listPath}/new`)}>+ New entry</Button>}
         />
 
         {/* Report metadata */}
@@ -915,12 +915,17 @@ export default function BalanceSheetPage() {
 
         {/* Cards grid */}
         {savedEntries.length === 0 ? (
-          <div style={{
-            textAlign: "center", padding: "60px 0",
-            color: "#94a3b8", fontSize: 14,
-          }}>
-            No entries saved yet. Click "New entry" to begin.
-          </div>
+          <Card padding={0}>
+            <EmptyState
+              icon={
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6" />
+                </svg>
+              }
+              title="No entries saved yet"
+              description='Click "New entry" to begin.'
+            />
+          </Card>
         ) : (
           <div style={{
             display: "grid",
@@ -937,7 +942,7 @@ export default function BalanceSheetPage() {
             ))}
           </div>
         )}
-      </div>
+      </PageContainer>
     );
   }
 

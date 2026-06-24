@@ -47,7 +47,6 @@ const ALL_ENTITY_CARDS = [
   { key: "DEPARTMENT",  category: "ADMINISTRATION", label: "Departments",  accent: "#065f46", bg: "#d1fae5", description: "Dept created, settings changed" },
   { key: "INSTITUTION", category: "ADMINISTRATION", label: "Institutions", accent: "#1d4ed8", bg: "#dbeafe", description: "Institution registered or updated" },
   { key: "ROLE",        category: "ADMINISTRATION", label: "Roles",        accent: "#d97706", bg: "#fef3c7", description: "Role created, permissions changed" },
-  { key: "COMMITTEE",   category: "ADMINISTRATION", label: "Committees",   accent: "#be123c", bg: "#fff1f2", description: "Committee created, updated" },
   { key: "FORM",        category: "FORMS",          label: "Form Config",  accent: "#0e7490", bg: "#cffafe", description: "Form created, updated, locked" },
   { key: "FORM_DATA",   category: "FORMS",          label: "Form Data",    accent: "#7c3aed", bg: "#ede9fe", description: "Data added, updated, deleted, imported, exported" },
   { key: "KPI",         category: "KPI",            label: "KPI",          accent: "#059669", bg: "#d1fae5", description: "KPI charts created" },
@@ -666,102 +665,6 @@ function MembersDiffDetail({ oldMembers, newMembers }) {
   );
 }
 
-function CommitteeDiffDetail({ log }) {
-  const { lang } = useLanguage();
-  const { action_type, old_value, new_value, changed_fields } = log;
-
-  if (action_type === "COMMITTEE_ACTIVATED" || action_type === "COMMITTEE_DEACTIVATED") {
-    const isActivated = action_type === "COMMITTEE_ACTIVATED";
-    return (
-      <div style={{ display: "flex", alignItems: "center", gap: 16, padding: "14px 16px", background: "#fff", border: "1px solid #e2e8f0", borderRadius: 11 }}>
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-          <span style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.6 }}>Before</span>
-          <span style={{ padding: "4px 14px", borderRadius: 20, fontSize: 12, fontWeight: 700, background: isActivated ? "#f1f5f9" : "#d1fae5", color: isActivated ? "#94a3b8" : "#065f46" }}>{isActivated ? "INACTIVE" : "ACTIVE"}</span>
-        </div>
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-          <span style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.6 }}>After</span>
-          <span style={{ padding: "4px 14px", borderRadius: 20, fontSize: 12, fontWeight: 700, background: isActivated ? "#d1fae5" : "#f1f5f9", color: isActivated ? "#065f46" : "#94a3b8" }}>{isActivated ? "ACTIVE" : "INACTIVE"}</span>
-        </div>
-      </div>
-    );
-  }
-
-  if (action_type === "COMMITTEE_CREATED" || action_type === "COMMITTEE_DELETED") {
-    const snapshot = action_type === "COMMITTEE_CREATED" ? new_value : old_value;
-    const isCreate = action_type === "COMMITTEE_CREATED";
-    if (!snapshot) return <div style={{ fontSize: 12, color: "#94a3b8" }}>No snapshot data available.</div>;
-    const fields = [
-      { key: "finance_year", label: "Finance Year" }, { key: "committee_type", label: "Committee Type" },
-      { key: "position", label: "Position" }, { key: "contact", label: "Contact" }, { key: "status", label: "Status" },
-    ];
-    return (
-      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 10 }}>
-          {fields.filter((f) => snapshot[f.key] != null && snapshot[f.key] !== "").map(({ key, label }) => (
-            <div key={key} style={{ background: isCreate ? "#f0fdf4" : "#fef2f2", border: `1px solid ${isCreate ? "#bbf7d0" : "#fecaca"}`, borderRadius: 10, padding: "10px 14px" }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 4 }}>{label}</div>
-              <div style={{ fontSize: 13, color: "#1e293b", fontWeight: 600 }}>{String(snapshot[key])}</div>
-            </div>
-          ))}
-        </div>
-        {Array.isArray(snapshot.members) && snapshot.members.length > 0 && (
-          <div>
-            <div style={{ fontSize: 10.5, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.7, marginBottom: 8 }}>Members ({snapshot.members.length})</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-              {snapshot.members.map((m, i) => (
-                <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", background: isCreate ? "#f0fdf4" : "#fef2f2", border: `1px solid ${isCreate ? "#bbf7d0" : "#fecaca"}`, borderRadius: 8 }}>
-                  <div style={{ width: 26, height: 26, borderRadius: 7, background: isCreate ? "#bbf7d0" : "#fecaca", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700, color: isCreate ? "#15803d" : "#b91c1c", flexShrink: 0 }}>
-                    {(m.name || "?").split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase()}
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: "#1e293b" }}>{m.name}</div>
-                    <div style={{ fontSize: 10.5, color: "#64748b" }}>{m.designation}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  if (action_type === "COMMITTEE_UPDATED") {
-    if (!old_value && !new_value) return <div style={{ fontSize: 12, color: "#94a3b8" }}>No change details available.</div>;
-    const fields        = changed_fields?.length ? changed_fields : Object.keys(new_value || {});
-    const scalarFields  = fields.filter((f) => f !== "members");
-    const membersChanged = fields.includes("members");
-    return (
-      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-        {scalarFields.length > 0 && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            <div style={{ display: "grid", gridTemplateColumns: "130px 1fr 1fr", gap: 10, padding: "0 2px" }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.7 }}>{t("Field", lang)}</div>
-              <div style={{ fontSize: 10, fontWeight: 700, color: "#b91c1c", textTransform: "uppercase", letterSpacing: 0.7 }}>{t("Before", lang)}</div>
-              <div style={{ fontSize: 10, fontWeight: 700, color: "#15803d", textTransform: "uppercase", letterSpacing: 0.7 }}>{t("After", lang)}</div>
-            </div>
-            {scalarFields.map((field) => (
-              <div key={field} style={{ display: "grid", gridTemplateColumns: "130px 1fr 1fr", alignItems: "start", gap: 10, background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10, padding: "10px 12px", boxShadow: "0 1px 2px rgba(0,0,0,0.02)" }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "#475569", textTransform: "uppercase", letterSpacing: 0.5, paddingTop: 2 }}>{field}</div>
-                <div style={{ fontSize: 11.5, color: "#991b1b", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 6, padding: "4px 9px", wordBreak: "break-all", fontFamily: "monospace" }}>{String(old_value?.[field] ?? "—")}</div>
-                <div style={{ fontSize: 11.5, color: "#166534", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 6, padding: "4px 9px", wordBreak: "break-all", fontFamily: "monospace" }}>{String(new_value?.[field] ?? "—")}</div>
-              </div>
-            ))}
-          </div>
-        )}
-        {membersChanged && (
-          <div>
-            <div style={{ fontSize: 10.5, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.7, marginBottom: 10 }}>Members — before vs after</div>
-            <MembersDiffDetail oldMembers={old_value?.members} newMembers={new_value?.members} />
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  return <div style={{ fontSize: 12, color: "#94a3b8" }}>No change details available.</div>;
-}
 
 function FieldDiffDetail({ log }) {
   const { lang } = useLanguage();
@@ -796,7 +699,6 @@ function ExpandedDetailPanel({ log }) {
   let changeContent;
   const isSessionAction      = log.entity_type === "SESSION";
   const isImportExportAction = ["USERS_BULK_IMPORTED", "USERS_EXPORTED", "DEPT_BULK_IMPORTED", "INSTITUTIONS_BULK_IMPORTED"].includes(log.action_type);
-  const isCommitteeAction    = log.action_type?.startsWith("COMMITTEE_");
 
   if (isSessionAction) {
     changeContent = <SessionDetail log={log} />;
@@ -812,9 +714,7 @@ function ExpandedDetailPanel({ log }) {
         changeContent = <RoleAssignmentDetail log={log} />;
         break;
       default:
-        changeContent = isCommitteeAction
-          ? <CommitteeDiffDetail log={log} />
-          : <FieldDiffDetail log={log} />;
+        changeContent = <FieldDiffDetail log={log} />;
     }
   }
 

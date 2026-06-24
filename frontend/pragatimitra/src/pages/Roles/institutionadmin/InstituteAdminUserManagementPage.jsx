@@ -525,7 +525,7 @@ function UserList({ apiFetch, onEdit, institutionId }) {
       {/* ── Search + status filter row ── */}
       <Toolbar>
         <SearchInput
-          placeholder="Search name or email…"
+          placeholder="Search by name or email…"
           value={search}
           onChange={setSearch}
           style={{ flex: 1, width: "auto" }}

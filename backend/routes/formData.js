@@ -202,14 +202,18 @@ async function resolveUserContext(pool, req) {
   };
 }
 
-/* Returns the earliest active schema row for an institution — this is the
-   "base" row created at form-creation time. Its fields are the ones that
-   have real physical columns in *_records. */
+/* Returns the first-created active schema row for an institution — this is
+   the "base" row from form-creation time whose fields have real physical
+   columns in *_records.  We sort by created_at ASC (not year ASC) because
+   a form can be activated for an earlier academic year after its initial
+   creation, producing an empty row with a smaller year but a later
+   created_at; using year ASC would incorrectly treat that empty row as the
+   base and hide all fields. */
 async function getBaseSchemaRow(pool, formName, institutionId) {
   const { rows } = await pool.query(
     `SELECT * FROM custom_field_schemas
      WHERE form_name = $1 AND institution_id = $2 AND is_active = true
-     ORDER BY year ASC NULLS LAST, created_at ASC NULLS LAST
+     ORDER BY created_at ASC NULLS LAST
      LIMIT 1`,
     [formName, institutionId]
   );
@@ -218,7 +222,7 @@ async function getBaseSchemaRow(pool, formName, institutionId) {
     `SELECT cfs.* FROM custom_field_schemas cfs
      JOIN table_list tl ON tl.form_name = cfs.form_name
      WHERE cfs.form_name = $1 AND tl.share_table = true AND cfs.is_active = true
-     ORDER BY cfs.year ASC NULLS LAST, cfs.created_at ASC NULLS LAST
+     ORDER BY cfs.created_at ASC NULLS LAST
      LIMIT 1`,
     [formName]
   );
@@ -267,17 +271,19 @@ async function getActiveSchema(pool, formName, institutionId, year) {
   }
   if (!row) return null;
 
-  /* Merge base fields (physical columns, from creation-year row) with extra
-     fields (JSONB-stored, from a year-specific extra row). When the fetched
-     row IS the base row there is nothing to merge — return as-is. */
+  // New-style schema rows (snapshot model) are complete — return as-is.
+  // Legacy extra-only rows (no base fields present) are merged with the
+  // creation-year base row for backward compatibility.
   const baseRow = await getBaseSchemaRow(pool, formName, row.institution_id || institutionId);
   if (!baseRow || baseRow.id === row.id) return row;
 
-  const baseFields    = baseRow.schema?.fields || [];
-  const extraFields   = row.schema?.fields || [];
+  const baseFields     = baseRow.schema?.fields || [];
+  const rowFields      = row.schema?.fields || [];
   const baseFieldNames = new Set(baseFields.map(f => f.column_name));
-  const uniqueExtra   = extraFields.filter(f => !baseFieldNames.has(f.column_name));
+  const hasBaseFields  = rowFields.some(f => baseFieldNames.has(f.column_name));
+  if (hasBaseFields) return row; // complete snapshot — no merge needed
 
+  const uniqueExtra = rowFields.filter(f => !baseFieldNames.has(f.column_name));
   return {
     ...row,
     schema: {
@@ -295,6 +301,7 @@ function activeFields(schemaRow) {
   const excluded = new Set(schemaRow.schema?.excluded_fixed_columns || []);
   const seen = new Set();
   return (schemaRow.schema?.fields || []).filter((f) => {
+    if (f.hidden) return false; // hidden columns excluded from data collection & display
     const col = dbCol(f.column_name);
     if (excluded.has(col) || excluded.has(f.column_name)) return false;
     if (seen.has(col)) return false;

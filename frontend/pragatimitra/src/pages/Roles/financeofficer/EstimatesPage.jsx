@@ -3,7 +3,7 @@ import { useNavigate, useLocation, Navigate } from "react-router-dom";
 import { Save, ClipboardList } from "lucide-react";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { t } from "../../../i18n/translations";
-import PageHeader from "../../../ui/PageHeader";
+import { PageContainer, PageHeader, Button, Card, EmptyState } from "../../../ui";
 
 const SLUG = "estimates";
 
@@ -293,8 +293,7 @@ export default function EstimatesPage() {
   };
 
   return (
-    <div style={{ padding: "24px 28px", fontFamily: "'Plus Jakarta Sans', sans-serif",
-      display: "flex", flexDirection: "column", gap: 16, minHeight: "100vh", background: "transparent" }}>
+    <PageContainer style={{ gap: 16 }}>
 
       {/* Toast */}
       {toast && (
@@ -311,8 +310,7 @@ export default function EstimatesPage() {
         title={t("Estimates", lang)}
         description="Budget Estimate (BE) · Revised Estimate (RE) · Actual Expenditure (AE)"
         actions={
-          <button onClick={() => setManagingSchemes(true)}
-            style={{ ...btn("outline"), fontSize: 11, padding: "8px 14px" }}>⚙ {t("Manage Schemes", lang)}</button>
+          <Button variant="secondary" onClick={() => setManagingSchemes(true)}>⚙ {t("Manage Schemes", lang)}</Button>
         }
       />
 
@@ -469,13 +467,14 @@ export default function EstimatesPage() {
       {(!isNew && !isEdit) && (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {saved.length === 0
-            ? <div style={{ background: C.surface, border: `0.5px solid ${C.border}`, borderRadius: 14,
-                padding: "48px", textAlign: "center" }}>
-                <ClipboardList size={32} strokeWidth={1.5} color={C.textSub} style={{ marginBottom: 12 }} />
-                <div style={{ fontSize: 14, fontWeight: 600, color: C.text, marginBottom: 6 }}>{t("No entries yet", lang)}</div>
-                <div style={{ fontSize: 12, color: C.textSub, marginBottom: 16 }}>{t("Create your first estimate using the entry form.", lang)}</div>
-                <button onClick={() => navigate(`${listPath}/new`)} style={btn("primary")}>+ {t("New Entry", lang)}</button>
-              </div>
+            ? <Card padding={0}>
+                <EmptyState
+                  icon={<ClipboardList size={26} strokeWidth={1.6} />}
+                  title={t("No entries yet", lang)}
+                  description={t("Create your first estimate using the entry form.", lang)}
+                  action={<Button variant="primary" onClick={() => navigate(`${listPath}/new`)}>+ {t("New Entry", lang)}</Button>}
+                />
+              </Card>
             : <>
                 {/* Summary row */}
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 10 }}>
@@ -573,6 +572,6 @@ export default function EstimatesPage() {
         input[type=number] { -moz-appearance: textfield; }
         @keyframes fadeIn { from { opacity:0; transform:translateY(-6px); } to { opacity:1; transform:translateY(0); } }
       `}</style>
-    </div>
+    </PageContainer>
   );
 }

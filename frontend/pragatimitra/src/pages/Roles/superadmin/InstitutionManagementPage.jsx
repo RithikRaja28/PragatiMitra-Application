@@ -10,7 +10,7 @@ import FormWizard, { ReviewGroup, ReviewItem } from "../../../components/shared/
 import ImportWizard from "../../../components/shared/ImportWizard";
 import { S, Toast, isAuthError, formatDate } from "../../../components/shared/formUtils";
 import PageHeader from "../../../components/shared/PageHeader";
-import { Button, Badge, EmptyState, DataTable, Dropdown, MenuItem, MenuLabel } from "../../../ui";
+import { PageContainer, Button, Badge, EmptyState, DataTable, Dropdown, MenuItem, MenuLabel } from "../../../ui";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { t } from "../../../i18n/translations";
 
@@ -671,7 +671,7 @@ export default function InstitutionManagementPage() {
   const paginated  = filtered.slice((page - 1) * pageSize, page * pageSize);
 
   return (
-    <div style={{ padding: "32px 36px", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+    <PageContainer>
       <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.42}}`}</style>
 
       {toast && <Toast message={toast.message} type={toast.type} />}
@@ -679,8 +679,8 @@ export default function InstitutionManagementPage() {
       {/* Page Header */}
       <PageHeader
         breadcrumb={[t("Home", lang), t("Institution Management", lang), t("Institutions", lang)]}
-        title={t("Institutions", lang)}
-        description="Create and manage institutions on the platform."
+        title={t("Institution Management", lang)}
+        description="Onboard and manage institutions across the platform."
         actions={
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <ExportMenu loading={exportingFormat} onExport={handleExport} />
@@ -844,6 +844,6 @@ export default function InstitutionManagementPage() {
           onPageSizeChange={(s) => { setPageSize(s); setPage(1); }}
         />
       )}
-    </div>
+    </PageContainer>
   );
 }

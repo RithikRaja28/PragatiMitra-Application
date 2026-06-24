@@ -1178,8 +1178,7 @@ router.get("/:formName/export", async (req, res) => {
 
 
       const workbook  = new ExcelJS.stream.xlsx.WorkbookWriter({ stream: res, useStyles: true, useSharedStrings: true });
-      const worksheet = workbook.addWorksheet(formName);
-      worksheet.views   = [{ state: "frozen", ySplit: 1 }]; // freeze header row
+      const worksheet = workbook.addWorksheet(formName, { views: [{ state: "frozen", ySplit: 1 }] });
       worksheet.columns = headers.map((h) => ({ width: Math.max(String(h).length + 4, 12) }));
 
 

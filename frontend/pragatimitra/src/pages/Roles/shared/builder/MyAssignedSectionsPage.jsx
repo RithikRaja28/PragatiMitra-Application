@@ -179,9 +179,9 @@ export default function MyAssignedSectionsPage() {
 
       {/* header */}
       <PageHeader
-        breadcrumb={["Home", "Reports", "My Sections"]}
-        title="My Assigned Sections"
-        description="Report sections assigned directly to you"
+        breadcrumb={["Home", "Reports", "Assigned Sections"]}
+        title="Assigned Sections"
+        description="Report sections assigned directly to you."
       />
 
       {/* summary chips */}

@@ -9,7 +9,7 @@ import { S, Toast } from "../../../components/shared/formUtils";
 import FormScreen from "../../../components/shared/FormScreen";
 import { Select } from "../../../components/shared/ui";
 import PageHeader from "../../../components/shared/PageHeader";
-import { Button, Badge, EmptyState, DataTable, Dropdown, MenuItem, MenuLabel } from "../../../ui";
+import { PageContainer, Button, Badge, EmptyState, DataTable, Dropdown, MenuItem, MenuLabel } from "../../../ui";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { t } from "../../../i18n/translations";
 import ImportWizard from "../../../components/shared/ImportWizard";
@@ -604,7 +604,7 @@ function UserList({ apiFetch, onEdit }) {
       {/* ── Existing search + status filter row — unchanged ── */}
       <div style={{ display: "flex", gap: 10, marginBottom: 20, flexWrap: "wrap" }}>
         <input
-          placeholder="Search name or email…"
+          placeholder="Search by name or email…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           style={{ ...S.input(false), flex: 1, minWidth: 200 }}
@@ -857,19 +857,14 @@ export default function UserManagementPage() {
   }
 
   return (
-    <div
-      style={{
-        padding: "32px 36px",
-        fontFamily: "'Plus Jakarta Sans', sans-serif",
-      }}
-    >
+    <PageContainer>
       {toast && <Toast message={toast.message} type={toast.type} />}
 
       {/* Header */}
       <PageHeader
         breadcrumb={[t("Home", lang), t("User Management", lang), t("Users", lang)]}
-        title={t("Users", lang)}
-        description="Create, edit, activate/deactivate, and manage roles for all platform users."
+        title={t("User Administration", lang)}
+        description="Administer platform users, roles, and account access."
         actions={
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <ExportMenu loading={exportingFormat} onExport={handleExport} />
@@ -888,7 +883,7 @@ export default function UserManagementPage() {
         apiFetch={apiFetch}
         onEdit={(u) => navigate(`${listPath}/edit`, { state: { entity: u } })}
       />
-    </div>
+    </PageContainer>
   );
 }
 

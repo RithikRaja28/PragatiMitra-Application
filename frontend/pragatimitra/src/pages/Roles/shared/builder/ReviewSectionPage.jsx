@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useApi }  from "../../../../hooks/useApi";
 import { useAuth } from "../../../../store/AuthContext";
 import Toast from "../../../../components/shared/Toast";
+import BuilderHeader from "./BuilderHeader";
 
 async function apiJson(apiFetch, path, opts) {
   const res  = await apiFetch(path, opts);
@@ -368,26 +369,11 @@ export default function ReviewSectionPage({ sectionId, onBack }) {
       {toast && <Toast {...toast} onClose={() => setToast(null)} />}
 
       {/* ── header ── */}
-      <header style={{ background: C.surface, borderBottom: `1px solid ${C.border}`,
-        padding: "14px 32px", display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
-        <button onClick={onBack} style={{
-          display: "inline-flex", alignItems: "center", gap: 5,
-          padding: "6px 12px", background: "#fff", border: "1px solid #e2e8f0",
-          borderRadius: 8, fontSize: 12, fontWeight: 600, color: "#475569",
-          cursor: "pointer", flexShrink: 0, fontFamily: "inherit",
-        }}>
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M19 12H5M12 19l-7-7 7-7"/>
-          </svg>
-          Back
-        </button>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 17, fontWeight: 700, color: C.text,
-            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {section?.title}
-          </div>
-          <div style={{ fontSize: 12, color: C.textSub, display: "flex",
-            alignItems: "center", gap: 8, marginTop: 2, flexWrap: "wrap" }}>
+      <BuilderHeader
+        onBack={onBack}
+        title={section?.title}
+        subtitle={
+          <span style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             <span style={{ padding: "1px 8px", borderRadius: 8, fontSize: 10, fontWeight: 700,
               color: statusMeta.color, background: statusMeta.bg }}>{statusMeta.label}</span>
             {pipeline?.workflow_name && (
@@ -405,9 +391,9 @@ export default function ReviewSectionPage({ sectionId, onBack }) {
                 Step: {pipeline.current_step.step_name}
               </span>
             )}
-          </div>
-        </div>
-        {canReview && !showReview && (
+          </span>
+        }
+        right={canReview && !showReview && (
           <button onClick={() => setShowReview(true)}
             style={{ display: "inline-flex", alignItems: "center", gap: 6,
               padding: "9px 18px", background: C.success, color: "#fff",
@@ -417,7 +403,7 @@ export default function ReviewSectionPage({ sectionId, onBack }) {
             Review Section
           </button>
         )}
-      </header>
+      />
 
       {/* ── body grid ── */}
       <div style={{ maxWidth: 1400, margin: "0 auto", padding: "24px 28px",

@@ -72,7 +72,7 @@ export default function InstitutionAdminOverviewPage() {
 
       <PageHeader
         breadcrumb={[t("Home", lang), t("Institution", lang), t("Dashboard", lang)]}
-        title={t("Institute Overview", lang)}
+        title={t("Institution Overview", lang)}
         description={user?.institutionName || (academicYear ? `Academic Year ${academicYear}` : "Institution Dashboard")}
       />
 

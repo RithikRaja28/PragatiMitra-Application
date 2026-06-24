@@ -49,19 +49,14 @@ const PIE_DATA = [
 export default function DirectorsDashboardPage() {
   const { lang } = useLanguage();
   return (
-    <div style={{ padding: "24px 28px", fontFamily: "'Plus Jakarta Sans', sans-serif",
-      display: "flex", flexDirection: "column", gap: 14, background: "transparent", minHeight: "100vh" }}>
+    <PageContainer style={{ gap: 14 }}>
 
       <PageHeader
         breadcrumb={[t("Home", lang), t("Director's Office", lang), t("Review Dashboard", lang)]}
         title={t("Report Review Dashboard", lang)}
         description="Annual Report 2026 — section approval pipeline"
         actions={
-          <button style={{ background: C.primary, border: "none", color: "#fff",
-            borderRadius: 8, padding: "9px 18px", fontSize: 12, fontWeight: 600, cursor: "pointer",
-            boxShadow: "0 2px 8px rgba(29,78,216,0.3)" }}>
-            {t("Go to Review Queue →", lang)}
-          </button>
+          <Button variant="primary">{t("Go to Review Queue →", lang)}</Button>
         }
       />
 
@@ -157,6 +152,6 @@ export default function DirectorsDashboardPage() {
 
         </div>
       </div>
-    </div>
+    </PageContainer>
   );
 }

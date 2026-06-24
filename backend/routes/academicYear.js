@@ -679,10 +679,12 @@ router.patch("/:academicYear/forms/:formId/status", requireRole(MANAGE_ROLES), a
     if (status === "active") {
       try {
         await ensureSchemaExists(pool, form.form_name);
+        // created_at ASC: the row inserted at form-creation time is the real
+        // base, regardless of its year value.
         const { rows: baseRows } = await client.query(
           `SELECT * FROM custom_field_schemas
            WHERE form_name = $1 AND institution_id = $2 AND is_active = true
-           ORDER BY year ASC NULLS LAST, created_at ASC NULLS LAST LIMIT 1`,
+           ORDER BY created_at ASC NULLS LAST LIMIT 1`,
           [form.form_name, institutionId]
         );
         const baseRow = baseRows[0] || null;
@@ -692,15 +694,22 @@ router.patch("/:academicYear/forms/:formId/status", requireRole(MANAGE_ROLES), a
             [form.form_name, institutionId, startYear]
           );
           if (!existingYearRow.length) {
+            // Snapshot the creation-year schema into the new year's row so
+            // each academic year starts with an independent copy.  Changes
+            // made to the creation year after activation will NOT propagate
+            // here — the new year owns and edits its own copy.
             await client.query(
               `INSERT INTO custom_field_schemas
                  (form_name, institution_id, year, schema, is_active, created_by, used_column_names)
                VALUES ($1, $2, $3, $4::jsonb, true, $5, $6)`,
               [
                 form.form_name, institutionId, startYear,
-                JSON.stringify({ fields: [], excluded_fixed_columns: baseRow.schema?.excluded_fixed_columns || [] }),
+                JSON.stringify({
+                  fields: baseRow.schema?.fields || [],
+                  excluded_fixed_columns: baseRow.schema?.excluded_fixed_columns || [],
+                }),
                 req.user.userId || null,
-                [],
+                baseRow.used_column_names || [],
               ]
             );
           }
