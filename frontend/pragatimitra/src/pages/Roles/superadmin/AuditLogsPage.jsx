@@ -57,14 +57,11 @@ const ALL_ENTITY_CARDS = [
    METADATA MAPS
 ═══════════════════════════════════════════════════════════════ */
 const ACTION_META = {
-  // ── User ──────────────────────────────────────────────────────
   USER_CREATED:             { label: "Created",             bg: "#dcfce7", color: "#15803d" },
   USER_UPDATED:             { label: "Updated",             bg: "#dbeafe", color: "#1d4ed8" },
   USER_DELETED:             { label: "Deleted",             bg: "#fee2e2", color: "#b91c1c" },
   USERS_BULK_IMPORTED:      { label: "Bulk Imported",       bg: "#ede9fe", color: "#6d28d9" },
   USERS_EXPORTED:           { label: "Exported",            bg: "#d1fae5", color: "#065f46" },
-
-  // ── Department ────────────────────────────────────────────────
   DEPT_CREATED:             { label: "Created",             bg: "#dcfce7", color: "#15803d" },
   DEPT_UPDATED:             { label: "Updated",             bg: "#dbeafe", color: "#1d4ed8" },
   DEPT_DELETED:             { label: "Deleted",             bg: "#fee2e2", color: "#b91c1c" },
@@ -73,8 +70,6 @@ const ACTION_META = {
   DEPARTMENT_CREATED:       { label: "Created",             bg: "#dcfce7", color: "#15803d" },
   DEPARTMENT_UPDATED:       { label: "Updated",             bg: "#dbeafe", color: "#1d4ed8" },
   DEPARTMENT_DELETED:       { label: "Deleted",             bg: "#fee2e2", color: "#b91c1c" },
-
-  // ── Institution ───────────────────────────────────────────────
   INST_CREATED:             { label: "Created",             bg: "#dcfce7", color: "#15803d" },
   INST_UPDATED:             { label: "Updated",             bg: "#dbeafe", color: "#1d4ed8" },
   INST_DELETED:             { label: "Deleted",             bg: "#fee2e2", color: "#b91c1c" },
@@ -82,29 +77,21 @@ const ACTION_META = {
   INSTITUTION_CREATED:      { label: "Created",             bg: "#dcfce7", color: "#15803d" },
   INSTITUTION_UPDATED:      { label: "Updated",             bg: "#dbeafe", color: "#1d4ed8" },
   INSTITUTION_DELETED:      { label: "Deleted",             bg: "#fee2e2", color: "#b91c1c" },
-
-  // ── Role ──────────────────────────────────────────────────────
   ROLE_CREATED:             { label: "Created",             bg: "#dcfce7", color: "#15803d" },
   ROLE_UPDATED:             { label: "Updated",             bg: "#dbeafe", color: "#1d4ed8" },
   ROLE_DELETED:             { label: "Deleted",             bg: "#fee2e2", color: "#b91c1c" },
   ROLE_PERMISSIONS_CHANGED: { label: "Permissions Changed", bg: "#fef3c7", color: "#d97706" },
   ROLE_ASSIGNED:            { label: "Assigned to User",    bg: "#ede9fe", color: "#6d28d9" },
   ROLE_REVOKED:             { label: "Revoked from User",   bg: "#ffe4e6", color: "#be123c" },
-
-  // ── Committee ─────────────────────────────────────────────────
   COMMITTEE_CREATED:        { label: "Created",             bg: "#dcfce7", color: "#15803d" },
   COMMITTEE_UPDATED:        { label: "Updated",             bg: "#dbeafe", color: "#1d4ed8" },
   COMMITTEE_DELETED:        { label: "Deleted",             bg: "#fee2e2", color: "#b91c1c" },
   COMMITTEE_ACTIVATED:      { label: "Activated",           bg: "#d1fae5", color: "#065f46" },
   COMMITTEE_DEACTIVATED:    { label: "Deactivated",         bg: "#fef3c7", color: "#d97706" },
-
-  // ── Session / Auth — NEW ───────────────────────────────────────
   LOGIN_SUCCESS:            { label: "Login",               bg: "#d1fae5", color: "#065f46" },
   LOGIN_FAILED:             { label: "Login Failed",        bg: "#fee2e2", color: "#b91c1c" },
   LOGOUT:                   { label: "Logout",              bg: "#f1f5f9", color: "#475569" },
   SESSION_TOKEN_REUSE:      { label: "Token Reuse",         bg: "#fef3c7", color: "#b45309" },
-
-  // ── Form Config ───────────────────────────────────────────────
   CREATE_FORM:              { label: "Form Created",        bg: "#dcfce7", color: "#15803d" },
   UPDATE_FORM:              { label: "Form Updated",        bg: "#dbeafe", color: "#1d4ed8" },
   LOCK_FORM:                { label: "Form Locked",         bg: "#fef3c7", color: "#d97706" },
@@ -112,19 +99,13 @@ const ACTION_META = {
   SET_FORM_DEADLINE:        { label: "Deadline Set",        bg: "#ede9fe", color: "#6d28d9" },
   FORM_DEADLINE_UPDATED:    { label: "Deadline Updated",    bg: "#dbeafe", color: "#1d4ed8" },
   REMOVE_FORM_DEADLINE:     { label: "Deadline Removed",    bg: "#fee2e2", color: "#b91c1c" },
-
-  // ── Form Data ─────────────────────────────────────────────────
   FORM_DATA_CREATED:        { label: "Data Added",          bg: "#dcfce7", color: "#15803d" },
   FORM_DATA_UPDATED:        { label: "Data Updated",        bg: "#dbeafe", color: "#1d4ed8" },
   FORM_DATA_DELETED:        { label: "Data Deleted",        bg: "#fee2e2", color: "#b91c1c" },
   FORM_DATA_BULK_DELETED:   { label: "Bulk Deleted",        bg: "#fee2e2", color: "#b91c1c" },
   FORM_DATA_IMPORTED:       { label: "Data Imported",       bg: "#ede9fe", color: "#6d28d9" },
   FORM_DATA_EXPORTED:       { label: "Data Exported",       bg: "#d1fae5", color: "#065f46" },
-
-  // ── KPI ───────────────────────────────────────────────────────
   KPI_CREATED:              { label: "KPI Created",         bg: "#dcfce7", color: "#059669" },
-
-  // ── Workflow ──────────────────────────────────────────────────
   WORKFLOW_CREATED:         { label: "Created",             bg: "#dcfce7", color: "#15803d" },
   WORKFLOW_UPDATED:         { label: "Updated",             bg: "#dbeafe", color: "#1d4ed8" },
   WORKFLOW_DELETED:         { label: "Deleted",             bg: "#fee2e2", color: "#b91c1c" },
@@ -132,13 +113,10 @@ const ACTION_META = {
   WORKFLOW_STEP_UPDATED:    { label: "Step Updated",        bg: "#dbeafe", color: "#1d4ed8" },
   WORKFLOW_STEP_DELETED:    { label: "Step Removed",        bg: "#fee2e2", color: "#b91c1c" },
   WORKFLOW_DEFAULT_SET:     { label: "Set as Default",      bg: "#fef3c7", color: "#d97706" },
-
-  // ── Academic Year ─────────────────────────────────────────────
   ACADEMIC_YEAR_LOCKED:     { label: "Locked",              bg: "#fef3c7", color: "#d97706" },
   ACADEMIC_YEAR_UNLOCKED:   { label: "Unlocked",            bg: "#d1fae5", color: "#065f46" },
   ACADEMIC_YEAR_ARCHIVED:   { label: "Archived",            bg: "#fee2e2", color: "#b91c1c" },
   ACADEMIC_YEAR_UNARCHIVED: { label: "Unarchived",          bg: "#dcfce7", color: "#15803d" },
-
   DEFAULT:                  { label: "Event",               bg: "#f1f5f9", color: "#64748b" },
 };
 
@@ -165,7 +143,6 @@ const ENTITY_ICON = { USER: User, DEPARTMENT: Building, INSTITUTION: Landmark, R
 ═══════════════════════════════════════════════════════════════ */
 function BrowserGlyph({ name = "", size = 20 }) {
   const n = (name || "").toLowerCase();
-
   if (n.includes("chrome") && !n.includes("edge") && !n.includes("samsung"))
     return (
       <svg width={size} height={size} viewBox="0 0 32 32" fill="none">
@@ -179,7 +156,6 @@ function BrowserGlyph({ name = "", size = 20 }) {
         <circle cx="16" cy="16" r="4.5" fill="#4285F4"/>
       </svg>
     );
-
   if (n.includes("firefox"))
     return (
       <svg width={size} height={size} viewBox="0 0 32 32" fill="none">
@@ -190,7 +166,6 @@ function BrowserGlyph({ name = "", size = 20 }) {
         <path d="M9 10 Q12 4 20 6 Q14 8 13 13 Q10 11 9 10Z" fill="#FF4500" opacity="0.7"/>
       </svg>
     );
-
   if (n.includes("edge"))
     return (
       <svg width={size} height={size} viewBox="0 0 32 32" fill="none">
@@ -199,7 +174,6 @@ function BrowserGlyph({ name = "", size = 20 }) {
         <path d="M23 12c1.5 1.5 2.5 3.5 2.5 6 0 1-0.2 2-0.5 2.8C27 18.5 28 16 28 13.5 28 10 25.5 7 22 6c0.5 1.5 1 3.5 1 6z" fill="#50E6FF" opacity="0.8"/>
       </svg>
     );
-
   if (n.includes("safari"))
     return (
       <svg width={size} height={size} viewBox="0 0 32 32" fill="none">
@@ -210,7 +184,6 @@ function BrowserGlyph({ name = "", size = 20 }) {
         <circle cx="16" cy="16" r="2" fill="#1e293b"/>
       </svg>
     );
-
   if (n.includes("opera"))
     return (
       <svg width={size} height={size} viewBox="0 0 32 32" fill="none">
@@ -219,7 +192,6 @@ function BrowserGlyph({ name = "", size = 20 }) {
         <ellipse cx="16" cy="16" rx="3" ry="11" fill="none" stroke="#FF1B2D" strokeWidth="1.2"/>
       </svg>
     );
-
   if (n.includes("samsung"))
     return (
       <svg width={size} height={size} viewBox="0 0 32 32" fill="none">
@@ -227,7 +199,6 @@ function BrowserGlyph({ name = "", size = 20 }) {
         <text x="16" y="21" textAnchor="middle" fontSize="13" fill="#1428A0" fontWeight="bold" fontFamily="sans-serif">S</text>
       </svg>
     );
-
   if (n.includes("postman") || n.includes("curl") || n.includes("insomnia") || n.includes("axios") || n.includes("node"))
     return (
       <svg width={size} height={size} viewBox="0 0 32 32" fill="none">
@@ -236,7 +207,6 @@ function BrowserGlyph({ name = "", size = 20 }) {
         <polyline points="19 10 25 16 19 22" stroke="#94a3b8" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
       </svg>
     );
-
   return (
     <svg width={size} height={size} viewBox="0 0 32 32" fill="none">
       <circle cx="16" cy="16" r="15" fill="#f8fafc" stroke="#e5e7eb" strokeWidth="1"/>
@@ -280,111 +250,77 @@ function RequestContextPanel({ log }) {
   const hasAny = log.ip_address || log.browser_name || log.user_agent;
   if (!hasAny) return null;
 
-  const Card = ({ headerIcon, label, accent, children }) => (
+  const MiniCard = ({ headerIcon, label, accent, children }) => (
     <div style={{
-      background: "#fff",
-      border: "1px solid #e2e8f0",
-      borderRadius: 11,
-      padding: "11px 13px 12px",
-      boxShadow: "0 1px 2px rgba(0,0,0,0.03)",
-      display: "flex",
-      flexDirection: "column",
-      gap: 8,
-      minWidth: 0,
+      background: "#fff", border: "1px solid #e2e8f0", borderRadius: 11, padding: "11px 13px 12px",
+      boxShadow: "0 1px 2px rgba(0,0,0,0.03)", display: "flex", flexDirection: "column", gap: 8, minWidth: 0,
     }}>
       <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
         <span style={{ display: "flex", flexShrink: 0, color: accent }}>{headerIcon}</span>
-        <span style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: 0.9, textTransform: "uppercase", color: "#94a3b8" }}>
-          {label}
-        </span>
+        <span style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: 0.9, textTransform: "uppercase", color: "#94a3b8" }}>{label}</span>
       </div>
       {children}
     </div>
   );
 
-  const EmptyValue = () => (
+  const EmptyVal = () => (
     <span style={{ fontSize: 12, color: "#cbd5e1", fontStyle: "italic" }}>{t("Not available", lang)}</span>
   );
 
   return (
     <div style={{ marginTop: 20 }}>
+      <SectionDivider
+        label={t("Request Context", lang)}
+        icon={<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>}
+      />
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
-        <Card
-          label={t("IP Address", lang)}
-          accent="#2563eb"
-          headerIcon={
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/>
-              <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
-            </svg>
-          }
+        <MiniCard label={t("IP Address", lang)} accent="#2563eb"
+          headerIcon={<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>}
         >
           {log.ip_address ? (
             <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 7, padding: "6px 10px" }}>
-              <span style={{ fontSize: 12.5, fontFamily: "'JetBrains Mono','Fira Code','Courier New',monospace", fontWeight: 500, color: "#1e40af" }}>
-                {log.ip_address}
-              </span>
+              <span style={{ fontSize: 12.5, fontFamily: "'JetBrains Mono','Fira Code','Courier New',monospace", fontWeight: 500, color: "#1e40af" }}>{log.ip_address}</span>
             </div>
-          ) : <EmptyValue />}
-        </Card>
+          ) : <EmptyVal />}
+        </MiniCard>
 
-        <Card
-          label={t("Browser", lang)}
-          accent="#7c3aed"
-          headerIcon={
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/>
-              <line x1="12" y1="17" x2="12" y2="21"/>
-            </svg>
-          }
+        <MiniCard label={t("Browser", lang)} accent="#7c3aed"
+          headerIcon={<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>}
         >
           {log.browser_name ? (
             <div style={{ background: "#f5f3ff", border: "1px solid #ddd6fe", borderRadius: 7, padding: "5px 10px", display: "flex", alignItems: "center", gap: 8 }}>
               <BrowserGlyph name={log.browser_name} size={20} />
-              <span style={{ fontSize: 12.5, fontWeight: 600, color: "#5b21b6" }}>
-                {log.browser_name}
-              </span>
+              <span style={{ fontSize: 12.5, fontWeight: 600, color: "#5b21b6" }}>{log.browser_name}</span>
             </div>
-          ) : <EmptyValue />}
-        </Card>
+          ) : <EmptyVal />}
+        </MiniCard>
 
-        <Card
-          label={t("User Agent", lang)}
-          accent="#475569"
-          headerIcon={
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#475569" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
-            </svg>
-          }
+        <MiniCard label={t("User Agent", lang)} accent="#475569"
+          headerIcon={<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#475569" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>}
         >
           {log.user_agent ? (
             <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 7, padding: "6px 10px" }}>
-              <span
-                title={log.user_agent}
-                style={{ display: "block", fontSize: 11, fontFamily: "'JetBrains Mono','Fira Code','Courier New',monospace", fontWeight: 400, color: "#475569", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", lineHeight: 1.5 }}
-              >
+              <span title={log.user_agent} style={{ display: "block", fontSize: 11, fontFamily: "'JetBrains Mono','Fira Code','Courier New',monospace", fontWeight: 400, color: "#475569", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", lineHeight: 1.5 }}>
                 {log.user_agent}
               </span>
             </div>
-          ) : <EmptyValue />}
-        </Card>
+          ) : <EmptyVal />}
+        </MiniCard>
       </div>
     </div>
   );
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   SESSION DETAIL PANEL — NEW
-   Renders login/logout/failed-login detail in the expanded row.
+   SESSION DETAIL PANEL
 ═══════════════════════════════════════════════════════════════ */
 function SessionDetail({ log }) {
-  const isSuccess  = log.action_type === "LOGIN_SUCCESS";
-  const isFailed   = log.action_type === "LOGIN_FAILED";
-  const isLogout   = log.action_type === "LOGOUT";
-  const isReuse    = log.action_type === "SESSION_TOKEN_REUSE";
-  const meta       = log.metadata   || {};
+  const isSuccess = log.action_type === "LOGIN_SUCCESS";
+  const isFailed  = log.action_type === "LOGIN_FAILED";
+  const isLogout  = log.action_type === "LOGOUT";
+  const isReuse   = log.action_type === "SESSION_TOKEN_REUSE";
+  const meta      = log.metadata || {};
 
-  // ── Login success ─────────────────────────────────────────────
   if (isSuccess) {
     const roles = Array.isArray(meta.roles) ? meta.roles : [];
     return (
@@ -411,12 +347,11 @@ function SessionDetail({ log }) {
     );
   }
 
-  // ── Login failed ──────────────────────────────────────────────
   if (isFailed) {
     const reasonMap = {
-      user_not_found:     { label: "Email not found",           color: "#b91c1c", bg: "#fee2e2" },
-      account_not_active: { label: `Account ${meta.account_status || "inactive"}`, color: "#d97706", bg: "#fef3c7" },
-      invalid_password:   { label: "Incorrect password",        color: "#b91c1c", bg: "#fee2e2" },
+      user_not_found:     { label: "Email not found",                                             color: "#b91c1c", bg: "#fee2e2" },
+      account_not_active: { label: `Account ${meta.account_status || "inactive"}`,                color: "#d97706", bg: "#fef3c7" },
+      invalid_password:   { label: "Incorrect password",                                          color: "#b91c1c", bg: "#fee2e2" },
     };
     const r = reasonMap[meta.reason] || { label: meta.reason || "Unknown reason", color: "#b91c1c", bg: "#fee2e2" };
     return (
@@ -436,7 +371,6 @@ function SessionDetail({ log }) {
     );
   }
 
-  // ── Logout ────────────────────────────────────────────────────
   if (isLogout) {
     return (
       <div style={{ padding: "12px 16px", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, fontSize: 13, color: "#64748b" }}>
@@ -445,7 +379,6 @@ function SessionDetail({ log }) {
     );
   }
 
-  // ── Token reuse / security violation ─────────────────────────
   if (isReuse) {
     return (
       <div style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "14px 16px", background: "#fef3c7", border: "1px solid #fde68a", borderRadius: 10 }}>
@@ -468,19 +401,17 @@ function SessionDetail({ log }) {
 
 /* ═══════════════════════════════════════════════════════════════
    IMPORT / EXPORT DETAIL PANEL
-   Renders for bulk import / export action types
 ═══════════════════════════════════════════════════════════════ */
 function ImportExportDetail({ log }) {
   const { action_type, new_value, metadata } = log;
 
-  // ── User bulk import ──────────────────────────────────────────
   if (action_type === "USERS_BULK_IMPORTED") {
     const v = new_value || {};
     const stats = [
-      { label: "Total Rows",  value: v.total    ?? "—", color: "#1d4ed8", bg: "#dbeafe" },
-      { label: "Imported",    value: v.imported  ?? v.success ?? "—", color: "#15803d", bg: "#dcfce7" },
-      { label: "Skipped",     value: v.skipped   ?? "—", color: "#d97706", bg: "#fef3c7" },
-      { label: "Failed",      value: v.failed    ?? "—", color: "#b91c1c", bg: "#fee2e2" },
+      { label: "Total Rows", value: v.total    ?? "—", color: "#1d4ed8", bg: "#dbeafe" },
+      { label: "Imported",   value: v.imported ?? v.success ?? "—", color: "#15803d", bg: "#dcfce7" },
+      { label: "Skipped",    value: v.skipped  ?? "—", color: "#d97706", bg: "#fef3c7" },
+      { label: "Failed",     value: v.failed   ?? "—", color: "#b91c1c", bg: "#fee2e2" },
     ];
     return (
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))", gap: 10 }}>
@@ -494,15 +425,14 @@ function ImportExportDetail({ log }) {
     );
   }
 
-  // ── Department / Institution bulk import ──────────────────────
   if (action_type === "DEPT_BULK_IMPORTED" || action_type === "INSTITUTIONS_BULK_IMPORTED") {
     const v = new_value || {};
     const stats = [
-      { label: "Total",    value: v.total    ?? "—", color: "#1d4ed8", bg: "#dbeafe" },
-      { label: "Created",  value: v.inserted ?? v.imported ?? "—", color: "#15803d", bg: "#dcfce7" },
-      { label: "Updated",  value: v.updated  ?? "—", color: "#0e7490", bg: "#cffafe" },
-      { label: "Skipped",  value: v.skipped  ?? "—", color: "#d97706", bg: "#fef3c7" },
-      { label: "Failed",   value: v.failed   ?? "—", color: "#b91c1c", bg: "#fee2e2" },
+      { label: "Total",   value: v.total    ?? "—", color: "#1d4ed8", bg: "#dbeafe" },
+      { label: "Created", value: v.inserted ?? v.imported ?? "—", color: "#15803d", bg: "#dcfce7" },
+      { label: "Updated", value: v.updated  ?? "—", color: "#0e7490", bg: "#cffafe" },
+      { label: "Skipped", value: v.skipped  ?? "—", color: "#d97706", bg: "#fef3c7" },
+      { label: "Failed",  value: v.failed   ?? "—", color: "#b91c1c", bg: "#fee2e2" },
     ];
     return (
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(110px, 1fr))", gap: 10 }}>
@@ -516,7 +446,6 @@ function ImportExportDetail({ log }) {
     );
   }
 
-  // ── Export ────────────────────────────────────────────────────
   if (action_type === "USERS_EXPORTED") {
     const m = metadata || {};
     return (
@@ -547,7 +476,7 @@ function ImportExportDetail({ log }) {
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   BUSINESS DIFF COMPONENTS  (unchanged from original)
+   BUSINESS DIFF COMPONENTS
 ═══════════════════════════════════════════════════════════════ */
 function PermissionDiffDetail({ log }) {
   const { lang } = useLanguage();
@@ -651,20 +580,9 @@ function MembersDiffDetail({ oldMembers, newMembers }) {
           </div>
         );
       })}
-      {(oldList.length !== newList.length || oldList.some((m, i) => m?.name !== newList[i]?.name || m?.designation !== newList[i]?.designation)) && (
-        <div style={{ display: "flex", gap: 14, marginTop: 6, paddingLeft: 4 }}>
-          {[{ sym: "+", color: "#15803d", label: "Added" }, { sym: "−", color: "#b91c1c", label: "Removed" }, { sym: "~", color: "#d97706", label: "Changed" }].map(({ sym, color, label }) => (
-            <div key={sym} style={{ display: "flex", alignItems: "center", gap: 4 }}>
-              <span style={{ fontSize: 12, fontWeight: 700, color }}>{sym}</span>
-              <span style={{ fontSize: 11, color: "#94a3b8" }}>{label}</span>
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
-
 
 function FieldDiffDetail({ log }) {
   const { lang } = useLanguage();
@@ -690,12 +608,18 @@ function FieldDiffDetail({ log }) {
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   FULL EXPANDED DETAIL PANEL
+   AUDIT DETAIL MODAL
+   Replaces the old expandable-row panel with a clean overlay modal
+   that matches the ReportAuditLogs detail card pattern.
 ═══════════════════════════════════════════════════════════════ */
-function ExpandedDetailPanel({ log }) {
+function AuditDetailModal({ log, onClose }) {
   const { lang } = useLanguage();
+  if (!log) return null;
 
-  // ── Route to the correct detail renderer ─────────────────────
+  const typeMeta = TYPE_META[log.entity_type] || { label: log.entity_type, bg: "#f1f5f9", color: "#64748b" };
+  const EntIcon  = ENTITY_ICON[log.entity_type] || FileText;
+
+  /* Route to the correct detail renderer */
   let changeContent;
   const isSessionAction      = log.entity_type === "SESSION";
   const isImportExportAction = ["USERS_BULK_IMPORTED", "USERS_EXPORTED", "DEPT_BULK_IMPORTED", "INSTITUTIONS_BULK_IMPORTED"].includes(log.action_type);
@@ -718,41 +642,67 @@ function ExpandedDetailPanel({ log }) {
     }
   }
 
-  const typeMeta = TYPE_META[log.entity_type] || { label: log.entity_type, bg: "#f1f5f9", color: "#64748b" };
-
   return (
-    <div style={{ background: "#f8fafc", borderTop: "2px solid #e2e8f0", padding: "20px 22px 24px" }}>
-
-      {/* Actor strip */}
-      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 18px", background: "#fff", border: "1px solid #e2e8f0", borderRadius: 13, marginBottom: 20, boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
-        <div style={{ width: 40, height: 40, borderRadius: 11, background: typeMeta.bg, border: `1.5px solid ${typeMeta.color}22`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-          {(() => { const EntIcon = ENTITY_ICON[log.entity_type] || FileText; return <EntIcon size={18} strokeWidth={2} color={typeMeta.color} />; })()}
-        </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 13.5, fontWeight: 700, color: "#0f172a" }}>{log.actor_name || "System"}</div>
-          {log.actor_email && <div style={{ fontSize: 11.5, color: "#94a3b8", marginTop: 1 }}>{log.actor_email}</div>}
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0, flexWrap: "wrap", justifyContent: "flex-end" }}>
+    <div
+      style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}
+      onClick={onClose}
+    >
+      <div
+        style={{ background: "#fff", borderRadius: 14, width: "100%", maxWidth: 680, maxHeight: "88vh", overflowY: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.25)", fontFamily: "inherit" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* ── Modal header ── */}
+        <div style={{ padding: "16px 20px", borderBottom: "1px solid #e2e8f0", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          {/* Entity type badge */}
+          <span style={{ padding: "3px 10px", borderRadius: 20, fontSize: 11, fontWeight: 600, background: typeMeta.bg, color: typeMeta.color, whiteSpace: "nowrap" }}>
+            {typeMeta.label}
+          </span>
+          {/* Action badge */}
           <ActionBadge actionType={log.action_type} />
+          {/* Status badge */}
           <div style={{ display: "flex", alignItems: "center", gap: 5, padding: "3px 9px", borderRadius: 20, background: log.status === "SUCCESS" ? "#f0fdf4" : "#fef2f2", border: `1px solid ${log.status === "SUCCESS" ? "#bbf7d0" : "#fecaca"}` }}>
             <div style={{ width: 6, height: 6, borderRadius: "50%", background: log.status === "SUCCESS" ? "#22c55e" : "#ef4444" }} />
-            <span style={{ fontSize: 10.5, fontWeight: 700, color: log.status === "SUCCESS" ? "#15803d" : "#b91c1c", letterSpacing: 0.3 }}>{log.status || "SUCCESS"}</span>
+            <span style={{ fontSize: 10.5, fontWeight: 700, color: log.status === "SUCCESS" ? "#15803d" : "#b91c1c", letterSpacing: 0.3 }}>
+              {log.status || "SUCCESS"}
+            </span>
           </div>
+          {/* Timestamp */}
           <div style={{ fontSize: 11, color: "#94a3b8", fontFamily: "'JetBrains Mono','Courier New',monospace", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 7, padding: "3px 9px", whiteSpace: "nowrap" }}>
             {new Date(log.created_at).toLocaleString("en-IN", { year: "numeric", month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" })}
           </div>
+          {/* Close button */}
+          <button
+            onClick={onClose}
+            style={{ marginLeft: "auto", background: "#f1f5f9", border: "none", borderRadius: 7, width: 30, height: 30, cursor: "pointer", fontSize: 15, color: "#64748b", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
+          >✕</button>
+        </div>
+
+        {/* ── Actor strip ── */}
+        <div style={{ margin: "16px 20px 0", display: "flex", alignItems: "center", gap: 12, padding: "13px 16px", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 12 }}>
+          <div style={{ width: 38, height: 38, borderRadius: 10, background: typeMeta.bg, border: `1.5px solid ${typeMeta.color}22`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            <EntIcon size={17} strokeWidth={2} color={typeMeta.color} />
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 13.5, fontWeight: 700, color: "#0f172a" }}>{log.actor_name || "System"}</div>
+            {log.actor_email && <div style={{ fontSize: 11.5, color: "#94a3b8", marginTop: 1 }}>{log.actor_email}</div>}
+          </div>
+          {log.message && (
+            <div style={{ fontSize: 11.5, color: "#64748b", maxWidth: 240, textAlign: "right", lineHeight: 1.5 }}>
+              {log.message}
+            </div>
+          )}
+        </div>
+
+        {/* ── Detail body ── */}
+        <div style={{ padding: "16px 20px 22px" }}>
+          <SectionDivider
+            label={t("Changes", lang)}
+            icon={<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>}
+          />
+          {changeContent}
+          <RequestContextPanel log={log} />
         </div>
       </div>
-
-      {/* Changes section */}
-      <SectionDivider
-        label={t("Changes", lang)}
-        icon={<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>}
-      />
-      {changeContent}
-
-      {/* Request context */}
-      <RequestContextPanel log={log} />
     </div>
   );
 }
@@ -774,7 +724,7 @@ export default function AuditLogsPage() {
   const [totalPages,      setTotalPages]     = useState(1);
   const [total,           setTotal]          = useState(0);
   const [loading,         setLoading]        = useState(false);
-  const [expanded,        setExpanded]       = useState(null);
+  const [selected,        setSelected]       = useState(null);
   const [error,           setError]          = useState(null);
   const LIMIT = 50;
 
@@ -788,7 +738,7 @@ export default function AuditLogsPage() {
     return () => clearTimeout(timer);
   }, [search]);
 
-  useEffect(() => { setPage(1); setExpanded(null); }, [activeCategory, activeCard, debouncedSearch]);
+  useEffect(() => { setPage(1); }, [activeCategory, activeCard, debouncedSearch]);
 
   useEffect(() => {
     if (!accessToken) return;
@@ -818,9 +768,9 @@ export default function AuditLogsPage() {
 
   useEffect(() => { loadLogs(); }, [loadLogs]);
 
-  const activeCategoryMeta  = CATEGORY_GROUPS.find((c) => c.key === activeCategory) || CATEGORY_GROUPS[0];
-  const activeCardMeta      = ALL_ENTITY_CARDS.find((c) => c.key === activeCard);
-  const visibleEntityCards  = activeCategory === null
+  const activeCategoryMeta = CATEGORY_GROUPS.find((c) => c.key === activeCategory) || CATEGORY_GROUPS[0];
+  const activeCardMeta     = ALL_ENTITY_CARDS.find((c) => c.key === activeCard);
+  const visibleEntityCards = activeCategory === null
     ? ALL_ENTITY_CARDS
     : ALL_ENTITY_CARDS.filter((e) => e.category === activeCategory);
 
@@ -836,9 +786,8 @@ export default function AuditLogsPage() {
         description="Filter by category or entity type. Full history of system events and user actions."
       />
 
-      {/* ── Category Tabs ────────────────────────────────────────── */}
+      {/* ── Category Tabs ── */}
       <Card style={{ padding: "16px 20px", marginBottom: 16 }}>
-        {/* Category filter row — standardized FilterChips */}
         <Toolbar style={{ marginBottom: visibleEntityCards.length > 0 ? 14 : 0 }}>
           {CATEGORY_GROUPS.map((cat) => {
             const catCount = cat.key === null
@@ -855,7 +804,6 @@ export default function AuditLogsPage() {
                 onClick={() => {
                   const newCat = activeCategory === cat.key ? null : cat.key;
                   setActiveCategory(newCat);
-                  // clear entity chip if it doesn't belong to new category
                   if (activeCard && newCat !== null) {
                     const belongs = ALL_ENTITY_CARDS.find((e) => e.key === activeCard)?.category === newCat;
                     if (!belongs) setActiveCard(null);
@@ -868,7 +816,6 @@ export default function AuditLogsPage() {
           })}
         </Toolbar>
 
-        {/* Entity chips — only shown when there are chips to display */}
         {visibleEntityCards.length > 0 && (
           <Toolbar style={{ marginBottom: 0, paddingTop: 12, borderTop: "1px solid #f1f5f9" }}>
             {visibleEntityCards.map((entity) => {
@@ -891,7 +838,7 @@ export default function AuditLogsPage() {
         )}
       </Card>
 
-      {/* Search */}
+      {/* ── Search ── */}
       <Toolbar>
         <SearchInput
           placeholder={activeCard ? `Search ${activeCardMeta?.label} logs…` : activeCategory ? `Search ${activeCategoryMeta?.label} logs…` : "Search action, message, IP, browser, or actor…"}
@@ -906,23 +853,26 @@ export default function AuditLogsPage() {
         )}
       </Toolbar>
 
-      {/* Table */}
+      {/* ── Log Table ── */}
       <Card padding={0} style={{ overflow: "hidden" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "32px 200px 1fr 180px 130px 160px", padding: "11px 20px", background: "#f8fafc", borderBottom: "1px solid rgba(0,0,0,0.06)" }}>
-          {["", "Actor", "Message", "Action", "Type", "Timestamp"].map((h) => (
-            <div key={h} style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.8 }}>{h ? t(h, lang) : h}</div>
+        {/* Column headers */}
+        <div style={{ display: "grid", gridTemplateColumns: "28px 200px 1fr 180px 130px 170px", padding: "11px 20px", background: "#f8fafc", borderBottom: "1px solid rgba(0,0,0,0.06)" }}>
+          {["", "Actor", "Message", "Action", "Type", "Time"].map((h) => (
+            <div key={h} style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.8 }}>
+              {h ? t(h, lang) : h}
+            </div>
           ))}
         </div>
 
-        {loading  && <div style={{ padding: 40, textAlign: "center", color: "#94a3b8", fontSize: 13 }}>{t("Loading…", lang)}</div>}
-        {!loading && error && <ErrorState title={t("Couldn’t load audit logs", lang)} description={error} />}
+        {loading && (
+          <div style={{ padding: 40, textAlign: "center", color: "#94a3b8", fontSize: 13 }}>{t("Loading…", lang)}</div>
+        )}
+        {!loading && error && (
+          <ErrorState title={t("Couldn't load audit logs", lang)} description={error} />
+        )}
         {!loading && !error && logs.length === 0 && (
           <EmptyState
-            icon={
-              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6" /><path d="M8 13h8M8 17h5" />
-              </svg>
-            }
+            icon={<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6" /><path d="M8 13h8M8 17h5" /></svg>}
             title={t("No audit logs found.", lang)}
             description="No system events match your current filters."
           />
@@ -930,57 +880,94 @@ export default function AuditLogsPage() {
 
         {!loading && !error && logs.map((log, i) => {
           const typeMeta = TYPE_META[log.entity_type] || { label: log.entity_type, bg: "#f1f5f9", color: "#64748b" };
-          const isOpen   = expanded === log.id;
           return (
-            <div key={log.id} style={{ borderBottom: i < logs.length - 1 ? "1px solid rgba(0,0,0,0.04)" : "none", cursor: "pointer" }} onClick={() => setExpanded(isOpen ? null : log.id)}>
-              <div
-                style={{ display: "grid", gridTemplateColumns: "32px 200px 1fr 180px 130px 160px", padding: "13px 20px", alignItems: "center", background: isOpen ? "#f0f9ff" : "transparent", transition: "background 0.12s", borderLeft: isOpen ? "3px solid #3b82f6" : "3px solid transparent" }}
-                onMouseEnter={(e) => { if (!isOpen) e.currentTarget.style.background = "#fafafa"; }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = isOpen ? "#f0f9ff" : "transparent"; }}
-              >
-                <div style={{ width: 8, height: 8, borderRadius: "50%", background: log.status === "SUCCESS" ? "#22c55e" : "#ef4444", boxShadow: log.status === "SUCCESS" ? "0 0 0 2px #dcfce7" : "0 0 0 2px #fee2e2" }} />
-                <div>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: "#1e293b" }}>{log.actor_name || "System"}</div>
-                  {log.actor_email && <div style={{ fontSize: 11, color: "#94a3b8" }}>{log.actor_email.split("@")[0]}</div>}
-                </div>
-                <div style={{ fontSize: 13, color: "#64748b", paddingRight: 12 }}>{log.message || "—"}</div>
-                <div><ActionBadge actionType={log.action_type} /></div>
-                <div><span style={{ padding: "3px 10px", borderRadius: 20, fontSize: 11, fontWeight: 600, background: typeMeta.bg, color: typeMeta.color }}>{typeMeta.label}</span></div>
-                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <span style={{ fontSize: 11, color: "#94a3b8", fontFamily: "monospace" }}>
-                    {new Date(log.created_at).toLocaleString("en-IN", { year: "numeric", month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" })}
-                  </span>
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth="2.5" style={{ transform: isOpen ? "rotate(180deg)" : "none", transition: "transform 0.2s", flexShrink: 0 }}>
-                    <polyline points="6 9 12 15 18 9"/>
-                  </svg>
-                </div>
+            <div
+              key={log.id}
+              style={{ display: "grid", gridTemplateColumns: "28px 200px 1fr 180px 130px 170px", padding: "13px 20px", alignItems: "center", borderBottom: i < logs.length - 1 ? "1px solid rgba(0,0,0,0.04)" : "none", cursor: "pointer", transition: "background 0.12s" }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = "#f8fafc"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+              onClick={() => setSelected(log)}
+            >
+              {/* Status dot */}
+              <div style={{ width: 8, height: 8, borderRadius: "50%", background: log.status === "SUCCESS" ? "#22c55e" : "#ef4444", boxShadow: log.status === "SUCCESS" ? "0 0 0 2px #dcfce7" : "0 0 0 2px #fee2e2" }} />
+
+              {/* Actor */}
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: "#1e293b" }}>{log.actor_name || "System"}</div>
+                {log.actor_email && <div style={{ fontSize: 11, color: "#94a3b8" }}>{log.actor_email.split("@")[0]}</div>}
               </div>
-              {isOpen && <ExpandedDetailPanel log={log} />}
+
+              {/* Message */}
+              <div style={{ fontSize: 13, color: "#64748b", paddingRight: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {log.message || "—"}
+              </div>
+
+              {/* Action badge */}
+              <div><ActionBadge actionType={log.action_type} /></div>
+
+              {/* Type badge */}
+              <div>
+                <span style={{ padding: "3px 10px", borderRadius: 20, fontSize: 11, fontWeight: 600, background: typeMeta.bg, color: typeMeta.color }}>
+                  {typeMeta.label}
+                </span>
+              </div>
+
+              {/* Timestamp + View Details link */}
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 11, color: "#1e293b", fontWeight: 600, fontFamily: "monospace" }}>
+                    {new Date(log.created_at).toLocaleString("en-IN", { month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                  </div>
+                  <div style={{ fontSize: 10, color: "#94a3b8", fontFamily: "monospace", marginTop: 1 }}>
+                    {new Date(log.created_at).getFullYear()}
+                  </div>
+                </div>
+                <span style={{ fontSize: 11, fontWeight: 700, color: "#2563eb", whiteSpace: "nowrap", letterSpacing: 0.1 }}>
+                  Details →
+                </span>
+              </div>
             </div>
           );
         })}
       </Card>
 
-      {/* Pagination */}
+      {/* ── Pagination ── */}
       {totalPages > 1 && (
         <div style={{ marginTop: 16, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <span style={{ fontSize: 12, color: "#94a3b8" }}>Showing {(page - 1) * LIMIT + 1}–{Math.min(page * LIMIT, total)} of {total} logs</span>
+          <span style={{ fontSize: 12, color: "#94a3b8" }}>
+            Showing {(page - 1) * LIMIT + 1}–{Math.min(page * LIMIT, total)} of {total} logs
+          </span>
           <div style={{ display: "flex", gap: 6 }}>
-            <button disabled={page === 1} onClick={() => setPage((p) => p - 1)} style={{ padding: "7px 14px", border: "1.5px solid #e2e8f0", borderRadius: 8, background: "#fff", cursor: page === 1 ? "not-allowed" : "pointer", opacity: page === 1 ? 0.5 : 1, fontSize: 12, fontFamily: "inherit" }}>{t("← Prev", lang)}</button>
+            <button
+              disabled={page === 1}
+              onClick={() => setPage((p) => p - 1)}
+              style={{ padding: "7px 14px", border: "1.5px solid #e2e8f0", borderRadius: 8, background: "#fff", cursor: page === 1 ? "not-allowed" : "pointer", opacity: page === 1 ? 0.5 : 1, fontSize: 12, fontFamily: "inherit" }}
+            >{t("← Prev", lang)}</button>
             {Array.from({ length: totalPages }, (_, i) => i + 1)
               .filter((p) => p === 1 || p === totalPages || Math.abs(p - page) <= 1)
               .reduce((acc, p, idx, arr) => { if (idx > 0 && arr[idx - 1] !== p - 1) acc.push("…"); acc.push(p); return acc; }, [])
               .map((p, i) =>
-                p === "…" ? <span key={`e-${i}`} style={{ padding: "7px 4px", fontSize: 12, color: "#94a3b8" }}>…</span>
-                : <button key={p} onClick={() => setPage(p)} style={{ padding: "7px 12px", borderRadius: 8, border: `1.5px solid ${p === page ? "#d97706" : "#e2e8f0"}`, background: p === page ? "#d97706" : "#fff", color: p === page ? "#fff" : "#475569", cursor: "pointer", fontSize: 12, fontWeight: p === page ? 700 : 400, fontFamily: "inherit" }}>{p}</button>
+                p === "…"
+                  ? <span key={`e-${i}`} style={{ padding: "7px 4px", fontSize: 12, color: "#94a3b8" }}>…</span>
+                  : <button key={p} onClick={() => setPage(p)} style={{ padding: "7px 12px", borderRadius: 8, border: `1.5px solid ${p === page ? "#2563eb" : "#e2e8f0"}`, background: p === page ? "#2563eb" : "#fff", color: p === page ? "#fff" : "#475569", cursor: "pointer", fontSize: 12, fontWeight: p === page ? 700 : 400, fontFamily: "inherit" }}>{p}</button>
               )}
-            <button disabled={page === totalPages} onClick={() => setPage((p) => p + 1)} style={{ padding: "7px 14px", border: "1.5px solid #e2e8f0", borderRadius: 8, background: "#fff", cursor: page === totalPages ? "not-allowed" : "pointer", opacity: page === totalPages ? 0.5 : 1, fontSize: 12, fontFamily: "inherit" }}>{t("Next →", lang)}</button>
+            <button
+              disabled={page === totalPages}
+              onClick={() => setPage((p) => p + 1)}
+              style={{ padding: "7px 14px", border: "1.5px solid #e2e8f0", borderRadius: 8, background: "#fff", cursor: page === totalPages ? "not-allowed" : "pointer", opacity: page === totalPages ? 0.5 : 1, fontSize: 12, fontFamily: "inherit" }}
+            >{t("Next →", lang)}</button>
           </div>
         </div>
       )}
       {totalPages <= 1 && logs.length > 0 && (
-        <div style={{ marginTop: 14, fontSize: 12, color: "#94a3b8", textAlign: "right" }}>Showing {logs.length} of {total} logs</div>
+        <div style={{ marginTop: 14, fontSize: 12, color: "#94a3b8", textAlign: "right" }}>
+          Showing {logs.length} of {total} logs
+        </div>
       )}
+
+      {/* ── Detail Modal ── */}
+      {selected && <AuditDetailModal log={selected} onClose={() => setSelected(null)} />}
+
     </PageContainer>
   );
 }

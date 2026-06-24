@@ -80,6 +80,14 @@ import ContributorDashboardPage from "../../pages/Roles/contributor/ContributorD
 /* ── Re-export so existing imports of PlaceholderPage from this file still work ── */
 export { default as PlaceholderPage } from "../shared/PlaceholderPage";
 
+/* ─────────────────────────────────────────────────────────────────────────────
+   DEMO FEATURE FLAGS
+   Set to `false` to restore hidden pages after the demo.
+   These flags affect sidebar visibility only — no code is removed.
+   Backend APIs, permissions, DB tables, and page components remain intact.
+─────────────────────────────────────────────────────────────────────────────── */
+export const DEMO_HIDE_ROLE_ACCESS = true;
+
 /* Part 1 (sidebar standardization): the Super-Admin "Master Data" and the
    Institute-Admin "Sections / Workflow / Task Workflow / Version Control / System"
    entries were non-functional PlaceholderPage stubs that rendered regardless of
@@ -225,7 +233,8 @@ export const ROLE_CONFIG = {
           },
         ],
       },
-      {
+      // DEMO_HIDE_ROLE_ACCESS: hidden for demo — set flag to false above to restore
+      ...(DEMO_HIDE_ROLE_ACCESS ? [] : [{
         group: "Access & Data",
         items: [
           {
@@ -240,7 +249,7 @@ export const ROLE_CONFIG = {
             ],
           },
         ],
-      },
+      }]),
       {
         group: "Audit",
         items: [
