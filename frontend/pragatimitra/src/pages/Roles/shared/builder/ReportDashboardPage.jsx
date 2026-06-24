@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useApi } from "../../../../hooks/useApi";
 import { Button } from "../../../../ui";
+import { AlertTriangle } from "lucide-react";
 import Toast from "../../../../components/shared/Toast";
 import BuilderHeader from "./BuilderHeader";
 
@@ -259,7 +260,7 @@ export default function ReportDashboardPage({ reportId, onNavigate }) {
           {overdue.length > 0 && (
             <div style={{ background: C.dangerLt, border: `1px solid ${C.danger}44`, borderRadius: 10, overflow: "hidden" }}>
               <div style={{ padding: "12px 16px", background: C.dangerLt, borderBottom: `1px solid ${C.danger}33` }}>
-                <span style={{ fontSize: 13, fontWeight: 700, color: C.danger }}>⚠ Overdue ({overdue.length})</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: C.danger, display: "inline-flex", alignItems: "center", gap: 6 }}><AlertTriangle size={14} /> Overdue ({overdue.length})</span>
               </div>
               <div style={{ padding: 12 }}>
                 {overdue.map((s, i) => (

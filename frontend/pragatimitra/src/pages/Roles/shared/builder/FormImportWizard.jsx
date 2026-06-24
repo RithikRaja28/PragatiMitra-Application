@@ -160,8 +160,8 @@ export default function FormImportWizard({ sectionId, orderIndex, apiFetch, onIm
     );
   }
 
-  const headerBg   = "linear-gradient(135deg,#4f46e5,#7c3aed)";
-  const btnPrimary = { padding: "8px 22px", borderRadius: 10, border: "none", background: "linear-gradient(135deg,#4f46e5,#7c3aed)", color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" };
+  const headerBg   = "linear-gradient(135deg,#2563eb,#7c3aed)";
+  const btnPrimary = { padding: "8px 22px", borderRadius: 10, border: "none", background: "linear-gradient(135deg,#2563eb,#7c3aed)", color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" };
   const btnSecondary = { padding: "8px 18px", borderRadius: 10, border: "1.5px solid #e2e8f0", background: "#fff", color: "#64748b", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" };
 
   const formObj = forms.find(f => f.form_name === selectedForm);

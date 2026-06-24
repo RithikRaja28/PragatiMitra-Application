@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from "react";
+import { AlertTriangle } from "lucide-react";
 import { useAuth } from "../../store/AuthContext";
 import { useLanguage } from "../../i18n/LanguageContext";
 import { t } from "../../i18n/translations";
@@ -412,7 +413,7 @@ function SingleCard({ item, idx }) {
         {/* Dependency / data-source error */}
         {item.dependency_err && (
           <div style={{ padding:"10px 14px", background:"#fef3c7", border:"1px solid #fbbf24", borderRadius:8, fontSize:12, color:"#92400e", marginBottom:10 }}>
-            ⚠️ {item.error || "The data source for this KPI no longer exists."}
+            <AlertTriangle size={13} style={{ verticalAlign: "-2px", marginRight: 6 }} />{item.error || "The data source for this KPI no longer exists."}
           </div>
         )}
         {/* Row truncation notice */}
@@ -753,7 +754,7 @@ export default function KpiDashboardPanel({ scope = "institute" }) {
       fontSize:13, color:"#991b1b",
       display:"flex", alignItems:"center", justifyContent:"space-between",
     }}>
-      <span>⚠️ {error}</span>
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><AlertTriangle size={14} style={{ flexShrink: 0 }} /> {error}</span>
       <button onClick={load} style={{
         padding:"6px 14px", border:"1.5px solid #fecaca", borderRadius:8,
         background:"#fff", fontSize:12, fontWeight:600, color:"#dc2626", cursor:"pointer",

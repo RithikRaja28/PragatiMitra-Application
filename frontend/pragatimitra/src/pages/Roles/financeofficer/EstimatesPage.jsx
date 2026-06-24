@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback } from "react";
 import { useNavigate, useLocation, Navigate } from "react-router-dom";
-import { Save, ClipboardList } from "lucide-react";
+import { Save, ClipboardList, Settings, Pencil } from "lucide-react";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { t } from "../../../i18n/translations";
 import { PageContainer, PageHeader, Button, Card, EmptyState } from "../../../ui";
@@ -310,7 +310,7 @@ export default function EstimatesPage() {
         title={t("Estimates", lang)}
         description="Budget Estimate (BE) · Revised Estimate (RE) · Actual Expenditure (AE)"
         actions={
-          <Button variant="secondary" onClick={() => setManagingSchemes(true)}>⚙ {t("Manage Schemes", lang)}</Button>
+          <Button variant="secondary" icon={<Settings size={16} />} onClick={() => setManagingSchemes(true)}>{t("Manage Schemes", lang)}</Button>
         }
       />
 
@@ -319,7 +319,9 @@ export default function EstimatesPage() {
         borderRadius: 10, padding: 4, width: "fit-content" }}>
         <button onClick={() => navigate(isEdit ? `${listPath}/edit` : `${listPath}/new`)}
           style={{ ...btn((isNew || isEdit) ? "primary" : "ghost", "sm"), borderRadius: 7, padding: "7px 18px", fontSize: 12 }}>
-          {editingId ? `✎ ${t("Edit Entry", lang)}` : `+ ${t("New Entry", lang)}`}
+          {editingId
+            ? <><Pencil size={12} style={{ verticalAlign: "-2px", marginRight: 4 }} />{t("Edit Entry", lang)}</>
+            : `+ ${t("New Entry", lang)}`}
         </button>
         <button onClick={() => navigate(listPath)}
           style={{ ...btn((!isNew && !isEdit) ? "primary" : "ghost", "sm"), borderRadius: 7, padding: "7px 18px", fontSize: 12 }}>
@@ -514,7 +516,7 @@ export default function EstimatesPage() {
             <div style={{ padding: "16px 20px", borderBottom: `0.5px solid ${C.border}`,
               display: "flex", alignItems: "center", justifyContent: "space-between",
               background: "linear-gradient(135deg,#eff6ff,#dbeafe)" }}>
-              <span style={{ fontSize: 14, fontWeight: 700, color: C.text }}>⚙ {t("Manage Schemes & Programmes", lang)}</span>
+              <span style={{ fontSize: 14, fontWeight: 700, color: C.text, display: "inline-flex", alignItems: "center", gap: 6 }}><Settings size={15} /> {t("Manage Schemes & Programmes", lang)}</span>
               <button onClick={() => setManagingSchemes(false)} style={{ ...btn("ghost","sm") }}>✕ {t("Close", lang)}</button>
             </div>
             <div style={{ overflowY: "auto", padding: "16px 20px", display: "flex", flexDirection: "column", gap: 16 }}>

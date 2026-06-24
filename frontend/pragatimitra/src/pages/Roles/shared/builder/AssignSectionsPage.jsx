@@ -24,7 +24,7 @@ const STATUS_META = {
   NOT_STARTED:  { label: "Not Started",  color: C.textSub,  bg: "#f0f0f0"  },
   IN_PROGRESS:  { label: "In Progress",  color: C.primary,  bg: C.primaryLt },
   SUBMITTED:    { label: "Submitted",    color: C.warning,  bg: C.warningLt },
-  UNDER_REVIEW: { label: "Under Review", color: "#7c4dff",  bg: "#ede7f6"  },
+  UNDER_REVIEW: { label: "Under Review", color: "#7c3aed",  bg: "#ede9fe"  },
   APPROVED:     { label: "Approved",     color: C.success,  bg: C.successLt },
   SENT_BACK:    { label: "Sent Back",    color: C.danger,   bg: C.dangerLt  },
   LOCKED:       { label: "Locked",       color: "#555",     bg: "#e0e0e0"   },
