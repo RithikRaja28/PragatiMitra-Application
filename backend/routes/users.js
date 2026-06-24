@@ -732,6 +732,14 @@ router.get(
         params.push(req.user.institutionId, req.user.departmentId);
         conditions.push(`u.institution_id = $${params.length - 1}`);
         conditions.push(`u.department_id  = $${params.length}`);
+        conditions.push(`NOT EXISTS (
+          SELECT 1 FROM user_roles ur_inst
+          JOIN roles r_inst ON r_inst.id = ur_inst.role_id
+          WHERE ur_inst.user_id = u.id
+            AND r_inst.name IN ('super_admin', 'institute_admin', 'publication_cell', 'directors_office', 'finance_officer')
+            AND ur_inst.revoked_at IS NULL
+            AND (ur_inst.expires_at IS NULL OR ur_inst.expires_at > now())
+        )`);
       } else if (isOnlyInstAdmin(req)) {
         params.push(req.user.institutionId);
         conditions.push(`u.institution_id = $${params.length}`);
@@ -973,6 +981,16 @@ router.get("/", verifyToken, requireRole(["super_admin", "institute_admin", "dep
         "u.account_status != 'DELETED'",
         `u.institution_id = $1`,
         `u.department_id  = $2`,
+        // Exclude users who hold any institution-level or higher role — dept admins
+        // should only see department-scoped users (contributor, dept_admin, etc.)
+        `NOT EXISTS (
+          SELECT 1 FROM user_roles ur_inst
+          JOIN roles r_inst ON r_inst.id = ur_inst.role_id
+          WHERE ur_inst.user_id = u.id
+            AND r_inst.name IN ('super_admin', 'institute_admin', 'publication_cell', 'directors_office', 'finance_officer')
+            AND ur_inst.revoked_at IS NULL
+            AND (ur_inst.expires_at IS NULL OR ur_inst.expires_at > now())
+        )`,
       ];
       const params = [req.user.institutionId, req.user.departmentId];
 

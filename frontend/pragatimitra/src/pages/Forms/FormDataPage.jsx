@@ -1296,7 +1296,7 @@ export default function FormDataPage() {
   /* ── Derived: schema fields ── */
   const excludedCols = new Set(schema?.schema?.excluded_fixed_columns || []);
   const schemaFields = (schema?.schema?.fields || []).filter(
-    f => !excludedCols.has(dbCol(f.column_name)) && !excludedCols.has(f.column_name)
+    f => !f.hidden && !excludedCols.has(dbCol(f.column_name)) && !excludedCols.has(f.column_name)
   );
 
   /* ── Derived: the server already returns the search-filtered current page ── */
