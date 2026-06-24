@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { User, Building, Landmark, Shield, FileText, Lock } from "lucide-react";
 import { useAuth } from "../../../store/AuthContext";
-import PageHeader from "../../../components/shared/PageHeader";
-import { tableCardStyle } from "../../../components/shared/ui";
+import { PageContainer, PageHeader, Toolbar, SearchInput, FilterChip, Button, Card, EmptyState, ErrorState } from "../../../ui";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { t } from "../../../i18n/translations";
 import api from "../../../services/api";
@@ -928,7 +927,7 @@ export default function AuditLogsPage() {
   const totalEvents = Object.values(summary).reduce((s, n) => s + (Number(n) || 0), 0);
 
   return (
-    <div style={{ padding: "32px 36px", fontFamily: "'Plus Jakarta Sans', sans-serif", maxWidth: 1200 }}>
+    <PageContainer>
 
       {/* Header */}
       <PageHeader
@@ -938,19 +937,21 @@ export default function AuditLogsPage() {
       />
 
       {/* ── Category Tabs ────────────────────────────────────────── */}
-      <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, padding: "16px 20px", marginBottom: 16, boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
-        {/* Tab row */}
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: visibleEntityCards.length > 0 ? 14 : 0 }}>
+      <Card style={{ padding: "16px 20px", marginBottom: 16 }}>
+        {/* Category filter row — standardized FilterChips */}
+        <Toolbar style={{ marginBottom: visibleEntityCards.length > 0 ? 14 : 0 }}>
           {CATEGORY_GROUPS.map((cat) => {
-            const isActive = activeCategory === cat.key;
             const catCount = cat.key === null
               ? totalEvents
               : ALL_ENTITY_CARDS
                   .filter((e) => e.category === cat.key)
                   .reduce((s, e) => s + (Number(summary[e.key.toLowerCase()]) || 0), 0);
             return (
-              <button
+              <FilterChip
                 key={String(cat.key)}
+                active={activeCategory === cat.key}
+                icon={<span style={{ display: "flex" }}>{cat.icon}</span>}
+                count={catCount > 0 ? catCount.toLocaleString() : undefined}
                 onClick={() => {
                   const newCat = activeCategory === cat.key ? null : cat.key;
                   setActiveCategory(newCat);
@@ -960,95 +961,53 @@ export default function AuditLogsPage() {
                     if (!belongs) setActiveCard(null);
                   }
                 }}
-                style={{
-                  display: "flex", alignItems: "center", gap: 6,
-                  padding: "7px 14px", borderRadius: 10,
-                  border: `1.5px solid ${isActive ? cat.accent : "#e2e8f0"}`,
-                  background: isActive ? cat.bg : "#f8fafc",
-                  color: isActive ? cat.accent : "#64748b",
-                  fontSize: 13, fontWeight: isActive ? 700 : 500,
-                  cursor: "pointer", fontFamily: "inherit",
-                  transition: "all 0.15s ease",
-                  boxShadow: isActive ? `0 2px 8px ${cat.accent}22` : "none",
-                  outline: "none",
-                }}>
-                <span style={{ display: "flex", color: isActive ? cat.accent : "#94a3b8" }}>{cat.icon}</span>
-                <span>{cat.label}</span>
-                {catCount > 0 && (
-                  <span style={{
-                    padding: "1px 7px", borderRadius: 10,
-                    fontSize: 11, fontWeight: 700,
-                    background: isActive ? cat.accent : "#e2e8f0",
-                    color: isActive ? "#fff" : "#64748b",
-                  }}>{catCount.toLocaleString()}</span>
-                )}
-              </button>
+              >
+                {cat.label}
+              </FilterChip>
             );
           })}
-        </div>
+        </Toolbar>
 
         {/* Entity chips — only shown when there are chips to display */}
         {visibleEntityCards.length > 0 && (
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 7, paddingTop: 12, borderTop: "1px solid #f1f5f9" }}>
+          <Toolbar style={{ marginBottom: 0, paddingTop: 12, borderTop: "1px solid #f1f5f9" }}>
             {visibleEntityCards.map((entity) => {
               const isSelected = activeCard === entity.key;
               const count = Number(summary[entity.key.toLowerCase()]) || 0;
               return (
-                <button
+                <FilterChip
                   key={entity.key}
-                  onClick={() => setActiveCard(isSelected ? null : entity.key)}
+                  active={isSelected}
                   title={entity.description}
-                  style={{
-                    display: "flex", alignItems: "center", gap: 6,
-                    padding: "5px 13px", borderRadius: 20,
-                    border: `1.5px solid ${isSelected ? entity.accent : "#e2e8f0"}`,
-                    background: isSelected ? entity.bg : "#fff",
-                    color: isSelected ? entity.accent : "#64748b",
-                    fontSize: 12, fontWeight: isSelected ? 700 : 500,
-                    cursor: "pointer", fontFamily: "inherit",
-                    transition: "all 0.12s ease",
-                    boxShadow: isSelected ? `0 2px 6px ${entity.accent}22` : "none",
-                    outline: "none",
-                  }}>
-                  <span style={{ width: 7, height: 7, borderRadius: "50%", background: entity.accent, display: "inline-block", opacity: isSelected ? 1 : 0.45, flexShrink: 0 }} />
+                  icon={<span style={{ width: 7, height: 7, borderRadius: "50%", background: entity.accent, display: "inline-block", opacity: isSelected ? 1 : 0.55, flexShrink: 0 }} />}
+                  count={count > 0 ? count.toLocaleString() : undefined}
+                  onClick={() => setActiveCard(isSelected ? null : entity.key)}
+                >
                   {entity.label}
-                  {count > 0 && (
-                    <span style={{
-                      padding: "0 6px", borderRadius: 10,
-                      fontSize: 10.5, fontWeight: 700,
-                      background: isSelected ? entity.accent : "#f1f5f9",
-                      color: isSelected ? "#fff" : "#94a3b8",
-                    }}>{count.toLocaleString()}</span>
-                  )}
-                </button>
+                </FilterChip>
               );
             })}
-          </div>
+          </Toolbar>
         )}
-      </div>
+      </Card>
 
       {/* Search */}
-      <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
-        <div style={{ position: "relative", flex: 1 }}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)" }}>
-            <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
-          </svg>
-          <input
-            placeholder={activeCard ? `Search ${activeCardMeta?.label} logs…` : activeCategory ? `Search ${activeCategoryMeta?.label} logs…` : "Search action, message, IP, browser, or actor…"}
-            value={search} onChange={(e) => setSearch(e.target.value)}
-            style={{ width: "100%", padding: "10px 14px 10px 38px", border: "1.5px solid #e2e8f0", borderRadius: 10, fontSize: 13, outline: "none", boxSizing: "border-box", fontFamily: "inherit" }}
-          />
-        </div>
+      <Toolbar>
+        <SearchInput
+          placeholder={activeCard ? `Search ${activeCardMeta?.label} logs…` : activeCategory ? `Search ${activeCategoryMeta?.label} logs…` : "Search action, message, IP, browser, or actor…"}
+          value={search}
+          onChange={setSearch}
+          style={{ flex: 1, width: "auto" }}
+        />
         {(activeCard || activeCategory || search) && (
-          <button onClick={() => { setActiveCard(null); setActiveCategory(null); setSearch(""); }}
-            style={{ padding: "10px 16px", border: "1.5px solid #e2e8f0", borderRadius: 10, background: "#fff", cursor: "pointer", fontSize: 13, color: "#64748b", fontFamily: "inherit", whiteSpace: "nowrap" }}>
+          <Button variant="secondary" onClick={() => { setActiveCard(null); setActiveCategory(null); setSearch(""); }}>
             {t("Clear filters", lang)}
-          </button>
+          </Button>
         )}
-      </div>
+      </Toolbar>
 
       {/* Table */}
-      <div style={tableCardStyle}>
+      <Card padding={0} style={{ overflow: "hidden" }}>
         <div style={{ display: "grid", gridTemplateColumns: "32px 200px 1fr 180px 130px 160px", padding: "11px 20px", background: "#f8fafc", borderBottom: "1px solid rgba(0,0,0,0.06)" }}>
           {["", "Actor", "Message", "Action", "Type", "Timestamp"].map((h) => (
             <div key={h} style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.8 }}>{h ? t(h, lang) : h}</div>
@@ -1056,8 +1015,18 @@ export default function AuditLogsPage() {
         </div>
 
         {loading  && <div style={{ padding: 40, textAlign: "center", color: "#94a3b8", fontSize: 13 }}>{t("Loading…", lang)}</div>}
-        {!loading && error && <div style={{ padding: 40, textAlign: "center", color: "#dc2626", fontSize: 13 }}>{error}</div>}
-        {!loading && !error && logs.length === 0 && <div style={{ padding: 40, textAlign: "center", color: "#94a3b8", fontSize: 13 }}>{t("No audit logs found.", lang)}</div>}
+        {!loading && error && <ErrorState title={t("Couldn’t load audit logs", lang)} description={error} />}
+        {!loading && !error && logs.length === 0 && (
+          <EmptyState
+            icon={
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6" /><path d="M8 13h8M8 17h5" />
+              </svg>
+            }
+            title={t("No audit logs found.", lang)}
+            description="No system events match your current filters."
+          />
+        )}
 
         {!loading && !error && logs.map((log, i) => {
           const typeMeta = TYPE_META[log.entity_type] || { label: log.entity_type, bg: "#f1f5f9", color: "#64748b" };
@@ -1090,7 +1059,7 @@ export default function AuditLogsPage() {
             </div>
           );
         })}
-      </div>
+      </Card>
 
       {/* Pagination */}
       {totalPages > 1 && (
@@ -1112,6 +1081,6 @@ export default function AuditLogsPage() {
       {totalPages <= 1 && logs.length > 0 && (
         <div style={{ marginTop: 14, fontSize: 12, color: "#94a3b8", textAlign: "right" }}>Showing {logs.length} of {total} logs</div>
       )}
-    </div>
+    </PageContainer>
   );
 }
