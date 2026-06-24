@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { User, Building, Landmark, Shield, FileText, Lock } from "lucide-react";
 import { useAuth } from "../../../store/AuthContext";
-import PageHeader from "../../../components/shared/PageHeader";
-import { tableCardStyle } from "../../../components/shared/ui";
+import { PageContainer, PageHeader, Toolbar, SearchInput, FilterChip, Button, Card, EmptyState, ErrorState } from "../../../ui";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { t } from "../../../i18n/translations";
 import api from "../../../services/api";
@@ -48,7 +47,6 @@ const ALL_ENTITY_CARDS = [
   { key: "DEPARTMENT",  category: "ADMINISTRATION", label: "Departments",  accent: "#065f46", bg: "#d1fae5", description: "Dept created, settings changed" },
   { key: "INSTITUTION", category: "ADMINISTRATION", label: "Institutions", accent: "#1d4ed8", bg: "#dbeafe", description: "Institution registered or updated" },
   { key: "ROLE",        category: "ADMINISTRATION", label: "Roles",        accent: "#d97706", bg: "#fef3c7", description: "Role created, permissions changed" },
-  { key: "COMMITTEE",   category: "ADMINISTRATION", label: "Committees",   accent: "#be123c", bg: "#fff1f2", description: "Committee created, updated" },
   { key: "FORM",        category: "FORMS",          label: "Form Config",  accent: "#0e7490", bg: "#cffafe", description: "Form created, updated, locked" },
   { key: "FORM_DATA",   category: "FORMS",          label: "Form Data",    accent: "#7c3aed", bg: "#ede9fe", description: "Data added, updated, deleted, imported, exported" },
   { key: "KPI",         category: "KPI",            label: "KPI",          accent: "#059669", bg: "#d1fae5", description: "KPI charts created" },
@@ -667,102 +665,6 @@ function MembersDiffDetail({ oldMembers, newMembers }) {
   );
 }
 
-function CommitteeDiffDetail({ log }) {
-  const { lang } = useLanguage();
-  const { action_type, old_value, new_value, changed_fields } = log;
-
-  if (action_type === "COMMITTEE_ACTIVATED" || action_type === "COMMITTEE_DEACTIVATED") {
-    const isActivated = action_type === "COMMITTEE_ACTIVATED";
-    return (
-      <div style={{ display: "flex", alignItems: "center", gap: 16, padding: "14px 16px", background: "#fff", border: "1px solid #e2e8f0", borderRadius: 11 }}>
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-          <span style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.6 }}>Before</span>
-          <span style={{ padding: "4px 14px", borderRadius: 20, fontSize: 12, fontWeight: 700, background: isActivated ? "#f1f5f9" : "#d1fae5", color: isActivated ? "#94a3b8" : "#065f46" }}>{isActivated ? "INACTIVE" : "ACTIVE"}</span>
-        </div>
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-          <span style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.6 }}>After</span>
-          <span style={{ padding: "4px 14px", borderRadius: 20, fontSize: 12, fontWeight: 700, background: isActivated ? "#d1fae5" : "#f1f5f9", color: isActivated ? "#065f46" : "#94a3b8" }}>{isActivated ? "ACTIVE" : "INACTIVE"}</span>
-        </div>
-      </div>
-    );
-  }
-
-  if (action_type === "COMMITTEE_CREATED" || action_type === "COMMITTEE_DELETED") {
-    const snapshot = action_type === "COMMITTEE_CREATED" ? new_value : old_value;
-    const isCreate = action_type === "COMMITTEE_CREATED";
-    if (!snapshot) return <div style={{ fontSize: 12, color: "#94a3b8" }}>No snapshot data available.</div>;
-    const fields = [
-      { key: "finance_year", label: "Finance Year" }, { key: "committee_type", label: "Committee Type" },
-      { key: "position", label: "Position" }, { key: "contact", label: "Contact" }, { key: "status", label: "Status" },
-    ];
-    return (
-      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 10 }}>
-          {fields.filter((f) => snapshot[f.key] != null && snapshot[f.key] !== "").map(({ key, label }) => (
-            <div key={key} style={{ background: isCreate ? "#f0fdf4" : "#fef2f2", border: `1px solid ${isCreate ? "#bbf7d0" : "#fecaca"}`, borderRadius: 10, padding: "10px 14px" }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 4 }}>{label}</div>
-              <div style={{ fontSize: 13, color: "#1e293b", fontWeight: 600 }}>{String(snapshot[key])}</div>
-            </div>
-          ))}
-        </div>
-        {Array.isArray(snapshot.members) && snapshot.members.length > 0 && (
-          <div>
-            <div style={{ fontSize: 10.5, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.7, marginBottom: 8 }}>Members ({snapshot.members.length})</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-              {snapshot.members.map((m, i) => (
-                <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", background: isCreate ? "#f0fdf4" : "#fef2f2", border: `1px solid ${isCreate ? "#bbf7d0" : "#fecaca"}`, borderRadius: 8 }}>
-                  <div style={{ width: 26, height: 26, borderRadius: 7, background: isCreate ? "#bbf7d0" : "#fecaca", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700, color: isCreate ? "#15803d" : "#b91c1c", flexShrink: 0 }}>
-                    {(m.name || "?").split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase()}
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: "#1e293b" }}>{m.name}</div>
-                    <div style={{ fontSize: 10.5, color: "#64748b" }}>{m.designation}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  if (action_type === "COMMITTEE_UPDATED") {
-    if (!old_value && !new_value) return <div style={{ fontSize: 12, color: "#94a3b8" }}>No change details available.</div>;
-    const fields        = changed_fields?.length ? changed_fields : Object.keys(new_value || {});
-    const scalarFields  = fields.filter((f) => f !== "members");
-    const membersChanged = fields.includes("members");
-    return (
-      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-        {scalarFields.length > 0 && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            <div style={{ display: "grid", gridTemplateColumns: "130px 1fr 1fr", gap: 10, padding: "0 2px" }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.7 }}>{t("Field", lang)}</div>
-              <div style={{ fontSize: 10, fontWeight: 700, color: "#b91c1c", textTransform: "uppercase", letterSpacing: 0.7 }}>{t("Before", lang)}</div>
-              <div style={{ fontSize: 10, fontWeight: 700, color: "#15803d", textTransform: "uppercase", letterSpacing: 0.7 }}>{t("After", lang)}</div>
-            </div>
-            {scalarFields.map((field) => (
-              <div key={field} style={{ display: "grid", gridTemplateColumns: "130px 1fr 1fr", alignItems: "start", gap: 10, background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10, padding: "10px 12px", boxShadow: "0 1px 2px rgba(0,0,0,0.02)" }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "#475569", textTransform: "uppercase", letterSpacing: 0.5, paddingTop: 2 }}>{field}</div>
-                <div style={{ fontSize: 11.5, color: "#991b1b", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 6, padding: "4px 9px", wordBreak: "break-all", fontFamily: "monospace" }}>{String(old_value?.[field] ?? "—")}</div>
-                <div style={{ fontSize: 11.5, color: "#166534", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 6, padding: "4px 9px", wordBreak: "break-all", fontFamily: "monospace" }}>{String(new_value?.[field] ?? "—")}</div>
-              </div>
-            ))}
-          </div>
-        )}
-        {membersChanged && (
-          <div>
-            <div style={{ fontSize: 10.5, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.7, marginBottom: 10 }}>Members — before vs after</div>
-            <MembersDiffDetail oldMembers={old_value?.members} newMembers={new_value?.members} />
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  return <div style={{ fontSize: 12, color: "#94a3b8" }}>No change details available.</div>;
-}
 
 function FieldDiffDetail({ log }) {
   const { lang } = useLanguage();
@@ -797,7 +699,6 @@ function ExpandedDetailPanel({ log }) {
   let changeContent;
   const isSessionAction      = log.entity_type === "SESSION";
   const isImportExportAction = ["USERS_BULK_IMPORTED", "USERS_EXPORTED", "DEPT_BULK_IMPORTED", "INSTITUTIONS_BULK_IMPORTED"].includes(log.action_type);
-  const isCommitteeAction    = log.action_type?.startsWith("COMMITTEE_");
 
   if (isSessionAction) {
     changeContent = <SessionDetail log={log} />;
@@ -813,9 +714,7 @@ function ExpandedDetailPanel({ log }) {
         changeContent = <RoleAssignmentDetail log={log} />;
         break;
       default:
-        changeContent = isCommitteeAction
-          ? <CommitteeDiffDetail log={log} />
-          : <FieldDiffDetail log={log} />;
+        changeContent = <FieldDiffDetail log={log} />;
     }
   }
 
@@ -928,7 +827,7 @@ export default function AuditLogsPage() {
   const totalEvents = Object.values(summary).reduce((s, n) => s + (Number(n) || 0), 0);
 
   return (
-    <div style={{ padding: "32px 36px", fontFamily: "'Plus Jakarta Sans', sans-serif", maxWidth: 1200 }}>
+    <PageContainer>
 
       {/* Header */}
       <PageHeader
@@ -938,19 +837,21 @@ export default function AuditLogsPage() {
       />
 
       {/* ── Category Tabs ────────────────────────────────────────── */}
-      <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, padding: "16px 20px", marginBottom: 16, boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
-        {/* Tab row */}
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: visibleEntityCards.length > 0 ? 14 : 0 }}>
+      <Card style={{ padding: "16px 20px", marginBottom: 16 }}>
+        {/* Category filter row — standardized FilterChips */}
+        <Toolbar style={{ marginBottom: visibleEntityCards.length > 0 ? 14 : 0 }}>
           {CATEGORY_GROUPS.map((cat) => {
-            const isActive = activeCategory === cat.key;
             const catCount = cat.key === null
               ? totalEvents
               : ALL_ENTITY_CARDS
                   .filter((e) => e.category === cat.key)
                   .reduce((s, e) => s + (Number(summary[e.key.toLowerCase()]) || 0), 0);
             return (
-              <button
+              <FilterChip
                 key={String(cat.key)}
+                active={activeCategory === cat.key}
+                icon={<span style={{ display: "flex" }}>{cat.icon}</span>}
+                count={catCount > 0 ? catCount.toLocaleString() : undefined}
                 onClick={() => {
                   const newCat = activeCategory === cat.key ? null : cat.key;
                   setActiveCategory(newCat);
@@ -960,95 +861,53 @@ export default function AuditLogsPage() {
                     if (!belongs) setActiveCard(null);
                   }
                 }}
-                style={{
-                  display: "flex", alignItems: "center", gap: 6,
-                  padding: "7px 14px", borderRadius: 10,
-                  border: `1.5px solid ${isActive ? cat.accent : "#e2e8f0"}`,
-                  background: isActive ? cat.bg : "#f8fafc",
-                  color: isActive ? cat.accent : "#64748b",
-                  fontSize: 13, fontWeight: isActive ? 700 : 500,
-                  cursor: "pointer", fontFamily: "inherit",
-                  transition: "all 0.15s ease",
-                  boxShadow: isActive ? `0 2px 8px ${cat.accent}22` : "none",
-                  outline: "none",
-                }}>
-                <span style={{ display: "flex", color: isActive ? cat.accent : "#94a3b8" }}>{cat.icon}</span>
-                <span>{cat.label}</span>
-                {catCount > 0 && (
-                  <span style={{
-                    padding: "1px 7px", borderRadius: 10,
-                    fontSize: 11, fontWeight: 700,
-                    background: isActive ? cat.accent : "#e2e8f0",
-                    color: isActive ? "#fff" : "#64748b",
-                  }}>{catCount.toLocaleString()}</span>
-                )}
-              </button>
+              >
+                {cat.label}
+              </FilterChip>
             );
           })}
-        </div>
+        </Toolbar>
 
         {/* Entity chips — only shown when there are chips to display */}
         {visibleEntityCards.length > 0 && (
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 7, paddingTop: 12, borderTop: "1px solid #f1f5f9" }}>
+          <Toolbar style={{ marginBottom: 0, paddingTop: 12, borderTop: "1px solid #f1f5f9" }}>
             {visibleEntityCards.map((entity) => {
               const isSelected = activeCard === entity.key;
               const count = Number(summary[entity.key.toLowerCase()]) || 0;
               return (
-                <button
+                <FilterChip
                   key={entity.key}
-                  onClick={() => setActiveCard(isSelected ? null : entity.key)}
+                  active={isSelected}
                   title={entity.description}
-                  style={{
-                    display: "flex", alignItems: "center", gap: 6,
-                    padding: "5px 13px", borderRadius: 20,
-                    border: `1.5px solid ${isSelected ? entity.accent : "#e2e8f0"}`,
-                    background: isSelected ? entity.bg : "#fff",
-                    color: isSelected ? entity.accent : "#64748b",
-                    fontSize: 12, fontWeight: isSelected ? 700 : 500,
-                    cursor: "pointer", fontFamily: "inherit",
-                    transition: "all 0.12s ease",
-                    boxShadow: isSelected ? `0 2px 6px ${entity.accent}22` : "none",
-                    outline: "none",
-                  }}>
-                  <span style={{ width: 7, height: 7, borderRadius: "50%", background: entity.accent, display: "inline-block", opacity: isSelected ? 1 : 0.45, flexShrink: 0 }} />
+                  icon={<span style={{ width: 7, height: 7, borderRadius: "50%", background: entity.accent, display: "inline-block", opacity: isSelected ? 1 : 0.55, flexShrink: 0 }} />}
+                  count={count > 0 ? count.toLocaleString() : undefined}
+                  onClick={() => setActiveCard(isSelected ? null : entity.key)}
+                >
                   {entity.label}
-                  {count > 0 && (
-                    <span style={{
-                      padding: "0 6px", borderRadius: 10,
-                      fontSize: 10.5, fontWeight: 700,
-                      background: isSelected ? entity.accent : "#f1f5f9",
-                      color: isSelected ? "#fff" : "#94a3b8",
-                    }}>{count.toLocaleString()}</span>
-                  )}
-                </button>
+                </FilterChip>
               );
             })}
-          </div>
+          </Toolbar>
         )}
-      </div>
+      </Card>
 
       {/* Search */}
-      <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
-        <div style={{ position: "relative", flex: 1 }}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)" }}>
-            <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
-          </svg>
-          <input
-            placeholder={activeCard ? `Search ${activeCardMeta?.label} logs…` : activeCategory ? `Search ${activeCategoryMeta?.label} logs…` : "Search action, message, IP, browser, or actor…"}
-            value={search} onChange={(e) => setSearch(e.target.value)}
-            style={{ width: "100%", padding: "10px 14px 10px 38px", border: "1.5px solid #e2e8f0", borderRadius: 10, fontSize: 13, outline: "none", boxSizing: "border-box", fontFamily: "inherit" }}
-          />
-        </div>
+      <Toolbar>
+        <SearchInput
+          placeholder={activeCard ? `Search ${activeCardMeta?.label} logs…` : activeCategory ? `Search ${activeCategoryMeta?.label} logs…` : "Search action, message, IP, browser, or actor…"}
+          value={search}
+          onChange={setSearch}
+          style={{ flex: 1, width: "auto" }}
+        />
         {(activeCard || activeCategory || search) && (
-          <button onClick={() => { setActiveCard(null); setActiveCategory(null); setSearch(""); }}
-            style={{ padding: "10px 16px", border: "1.5px solid #e2e8f0", borderRadius: 10, background: "#fff", cursor: "pointer", fontSize: 13, color: "#64748b", fontFamily: "inherit", whiteSpace: "nowrap" }}>
+          <Button variant="secondary" onClick={() => { setActiveCard(null); setActiveCategory(null); setSearch(""); }}>
             {t("Clear filters", lang)}
-          </button>
+          </Button>
         )}
-      </div>
+      </Toolbar>
 
       {/* Table */}
-      <div style={tableCardStyle}>
+      <Card padding={0} style={{ overflow: "hidden" }}>
         <div style={{ display: "grid", gridTemplateColumns: "32px 200px 1fr 180px 130px 160px", padding: "11px 20px", background: "#f8fafc", borderBottom: "1px solid rgba(0,0,0,0.06)" }}>
           {["", "Actor", "Message", "Action", "Type", "Timestamp"].map((h) => (
             <div key={h} style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.8 }}>{h ? t(h, lang) : h}</div>
@@ -1056,8 +915,18 @@ export default function AuditLogsPage() {
         </div>
 
         {loading  && <div style={{ padding: 40, textAlign: "center", color: "#94a3b8", fontSize: 13 }}>{t("Loading…", lang)}</div>}
-        {!loading && error && <div style={{ padding: 40, textAlign: "center", color: "#dc2626", fontSize: 13 }}>{error}</div>}
-        {!loading && !error && logs.length === 0 && <div style={{ padding: 40, textAlign: "center", color: "#94a3b8", fontSize: 13 }}>{t("No audit logs found.", lang)}</div>}
+        {!loading && error && <ErrorState title={t("Couldn’t load audit logs", lang)} description={error} />}
+        {!loading && !error && logs.length === 0 && (
+          <EmptyState
+            icon={
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6" /><path d="M8 13h8M8 17h5" />
+              </svg>
+            }
+            title={t("No audit logs found.", lang)}
+            description="No system events match your current filters."
+          />
+        )}
 
         {!loading && !error && logs.map((log, i) => {
           const typeMeta = TYPE_META[log.entity_type] || { label: log.entity_type, bg: "#f1f5f9", color: "#64748b" };
@@ -1090,7 +959,7 @@ export default function AuditLogsPage() {
             </div>
           );
         })}
-      </div>
+      </Card>
 
       {/* Pagination */}
       {totalPages > 1 && (
@@ -1112,6 +981,6 @@ export default function AuditLogsPage() {
       {totalPages <= 1 && logs.length > 0 && (
         <div style={{ marginTop: 14, fontSize: 12, color: "#94a3b8", textAlign: "right" }}>Showing {logs.length} of {total} logs</div>
       )}
-    </div>
+    </PageContainer>
   );
 }

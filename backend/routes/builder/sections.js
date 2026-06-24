@@ -126,6 +126,152 @@ router.get("/assigned", async (req, res) => {
   }
 });
 
+/* ─── GET /dept-assigned — sections for dept admin to delegate ───────────── */
+router.get("/dept-assigned", requireRole(["department_admin"]), async (req, res) => {
+  const pool = req.app.locals.pool;
+  try {
+    const userRow = await pool.query(
+      `SELECT department_id FROM public.users WHERE id = $1`, [req.user.userId]
+    );
+    const deptId = userRow.rows[0]?.department_id;
+    if (!deptId) return res.json({ success: true, data: { pending: [], delegated: [], departmentId: null } });
+
+    const [pendingRes, delegatedRes] = await Promise.all([
+      // Sections still assigned to the dept (not yet delegated to a user)
+      pool.query(`
+        SELECT
+          rs.id, rs.title, rs.description, rs.status, rs.order_index,
+          r.id  AS report_id, r.title AS report_title, r.report_type, r.academic_year,
+          swa.id AS assignment_id, swa.due_at, swa.assigned_at,
+          d.name AS department_name
+        FROM public.section_workflow_assignments swa
+        JOIN public.report_sections rs ON rs.id = swa.section_id AND rs.deleted_at IS NULL
+        JOIN public.reports        r   ON r.id  = swa.report_id
+        JOIN public.departments    d   ON d.department_id = swa.department_id
+        WHERE swa.assignee_type = 'DEPARTMENT' AND swa.department_id = $1
+        ORDER BY r.title, rs.order_index
+      `, [deptId]),
+      // Sections already delegated to a specific user from this dept
+      pool.query(`
+        SELECT
+          rs.id, rs.title, rs.description, rs.status, rs.order_index,
+          r.id  AS report_id, r.title AS report_title, r.report_type, r.academic_year,
+          swa.id AS assignment_id, swa.due_at, swa.assigned_at,
+          u.id   AS delegated_user_id,
+          u.full_name AS delegated_user_name,
+          u.email     AS delegated_user_email
+        FROM public.section_workflow_assignments swa
+        JOIN public.report_sections rs ON rs.id = swa.section_id AND rs.deleted_at IS NULL
+        JOIN public.reports        r   ON r.id  = swa.report_id
+        JOIN public.users          u   ON u.id  = swa.user_id
+        WHERE swa.assignee_type = 'USER'
+          AND swa.workflow_step_id IS NULL
+          AND u.department_id = $1
+        ORDER BY r.title, rs.order_index
+      `, [deptId]),
+    ]);
+
+    return res.json({ success: true, data: { pending: pendingRes.rows, delegated: delegatedRes.rows, departmentId: deptId } });
+  } catch (err) {
+    logger.error("sections GET /dept-assigned", { ...getLogContext(req), err: err.message });
+    return res.status(500).json({ success: false, message: "Failed to load department sections" });
+  }
+});
+
+/* ─── GET /dept-users — active users in the dept admin's department ──────── */
+router.get("/dept-users", requireRole(["department_admin"]), async (req, res) => {
+  const pool = req.app.locals.pool;
+  try {
+    const userRow = await pool.query(
+      `SELECT department_id FROM public.users WHERE id = $1`, [req.user.userId]
+    );
+    const deptId = userRow.rows[0]?.department_id;
+    if (!deptId) return res.json({ success: true, data: [] });
+
+    const { rows } = await pool.query(`
+      SELECT id, full_name, email
+      FROM public.users
+      WHERE department_id = $1 AND account_status = 'ACTIVE' AND id != $2
+      ORDER BY full_name
+    `, [deptId, req.user.userId]);
+    return res.json({ success: true, data: rows });
+  } catch (err) {
+    logger.error("sections GET /dept-users", { ...getLogContext(req), err: err.message });
+    return res.status(500).json({ success: false, message: "Failed to load department users" });
+  }
+});
+
+/* ─── PATCH /:id/dept-delegate — dept admin assigns a section to a user ─── */
+router.patch("/:id/dept-delegate", requireRole(["department_admin"]), async (req, res) => {
+  const pool = req.app.locals.pool;
+  try {
+    const { id } = req.params;
+    const { user_id } = req.body;
+    if (!isUUID(id) || !isUUID(user_id))
+      return res.status(400).json({ success: false, message: "Invalid IDs" });
+
+    // Verify caller is a dept admin with a department
+    const callerRow = await pool.query(
+      `SELECT department_id FROM public.users WHERE id = $1`, [req.user.userId]
+    );
+    const deptId = callerRow.rows[0]?.department_id;
+    if (!deptId) return res.status(403).json({ success: false, message: "No department association" });
+
+    // Target user must belong to same dept
+    const targetRow = await pool.query(
+      `SELECT id, full_name, department_id FROM public.users WHERE id = $1`, [user_id]
+    );
+    if (!targetRow.rows[0] || targetRow.rows[0].department_id !== deptId)
+      return res.status(403).json({ success: false, message: "User does not belong to your department" });
+
+    // Find the DEPARTMENT-type assignment for this section
+    const assRow = await pool.query(`
+      SELECT id, report_id, due_at FROM public.section_workflow_assignments
+      WHERE section_id = $1 AND assignee_type = 'DEPARTMENT' AND department_id = $2
+    `, [id, deptId]);
+    if (!assRow.rows[0])
+      return res.status(404).json({ success: false, message: "No department assignment found for this section" });
+
+    const { id: swaId, due_at } = assRow.rows[0];
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+
+      // Promote DEPT → USER (constraint requires department_id = NULL for USER type)
+      await client.query(`
+        UPDATE public.section_workflow_assignments
+        SET assignee_type = 'USER', user_id = $1, department_id = NULL,
+            assigned_by = $2, assigned_at = NOW()
+        WHERE id = $3
+      `, [user_id, req.user.userId, swaId]);
+
+      // Mirror into section_assignments so the user's "My Sections" shows it
+      await client.query(`
+        INSERT INTO public.section_assignments (section_id, user_id, role, due_at, assigned_by)
+        VALUES ($1, $2, 'OWNER', $3, $4)
+        ON CONFLICT (section_id, user_id) DO UPDATE
+          SET role = 'OWNER', due_at = EXCLUDED.due_at,
+              assigned_by = EXCLUDED.assigned_by, completed_at = NULL
+      `, [id, user_id, due_at, req.user.userId]);
+
+      await client.query("COMMIT");
+    } catch (e) { await client.query("ROLLBACK"); throw e; }
+    finally { client.release(); }
+
+    // Notify the assigned user outside the transaction
+    pool.query(`
+      INSERT INTO public.notifications (user_id, type, title, body, entity_type, entity_id)
+      VALUES ($1, 'SECTION_ASSIGNED', 'Section assigned to you',
+              'You have been assigned to author a report section.', 'SECTION', $2)
+    `, [user_id, id]).catch(() => {});
+
+    return res.json({ success: true });
+  } catch (err) {
+    logger.error("sections PATCH /:id/dept-delegate", { ...getLogContext(req), err: err.message });
+    return res.status(500).json({ success: false, message: "Failed to delegate section" });
+  }
+});
+
 /* ─── POST / — create section ─────────────────────────────────────────────── */
 router.post("/", async (req, res) => {
   const pool = req.app.locals.pool;
@@ -465,6 +611,57 @@ router.post("/:id/lock", async (req, res) => {
   } catch (err) {
     logger.error("builder/sections POST /:id/lock", { ...getLogContext(req), err: err.message });
     return res.status(500).json({ success: false, message: "Failed to acquire lock" });
+  }
+});
+
+/* ─── GET /:id/access — list section_access grants ──────────────────────── */
+router.get("/:id/access", async (req, res) => {
+  const pool = req.app.locals.pool;
+  try {
+    const { id } = req.params;
+    if (!isUUID(id)) return res.status(400).json({ success: false, message: "Invalid section id" });
+    const { rows } = await pool.query(
+      `SELECT id, user_id, role_name, department_id, permission
+       FROM public.section_access
+       WHERE section_id = $1 AND revoked_at IS NULL
+       ORDER BY granted_at`, [id]
+    );
+    return res.json({ success: true, data: rows });
+  } catch (err) {
+    logger.error("builder/sections GET /:id/access", { ...getLogContext(req), err: err.message });
+    return res.status(500).json({ success: false, message: "Failed to get section access" });
+  }
+});
+
+/* ─── PUT /:id/access — bulk replace section_access grants ──────────────── */
+router.put("/:id/access", async (req, res) => {
+  const pool = req.app.locals.pool;
+  try {
+    const { id } = req.params;
+    if (!isUUID(id)) return res.status(400).json({ success: false, message: "Invalid section id" });
+    const { grants = [] } = req.body;
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query(`UPDATE public.section_access SET revoked_at = NOW() WHERE section_id = $1 AND revoked_at IS NULL`, [id]);
+      for (const g of grants) {
+        const roleN = g.role_name     || null;
+        const userI = g.user_id       || null;
+        const deptI = g.department_id || null;
+        if (!roleN && !userI && !deptI) continue;
+        await client.query(
+          `INSERT INTO public.section_access (section_id, user_id, role_name, department_id, granted_by)
+           VALUES ($1,$2,$3,$4,$5)`,
+          [id, userI, roleN, deptI, req.user.userId]
+        );
+      }
+      await client.query("COMMIT");
+    } catch (e) { await client.query("ROLLBACK"); throw e; }
+    finally { client.release(); }
+    return res.json({ success: true });
+  } catch (err) {
+    logger.error("builder/sections PUT /:id/access", { ...getLogContext(req), err: err.message });
+    return res.status(500).json({ success: false, message: "Failed to update section access" });
   }
 });
 

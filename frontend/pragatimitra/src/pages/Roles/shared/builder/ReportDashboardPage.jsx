@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useApi } from "../../../../hooks/useApi";
 import { Button } from "../../../../ui";
 import Toast from "../../../../components/shared/Toast";
+import BuilderHeader from "./BuilderHeader";
 
 async function apiJson(apiFetch, path, opts) {
   const res  = await apiFetch(path, opts);
@@ -30,13 +31,21 @@ const STATUS_META = {
   LOCKED:       { label: "Locked",       color: "#555",    bg: "#e0e0e0"   },
 };
 
+const LIFECYCLE_ICONS = {
+  DRAFT:        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>,
+  IN_PROGRESS:  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>,
+  UNDER_REVIEW: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>,
+  APPROVED:     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="8 12 11 15 16 9"/></svg>,
+  PUBLISHED:    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 11l19-9-9 19-2-8-8-2z"/></svg>,
+  ARCHIVED:     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>,
+};
 const LIFECYCLE = [
-  { key: "DRAFT",           label: "Draft",          icon: "✏️"  },
-  { key: "IN_PROGRESS",     label: "In Progress",    icon: "🔄"  },
-  { key: "UNDER_REVIEW",    label: "Under Review",   icon: "👁"  },
-  { key: "APPROVED",        label: "Approved",       icon: "✅"  },
-  { key: "PUBLISHED",       label: "Published",      icon: "📢"  },
-  { key: "ARCHIVED",        label: "Archived",       icon: "🗄️" },
+  { key: "DRAFT",           label: "Draft"        },
+  { key: "IN_PROGRESS",     label: "In Progress"  },
+  { key: "UNDER_REVIEW",    label: "Under Review" },
+  { key: "APPROVED",        label: "Approved"     },
+  { key: "PUBLISHED",       label: "Published"    },
+  { key: "ARCHIVED",        label: "Archived"     },
 ];
 
 /* ═══════════════════════════════════════════════════════════════════════════ */
@@ -99,41 +108,16 @@ export default function ReportDashboardPage({ reportId, onNavigate }) {
       {toast && <Toast {...toast} onClose={() => setToast(null)} />}
 
       {/* ── header ── */}
-      <header style={{
-        background: C.surface, borderBottom: `1px solid ${C.border}`,
-        padding: "14px 32px", display: "flex", alignItems: "center", gap: 14,
-      }}>
-        <button onClick={() => onNavigate?.("list")} style={{
-          display: "inline-flex", alignItems: "center", gap: 6,
-          padding: "7px 14px", borderRadius: 8,
-          border: "1.5px solid #e5e7eb", background: "#fff",
-          fontSize: 13, fontWeight: 600, color: "#374151", cursor: "pointer", flexShrink: 0,
-        }}
-          onMouseEnter={e => { e.currentTarget.style.background = "#f3f4f6"; e.currentTarget.style.borderColor = "#d1d5db"; }}
-          onMouseLeave={e => { e.currentTarget.style.background = "#fff";    e.currentTarget.style.borderColor = "#e5e7eb"; }}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M19 12H5M12 5l-7 7 7 7"/>
-          </svg>
-          Reports
-        </button>
-        <div style={{ width: 1, height: 28, background: C.border, flexShrink: 0 }} />
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
-            <span style={{ fontSize: 11, color: C.textSub }}>Report Builder</span>
-            <span style={{ fontSize: 11, color: "#d1d5db" }}>›</span>
-            <span style={{ fontSize: 11, color: C.primary, fontWeight: 600 }}>Dashboard</span>
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <span style={{ fontSize: 16, fontWeight: 700, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 420 }}>
-              {report?.title}
-            </span>
-            <StatusBadge status={report?.status} />
-          </div>
-        </div>
+      <BuilderHeader
+        onBack={() => onNavigate?.("list")}
+        breadcrumb={["Report Builder", "Dashboard"]}
+        title={report?.title}
+        subtitle={<StatusBadge status={report?.status} />}
+        right={
         <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
           {[
-            { label: "Structure", icon: "⬡", view: "structure" },
-            { label: "Assign",    icon: "👥", view: "assign"    },
+            { label: "Structure", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>, view: "structure" },
+            { label: "Assign",    icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>, view: "assign"    },
           ].map(({ label, icon, view }) => (
             <button key={view} onClick={() => onNavigate?.(view, reportId)} style={{
               display: "inline-flex", alignItems: "center", gap: 5,
@@ -161,16 +145,17 @@ export default function ReportDashboardPage({ reportId, onNavigate }) {
             Compile
           </button>
         </div>
-      </header>
+        }
+      />
 
       <main style={{ maxWidth: 1280, margin: "0 auto", padding: "28px 24px" }}>
 
         {/* ── metric cards ── */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 24 }}>
-          <MetricCard label="Total Sections" value={totalSec} icon="📋" color={C.primary} />
-          <MetricCard label="Approved" value={approvedSec} icon="✅" color={C.success} />
-          <MetricCard label="In Progress" value={progress.IN_PROGRESS || 0} icon="🔄" color={C.warning} />
-          <MetricCard label="Overdue" value={overdue.length} icon="⚠️" color={C.danger} />
+          <MetricCard label="Total Sections" value={totalSec} icon={<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="13" y2="16"/></svg>} color={C.primary} />
+          <MetricCard label="Approved" value={approvedSec} icon={<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="10"/><polyline points="8 12 11 15 16 9"/></svg>} color={C.success} />
+          <MetricCard label="In Progress" value={progByKey.IN_PROGRESS} icon={<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>} color={C.warning} />
+          <MetricCard label="Overdue" value={overdue.length} icon={<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>} color={C.danger} />
         </div>
 
         {/* ── lifecycle timeline ── */}
@@ -186,8 +171,9 @@ export default function ReportDashboardPage({ reportId, onNavigate }) {
                     <div style={{ width: 44, height: 44, borderRadius: "50%", margin: "0 auto 6px",
                                   background: isPast ? C.successLt : isActive ? C.primaryLt : C.bg,
                                   border: `2px solid ${isPast ? C.success : isActive ? C.primary : C.border}`,
-                                  display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>
-                      {stage.icon}
+                                  display: "flex", alignItems: "center", justifyContent: "center",
+                    color: isPast ? C.success : isActive ? C.primary : C.textSub }}>
+                      {LIFECYCLE_ICONS[stage.key]}
                     </div>
                     <div style={{ fontSize: 10, fontWeight: isActive ? 700 : 400,
                                   color: isActive ? C.primary : isPast ? C.success : C.textSub,
@@ -368,7 +354,7 @@ function MetricCard({ label, value, icon, color }) {
   return (
     <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: "18px 20px" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-        <div style={{ fontSize: 28 }}>{icon}</div>
+        <div style={{ width: 40, height: 40, borderRadius: 10, background: color + "18", display: "flex", alignItems: "center", justifyContent: "center", color, flexShrink: 0 }}>{icon}</div>
         <div>
           <div style={{ fontSize: 26, fontWeight: 800, color }}>{value}</div>
           <div style={{ fontSize: 11, color: C.textSub }}>{label}</div>

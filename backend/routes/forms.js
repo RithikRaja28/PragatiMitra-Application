@@ -412,28 +412,93 @@ router.get("/:formName/schema", async (req, res) => {
 
     // Get the base (creation-year) schema to merge in base fields.
     // When the fetched row IS the base row (single row or creation year), no merge needed.
+    // Sort by created_at ASC (not year ASC): activating a form for an earlier
+    // academic year inserts an empty row with a smaller year but a later
+    // created_at.  The row created first is always the real base row.
     const { rows: baseRows } = await pool.query(
       `SELECT * FROM custom_field_schemas
        WHERE form_name = $1 AND institution_id = $2 AND is_active = true
-       ORDER BY year ASC NULLS LAST, created_at ASC NULLS LAST LIMIT 1`,
+       ORDER BY created_at ASC NULLS LAST LIMIT 1`,
       [formName, institutionId]
     );
     const baseRow = baseRows[0] || null;
 
+    // Each year's schema row is a complete, independent snapshot of that year's
+    // fields.  We only fall back to the old base+extra merge for legacy rows
+    // that were created before this change (i.e. activation rows that were
+    // inserted with fields=[] and only stored "extra" columns).
+    // Detection: if the row already contains at least one field that also
+    // appears in the base row, it is a complete snapshot — return as-is.
+    // If the row has no overlap with the base (empty or extra-only), merge.
     let mergedSchema = row;
     if (baseRow && baseRow.id !== row.id) {
-      const baseFields    = baseRow.schema?.fields || [];
-      const extraFields   = row.schema?.fields || [];
+      const baseFields     = baseRow.schema?.fields || [];
+      const rowFields      = row.schema?.fields || [];
       const baseFieldNames = new Set(baseFields.map(f => f.column_name));
-      const uniqueExtra   = extraFields.filter(f => !baseFieldNames.has(f.column_name));
-      mergedSchema = {
-        ...row,
-        schema: { ...row.schema, fields: [...baseFields, ...uniqueExtra] },
-        used_column_names: [
-          ...(baseRow.used_column_names || []),
-          ...(row.used_column_names || []).filter(n => !baseFieldNames.has(n)),
-        ],
+      const hasBaseFields  = rowFields.some(f => baseFieldNames.has(f.column_name));
+      if (!hasBaseFields) {
+        // Legacy extra-only or empty activation row — merge base + extras
+        const uniqueExtra = rowFields.filter(f => !baseFieldNames.has(f.column_name));
+        mergedSchema = {
+          ...row,
+          schema: { ...row.schema, fields: [...baseFields, ...uniqueExtra] },
+          used_column_names: [
+            ...(baseRow.used_column_names || []),
+            ...(row.used_column_names || []).filter(n => !baseFieldNames.has(n)),
+          ],
+        };
+      }
+    }
+
+    // Always return the UNION of used_column_names across ALL years for this
+    // form+institution so the frontend can prevent reuse of a column name that
+    // was added (and possibly removed) in ANY year — not just the requested one.
+    const { rows: allSchemaRows } = await pool.query(
+      `SELECT used_column_names FROM custom_field_schemas
+       WHERE form_name = $1 AND institution_id = $2 AND is_active = true`,
+      [formName, institutionId]
+    );
+    const allUsed = new Set();
+    for (const r of allSchemaRows) {
+      for (const n of r.used_column_names || []) allUsed.add(n);
+    }
+    mergedSchema = { ...mergedSchema, used_column_names: [...allUsed] };
+
+    // Schema corruption recovery: if the merged field list is empty but
+    // used_column_names is non-empty, the base-year schema was saved incorrectly
+    // (a known bug when the base-row sort picked an activation row instead of
+    // the creation row).  Reconstruct fields from the physical table columns so
+    // the editor shows the correct state and the user can simply re-save to fix
+    // the persisted schema.
+    const mergedFields = mergedSchema.schema?.fields || [];
+    if (mergedFields.length === 0 && allUsed.size > 0) {
+      const pgTypeToField = {
+        "text": "text", "character varying": "text",
+        "numeric": "number", "integer": "number", "bigint": "number",
+        "date": "date", "boolean": "boolean",
       };
+      const allUsedArr = [...allUsed];
+      const { rows: physColRows } = await pool.query(
+        `SELECT column_name, data_type FROM information_schema.columns
+         WHERE table_schema = 'public' AND table_name = $1
+           AND column_name = ANY($2::text[])
+         ORDER BY ordinal_position`,
+        [`${formName}_records`, allUsedArr]
+      );
+      if (physColRows.length > 0) {
+        const recoveredFields = physColRows.map((c, i) => ({
+          column_name: c.column_name,
+          label: c.column_name,
+          type: pgTypeToField[c.data_type] || "text",
+          required: false,
+          isNew: false,
+          order: i,
+        }));
+        mergedSchema = {
+          ...mergedSchema,
+          schema: { ...mergedSchema.schema, fields: recoveredFields },
+        };
+      }
     }
 
     const { rows: tlRows } = await pool.query(
@@ -1029,10 +1094,12 @@ router.put(
         const physicalColSet = new Set(physCols.map(r => r.column_name));
 
         // Get base (creation-year) schema row to identify the creation year.
+        // Use created_at ASC so an activation row for an older academic year
+        // (smaller year, larger created_at) is never mistaken for the base.
         const { rows: baseSchemaRows } = await client.query(
           `SELECT year FROM custom_field_schemas
            WHERE form_name = $1 AND institution_id = $2 AND is_active = true
-           ORDER BY year ASC NULLS LAST, created_at ASC NULLS LAST LIMIT 1`,
+           ORDER BY created_at ASC NULLS LAST LIMIT 1`,
           [formName, institutionId]
         );
         const creationYear = baseSchemaRows[0]?.year ?? formYear;
@@ -1072,17 +1139,12 @@ router.put(
           if (existingTypeByCol.has(f.column_name)) f.type = existingTypeByCol.get(f.column_name);
         }
 
-        /* For the creation year: save all fields (base + any extras added this year)
-           and ADD physical columns for brand-new fields (existing behaviour).
-           For subsequent years: save ONLY extra fields (those without a physical
-           column) — no ALTER TABLE ever runs. Extra field values are stored in the
-           custom_fields JSONB column of the records table. */
-        const fieldsToSave = isCreationYear
-          ? incomingFields
-          : incomingFields.filter(f => {
-              const col = f.column_name?.trim().toLowerCase().replace(/\s+/g, "_");
-              return col && !physicalColSet.has(col) && !excludedFixedCols.has(f.column_name);
-            });
+        /* Every year stores its own complete field snapshot so schemas are
+           fully isolated — changes to the creation year never propagate to
+           other years.  For the creation year, genuinely new fields also get
+           a physical column (ALTER TABLE below).  For other years, new fields
+           are stored in the custom_fields JSONB column of the records table. */
+        const fieldsToSave = incomingFields;
 
         const schemaToSave = { ...schema, fields: fieldsToSave };
         const newColNames = collectColumnNames(fieldsToSave);
@@ -1233,7 +1295,36 @@ router.get("/:formName/institution-records", async (req, res) => {
     if (!schemaRows.length) {
       return res.status(404).json({ success: false, message: "No active schema found for this form." });
     }
-    const schema = schemaRows[0];
+    const schemaRow = schemaRows[0];
+
+    // For new-style complete schema rows (snapshot model) return as-is.
+    // For legacy extra-only rows (missing base fields) merge with the
+    // creation-year row for backward compatibility.
+    const { rows: instBaseRows } = await pool.query(
+      `SELECT * FROM custom_field_schemas
+       WHERE form_name = $1 AND institution_id = $2 AND is_active = true
+       ORDER BY created_at ASC NULLS LAST LIMIT 1`,
+      [formName, schemaRow.institution_id || institutionId]
+    );
+    const instBaseRow = instBaseRows[0] || null;
+    let schema = schemaRow;
+    if (instBaseRow && instBaseRow.id !== schemaRow.id) {
+      const baseFields     = instBaseRow.schema?.fields || [];
+      const rowFields      = schemaRow.schema?.fields || [];
+      const baseFieldNames = new Set(baseFields.map(f => f.column_name));
+      const hasBaseFields  = rowFields.some(f => baseFieldNames.has(f.column_name));
+      if (!hasBaseFields) {
+        const uniqueExtra = rowFields.filter(f => !baseFieldNames.has(f.column_name));
+        schema = {
+          ...schemaRow,
+          schema: { ...schemaRow.schema, fields: [...baseFields, ...uniqueExtra] },
+          used_column_names: [
+            ...(instBaseRow.used_column_names || []),
+            ...(schemaRow.used_column_names || []).filter(n => !baseFieldNames.has(n)),
+          ],
+        };
+      }
+    }
 
     const { rows: existsRows } = await pool.query(
       `SELECT 1 FROM information_schema.tables

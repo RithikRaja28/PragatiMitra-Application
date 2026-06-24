@@ -5,7 +5,7 @@ import { useAuth } from "../../../store/AuthContext";
 import { useAcademicYear } from "../../../store/AcademicYearContext";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { t } from "../../../i18n/translations";
-import PageHeader from "../../../components/shared/PageHeader";
+import { PageContainer, PageHeader, Card, ErrorState } from "../../../ui";
 import KpiDashboardPanel from "../../../components/KPI/KpiDashboardPanel";
 
 /* Part 2 — data-driven Hospital / Finance dashboard. One small component, fed by
@@ -72,8 +72,7 @@ export default function DomainDashboardPage({ domain: domainProp }) {
   ];
 
   return (
-    <div style={{ padding: "24px 28px", fontFamily: "'Plus Jakarta Sans', sans-serif",
-      display: "flex", flexDirection: "column", gap: 14, background: "transparent", minHeight: "100vh" }}>
+    <PageContainer style={{ gap: 14 }}>
 
       <PageHeader
         breadcrumb={[t("Home", lang), t(meta.module, lang), t("Dashboard", lang)]}
@@ -82,7 +81,7 @@ export default function DomainDashboardPage({ domain: domainProp }) {
       />
 
       {error && (
-        <div style={{ ...card, color: "#b91c1c", background: "#fef2f2", border: "1px solid #fecaca" }}>{error}</div>
+        <Card padding={0}><ErrorState title={t("Failed to load dashboard.", lang)} description={error} /></Card>
       )}
 
       {/* Stat cards — live, domain-scoped */}
@@ -143,6 +142,6 @@ export default function DomainDashboardPage({ domain: domainProp }) {
         </div>
         <KpiDashboardPanel scope={domain === "hospital" || domain === "finance" ? domain : "institute"} />
       </div>
-    </div>
+    </PageContainer>
   );
 }

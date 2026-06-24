@@ -28,10 +28,6 @@ const EVENT_META = {
   institution_created:     { Icon: Landmark,    color: "#2563eb", bg: "#eff6ff" },
   institution_activated:   { Icon: Landmark,    color: "#059669", bg: "#f0fdf4" },
   institution_deactivated: { Icon: Landmark,    color: "#dc2626", bg: "#fef2f2" },
-  // Committees
-  committee_created:       { Icon: Users2,      color: "#2563eb", bg: "#eff6ff" },
-  committee_activated:     { Icon: Users2,      color: "#059669", bg: "#f0fdf4" },
-  committee_deactivated:   { Icon: Users2,      color: "#dc2626", bg: "#fef2f2" },
   // Roles
   role_created:            { Icon: Shield,      color: "#0891b2", bg: "#ecfeff" },
   // Academic year

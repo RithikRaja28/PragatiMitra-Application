@@ -799,6 +799,29 @@ router.put("/:id/workflow-assignments", requireRole(["super_admin", "institute_a
       await client.query("COMMIT");
     } catch (e) { await client.query("ROLLBACK"); throw e; }
     finally { client.release(); }
+
+    // Notify NOA users (dept admins) for every DEPARTMENT-type assignment
+    const deptIds = [...new Set(
+      assignments
+        .filter(a => a.assignee_type === "DEPARTMENT" && isUUID(a.department_id))
+        .map(a => a.department_id)
+    )];
+    for (const deptId of deptIds) {
+      const noaRes = await pool.query(
+        `SELECT DISTINCT user_id FROM public.nodal_officer_assignments
+         WHERE department_id = $1 AND is_active = TRUE`, [deptId]
+      ).catch(() => ({ rows: [] }));
+      for (const { user_id } of noaRes.rows) {
+        pool.query(`
+          INSERT INTO public.notifications (user_id, type, title, body, entity_type, entity_id)
+          VALUES ($1, 'SECTION_ASSIGNED',
+                  'Report sections assigned to your department',
+                  'Section(s) have been assigned to your department. Please delegate them to a team member.',
+                  'REPORT', $2)
+        `, [user_id, id]).catch(() => {});
+      }
+    }
+
     return res.json({ success: true });
   } catch (err) {
     logger.error("builder/reports PUT /:id/wf-assignments", { ...getLogContext(req), err: err.message });

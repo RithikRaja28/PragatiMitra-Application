@@ -215,7 +215,7 @@ export default function DepartmentFormRecordsPage({ form, year = null, onBack })
   }, [loading]);
 
   const excluded = new Set(schema?.excluded_fixed_columns || []);
-  const fields = (schema?.fields || []).filter((f) => !excluded.has(dbCol(f.column_name)) && !excluded.has(f.column_name));
+  const fields = (schema?.fields || []).filter((f) => !f.hidden && !excluded.has(dbCol(f.column_name)) && !excluded.has(f.column_name));
 
   const readOnly = lock.is_locked || !canEnterData;   // add/delete disabled when locked or non-contributor
   const canEdit = canEnterData && !lock.is_locked;    // row edit action only for contributors

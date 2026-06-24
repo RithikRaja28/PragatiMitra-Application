@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useApi }  from "../../../../hooks/useApi";
 import { useAuth } from "../../../../store/AuthContext";
 import Toast from "../../../../components/shared/Toast";
+import BuilderHeader from "./BuilderHeader";
 
 async function apiJson(apiFetch, path, opts) {
   const res  = await apiFetch(path, opts);
@@ -225,33 +226,11 @@ export default function AssignSectionsPage({ reportId, onBack }) {
       {toast && <Toast {...toast} onClose={() => setToast(null)} />}
 
       {/* header */}
-      <header style={{
-        background: C.surface, borderBottom: `1px solid ${C.border}`,
-        padding: "14px 32px", display: "flex", alignItems: "center", gap: 14,
-      }}>
-        <button onClick={onBack} style={{
-          display: "inline-flex", alignItems: "center", gap: 6,
-          padding: "7px 14px", borderRadius: 8,
-          border: "1.5px solid #e5e7eb", background: "#fff",
-          fontSize: 13, fontWeight: 600, color: "#374151", cursor: "pointer", flexShrink: 0,
-        }}
-          onMouseEnter={e => { e.currentTarget.style.background = "#f3f4f6"; e.currentTarget.style.borderColor = "#d1d5db"; }}
-          onMouseLeave={e => { e.currentTarget.style.background = "#fff";    e.currentTarget.style.borderColor = "#e5e7eb"; }}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M19 12H5M12 5l-7 7 7 7"/>
-          </svg>
-          Back
-        </button>
-        <div style={{ width: 1, height: 28, background: C.border, flexShrink: 0 }} />
-        <div style={{ flex: 1 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 1 }}>
-            <span style={{ fontSize: 11, color: C.textSub }}>Report Builder</span>
-            <span style={{ fontSize: 11, color: "#d1d5db" }}>›</span>
-            <span style={{ fontSize: 11, color: C.primary, fontWeight: 600 }}>Assign Sections</span>
-          </div>
-          <div style={{ fontSize: 16, fontWeight: 700, color: C.text }}>Assign Sections</div>
-        </div>
-        {selected.size > 0 && (
+      <BuilderHeader
+        onBack={onBack}
+        breadcrumb={["Report Builder", "Assign Sections"]}
+        title="Assign Sections"
+        right={selected.size > 0 && (
           <div style={{
             display: "inline-flex", alignItems: "center", gap: 6,
             padding: "5px 12px", borderRadius: 20,
@@ -262,7 +241,7 @@ export default function AssignSectionsPage({ reportId, onBack }) {
             {selected.size} section{selected.size !== 1 ? "s" : ""} selected
           </div>
         )}
-      </header>
+      />
 
       <main style={{ maxWidth: 1200, margin: "0 auto", padding: "28px 24px", display: "flex", gap: 24 }}>
 
@@ -376,7 +355,7 @@ export default function AssignSectionsPage({ reportId, onBack }) {
             <div style={{ marginBottom: 14 }}>
               <label style={lbl}>Assign By</label>
               <div style={{ display: "flex", gap: 4 }}>
-                {[["user","👤 User"],["role","🏷 Role"],["dept","🏢 Dept"]].map(([t, label]) => (
+                {[["user","User"],["role","Role"],["dept","Dept"]].map(([t, label]) => (
                   <button key={t} type="button"
                     onClick={() => { setAssignType(t); setAssignUserId(""); setAssignRoleName(""); setAssignDeptId(""); setUserSearch(""); }}
                     style={{ flex: 1, padding: "6px 4px", border: "none", borderRadius: 7, cursor: "pointer", fontSize: 11, fontWeight: 700,

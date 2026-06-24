@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { Save, FolderTree } from "lucide-react";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { t } from "../../../i18n/translations";
-import PageHeader from "../../../components/shared/PageHeader";
+import { PageContainer, PageHeader } from "../../../ui";
 import { useApi }  from "../../../hooks/useApi";
 import { useShell } from "../../../components/Dashboard/shellContext";
 
@@ -343,14 +343,13 @@ export default function ReportSetupPage() {
   };
 
   return (
-    <div style={{ padding: "24px 28px", fontFamily: "'Plus Jakarta Sans', sans-serif",
-      display: "flex", flexDirection: "column", gap: 18, minHeight: "100vh", background: "transparent" }}>
+    <PageContainer style={{ gap: 18 }}>
 
       {/* Header */}
       <PageHeader
         breadcrumb={[t("Home", lang), t("Reports", lang), t("Report Setup", lang)]}
         title={t("Report Configuration", lang)}
-        description="Manage sections, subsections, dates and workflow"
+        description="Configure sections, deadlines, and the approval workflow for this report."
         actions={
           <button style={{ ...btn("primary"), display: "inline-flex", alignItems: "center", gap: 7, padding: "10px 20px", fontSize: 12, borderRadius: 9,
             boxShadow: "0 2px 8px rgba(99,102,241,0.3)" }}>
@@ -494,7 +493,7 @@ export default function ReportSetupPage() {
                             {s.approver_department_name ? ` @ ${s.approver_department_name}` : ""}]
                           </span>
                         )}
-                        {s.approver_name && <span style={{ color: "#94a3b8" }}> [👤 {s.approver_name}]</span>}
+                        {s.approver_name && <span style={{ color: "#94a3b8", display: "inline-flex", alignItems: "center", gap: 3 }}> [<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>{s.approver_name}]</span>}
                       </span>
                     ))}
                   </div>
@@ -671,7 +670,7 @@ export default function ReportSetupPage() {
                 <div style={{ flex: "1 1 140px", border: `0.5px solid ${C.border}`, borderRadius: 10, overflow: "hidden" }}>
                   <div style={{ height: 90, background: coverImageUrl ? `url(${coverImageUrl}) center/cover no-repeat` : C.bg,
                     display: "flex", alignItems: "center", justifyContent: "center" }}>
-                    {!coverImageUrl && <span style={{ fontSize: 26, opacity: 0.35 }}>🖼</span>}
+                    {!coverImageUrl && <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke={C.border} strokeWidth="1.4" style={{ opacity: 0.6 }}><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>}
                   </div>
                   <div style={{ padding: "6px 10px", fontSize: 10, color: C.textSub, textAlign: "center", fontWeight: 600 }}>Cover Page</div>
                 </div>
@@ -680,14 +679,14 @@ export default function ReportSetupPage() {
                     {logoUrl
                       ? <img src={logoUrl} alt="Logo" style={{ maxHeight: 70, maxWidth: "90%", objectFit: "contain" }}
                           onError={(e) => { e.currentTarget.style.display = "none"; }} />
-                      : <span style={{ fontSize: 26, opacity: 0.35 }}>🏛</span>}
+                      : <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke={C.border} strokeWidth="1.4" style={{ opacity: 0.6 }}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>}
                   </div>
                   <div style={{ padding: "6px 10px", fontSize: 10, color: C.textSub, textAlign: "center", fontWeight: 600 }}>Logo</div>
                 </div>
                 <div style={{ flex: "1 1 140px", border: `0.5px solid ${C.border}`, borderRadius: 10, overflow: "hidden" }}>
                   <div style={{ height: 90, background: bgImageUrl ? `url(${bgImageUrl}) center/cover no-repeat` : C.bg,
                     display: "flex", alignItems: "center", justifyContent: "center" }}>
-                    {!bgImageUrl && <span style={{ fontSize: 26, opacity: 0.35 }}>🎨</span>}
+                    {!bgImageUrl && <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke={C.border} strokeWidth="1.4" style={{ opacity: 0.6 }}><circle cx="13.5" cy="6.5" r="2.5"/><path d="M15.83 11.67l1.42-1.42"/><circle cx="18.5" cy="8.5" r="2"/><path d="M19.07 3.07a10 10 0 0 1-15.14 13.21"/><path d="M2 22l7-7"/></svg>}
                   </div>
                   <div style={{ padding: "6px 10px", fontSize: 10, color: C.textSub, textAlign: "center", fontWeight: 600 }}>Page Background</div>
                 </div>
@@ -706,7 +705,12 @@ export default function ReportSetupPage() {
                     alignItems: "center", padding: "10px 14px", background: "#fff",
                     borderBottom: i < brandingAssignments.length - 1 ? `0.5px solid ${C.border}` : "none" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <span style={{ fontSize: 16 }}>{b.id === "cover" ? "🖼" : b.id === "logo" ? "🏛" : "🎨"}</span>
+                      {b.id === "cover"
+                        ? <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={C.primary} strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                        : b.id === "logo"
+                          ? <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={C.primary} strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                          : <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={C.primary} strokeWidth="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>
+                      }
                       <div>
                         <div style={{ fontSize: 12, fontWeight: 600, color: C.text }}>{b.label}</div>
                         {b.assignee !== "Unassigned" && <div style={{ fontSize: 10, color: C.primary, fontWeight: 600 }}>Assigned ✓</div>}
@@ -731,6 +735,6 @@ export default function ReportSetupPage() {
         </div>
 
       </div>
-    </div>
+    </PageContainer>
   );
 }

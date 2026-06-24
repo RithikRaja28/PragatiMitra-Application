@@ -3,7 +3,7 @@ import { useApi } from "../../../hooks/useApi";
 import { useAuth } from "../../../store/AuthContext";
 import FormScreen from "../../../components/shared/FormScreen";
 import {
-  PageHeader, Button, Badge, EmptyState,
+  PageContainer, PageHeader, Button, Badge, EmptyState,
   DataTable, Dropdown, MenuItem,
 } from "../../../ui";
 import { Building, Pencil, Power, PowerOff, MoreHorizontal, Plus } from "lucide-react";
@@ -386,7 +386,7 @@ export default function InstituteAdminDepartmentPage() {
   const paginated  = filteredDepts.slice((safePage - 1) * pageSize, safePage * pageSize);
 
   return (
-    <div style={{ padding: "32px 36px", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+    <PageContainer>
       {toast && <Toast message={toast.message} type={toast.type} />}
 
       {/* ── Header ── */}
@@ -526,6 +526,6 @@ export default function InstituteAdminDepartmentPage() {
           onPageSize={(n) => { setPageSize(n); setPage(1); }}
         />
       )}
-    </div>
+    </PageContainer>
   );
 }

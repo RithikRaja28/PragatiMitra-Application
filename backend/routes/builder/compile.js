@@ -132,15 +132,17 @@ async function translateForHindi(report, sections) {
   const results = await Promise.all([
     tr(report.title),
     tr(report.report_type),          // e.g. "Annual" → "वार्षिक"
+    tr(report.institution_name),     // e.g. "AIIA" → institution name in Hindi
     ...sections.map(s => tr(s.title)),
     ...sections.map(s => tr(s.description)),
   ]);
   const n = sections.length;
   return {
-    reportTitle:    results[0] || report.title,
-    reportType:     results[1] || report.report_type || "",
-    sectionTitles:  new Map(sections.map((s, i) => [s.id, results[2 + i]       || s.title])),
-    sectionDescs:   new Map(sections.map((s, i) => [s.id, results[2 + n + i]   || ""])),
+    reportTitle:     results[0] || report.title,
+    reportType:      results[1] || report.report_type || "",
+    institutionName: results[2] || report.institution_name || "",
+    sectionTitles:   new Map(sections.map((s, i) => [s.id, results[3 + i]       || s.title])),
+    sectionDescs:    new Map(sections.map((s, i) => [s.id, results[3 + n + i]   || ""])),
   };
 }
 
@@ -932,9 +934,10 @@ async function generateDocx(report, sections, outPath, opts) {
               }));
             } catch { /* skip broken image */ }
           }
-          if (c.caption) {
+          const imgCaption = lang === "hi" ? (hi.caption || c.caption) : c.caption;
+          if (imgCaption) {
             els.push(new Paragraph({
-              children: [new TextRun({ text: c.caption, italics: true, size: 18, color: C.gray })],
+              children: [new TextRun({ text: imgCaption, italics: true, size: 18, color: C.gray, font: docFont })],
               alignment: AlignmentType.CENTER,
               spacing: { after: 80 },
             }));
@@ -973,9 +976,11 @@ async function generateDocx(report, sections, outPath, opts) {
               alignment: AlignmentType.CENTER,
             }));
           }
-          if (col.caption) {
+          const hiCols = (lang === "hi" && hi.cols) ? hi.cols : [];
+          const gridCaption = hiCols[i]?.caption || col.caption;
+          if (gridCaption) {
             cellChildren.push(new Paragraph({
-              children: [new TextRun({ text: col.caption, italics: true, size: 16, color: C.gray })],
+              children: [new TextRun({ text: gridCaption, italics: true, size: 16, color: C.gray, font: docFont })],
               alignment: AlignmentType.CENTER,
               spacing: { after: 0 },
             }));
@@ -1036,8 +1041,9 @@ async function generateDocx(report, sections, outPath, opts) {
   const docTitle = lang === "hi" && opts.hiStrings ? opts.hiStrings.reportTitle : report.title;
 
   // Report title block (matches A4Page + first-page block in wordDocUtils)
+  const docInstName = lang === "hi" && opts.hiStrings ? opts.hiStrings.institutionName : (report.institution_name || "");
   children.push(new Paragraph({
-    children: [new TextRun({ text: report.institution_name || "", bold: true, size: 24, color: C.primary })],
+    children: [new TextRun({ text: docInstName, bold: true, size: 24, color: C.primary, font: docFont })],
     alignment: AlignmentType.CENTER,
     spacing: { after: 60 },
   }));
@@ -1229,8 +1235,8 @@ async function generateDocx(report, sections, outPath, opts) {
     children: [
       new Paragraph({
         children: [
-          // Left: institution name
-          new TextRun({ text: report.institution_name || "", size: 15, color: C.lightGray }),
+          // Left: institution name (translated for Hindi)
+          new TextRun({ text: (lang === "hi" && opts.hiStrings ? opts.hiStrings.institutionName : report.institution_name) || "", size: 15, color: C.lightGray, font: docFont }),
           // Tab to center
           new TextRun({ text: "\t", size: 15 }),
           // Center: page number only (just "1", "2" — no total)
@@ -1358,7 +1364,7 @@ async function generatePdf(report, sections, outPath, opts) {
                     width:100%;padding:4px 25mm 6px;box-sizing:border-box;
                     display:grid;grid-template-columns:1fr auto 1fr;align-items:center;
                     border-top:1px solid #e5e7eb;">
-          <span style="text-align:left;">${escHtml(report.institution_name || "")}</span>
+          <span style="text-align:left;">${escHtml((opts.language === "hi" && opts.hiStrings ? opts.hiStrings.institutionName : report.institution_name) || "")}</span>
           <span style="text-align:center;font-weight:700;font-size:9px;" class="pageNumber"></span>
           <span style="text-align:right;">
             ${logoDataUrl
@@ -1473,21 +1479,27 @@ function buildHtml(report, sections, opts, assets = {}) {
         return `<table class="data-tbl">${head}${body}</table>`;
       }
 
-      case "IMAGE":
+      case "IMAGE": {
         if (!c.url) return "";
+        const htmlImgCap = isHindi ? (hi.caption || c.caption || "") : (c.caption || "");
         return `<div class="img-wrap">
-          <img src="${escHtml(c.url)}" alt="${escHtml(c.caption || "")}" style="width:${c.widthPct ?? 100}%;border-radius:3px;border:1px solid #e5e7eb">
-          ${c.caption ? `<div class="img-cap">${escHtml(c.caption)}</div>` : ""}
+          <img src="${escHtml(c.url)}" alt="${escHtml(htmlImgCap)}" style="width:${c.widthPct ?? 100}%;border-radius:3px;border:1px solid #e5e7eb">
+          ${htmlImgCap ? `<div class="img-cap">${escHtml(htmlImgCap)}</div>` : ""}
         </div>`;
+      }
 
       case "IMAGE_GRID": {
         const cols = c.cols || [];
         if (!cols.length) return "";
-        const items = cols.map(col => `
+        const hiCols = isHindi ? (hi.cols || []) : [];
+        const items = cols.map((col, gi) => {
+          const gridCap = hiCols[gi]?.caption || col.caption || "";
+          return `
           <div>
             ${col.url ? `<img src="${escHtml(col.url)}" style="width:100%;border-radius:3px;border:1px solid #e5e7eb">` : `<div class="img-placeholder">[Image]</div>`}
-            ${col.caption ? `<div class="img-cap">${escHtml(col.caption)}</div>` : ""}
-          </div>`).join("");
+            ${gridCap ? `<div class="img-cap">${escHtml(gridCap)}</div>` : ""}
+          </div>`;
+        }).join("");
         return `<div class="img-grid" style="grid-template-columns:repeat(${cols.length},1fr)">${items}</div>`;
       }
 
@@ -1598,7 +1610,7 @@ function buildHtml(report, sections, opts, assets = {}) {
       ${logoSrc ? `<img src="${logoSrc}" style="height:52px;float:right">` : ""}
       <div style="clear:both"></div>
       <div style="font-family:'Calibri','Segoe UI',Arial,sans-serif;font-size:13pt;font-weight:700;color:#1F3864;text-align:center;margin-bottom:8px">
-        ${escHtml(report.institution_name || "")}
+        ${escHtml((isHindi && opts.hiStrings ? opts.hiStrings.institutionName : report.institution_name) || "")}
       </div>
       <div class="title-main">${escHtml(htmlDocTitle)}</div>
       ${(report.report_type || report.academic_year)
