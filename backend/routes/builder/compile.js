@@ -131,14 +131,16 @@ async function translateForHindi(report, sections) {
   const tr = (text) => (text ? translateSentence(text).catch(() => text) : Promise.resolve(""));
   const results = await Promise.all([
     tr(report.title),
+    tr(report.report_type),          // e.g. "Annual" → "वार्षिक"
     ...sections.map(s => tr(s.title)),
     ...sections.map(s => tr(s.description)),
   ]);
   const n = sections.length;
   return {
     reportTitle:    results[0] || report.title,
-    sectionTitles:  new Map(sections.map((s, i) => [s.id, results[1 + i]       || s.title])),
-    sectionDescs:   new Map(sections.map((s, i) => [s.id, results[1 + n + i]   || ""])),
+    reportType:     results[1] || report.report_type || "",
+    sectionTitles:  new Map(sections.map((s, i) => [s.id, results[2 + i]       || s.title])),
+    sectionDescs:   new Map(sections.map((s, i) => [s.id, results[2 + n + i]   || ""])),
   };
 }
 
@@ -1046,10 +1048,12 @@ async function generateDocx(report, sections, outPath, opts) {
     spacing: { after: 80 },
   }));
   if (report.report_type || report.academic_year) {
+    const hiType    = lang === "hi" && opts.hiStrings ? opts.hiStrings.reportType : report.report_type;
+    const subParts  = [hiType, report.academic_year].filter(Boolean);
     children.push(new Paragraph({
       children: [new TextRun({
-        text: [report.report_type, report.academic_year].filter(Boolean).join("   ·   "),
-        size: 18, color: C.gray, italics: true,
+        text: subParts.join("   ·   "),
+        size: 18, color: C.gray, italics: true, font: docFont,
       })],
       alignment: AlignmentType.CENTER,
       spacing: { after: 240 },
@@ -1201,13 +1205,14 @@ async function generateDocx(report, sections, outPath, opts) {
   }
 
   // ── Header: report meta + title ──
-  const hdrMeta = [report.report_type, report.academic_year].filter(Boolean).join("  ");
+  const hiType  = lang === "hi" && opts.hiStrings ? opts.hiStrings.reportType : report.report_type;
+  const hdrMeta = [hiType, report.academic_year].filter(Boolean).join("  ");
   const docHeader = new Header({
     children: [
       ...(bgHeaderPara ? [bgHeaderPara] : []),
       new Paragraph({
         children: [
-          new TextRun({ text: hdrMeta, size: 15, color: C.lightGray }),
+          new TextRun({ text: hdrMeta, size: 15, color: C.lightGray, font: docFont }),
           new TextRun({ text: "\t", size: 15 }),
           new TextRun({ text: docTitle, size: 15, color: C.lightGray, font: docFont }),
         ],
@@ -1327,7 +1332,8 @@ async function generatePdf(report, sections, outPath, opts) {
   ]);
 
   const html    = buildHtml(report, sections, opts, { logoDataUrl, bgDataUrl, coverDataUrl });
-  const hdrMeta     = [report.report_type, report.academic_year].filter(Boolean).join("  ");
+  const pdfHiType   = opts.language === "hi" && opts.hiStrings ? opts.hiStrings.reportType : report.report_type;
+  const hdrMeta     = [pdfHiType, report.academic_year].filter(Boolean).join("  ");
   const pdfDocTitle = opts.language === "hi" && opts.hiStrings ? opts.hiStrings.reportTitle : report.title;
   const pdfFont     = opts.language === "hi"
     ? "'Noto Sans Devanagari','Mangal','Arial Unicode MS',sans-serif"
@@ -1596,7 +1602,7 @@ function buildHtml(report, sections, opts, assets = {}) {
       </div>
       <div class="title-main">${escHtml(htmlDocTitle)}</div>
       ${(report.report_type || report.academic_year)
-        ? `<div class="title-sub">${escHtml([report.report_type, report.academic_year].filter(Boolean).join("   ·   "))}</div>`
+        ? `<div class="title-sub">${escHtml([(isHindi && opts.hiStrings ? opts.hiStrings.reportType : report.report_type), report.academic_year].filter(Boolean).join("   ·   "))}</div>`
         : ""}
     </div>`;
 
