@@ -24,7 +24,8 @@
 const express = require("express");
 const { verifyToken, requireRole } = require("../middleware/auth");
 const logger = require("../utils/logger");
-const { formatAcademicYear, parseStartYear, ensureFormArchivedIfUnclassified } = require("../services/academicYearService");
+const { formatAcademicYear, parseStartYear, ensureFormArchivedIfUnclassified, getInstitutionStartYears } = require("../services/academicYearService");
+const { ensureSchemaExists } = require("../services/schemaPropagationService");
 const { enqueueEmail } = require("../services/mailService");
 const { writeAuditLog } = require("../utils/audit");
 
@@ -162,24 +163,72 @@ router.get("/preview", requireRole(MANAGE_ROLES), async (req, res) => {
 
     let activeIds, archivedIds;
     if (prevConfig) {
+      // Sequential creation (e.g. 2026 → 2027): inherit the immediately
+      // preceding year's classification — the common case.
       activeIds   = idList(prevConfig.active_forms_json).filter((id) => byId.has(id));
       archivedIds = idList(prevConfig.archived_forms_json).filter((id) => byId.has(id));
+
+      /* Some accessible forms may be present in NEITHER array (e.g. a shared
+         form distributed to this institution after the previous year's config
+         was last saved). The live forms list (GET /api/forms/institution-forms)
+         defaults such an unclassified form to "archived" unless it has its own
+         exact-year schema row — falling back here too keeps the wizard preview
+         and the forms list in agreement instead of silently dropping the form
+         from both checklists. */
+      const classified = new Set([...activeIds, ...archivedIds]);
+      const unclassified = forms.filter((f) => !classified.has(String(f.id)));
+      if (unclassified.length) {
+        const { rows: schemaRows } = await pool.query(
+          `SELECT DISTINCT form_name FROM custom_field_schemas
+            WHERE institution_id = $1 AND year = $2 AND is_active = true`,
+          [institutionId, startYear - 1]
+        );
+        const hasExactPrevYearSchema = new Set(schemaRows.map((r) => r.form_name));
+        for (const f of unclassified) {
+          (hasExactPrevYearSchema.has(f.form_name) ? activeIds : archivedIds).push(String(f.id));
+        }
+      }
     } else {
-      // No history → own/created forms default active; FOREIGN shared forms
-      // (snapshot-distributed from another institution) default ARCHIVED so the
-      // consumer explicitly opts in (Snapshot ownership model). "Owned" = this
-      // institution has a schema row with no provenance (source_institution_id NULL).
-      const { rows: ownedRows } = await pool.query(
-        `SELECT DISTINCT form_name FROM custom_field_schemas
-          WHERE institution_id = $1 AND source_institution_id IS NULL`,
-        [institutionId]
-      );
-      const owned = new Set(ownedRows.map((r) => r.form_name));
-      activeIds = [];
-      archivedIds = [];
-      for (const f of forms) {
-        const foreignShared = f.share_table && !owned.has(f.form_name);
-        (foreignShared ? archivedIds : activeIds).push(String(f.id));
+      const startYears = await getInstitutionStartYears(pool, institutionId);
+      if (startYears.length === 0) {
+        // Genuine first-ever academic year for this institution: no per-year
+        // schema signal exists yet to classify against, so fall back to a
+        // one-time heuristic — own/created forms default active; FOREIGN
+        // shared forms (snapshot-distributed from another institution) default
+        // ARCHIVED so the consumer explicitly opts in (Snapshot ownership
+        // model). "Owned" = a schema row with no provenance (source_institution_id NULL).
+        const { rows: ownedRows } = await pool.query(
+          `SELECT DISTINCT form_name FROM custom_field_schemas
+            WHERE institution_id = $1 AND source_institution_id IS NULL`,
+          [institutionId]
+        );
+        const owned = new Set(ownedRows.map((r) => r.form_name));
+        activeIds = [];
+        archivedIds = [];
+        for (const f of forms) {
+          const foreignShared = f.share_table && !owned.has(f.form_name);
+          (foreignShared ? archivedIds : activeIds).push(String(f.id));
+        }
+      } else {
+        /* The immediately preceding year was SKIPPED (other academic years
+           already exist for this institution — just not startYear-1, e.g. the
+           admin jumps from 2026 straight to 2028). There is no continuity to
+           inherit from, so classify exactly like the form-management module
+           does for a year with no config row: active only if the form has its
+           OWN schema row for THIS EXACT target year, else archived. This is
+           getFormLifecycleStatus's same fallback (hasSchemaThisYear), kept in
+           lock-step so the wizard preview and the forms list never disagree. */
+        const { rows: schemaRows } = await pool.query(
+          `SELECT DISTINCT form_name FROM custom_field_schemas
+            WHERE institution_id = $1 AND year = $2 AND is_active = true`,
+          [institutionId, startYear]
+        );
+        const hasExactYearSchema = new Set(schemaRows.map((r) => r.form_name));
+        activeIds = [];
+        archivedIds = [];
+        for (const f of forms) {
+          (hasExactYearSchema.has(f.form_name) ? activeIds : archivedIds).push(String(f.id));
+        }
       }
     }
 
@@ -309,7 +358,7 @@ router.post("/", requireRole(MANAGE_ROLES), async (req, res) => {
            WHERE u.institution_id = $1
              AND u.account_status = 'ACTIVE'
              AND u.email IS NOT NULL
-             AND r.name IN ('head_of_department', 'nodal_officer', 'department_admin')`,
+             AND r.name IN ('nodal_officer', 'department_admin')`,
           [institutionId]
         );
 
@@ -614,6 +663,52 @@ router.patch("/:academicYear/forms/:formId/status", requireRole(MANAGE_ROLES), a
     }
 
     await applyStatus(client, institutionId, academicYear, String(formId), status);
+
+    /* Materialize a custom_field_schemas row for THIS (form, institution, year)
+       when the form is being activated. Without this, a year that was just
+       switched archived→active has no row of its own and silently rides the
+       fallback chain (institution's latest row, or the shared canonical row)
+       forever — invisible in the DB and fragile if that fallback ever changes.
+       - ensureSchemaExists: guarantees the institution has AT LEAST one row
+         (clones the canonical/shared schema if it has none at all yet).
+       - Then, if this specific year still has no row of its own (it isn't the
+         institution's base/creation year), insert an EMPTY extra-fields row —
+         base fields keep coming from the physical columns via getActiveSchema's
+         merge; this row just makes the year's existence in the schema history
+         explicit and gives it a place to receive future extra-field edits. */
+    if (status === "active") {
+      try {
+        await ensureSchemaExists(pool, form.form_name);
+        const { rows: baseRows } = await client.query(
+          `SELECT * FROM custom_field_schemas
+           WHERE form_name = $1 AND institution_id = $2 AND is_active = true
+           ORDER BY year ASC NULLS LAST, created_at ASC NULLS LAST LIMIT 1`,
+          [form.form_name, institutionId]
+        );
+        const baseRow = baseRows[0] || null;
+        if (baseRow && baseRow.year !== startYear) {
+          const { rows: existingYearRow } = await client.query(
+            `SELECT id FROM custom_field_schemas WHERE form_name = $1 AND institution_id = $2 AND year = $3`,
+            [form.form_name, institutionId, startYear]
+          );
+          if (!existingYearRow.length) {
+            await client.query(
+              `INSERT INTO custom_field_schemas
+                 (form_name, institution_id, year, schema, is_active, created_by, used_column_names)
+               VALUES ($1, $2, $3, $4::jsonb, true, $5, $6)`,
+              [
+                form.form_name, institutionId, startYear,
+                JSON.stringify({ fields: [], excluded_fixed_columns: baseRow.schema?.excluded_fixed_columns || [] }),
+                req.user.userId || null,
+                [],
+              ]
+            );
+          }
+        }
+      } catch (e) {
+        logger.error(`ensure year schema row failed for ${form.form_name}/${institutionId}/${startYear}`, { stack: e.stack });
+      }
+    }
 
     // Shared distribution (Snapshot ownership model): the publisher controls ONLY
     // its own classification. A consumer's active/archived/disabled choice for this

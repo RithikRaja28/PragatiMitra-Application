@@ -199,12 +199,6 @@ export const translations = {
     "Create and manage institutional reports with section-level collaboration": "अनुभाग-स्तरीय सहयोग के साथ संस्थागत रिपोर्ट बनाएं और प्रबंधित करें",
     "Welcome to PragatiMitra. Your assigned tasks and forms will appear here.": "PragatiMitra में आपका स्वागत है। आपके असाइन किए गए कार्य और फ़ॉर्म यहाँ दिखाई देंगे।",
 
-    /* ── finance_officer: sidebar ── */
-    "Finance":                 "वित्त",
-    "Estimates":               "अनुमान",
-    "Audits":                  "ऑडिट्स",
-    "Balance Sheet":           "बैलेंस शीट",
-
     /* ── directors_office: sidebar ── */
     "Review":                  "समीक्षा",
     "Review Queue":            "समीक्षा कतार",

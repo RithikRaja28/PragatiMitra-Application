@@ -202,6 +202,47 @@ async function resolveUserContext(pool, req) {
   };
 }
 
+/* Returns the earliest active schema row for an institution — this is the
+   "base" row created at form-creation time. Its fields are the ones that
+   have real physical columns in *_records. */
+async function getBaseSchemaRow(pool, formName, institutionId) {
+  const { rows } = await pool.query(
+    `SELECT * FROM custom_field_schemas
+     WHERE form_name = $1 AND institution_id = $2 AND is_active = true
+     ORDER BY year ASC NULLS LAST, created_at ASC NULLS LAST
+     LIMIT 1`,
+    [formName, institutionId]
+  );
+  if (rows[0]) return rows[0];
+  const { rows: fb } = await pool.query(
+    `SELECT cfs.* FROM custom_field_schemas cfs
+     JOIN table_list tl ON tl.form_name = cfs.form_name
+     WHERE cfs.form_name = $1 AND tl.share_table = true AND cfs.is_active = true
+     ORDER BY cfs.year ASC NULLS LAST, cfs.created_at ASC NULLS LAST
+     LIMIT 1`,
+    [formName]
+  );
+  return fb[0] || null;
+}
+
+/* Returns the non-system column names that physically exist in the records
+   table (i.e., fields that were present at form-creation time and have real
+   DB columns, as opposed to extra fields stored in custom_fields JSONB). */
+async function getPhysicalCols(pool, tableName) {
+  const SYSTEM = new Set([
+    "id", "form_name", "institution_id", "department_id", "year",
+    "schema_id", "status", "order_index", "custom_fields", "language",
+    "source_row_id", "created_by", "updated_by", "created_at", "updated_at",
+    "academic_year", "role_name",
+  ]);
+  const { rows } = await pool.query(
+    `SELECT column_name FROM information_schema.columns
+     WHERE table_schema = 'public' AND table_name = $1`,
+    [tableName]
+  );
+  return new Set(rows.map(r => r.column_name).filter(c => !SYSTEM.has(c)));
+}
+
 async function getActiveSchema(pool, formName, institutionId, year) {
   // Primary: institution-specific row (private forms always resolve here;
   // shared-form creator resolves here too).
@@ -211,19 +252,43 @@ async function getActiveSchema(pool, formName, institutionId, year) {
   if (year) { q += ` AND year = $3`; params.push(year); }
   q += ` ORDER BY year DESC LIMIT 1`;
   const { rows } = await pool.query(q, params);
-  if (rows[0]) return rows[0];
+  let row = rows[0] || null;
 
   // Fallback: shared forms have one canonical schema row (the creator's).
-  // Non-creator institutions use it directly — no per-institution copy needed.
-  // The share_table guard ensures private forms are never affected.
-  const fbParams = [formName];
-  let fq = `SELECT cfs.* FROM custom_field_schemas cfs
-            JOIN table_list tl ON tl.form_name = cfs.form_name
-            WHERE cfs.form_name = $1 AND tl.share_table = true AND cfs.is_active = true`;
-  if (year) { fq += ` AND cfs.year = $2`; fbParams.push(year); }
-  fq += ` ORDER BY cfs.year DESC LIMIT 1`;
-  const { rows: fb } = await pool.query(fq, fbParams);
-  return fb[0] || null;
+  if (!row) {
+    const fbParams = [formName];
+    let fq = `SELECT cfs.* FROM custom_field_schemas cfs
+              JOIN table_list tl ON tl.form_name = cfs.form_name
+              WHERE cfs.form_name = $1 AND tl.share_table = true AND cfs.is_active = true`;
+    if (year) { fq += ` AND cfs.year = $2`; fbParams.push(year); }
+    fq += ` ORDER BY cfs.year DESC LIMIT 1`;
+    const { rows: fb } = await pool.query(fq, fbParams);
+    row = fb[0] || null;
+  }
+  if (!row) return null;
+
+  /* Merge base fields (physical columns, from creation-year row) with extra
+     fields (JSONB-stored, from a year-specific extra row). When the fetched
+     row IS the base row there is nothing to merge — return as-is. */
+  const baseRow = await getBaseSchemaRow(pool, formName, row.institution_id || institutionId);
+  if (!baseRow || baseRow.id === row.id) return row;
+
+  const baseFields    = baseRow.schema?.fields || [];
+  const extraFields   = row.schema?.fields || [];
+  const baseFieldNames = new Set(baseFields.map(f => f.column_name));
+  const uniqueExtra   = extraFields.filter(f => !baseFieldNames.has(f.column_name));
+
+  return {
+    ...row,
+    schema: {
+      ...row.schema,
+      fields: [...baseFields, ...uniqueExtra],
+    },
+    used_column_names: [
+      ...(baseRow.used_column_names || []),
+      ...(row.used_column_names || []).filter(n => !baseFieldNames.has(n)),
+    ],
+  };
 }
 
 function activeFields(schemaRow) {
@@ -343,7 +408,9 @@ router.get("/:formName/records", async (req, res) => {
     if (!ctx.institutionId)
       return res.status(400).json({ success: false, message: "Institution ID required." });
 
-    const schema = await getActiveSchema(pool, formName, ctx.institutionId, year);
+    let schema = await getActiveSchema(pool, formName, ctx.institutionId, year);
+    if (!schema && year != null)
+      schema = await getActiveSchema(pool, formName, ctx.institutionId, null);
     if (!schema)
       return res.status(404).json({ success: false, message: "No active schema found for this form." });
 
@@ -352,6 +419,17 @@ router.get("/:formName/records", async (req, res) => {
       ? (() => { queryParams.push(ctx.departmentId); return `AND (department_id = $${queryParams.length} OR department_id IS NULL)`; })()
       : "";
 
+    /* Year filter — restrict records to the selected academic year so each year's
+       data is isolated. Records saved before this feature existed carry year=NULL
+       and are included when no year is provided (legacy callers); when a year IS
+       provided they are excluded so the view stays year-clean. */
+    let yearClause = "";
+    const parsedYear = year != null ? Number(year) : NaN;
+    if (Number.isInteger(parsedYear) && parsedYear > 0) {
+      queryParams.push(parsedYear);
+      yearClause = `AND year = $${queryParams.length}`;
+    }
+
     /* Issue 7 — opt-in server pagination + search + sort. All three are OFF unless
        their query params are present, so existing callers get the byte-identical
        full, created_at-DESC result set as before. */
@@ -359,27 +437,36 @@ router.get("/:formName/records", async (req, res) => {
     const offsetNum = Number(req.query.offset) || 0;
     const paginate  = Number.isInteger(limitNum) && limitNum > 0;
 
-    // Searchable / sortable columns = active schema fields (validated identifiers).
-    const searchCols = activeFields(schema)
+    // Split schema fields into physical-column fields vs JSONB (custom_fields) fields.
+    // Physical columns support ORDER BY and plain col::text ILIKE search.
+    // JSONB fields must use custom_fields->>'col' ILIKE for search.
+    const physicalCols = await getPhysicalCols(pool, `${formName}_records`);
+    const allSchemaCols = activeFields(schema)
       .map((f) => dbCol(f.column_name))
       .filter((c) => /^[a-z][a-z0-9_]*$/.test(c));
+    const physSearchCols = allSchemaCols.filter(c => physicalCols.has(c));
+    const jsonbSearchCols = allSchemaCols.filter(c => !physicalCols.has(c));
+
     const searchTerm = (req.query.search ?? "").toString().trim();
 
-    // Validated ORDER BY — only created_at or a real active column; never raw input.
+    // Validated ORDER BY — only created_at or a physical column; never a JSONB key or raw input.
     const sortReq = (req.query.sort ?? "").toString().trim().toLowerCase();
-    const sortCol = (sortReq === "created_at" || searchCols.includes(sortReq)) ? sortReq : "created_at";
+    const sortCol = (sortReq === "created_at" || physSearchCols.includes(sortReq)) ? sortReq : "created_at";
     const sortDir = (req.query.dir ?? "").toString().toLowerCase() === "asc" ? "ASC" : "DESC";
-    // Stable tiebreaker only when paging/sorting is in play (keeps the default
-    // response ordering byte-identical to before).
     const orderBy = `ORDER BY ${sortCol} ${sortDir}${(paginate || sortReq) ? ", id DESC" : ""}`;
 
-    /* Appends a case-insensitive OR-search across all active columns. Pushes the
-       %term% param at the CURRENT position so the $n index is correct per branch. */
+    /* Appends a case-insensitive OR-search across all active columns. Physical
+       columns use col::text ILIKE; JSONB extra fields use custom_fields->>'col' ILIKE. */
     function searchClause() {
-      if (!searchTerm || searchCols.length === 0) return "";
+      if (!searchTerm || allSchemaCols.length === 0) return "";
       queryParams.push(`%${searchTerm}%`);
       const p = `$${queryParams.length}`;
-      return `AND (${searchCols.map((c) => `${c}::text ILIKE ${p}`).join(" OR ")})`;
+      const conditions = [
+        ...physSearchCols.map(c => `${c}::text ILIKE ${p}`),
+        ...jsonbSearchCols.map(c => `custom_fields->>'${c}' ILIKE ${p}`),
+      ];
+      if (conditions.length === 0) return "";
+      return `AND (${conditions.join(" OR ")})`;
     }
 
     let recordsQuery;
@@ -387,7 +474,7 @@ router.get("/:formName/records", async (req, res) => {
       const sc = searchClause();
       recordsQuery = `SELECT * FROM ${formName}_records
                       WHERE institution_id = $1 AND (language = 'en' OR language IS NULL)
-                      ${deptClause} ${sc}
+                      ${deptClause} ${yearClause} ${sc}
                       ${orderBy}`;
     } else {
       /* For non-English: return translated rows where they exist, PLUS English
@@ -403,10 +490,12 @@ router.get("/:formName/records", async (req, res) => {
           WHERE  language = ${langParam}
             AND  source_row_id IS NOT NULL
             AND  institution_id = $1
+            ${yearClause}
         )
         SELECT * FROM ${formName}_records
         WHERE institution_id = $1
           ${deptClause}
+          ${yearClause}
           AND (
             language = ${langParam}
             OR (
@@ -428,7 +517,15 @@ router.get("/:formName/records", async (req, res) => {
       recordsQuery += ` LIMIT ${limitNum} OFFSET ${Math.max(0, offsetNum)}`;
     }
 
-    const { rows: records } = await pool.query(recordsQuery, queryParams);
+    const { rows: rawRecords } = await pool.query(recordsQuery, queryParams);
+
+    /* Flatten extra fields stored in custom_fields JSONB into the top-level
+       row object so the frontend receives a uniform flat record regardless of
+       whether a field is a physical column or a JSONB extra field. */
+    const records = rawRecords.map(row => {
+      if (!row.custom_fields || typeof row.custom_fields !== "object") return row;
+      return { ...row, ...row.custom_fields };
+    });
 
     const { rows: lockRows } = await pool.query(
       `SELECT is_locked, locked_by, locked_at, deadline_at, COALESCE(auto_locked, false) AS auto_locked
@@ -634,39 +731,32 @@ router.post("/:formName/records", async (req, res) => {
     const fields    = activeFields(schema);
     const fieldCols = fields.map((f) => dbCol(f.column_name));
     const fieldModes = buildFieldModes(fields);
-    // SINGLE SOURCE OF TRUTH: the record's year is the year of the schema it uses.
-    const formYear  = schema.year;
+    const formYear  = effectiveYear ?? schema.year;
     const createdBy = req.user.userId || null;
 
-    // Diagnostics only (M-2) — record_year/schema_year/resolved_year. After the
-    // resolution above record.year always equals schema.year; this logs the rare
-    // case where the SELECTED year had no schema and we fell back to another year's.
-    if (effectiveYear != null && Number(effectiveYear) !== Number(formYear)) {
-      logger.warn("formData record year fell back to schema year (selected year has no schema)", {
-        formName, institutionId: ctx.institutionId,
-        resolved_year: effectiveYear, schema_year: formYear, record_year: formYear,
-      });
-    }
-
-    // Academic-year lock — checks the SELECTED year (X-Academic-Year header),
-    // falling back to the schema year. View-only when locked.
     const ayLock = await getAcademicYearLockBlockForReq(pool, req, ctx.institutionId, formYear);
     if (ayLock.locked)
       return res.status(403).json({ success: false, message: ayLock.message });
 
-    // Archive is a WRITE POLICY (highest precedence: Archive > Lock > Deadline).
-    // An archived form is view-only even when not locked. Checks the SELECTED
-    // year (X-Academic-Year header), falling back to the record's year.
     const archiveBlock = await getFormArchiveBlockForReq(pool, req, ctx.institutionId, formName, formYear);
     if (archiveBlock.blocked)
       return res.status(403).json({ success: false, message: archiveBlock.message });
 
+    /* Split schema fields: those with a physical column go to real DB columns;
+       extra fields (added after creation via schema edit in a new year) are
+       stored in the custom_fields JSONB column — no ALTER TABLE ever runs. */
+    const physicalCols  = await getPhysicalCols(pool, `${formName}_records`);
+    const baseFieldCols = fieldCols.filter(col => physicalCols.has(col));
+    const extraFieldCols = fieldCols.filter(col => !physicalCols.has(col));
+    const customFieldsJson = extraFieldCols.length > 0
+      ? JSON.stringify(Object.fromEntries(extraFieldCols.map(col => [col, data[col] ?? null])))
+      : null;
+
     const stdCols = ["form_name", "institution_id", "department_id", "year", "schema_id", "language", "created_by"];
     const stdVals = [formName, ctx.institutionId, ctx.departmentId, formYear, schema.id, language, createdBy];
-    const fieldVals = fieldCols.map((col) => data[col] ?? null);
 
-    const allCols = [...stdCols, ...fieldCols];
-    const allVals = [...stdVals, ...fieldVals];
+    const allCols = [...stdCols, "custom_fields", ...baseFieldCols];
+    const allVals = [...stdVals, customFieldsJson, ...baseFieldCols.map(col => data[col] ?? null)];
     const placeholders = allVals.map((_, i) => `$${i + 1}`).join(", ");
 
     const { rows } = await pool.query(
@@ -696,10 +786,12 @@ router.post("/:formName/records", async (req, res) => {
         await ensureSourceRowIdColumn(pool, tableName);
 
         const hiData = await translateRow(data, fieldModes);
+        const hiCustomFieldsJson = extraFieldCols.length > 0
+          ? JSON.stringify(Object.fromEntries(extraFieldCols.map(col => [col, hiData[col] ?? null])))
+          : null;
         const hiStdVals = [formName, ctx.institutionId, ctx.departmentId, formYear, schema.id, "hi", createdBy];
-        const hiFieldVals = fieldCols.map((col) => hiData[col] ?? null);
-        const hiAllCols = [...stdCols, ...fieldCols, "source_row_id"];
-        const hiAllVals = [...hiStdVals, ...hiFieldVals, enRow.id];
+        const hiAllCols = [...stdCols, "custom_fields", ...baseFieldCols, "source_row_id"];
+        const hiAllVals = [...hiStdVals, hiCustomFieldsJson, ...baseFieldCols.map(col => hiData[col] ?? null), enRow.id];
         const hiPlaceholders = hiAllVals.map((_, i) => `$${i + 1}`).join(", ");
 
         await pool.query(
@@ -749,18 +841,29 @@ router.put("/:formName/records/:id", async (req, res) => {
       return res.status(403).json({ success: false, message: lockBlock.message });
     }
 
-    const schema = await getActiveSchema(pool, formName, ctx.institutionId, null);
+    /* Fetch the record first so its own year drives the schema lookup.
+       A 2023 record must be validated/saved against the 2023 schema (a,b,c),
+       not the latest schema (which may be 2024: a,b,c,d). */
+    const { rows: targetRows } = await pool.query(
+      `SELECT language, year, updated_at FROM ${formName}_records WHERE id = $1 AND institution_id = $2`,
+      [id, ctx.institutionId]
+    );
+    if (!targetRows.length)
+      return res.status(404).json({ success: false, message: "Record not found." });
+    const editedLanguage = targetRows[0].language === "hi" ? "hi" : "en";
+    const recordYear = targetRows[0].year != null ? Number(targetRows[0].year) : null;
+
+    const schema = await getActiveSchema(pool, formName, ctx.institutionId, recordYear);
     if (!schema)
       return res.status(404).json({ success: false, message: "No active schema found." });
 
-    // Academic-year lock — checks the SELECTED year (header), falling back to
-    // the schema year. View-only when locked.
-    const ayLock = await getAcademicYearLockBlockForReq(pool, req, ctx.institutionId, schema.year);
+    // Academic-year lock — checks the record's own year.
+    const ayLock = await getAcademicYearLockBlockForReq(pool, req, ctx.institutionId, recordYear ?? schema.year);
     if (ayLock.locked)
       return res.status(403).json({ success: false, message: ayLock.message });
 
     // Archive write policy (highest precedence) — archived form is view-only.
-    const archiveBlock = await getFormArchiveBlockForReq(pool, req, ctx.institutionId, formName, schema.year);
+    const archiveBlock = await getFormArchiveBlockForReq(pool, req, ctx.institutionId, formName, recordYear ?? schema.year);
     if (archiveBlock.blocked)
       return res.status(403).json({ success: false, message: archiveBlock.message });
 
@@ -768,22 +871,26 @@ router.put("/:formName/records/:id", async (req, res) => {
     const fieldCols = fields.map((f) => dbCol(f.column_name));
     const fieldModes = buildFieldModes(fields);
 
-    /* Determine which language row is being edited so we apply the right rule:
-         en → update the English row AND regenerate its linked Hindi mirror
-         hi → update ONLY this Hindi row (English untouched, no reverse translation)
-       The language is read from the DB (not trusted from the client). */
-    const { rows: targetRows } = await pool.query(
-      `SELECT language, year FROM ${formName}_records WHERE id = $1 AND institution_id = $2`,
-      [id, ctx.institutionId]
-    );
-    if (!targetRows.length)
-      return res.status(404).json({ success: false, message: "Record not found." });
-    const editedLanguage = targetRows[0].language === "hi" ? "hi" : "en";
+    /* Split fields: base fields (physical columns) vs extra fields (JSONB). */
+    const physicalCols   = await getPhysicalCols(pool, `${formName}_records`);
+    const baseFieldCols  = fieldCols.filter(col => physicalCols.has(col));
+    const extraFieldCols = fieldCols.filter(col => !physicalCols.has(col));
+    const customFieldsJson = extraFieldCols.length > 0
+      ? JSON.stringify(Object.fromEntries(extraFieldCols.map(col => [col, data[col] ?? null])))
+      : null;
 
-    /* H-2 — enforce lock/archive/academic-year against the record's OWN year, so a
-       view-only old-year record can't be edited by selecting a different active
-       year via the X-Academic-Year header. Additive: the header-based checks above
-       still run; this only adds the missing record-year block. */
+    if (updated_at) {
+      const clientMs = new Date(updated_at).getTime();
+      const dbMs     = targetRows[0].updated_at ? new Date(targetRows[0].updated_at).getTime() : null;
+      if (dbMs != null && Number.isFinite(clientMs) && clientMs !== dbMs) {
+        return res.status(409).json({
+          success: false,
+          conflict: true,
+          message: "This record was modified by another user. Please refresh and try again.",
+        });
+      }
+    }
+
     const recYearBlock = await getYearWriteBlock(
       pool, formName, ctx.institutionId,
       targetRows[0].year != null ? Number(targetRows[0].year) : null
@@ -792,7 +899,11 @@ router.put("/:formName/records/:id", async (req, res) => {
       return res.status(403).json({ success: false, message: recYearBlock.message });
 
     let idx = 1;
-    const setClauses = [...fieldCols.map((col) => `${col} = $${idx++}`), `updated_at = now()`];
+    const setClauses = [
+      ...baseFieldCols.map(col => `${col} = $${idx++}`),
+      ...(extraFieldCols.length > 0 ? [`custom_fields = $${idx++}`] : []),
+      `updated_at = now()`,
+    ];
 
     let whereClause = `institution_id = $${idx++} AND id = $${idx++}`;
     const whereVals = [ctx.institutionId, id];
@@ -802,15 +913,11 @@ router.put("/:formName/records/:id", async (req, res) => {
       whereVals.push(ctx.departmentId);
     }
 
-    // Optimistic concurrency: when the client sends the updated_at it loaded, add
-    // it to the WHERE so a concurrent save by another session causes a 0-row result
-    // rather than silently overwriting their change.
-    if (updated_at) {
-      whereClause += ` AND updated_at = $${idx++}`;
-      whereVals.push(new Date(updated_at));
-    }
-
-    const vals = [...fieldCols.map((col) => data[col] ?? null), ...whereVals];
+    const vals = [
+      ...baseFieldCols.map(col => data[col] ?? null),
+      ...(extraFieldCols.length > 0 ? [customFieldsJson] : []),
+      ...whereVals,
+    ];
 
     const { rows } = await pool.query(
       `UPDATE ${formName}_records SET ${setClauses.join(", ")} WHERE ${whereClause} RETURNING *`,
@@ -818,20 +925,15 @@ router.put("/:formName/records/:id", async (req, res) => {
     );
 
     if (!rows.length) {
-      // Distinguish a genuine 404 from a concurrency conflict.
-      if (updated_at) {
-        const { rows: still } = await pool.query(
-          `SELECT 1 FROM ${formName}_records WHERE id = $1 AND institution_id = $2 LIMIT 1`,
-          [id, ctx.institutionId]
-        );
-        if (still.length) {
-          return res.status(409).json({
-            success: false,
-            conflict: true,
-            message: "This record was modified by another user. Please refresh and try again.",
-          });
-        }
-      }
+      // Concurrency is already checked above. A 0-row result here means the row
+      // exists but is outside this user's writable scope (e.g. a department admin
+      // editing another department's record), or it no longer exists.
+      const { rows: still } = await pool.query(
+        `SELECT 1 FROM ${formName}_records WHERE id = $1 AND institution_id = $2 LIMIT 1`,
+        [id, ctx.institutionId]
+      );
+      if (still.length)
+        return res.status(403).json({ success: false, message: "You do not have permission to edit this record." });
       return res.status(404).json({ success: false, message: "Record not found." });
     }
 
@@ -855,13 +957,21 @@ router.put("/:formName/records/:id", async (req, res) => {
         await ensureSourceRowIdColumn(pool, tableName);
 
         const hiData = await translateRow(data, fieldModes);
+        const hiCustomFieldsJson = extraFieldCols.length > 0
+          ? JSON.stringify(Object.fromEntries(extraFieldCols.map(col => [col, hiData[col] ?? null])))
+          : null;
+
         let hidx = 1;
-        const hiSetClauses = fieldCols.map((col) => `${col} = $${hidx++}`);
-        hiSetClauses.push(`updated_at = now()`);
-        // L-2 — scope the mirror update to the institution (defense-in-depth;
-        // source_row_id is already a unique UUID, but every other write in this
-        // file carries the tenant predicate).
-        const hiVals = [...fieldCols.map((col) => hiData[col] ?? null), id, ctx.institutionId];
+        const hiSetClauses = [
+          ...baseFieldCols.map(col => `${col} = $${hidx++}`),
+          ...(extraFieldCols.length > 0 ? [`custom_fields = $${hidx++}`] : []),
+          `updated_at = now()`,
+        ];
+        const hiVals = [
+          ...baseFieldCols.map(col => hiData[col] ?? null),
+          ...(extraFieldCols.length > 0 ? [hiCustomFieldsJson] : []),
+          id, ctx.institutionId,
+        ];
 
         const upd = await pool.query(
           `UPDATE ${tableName} SET ${hiSetClauses.join(", ")}
@@ -869,18 +979,14 @@ router.put("/:formName/records/:id", async (req, res) => {
           hiVals
         );
 
-        /* Bug 12 — translation-failure / toggle-on recovery: if NO Hindi mirror
-           exists (the create-time translation failed, or "Translate to Hindi" was
-           enabled only after this record was created), editing the English row must
-           CREATE the missing Hindi row, not silently no-op. Re-pair from the updated
-           English row so English↔Hindi counts stay equal. */
         if (upd.rowCount === 0) {
           const enRow = rows[0];
-          const hiCols = ["form_name", "institution_id", "department_id", "year", "schema_id", "language", "created_by", "source_row_id", ...fieldCols];
+          const hiCols = ["form_name", "institution_id", "department_id", "year", "schema_id", "language", "created_by", "source_row_id", "custom_fields", ...baseFieldCols];
           const hiAllVals = [
             formName, enRow.institution_id, enRow.department_id, enRow.year, enRow.schema_id,
             "hi", enRow.created_by ?? req.user.userId ?? null, enRow.id,
-            ...fieldCols.map((col) => hiData[col] ?? null),
+            hiCustomFieldsJson,
+            ...baseFieldCols.map(col => hiData[col] ?? null),
           ];
           const ph = hiAllVals.map((_, i) => `$${i + 1}`).join(", ");
           await pool.query(

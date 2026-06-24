@@ -20,6 +20,7 @@ const { verifyToken, requireRole } = require("../../middleware/auth");
 const { writeAuditLog }            = require("../../utils/audit");
 const logger                       = require("../../utils/logger");
 const { getLogContext }            = logger;
+const { translateSentence }        = require("../../services/translationService");
 
 const router = express.Router();
 router.use(verifyToken);
@@ -120,6 +121,29 @@ async function fetchImageBuffer(url) {
       req.on("timeout", () => { req.destroy(); reject(new Error("timeout")); });
     });
   } catch { return null; }
+}
+
+/* ─── Pre-translate metadata strings for Hindi compilation ──────────────────
+   Translates report title + every section title/description in one parallel
+   batch before any document generator runs. Results are stored in opts.hiStrings
+   and referenced by generateDocx / buildHtml so the entire document is in Hindi. */
+async function translateForHindi(report, sections) {
+  const tr = (text) => (text ? translateSentence(text).catch(() => text) : Promise.resolve(""));
+  const results = await Promise.all([
+    tr(report.title),
+    tr(report.report_type),          // e.g. "Annual" → "वार्षिक"
+    tr(report.institution_name),     // e.g. "AIIA" → institution name in Hindi
+    ...sections.map(s => tr(s.title)),
+    ...sections.map(s => tr(s.description)),
+  ]);
+  const n = sections.length;
+  return {
+    reportTitle:     results[0] || report.title,
+    reportType:      results[1] || report.report_type || "",
+    institutionName: results[2] || report.institution_name || "",
+    sectionTitles:   new Map(sections.map((s, i) => [s.id, results[3 + i]       || s.title])),
+    sectionDescs:    new Map(sections.map((s, i) => [s.id, results[3 + n + i]   || ""])),
+  };
 }
 
 /* ═════════════════════════════ STATUS CHECK ═════════════════════════════════ */
@@ -239,7 +263,15 @@ router.post(
            SELECT json_agg(
              json_build_object(
                'id', b.id, 'block_type', b.block_type,
-               'content', b.content, 'order_index', b.order_index
+               'content', b.content, 'order_index', b.order_index,
+               'translations', (
+                 SELECT COALESCE(
+                   jsonb_object_agg(bt.language, bt.content) FILTER (WHERE bt.language IS NOT NULL),
+                   '{}'::jsonb
+                 )
+                 FROM public.block_translations bt
+                 WHERE bt.block_id = b.id
+               )
              ) ORDER BY b.order_index
            ) AS blocks
            FROM public.section_blocks b
@@ -251,6 +283,11 @@ router.post(
 
       const sections = flattenToDocumentOrder(sectRes.rows);
       const opts     = { fmt, language, include_toc, include_numbering, approved_only };
+
+      // Pre-translate report title + section titles/descriptions when compiling in Hindi
+      if (language === "hi") {
+        opts.hiStrings = await translateForHindi(report, sections);
+      }
 
       const ts       = Date.now();
       const safeName = report.title.replace(/[^a-zA-Z0-9]/g, "_").slice(0, 60);
@@ -385,6 +422,8 @@ async function generateDocx(report, sections, outPath, opts) {
   };
 
   const sectionNumbers = opts.include_numbering ? buildSectionNumbers(sections) : new Map();
+  const lang    = opts.language === "hi" ? "hi" : "en";
+  const docFont = lang === "hi" ? "Mangal" : "Times New Roman";
 
   /* ── Inline style → formatting properties ── */
   function cssColorToHex(val) {
@@ -464,7 +503,7 @@ async function generateDocx(report, sections, outPath, opts) {
         italics:    fmt.italic  || undefined,
         size:       fmt.size    || 22,
         color:      fmt.color   || C.body,
-        font:       "Times New Roman",
+        font:       docFont,
         underline:  fmt.underline  ? { type: UnderlineType.SINGLE } : undefined,
         strike:     fmt.strike     || undefined,
         superScript: fmt.superScript || undefined,
@@ -581,18 +620,21 @@ async function generateDocx(report, sections, outPath, opts) {
   function sectionHeadingPara(section) {
     const depth = section.depth || 0;
     const num   = sectionNumbers.get(section.id);
-    const label = opts.include_numbering && num ? `${num}.  ${section.title}` : section.title;
+    const hi    = lang === "hi" && opts.hiStrings;
+    const title = hi ? (opts.hiStrings.sectionTitles.get(section.id) || section.title) : section.title;
+    const desc  = hi ? (opts.hiStrings.sectionDescs.get(section.id)  || section.description) : section.description;
+    const label = opts.include_numbering && num ? `${num}.  ${title}` : title;
 
     if (depth === 0) {
       return [
         new Paragraph({
-          children: [new TextRun({ text: label, bold: true, size: 30, color: C.primary })],
+          children: [new TextRun({ text: label, bold: true, size: 30, color: C.primary, font: docFont })],
           border: { bottom: { color: C.primary, space: 1, style: BorderStyle.SINGLE, size: 12 } },
           spacing: { before: 240, after: 120 },
           pageBreakBefore: undefined,
         }),
-        ...(section.description ? [new Paragraph({
-          children: [new TextRun({ text: section.description, italics: true, size: 18, color: C.gray })],
+        ...(desc ? [new Paragraph({
+          children: [new TextRun({ text: desc, italics: true, size: 18, color: C.gray, font: docFont })],
           spacing: { after: 80 },
         })] : []),
       ];
@@ -600,23 +642,23 @@ async function generateDocx(report, sections, outPath, opts) {
     if (depth === 1) {
       return [
         new Paragraph({
-          children: [new TextRun({ text: label, bold: true, size: 24, color: C.secondary })],
+          children: [new TextRun({ text: label, bold: true, size: 24, color: C.secondary, font: docFont })],
           spacing: { before: 180, after: 80 },
         }),
-        ...(section.description ? [new Paragraph({
-          children: [new TextRun({ text: section.description, italics: true, size: 18, color: C.gray })],
+        ...(desc ? [new Paragraph({
+          children: [new TextRun({ text: desc, italics: true, size: 18, color: C.gray, font: docFont })],
           spacing: { after: 60 },
         })] : []),
       ];
     }
     return [
       new Paragraph({
-        children: [new TextRun({ text: label, bold: true, size: 22, color: C.tertiary })],
+        children: [new TextRun({ text: label, bold: true, size: 22, color: C.tertiary, font: docFont })],
         indent: { left: 180 },
         spacing: { before: 120, after: 60 },
       }),
-      ...(section.description ? [new Paragraph({
-        children: [new TextRun({ text: section.description, italics: true, size: 16, color: C.gray })],
+      ...(desc ? [new Paragraph({
+        children: [new TextRun({ text: desc, italics: true, size: 16, color: C.gray, font: docFont })],
         indent: { left: 180 },
         spacing: { after: 60 },
       })] : []),
@@ -624,19 +666,26 @@ async function generateDocx(report, sections, outPath, opts) {
   }
 
   /* ── TABLE builder — handles both manual and form_import formats ── */
-  function buildTable(c) {
+  function buildTable(c, translations) {
+    let hi = null;
+    if (lang === "hi" && translations) {
+      const t = typeof translations === "string" ? (() => { try { return JSON.parse(translations); } catch { return {}; } })() : (translations || {});
+      hi = t.hi || null;
+    }
     const isFormImport = c.source === "form_import" || (c.columns && !Array.isArray(c.headers));
     let headers, dataRows;
 
     if (isFormImport) {
-      const cols = c.columns || [];
+      const cols = (hi && hi.columns) ? hi.columns : (c.columns || []);
       if (!cols.length) return null;
       headers  = cols.map(col => col.label || col.key);
-      dataRows = (c.rows || []).map(row => cols.map(col => String(row[col.key] ?? "")));
+      const srcRows = (hi && hi.rows) ? hi.rows : (c.rows || []);
+      dataRows = srcRows.map(row => cols.map(col => String(row[col.key] ?? "")));
     } else {
-      headers  = c.headers || [];
+      headers  = (hi && hi.headers) ? hi.headers : (c.headers || []);
       if (!headers.length) return null;
-      dataRows = (c.rows || []).map(row => Array.isArray(row) ? row.map(v => String(v ?? "")) : headers.map(() => ""));
+      const srcRows = (hi && hi.rows) ? hi.rows : (c.rows || []);
+      dataRows = srcRows.map(row => Array.isArray(row) ? row.map(v => String(v ?? "")) : headers.map(() => ""));
     }
 
     const colCount = headers.length;
@@ -644,22 +693,24 @@ async function generateDocx(report, sections, outPath, opts) {
 
     const headerRow = new TableRow({
       tableHeader: true,
+      cantSplit: true,
       children: headers.map(h => new TableCell({
         width: { size: colWidth, type: WidthType.DXA },
         shading: { type: ShadingType.CLEAR, fill: C.tblHead },
         children: [new Paragraph({
-          children: [new TextRun({ text: String(h), bold: true, size: 20, color: C.body })],
+          children: [new TextRun({ text: String(h), bold: true, size: 20, color: C.body, font: docFont })],
           spacing: { after: 0 },
         })],
       })),
     });
 
     const bodyRows = dataRows.map((row, ri) => new TableRow({
+      cantSplit: row.some(v => String(v).length > 200),
       children: row.map(val => new TableCell({
         width: { size: colWidth, type: WidthType.DXA },
         shading: ri % 2 === 1 ? { type: ShadingType.CLEAR, fill: C.tblAlt } : undefined,
         children: [new Paragraph({
-          children: [new TextRun({ text: val, size: 20, color: C.body })],
+          children: [new TextRun({ text: val, size: 20, color: C.body, font: docFont })],
           spacing: { after: 0 },
         })],
       })),
@@ -765,32 +816,44 @@ async function generateDocx(report, sections, outPath, opts) {
       try { c = JSON.parse(c); } catch { c = { html: c }; }
     }
     c = c || {};
+
+    // Resolve block translations (may arrive as string from json_build_object nesting)
+    let bTrans = block.translations;
+    if (typeof bTrans === "string") {
+      try { bTrans = JSON.parse(bTrans); } catch { bTrans = {}; }
+    }
+    bTrans = bTrans || {};
+    const hi = lang === "hi" ? (bTrans.hi || {}) : {};
+
     const els  = [];
     const gap  = () => new Paragraph({ text: "", spacing: { after: 60 } });
 
     switch (block.block_type) {
 
       case "PARAGRAPH": {
-        const raw = c.html || c.text || c.body || c.value
-          || (typeof c.content === "string" ? c.content : "")
-          || (typeof block.content === "string" ? block.content : "")
-          || "";
+        const raw = lang === "hi"
+          ? (hi.html || hi.text || c.html || c.text || c.body || c.value || "")
+          : (c.html || c.text || c.body || c.value
+              || (typeof c.content === "string" ? c.content : "")
+              || (typeof block.content === "string" ? block.content : "")
+              || "");
         if (raw) {
           els.push(...htmlToParagraphs(raw));
         } else {
           // Empty paragraph spacer so sections don't collapse
-          els.push(new Paragraph({ children: [new TextRun({ text: "" })], spacing: { after: 60 } }));
+          els.push(new Paragraph({ children: [new TextRun({ text: "", font: docFont })], spacing: { after: 60 } }));
         }
         break;
       }
 
       case "HEADING": {
-        const lvl   = Math.max(1, Math.min(3, c.level || 2));
-        const sizes = [36, 28, 24];  // 18pt, 14pt, 12pt
+        const lvl    = Math.max(1, Math.min(3, c.level || 2));
+        const sizes  = [36, 28, 24];  // 18pt, 14pt, 12pt
         const colors = [C.primary, C.secondary, C.tertiary];
         const hasBorder = lvl === 1;
+        const headText  = lang === "hi" ? (hi.text || c.text || "") : (c.text || "");
         els.push(new Paragraph({
-          children: [new TextRun({ text: c.text || "", bold: true, size: sizes[lvl - 1], color: colors[lvl - 1] })],
+          children: [new TextRun({ text: headText, bold: true, size: sizes[lvl - 1], color: colors[lvl - 1], font: docFont })],
           spacing: { before: lvl === 1 ? 180 : lvl === 2 ? 140 : 100, after: lvl === 1 ? 80 : 60 },
           border: hasBorder ? { bottom: { color: C.primary, space: 1, style: BorderStyle.SINGLE, size: 8 } } : undefined,
         }));
@@ -805,13 +868,13 @@ async function generateDocx(report, sections, outPath, opts) {
         break;
 
       case "LIST": {
-        const items   = c.items || [];
-        const ordered = !!c.ordered;
+        const items   = lang === "hi" ? (hi.items || c.items || []) : (c.items || []);
+        const ordered = !!(hi.ordered ?? c.ordered);
         items.forEach((item, i) => {
           els.push(new Paragraph({
             children: [
-              new TextRun({ text: ordered ? `${i + 1}.  ` : "•  ", bold: false, size: 22, color: C.body }),
-              new TextRun({ text: String(item || ""), size: 22, color: C.body }),
+              new TextRun({ text: ordered ? `${i + 1}.  ` : "•  ", bold: false, size: 22, color: C.body, font: docFont }),
+              new TextRun({ text: String(item || ""), size: 22, color: C.body, font: docFont }),
             ],
             indent: { left: 360 },
             spacing: { after: 40 },
@@ -854,7 +917,7 @@ async function generateDocx(report, sections, outPath, opts) {
       }
 
       case "TABLE": {
-        const tbl = buildTable(c);
+        const tbl = buildTable(c, bTrans);
         if (tbl) { els.push(tbl); els.push(gap()); }
         break;
       }
@@ -871,9 +934,10 @@ async function generateDocx(report, sections, outPath, opts) {
               }));
             } catch { /* skip broken image */ }
           }
-          if (c.caption) {
+          const imgCaption = lang === "hi" ? (hi.caption || c.caption) : c.caption;
+          if (imgCaption) {
             els.push(new Paragraph({
-              children: [new TextRun({ text: c.caption, italics: true, size: 18, color: C.gray })],
+              children: [new TextRun({ text: imgCaption, italics: true, size: 18, color: C.gray, font: docFont })],
               alignment: AlignmentType.CENTER,
               spacing: { after: 80 },
             }));
@@ -912,9 +976,11 @@ async function generateDocx(report, sections, outPath, opts) {
               alignment: AlignmentType.CENTER,
             }));
           }
-          if (col.caption) {
+          const hiCols = (lang === "hi" && hi.cols) ? hi.cols : [];
+          const gridCaption = hiCols[i]?.caption || col.caption;
+          if (gridCaption) {
             cellChildren.push(new Paragraph({
-              children: [new TextRun({ text: col.caption, italics: true, size: 16, color: C.gray })],
+              children: [new TextRun({ text: gridCaption, italics: true, size: 16, color: C.gray, font: docFont })],
               alignment: AlignmentType.CENTER,
               spacing: { after: 0 },
             }));
@@ -971,23 +1037,29 @@ async function generateDocx(report, sections, outPath, opts) {
   /* ── Build document children (title page + TOC + sections) ── */
   const children = [];
 
+  // Use translated report title when in Hindi mode
+  const docTitle = lang === "hi" && opts.hiStrings ? opts.hiStrings.reportTitle : report.title;
+
   // Report title block (matches A4Page + first-page block in wordDocUtils)
+  const docInstName = lang === "hi" && opts.hiStrings ? opts.hiStrings.institutionName : (report.institution_name || "");
   children.push(new Paragraph({
-    children: [new TextRun({ text: report.institution_name || "", bold: true, size: 24, color: C.primary })],
+    children: [new TextRun({ text: docInstName, bold: true, size: 24, color: C.primary, font: docFont })],
     alignment: AlignmentType.CENTER,
     spacing: { after: 60 },
   }));
   children.push(new Paragraph({
-    children: [new TextRun({ text: report.title, bold: true, size: 40, color: C.primary })],
+    children: [new TextRun({ text: docTitle, bold: true, size: 40, color: C.primary, font: docFont })],
     alignment: AlignmentType.CENTER,
     border: { bottom: { color: C.primary, space: 1, style: BorderStyle.SINGLE, size: 16 } },
     spacing: { after: 80 },
   }));
   if (report.report_type || report.academic_year) {
+    const hiType    = lang === "hi" && opts.hiStrings ? opts.hiStrings.reportType : report.report_type;
+    const subParts  = [hiType, report.academic_year].filter(Boolean);
     children.push(new Paragraph({
       children: [new TextRun({
-        text: [report.report_type, report.academic_year].filter(Boolean).join("   ·   "),
-        size: 18, color: C.gray, italics: true,
+        text: subParts.join("   ·   "),
+        size: 18, color: C.gray, italics: true, font: docFont,
       })],
       alignment: AlignmentType.CENTER,
       spacing: { after: 240 },
@@ -1042,7 +1114,7 @@ async function generateDocx(report, sections, outPath, opts) {
 
     // "TABLE OF CONTENTS" heading — starts on its own page
     children.push(new Paragraph({
-      children: [new TextRun({ text: "TABLE OF CONTENTS", bold: true, size: 28, color: C.primary })],
+      children: [new TextRun({ text: lang === "hi" ? "विषय-सूची" : "TABLE OF CONTENTS", bold: true, size: 28, color: C.primary, font: docFont })],
       alignment: AlignmentType.CENTER,
       border: { bottom: { color: C.primary, space: 1, style: BorderStyle.SINGLE, size: 8 } },
       spacing: { before: 0, after: 240 },
@@ -1052,16 +1124,19 @@ async function generateDocx(report, sections, outPath, opts) {
     for (const s of sections) {
       const depth  = s.depth || 0;
       const num    = sectionNumbers.get(s.id);
-      const label  = opts.include_numbering && num ? `${num}   ${s.title}` : s.title;
+      const sTitle = (lang === "hi" && opts.hiStrings)
+        ? (opts.hiStrings.sectionTitles.get(s.id) || s.title)
+        : s.title;
+      const label  = opts.include_numbering && num ? `${num}   ${sTitle}` : sTitle;
       const indent = depth * 360;
       const isH1   = depth === 0;
       const pgNum  = String(tocPageMap.get(s.id) || "");
 
       children.push(new Paragraph({
         children: [
-          new TextRun({ text: label, size: isH1 ? 22 : 20, bold: isH1, color: isH1 ? C.primary : C.body }),
-          new TextRun({ text: "\t", size: isH1 ? 22 : 20 }),
-          new TextRun({ text: pgNum, size: isH1 ? 22 : 20, bold: isH1, color: isH1 ? C.primary : C.body }),
+          new TextRun({ text: label, size: isH1 ? 22 : 20, bold: isH1, color: isH1 ? C.primary : C.body, font: docFont }),
+          new TextRun({ text: "\t", size: isH1 ? 22 : 20, font: docFont }),
+          new TextRun({ text: pgNum, size: isH1 ? 22 : 20, bold: isH1, color: isH1 ? C.primary : C.body, font: docFont }),
         ],
         indent: { left: indent },
         tabStops: [{ type: TabStopType.RIGHT, position: TabStopPosition.MAX, leader: dotLeader }],
@@ -1136,15 +1211,16 @@ async function generateDocx(report, sections, outPath, opts) {
   }
 
   // ── Header: report meta + title ──
-  const hdrMeta = [report.report_type, report.academic_year].filter(Boolean).join("  ");
+  const hiType  = lang === "hi" && opts.hiStrings ? opts.hiStrings.reportType : report.report_type;
+  const hdrMeta = [hiType, report.academic_year].filter(Boolean).join("  ");
   const docHeader = new Header({
     children: [
       ...(bgHeaderPara ? [bgHeaderPara] : []),
       new Paragraph({
         children: [
-          new TextRun({ text: hdrMeta, size: 15, color: C.lightGray }),
+          new TextRun({ text: hdrMeta, size: 15, color: C.lightGray, font: docFont }),
           new TextRun({ text: "\t", size: 15 }),
-          new TextRun({ text: report.title, size: 15, color: C.lightGray }),
+          new TextRun({ text: docTitle, size: 15, color: C.lightGray, font: docFont }),
         ],
         tabStops: [{ type: TabStopType.RIGHT, position: TabStopPosition.MAX }],
         border: { bottom: { color: C.border, space: 1, style: BorderStyle.SINGLE, size: 2 } },
@@ -1159,8 +1235,8 @@ async function generateDocx(report, sections, outPath, opts) {
     children: [
       new Paragraph({
         children: [
-          // Left: institution name
-          new TextRun({ text: report.institution_name || "", size: 15, color: C.lightGray }),
+          // Left: institution name (translated for Hindi)
+          new TextRun({ text: (lang === "hi" && opts.hiStrings ? opts.hiStrings.institutionName : report.institution_name) || "", size: 15, color: C.lightGray, font: docFont }),
           // Tab to center
           new TextRun({ text: "\t", size: 15 }),
           // Center: page number only (just "1", "2" — no total)
@@ -1223,7 +1299,7 @@ async function generateDocx(report, sections, outPath, opts) {
     styles: {
       default: {
         document: {
-          run: { font: "Times New Roman", size: 22, color: C.body },
+          run: { font: docFont, size: 22, color: C.body },
           paragraph: { spacing: { line: 432, lineRule: "auto" } },
         },
       },
@@ -1262,7 +1338,12 @@ async function generatePdf(report, sections, outPath, opts) {
   ]);
 
   const html    = buildHtml(report, sections, opts, { logoDataUrl, bgDataUrl, coverDataUrl });
-  const hdrMeta = [report.report_type, report.academic_year].filter(Boolean).join("  ");
+  const pdfHiType   = opts.language === "hi" && opts.hiStrings ? opts.hiStrings.reportType : report.report_type;
+  const hdrMeta     = [pdfHiType, report.academic_year].filter(Boolean).join("  ");
+  const pdfDocTitle = opts.language === "hi" && opts.hiStrings ? opts.hiStrings.reportTitle : report.title;
+  const pdfFont     = opts.language === "hi"
+    ? "'Noto Sans Devanagari','Mangal','Arial Unicode MS',sans-serif"
+    : "'Times New Roman',Times,serif";
   const browser = await puppeteer.launch({ args: ["--no-sandbox", "--disable-setuid-sandbox"] });
   try {
     const page = await browser.newPage();
@@ -1272,18 +1353,18 @@ async function generatePdf(report, sections, outPath, opts) {
       printBackground: true,
       displayHeaderFooter: true,
       headerTemplate: `
-        <div style="font-size:8px;font-family:'Times New Roman',Times,serif;color:#9ca3af;
+        <div style="font-size:8px;font-family:${pdfFont};color:#9ca3af;
                     width:100%;padding:6px 25mm 4px;box-sizing:border-box;
                     display:flex;justify-content:space-between;border-bottom:1px solid #e5e7eb;">
           <span>${escHtml(hdrMeta)}</span>
-          <span>${escHtml(report.title || "")}</span>
+          <span>${escHtml(pdfDocTitle || "")}</span>
         </div>`,
       footerTemplate: `
         <div style="font-size:8px;font-family:'Times New Roman',Times,serif;color:#374151;
                     width:100%;padding:4px 25mm 6px;box-sizing:border-box;
                     display:grid;grid-template-columns:1fr auto 1fr;align-items:center;
                     border-top:1px solid #e5e7eb;">
-          <span style="text-align:left;">${escHtml(report.institution_name || "")}</span>
+          <span style="text-align:left;">${escHtml((opts.language === "hi" && opts.hiStrings ? opts.hiStrings.institutionName : report.institution_name) || "")}</span>
           <span style="text-align:center;font-weight:700;font-size:9px;" class="pageNumber"></span>
           <span style="text-align:right;">
             ${logoDataUrl
@@ -1306,29 +1387,45 @@ async function generatePdf(report, sections, outPath, opts) {
 
 function buildHtml(report, sections, opts, assets = {}) {
   const { logoDataUrl = null, bgDataUrl = null, coverDataUrl = null } = assets;
-  const hasBg = !!(bgDataUrl || report.bg_image_url);
+  const hasBg  = !!(bgDataUrl || report.bg_image_url);
+  const hlang  = opts.language === "hi" ? "hi" : "en";
+  const isHindi = hlang === "hi";
   const sectionNumbers = opts.include_numbering ? buildSectionNumbers(sections) : new Map();
 
   /* ── Block → HTML, matching WordBlock component ── */
   function blockHtml(block) {
-    const c = block.content || {};
+    let c = block.content || {};
+    if (typeof c === "string") { try { c = JSON.parse(c); } catch { c = { html: c }; } }
+
+    // Resolve translations
+    let bTrans = block.translations;
+    if (typeof bTrans === "string") { try { bTrans = JSON.parse(bTrans); } catch { bTrans = {}; } }
+    const hi = isHindi ? ((bTrans || {}).hi || {}) : {};
+
     switch (block.block_type) {
 
-      case "PARAGRAPH":
-        return `<div class="para">${c.html || escHtml(c.text || "")}</div>`;
+      case "PARAGRAPH": {
+        const rawHtml = isHindi
+          ? (hi.html || hi.text || c.html || c.text || "")
+          : (c.html || escHtml(c.text || ""));
+        return `<div class="para">${rawHtml}</div>`;
+      }
 
       case "HEADING": {
-        const lvl = Math.max(1, Math.min(3, c.level || 2));
-        return `<div class="ch${lvl}">${escHtml(c.text || "")}</div>`;
+        const lvl  = Math.max(1, Math.min(3, c.level || 2));
+        const text = isHindi ? (hi.text || c.text || "") : (c.text || "");
+        return `<div class="ch${lvl}">${escHtml(text)}</div>`;
       }
 
       case "DIVIDER":
         return `<hr class="divider">`;
 
       case "LIST": {
-        const tag   = c.ordered ? "ol" : "ul";
-        const items = (c.items || []).map(i => `<li>${escHtml(i)}</li>`).join("");
-        return `<${tag} class="blk-list">${items}</${tag}>`;
+        const items   = isHindi ? (hi.items || c.items || []) : (c.items || []);
+        const ordered = !!(hi.ordered ?? c.ordered);
+        const tag     = ordered ? "ol" : "ul";
+        const itemsHtml = items.map(i => `<li>${escHtml(i)}</li>`).join("");
+        return `<${tag} class="blk-list">${itemsHtml}</${tag}>`;
       }
 
       case "KPI": {
@@ -1362,39 +1459,47 @@ function buildHtml(report, sections, opts, assets = {}) {
       case "TABLE": {
         const isForm = c.source === "form_import" || (c.columns && !Array.isArray(c.headers));
         if (isForm) {
-          const cols = c.columns || [];
+          const cols = (isHindi && hi.columns) ? hi.columns : (c.columns || []);
           if (!cols.length) return "";
+          const rows = (isHindi && hi.rows) ? hi.rows : (c.rows || []);
           const head = `<thead><tr>${cols.map(col => `<th>${escHtml(col.label || col.key)}</th>`).join("")}</tr></thead>`;
-          const body = `<tbody>${(c.rows || []).map((row, ri) =>
+          const body = `<tbody>${rows.map((row, ri) =>
             `<tr class="${ri % 2 === 1 ? "alt" : ""}">${cols.map(col => `<td>${escHtml(String(row[col.key] ?? ""))}</td>`).join("")}</tr>`
           ).join("")}</tbody>`;
           return `<table class="data-tbl">${head}${body}</table>`;
         }
-        const hdrs = c.headers || [];
+        const hdrs = (isHindi && hi.headers) ? hi.headers : (c.headers || []);
         if (!hdrs.length) return "";
+        const srcRows = (isHindi && hi.rows) ? hi.rows : (c.rows || []);
         const head = `<thead><tr>${hdrs.map(h => `<th>${escHtml(h)}</th>`).join("")}</tr></thead>`;
-        const body = `<tbody>${(c.rows || []).map((row, ri) => {
+        const body = `<tbody>${srcRows.map((row, ri) => {
           const cells = Array.isArray(row) ? row : hdrs.map(() => "");
           return `<tr class="${ri % 2 === 1 ? "alt" : ""}">${cells.map(v => `<td>${escHtml(String(v ?? ""))}</td>`).join("")}</tr>`;
         }).join("")}</tbody>`;
         return `<table class="data-tbl">${head}${body}</table>`;
       }
 
-      case "IMAGE":
+      case "IMAGE": {
         if (!c.url) return "";
+        const htmlImgCap = isHindi ? (hi.caption || c.caption || "") : (c.caption || "");
         return `<div class="img-wrap">
-          <img src="${escHtml(c.url)}" alt="${escHtml(c.caption || "")}" style="width:${c.widthPct ?? 100}%;border-radius:3px;border:1px solid #e5e7eb">
-          ${c.caption ? `<div class="img-cap">${escHtml(c.caption)}</div>` : ""}
+          <img src="${escHtml(c.url)}" alt="${escHtml(htmlImgCap)}" style="width:${c.widthPct ?? 100}%;border-radius:3px;border:1px solid #e5e7eb">
+          ${htmlImgCap ? `<div class="img-cap">${escHtml(htmlImgCap)}</div>` : ""}
         </div>`;
+      }
 
       case "IMAGE_GRID": {
         const cols = c.cols || [];
         if (!cols.length) return "";
-        const items = cols.map(col => `
+        const hiCols = isHindi ? (hi.cols || []) : [];
+        const items = cols.map((col, gi) => {
+          const gridCap = hiCols[gi]?.caption || col.caption || "";
+          return `
           <div>
             ${col.url ? `<img src="${escHtml(col.url)}" style="width:100%;border-radius:3px;border:1px solid #e5e7eb">` : `<div class="img-placeholder">[Image]</div>`}
-            ${col.caption ? `<div class="img-cap">${escHtml(col.caption)}</div>` : ""}
-          </div>`).join("");
+            ${gridCap ? `<div class="img-cap">${escHtml(gridCap)}</div>` : ""}
+          </div>`;
+        }).join("");
         return `<div class="img-grid" style="grid-template-columns:repeat(${cols.length},1fr)">${items}</div>`;
       }
 
@@ -1408,12 +1513,15 @@ function buildHtml(report, sections, opts, assets = {}) {
 
   /* ── Section header HTML, matching SectionHeader component ── */
   function sectionHeaderHtml(section) {
-    const depth = section.depth || 0;
-    const num   = sectionNumbers.get(section.id);
-    const label = opts.include_numbering && num ? `${num}.&nbsp;&nbsp;${escHtml(section.title)}` : escHtml(section.title);
-    const cls   = depth === 0 ? "sec-h1" : depth === 1 ? "sec-h2" : "sec-h3";
+    const depth  = section.depth || 0;
+    const num    = sectionNumbers.get(section.id);
+    const hiStr  = isHindi && opts.hiStrings;
+    const title  = hiStr ? (opts.hiStrings.sectionTitles.get(section.id) || section.title) : section.title;
+    const descTx = hiStr ? (opts.hiStrings.sectionDescs.get(section.id)  || section.description) : section.description;
+    const label  = opts.include_numbering && num ? `${num}.&nbsp;&nbsp;${escHtml(title)}` : escHtml(title);
+    const cls    = depth === 0 ? "sec-h1" : depth === 1 ? "sec-h2" : "sec-h3";
     const indent = depth >= 2 ? ` style="padding-left:10px"` : "";
-    const desc   = section.description ? `<div class="sec-desc">${escHtml(section.description)}</div>` : "";
+    const desc   = descTx ? `<div class="sec-desc">${escHtml(descTx)}</div>` : "";
     return `<div class="${cls}"${indent}>${label}${desc}</div>`;
   }
 
@@ -1448,7 +1556,10 @@ function buildHtml(report, sections, opts, assets = {}) {
     const rows = sections.map(s => {
       const depth  = s.depth || 0;
       const num    = sectionNumbers.get(s.id);
-      const label  = opts.include_numbering && num ? `${num}&nbsp;&nbsp;${escHtml(s.title)}` : escHtml(s.title);
+      const sTitle = (isHindi && opts.hiStrings)
+        ? (opts.hiStrings.sectionTitles.get(s.id) || s.title)
+        : s.title;
+      const label  = opts.include_numbering && num ? `${num}&nbsp;&nbsp;${escHtml(sTitle)}` : escHtml(sTitle);
       const pgNum  = tocMap.get(s.id) || "";
       const indent = depth * 22;
       const fw     = depth === 0 ? "700" : "400";
@@ -1461,7 +1572,7 @@ function buildHtml(report, sections, opts, assets = {}) {
       </div>`;
     }).join("");
     tocHtml = `<div class="toc-page">
-      <div class="sec-h1" style="text-align:center;margin-top:0;margin-bottom:24px">TABLE OF CONTENTS</div>
+      <div class="sec-h1" style="text-align:center;margin-top:0;margin-bottom:24px">${isHindi ? "विषय-सूची" : "TABLE OF CONTENTS"}</div>
       ${rows}
     </div>`;
   }
@@ -1492,29 +1603,31 @@ function buildHtml(report, sections, opts, assets = {}) {
     : "";
 
   /* ── Title page ── */
+  const htmlDocTitle = isHindi && opts.hiStrings ? opts.hiStrings.reportTitle : report.title;
   const logoSrc = logoDataUrl || (report.logo_url ? escHtml(report.logo_url) : null);
   const titleHtml = `
     <div class="title-page">
       ${logoSrc ? `<img src="${logoSrc}" style="height:52px;float:right">` : ""}
       <div style="clear:both"></div>
       <div style="font-family:'Calibri','Segoe UI',Arial,sans-serif;font-size:13pt;font-weight:700;color:#1F3864;text-align:center;margin-bottom:8px">
-        ${escHtml(report.institution_name || "")}
+        ${escHtml((isHindi && opts.hiStrings ? opts.hiStrings.institutionName : report.institution_name) || "")}
       </div>
-      <div class="title-main">${escHtml(report.title)}</div>
+      <div class="title-main">${escHtml(htmlDocTitle)}</div>
       ${(report.report_type || report.academic_year)
-        ? `<div class="title-sub">${escHtml([report.report_type, report.academic_year].filter(Boolean).join("   ·   "))}</div>`
+        ? `<div class="title-sub">${escHtml([(isHindi && opts.hiStrings ? opts.hiStrings.reportType : report.report_type), report.academic_year].filter(Boolean).join("   ·   "))}</div>`
         : ""}
     </div>`;
 
   return `<!DOCTYPE html>
-<html lang="en">
+<html lang="${hlang}">
 <head>
 <meta charset="UTF-8">
-<title>${escHtml(report.title)}</title>
+<title>${escHtml(htmlDocTitle)}</title>
 <style>
+${isHindi ? `@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;700&display=swap');` : ""}
 /* ── Base ── */
 body {
-  font-family: 'Times New Roman', Times, serif;
+  font-family: ${isHindi ? "'Noto Sans Devanagari', 'Mangal', 'Lohit Devanagari', 'Arial Unicode MS', sans-serif" : "'Times New Roman', Times, serif"};
   font-size: 12pt; color: #111827; margin: 0; padding: 20px;
   background: #808080;
 }
@@ -1548,10 +1661,10 @@ body {
 .ch3 { font-size: 12px; font-weight: 700; color: #374151; margin-bottom: 5px; margin-top: 10px; }
 
 /* ── Paragraph ── */
-.para { font-family: 'Times New Roman', Times, serif; font-size: 12pt; line-height: 1.8; color: #111827; margin-bottom: 10px; word-break: break-word; }
+.para { font-size: 12pt; line-height: 1.8; color: #111827; margin-bottom: 10px; word-break: break-word; }
 
 /* ── List ── */
-.blk-list { font-family: 'Times New Roman', Times, serif; font-size: 12pt; color: #111827; padding-left: 20px; line-height: 1.75; margin: 4px 0 10px; }
+.blk-list { font-size: 12pt; color: #111827; padding-left: 20px; line-height: 1.75; margin: 4px 0 10px; }
 .blk-list li { margin-bottom: 2px; }
 
 /* ── Divider ── */
@@ -1559,10 +1672,11 @@ hr.divider { border: none; border-top: 1px solid #9ca3af; margin: 10px 0 12px; }
 
 /* ── Tables ── */
 .data-tbl { border-collapse: collapse; width: 100%; margin: 8px 0 12px; font-size: 10pt; }
-.data-tbl th { background: #D0CECE; font-weight: 700; padding: 4px 7px; text-align: left; border: 1px solid #9ca3af; color: #111827; }
-.data-tbl td { border: 1px solid #9ca3af; padding: 4px 7px; color: #111827; vertical-align: top; }
+.data-tbl thead { display: table-header-group; }
+.data-tbl th { background: #D0CECE; font-weight: 700; padding: 5px 8px; text-align: left; border: 1px solid #9ca3af; color: #111827; }
+.data-tbl td { border: 1px solid #9ca3af; padding: 5px 8px; color: #111827; vertical-align: top; word-break: break-word; }
 .data-tbl tr.alt td { background: #f9fafb; }
-.data-tbl tr.tot td { background: #D0CECE; font-weight: 700; }
+.data-tbl tr.tot td, .data-tbl tr.tot th { background: #D0CECE; font-weight: 700; }
 
 /* ── KPI ── */
 .kpi-block { margin: 8px 0 12px; }
@@ -1592,6 +1706,15 @@ hr.divider { border: none; border-top: 1px solid #9ca3af; margin: 10px 0 12px; }
   .page-wrapper { box-shadow: none; margin: 0; padding: 0; }
   .section[style*="page-break-before"] { page-break-before: always; }
   .toc-page { page-break-after: always; }
+  /* Table: repeat header row on every page, avoid mid-row breaks */
+  .data-tbl thead { display: table-header-group; }
+  .data-tbl tfoot { display: table-footer-group; }
+  .data-tbl tr { page-break-inside: avoid; break-inside: avoid; }
+  /* Keep images with their captions */
+  .img-wrap, .kpi-block { page-break-inside: avoid; }
+  /* Avoid orphaned section headings */
+  .sec-h1, .sec-h2, .sec-h3 { page-break-after: avoid; }
+  .ch1, .ch2, .ch3 { page-break-after: avoid; }
 }
 ${hasBg ? `
 /* ── Background image: white text so content is visible over the image ── */

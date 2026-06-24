@@ -20,7 +20,6 @@ function isInstituteWideRole(role) {
     n === "super_admin" ||
     n === "institute_admin" ||
     n === "finance_admin" ||
-    n.includes("finance_officer") ||
     d.includes("director") ||
     d.includes("publication")
   );

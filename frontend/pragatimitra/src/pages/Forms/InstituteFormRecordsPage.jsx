@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useApi } from "../../hooks/useApi";
+import { useAcademicYear } from "../../store/AcademicYearContext";
 import { useLanguage } from "../../i18n/LanguageContext";
 import { Lock, Inbox, Search as SearchIcon } from "lucide-react";
 import { S, Toast, isAuthError, formatDate } from "../../components/shared/formUtils";
@@ -87,6 +88,8 @@ const PAGE_SIZE = 15;
 export default function InstituteFormRecordsPage({ form, onBack }) {
   const { apiFetch } = useApi();
   const { lang } = useLanguage();
+  const { selectedYear, years } = useAcademicYear() || {};
+  const yearAware = (years?.length || 0) > 0;
 
   const [grouped, setGrouped] = useState({});
   const [departments, setDepartments] = useState([]);
@@ -107,14 +110,18 @@ export default function InstituteFormRecordsPage({ form, onBack }) {
   };
 
   const load = useCallback(async () => {
+    // For year-aware institutions, wait until the year context has resolved so
+    // we never flash unfiltered (all-years) data before selectedYear is known.
+    if (yearAware && selectedYear == null) return;
     setLoading(true);
     setError("");
     try {
       // Fetch records and authoritative lock status in parallel.
       // Reading lock-status separately guarantees the toggle reflects the DB
       // even if the records payload is older / missing the lock field.
+      const yearQS = selectedYear != null ? `&year=${selectedYear}` : "";
       const [recordsRes, lockRes] = await Promise.all([
-        apiFetch(`/api/forms/${form.form_name}/institution-records?language=${lang}`),
+        apiFetch(`/api/forms/${form.form_name}/institution-records?language=${lang}${yearQS}`),
         apiFetch(`/api/forms/${form.form_name}/lock-status`),
       ]);
       const data     = await recordsRes.json();
@@ -146,7 +153,7 @@ export default function InstituteFormRecordsPage({ form, onBack }) {
     } finally {
       setLoading(false);
     }
-  }, [apiFetch, form.form_name, lang]);
+  }, [apiFetch, form.form_name, lang, selectedYear, yearAware]);
 
   useEffect(() => { load(); }, [load]);
 

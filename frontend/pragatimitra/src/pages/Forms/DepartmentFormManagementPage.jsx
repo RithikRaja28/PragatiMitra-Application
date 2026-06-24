@@ -220,7 +220,7 @@ export default function DepartmentFormManagementPage() {
             ? <MenuItem icon={<ArchiveRestore size={16} strokeWidth={STROKE} />} disabled={busyId === form.id} onClick={() => setArchive(form, false)}>{t("Activate for", lang)} {academicYear || selectedYear}</MenuItem>
             : <MenuItem icon={<Archive size={16} strokeWidth={STROKE} />} disabled={busyId === form.id} onClick={() => setArchive(form, true)}>{t("Archive for", lang)} {academicYear || selectedYear}</MenuItem>}
           {form.is_locked
-            ? <MenuItem icon={<Unlock size={16} strokeWidth={STROKE} />} disabled={busyId === form.id} onClick={() => toggleLock(form)}>{t("Unlock form", lang)}</MenuItem>
+            ? <MenuItem icon={<Unlock size={16} strokeWidth={STROKE} />} disabled={busyId === form.id || !!form.deadline_expired} title={form.deadline_expired ? t("Deadline has expired — remove the deadline first to unlock", lang) : undefined} onClick={() => !form.deadline_expired && toggleLock(form)}>{t("Unlock form", lang)}</MenuItem>
             : <MenuItem icon={<Lock size={16} strokeWidth={STROKE} />} disabled={busyId === form.id} onClick={() => toggleLock(form)}>{t("Lock form", lang)}</MenuItem>}
         </Dropdown>
       </div>

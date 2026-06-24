@@ -191,11 +191,8 @@ const TEMPLATES = {
     "audit_logs",
   ],
   dept_admin: ["manage_dept_users"],
-  hod: ["delegate_nodal", "review_content", "submit_for_review"],
-  nodal_officer: ["fill_dept_forms", "write_narrative", "submit_for_review"],
   contributor: ["fill_dept_forms", "write_narrative"],
   reviewer: ["review_content"],
-  finance_officer: ["fill_finance_forms", "upload_statements"],
   director: ["final_signoff", "review_content"],
 };
 
@@ -1545,7 +1542,7 @@ export default function RoleAccessPage() {
       const res = await apiFetch("/api/roles");
       const data = await res.json();
       if (!data.success) throw new Error(data.message);
-      setRoles(data.data);
+      setRoles(data.data.filter((r) => r.name !== "nodal_officer"));
     } catch (e) {
       setError(e.message);
     } finally {

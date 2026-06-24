@@ -5,7 +5,7 @@ const { verifyToken, requireRole } = require("../middleware/auth");
 const { writeAuditLog } = require("../utils/audit");
 const logger = require("../utils/logger");
 const { translateSentence, enrichSchemaLabels } = require("../services/translationService");
-const { formatAcademicYear, ensureYearRows, setFormStatusForYear, ensureFormArchivedIfUnclassified, getInstitutionStartYears, getAcademicYearLockBlockForReq } = require("../services/academicYearService");
+const { formatAcademicYear, ensureYearRows, setFormStatusForYear, ensureFormArchivedIfUnclassified, getInstitutionStartYears, getAcademicYearLockBlockForReq, resolveOperatingYear } = require("../services/academicYearService");
 const { ensureSchemaExists, publishSchemaSnapshot } = require("../services/schemaPropagationService");
 const { resolveUserDomain, resolveListFilterDomain, assertFormDomainAccess, normalizeDomain } = require("../services/domainService");
 const { enqueueEmail } = require("../services/mailService");
@@ -145,9 +145,25 @@ router.get("/institution-forms", async (req, res) => {
     }
 
     /* ── Contributor visibility: a pure contributor only sees forms ASSIGNED to
-       them for the selected academic year (year-scoped). Other roles unaffected. ── */
+       them for the selected academic year (year-scoped). Other roles unaffected.
+       isContributorOnly uses dbRoles (no NOA inflation) so a NOA-elevated contributor
+       is still filtered to their assignments — they're acting as a contributor here,
+       not as an admin. */
     if (isContributorOnly(req)) {
-      const y = req.query.year != null ? Number(req.query.year) : new Date().getFullYear();
+      // Safety: if filterDomain is null (e.g., institute_admin from NOA bypassed the
+      // domain filter), re-apply the contributor's stored domain from the DB so
+      // hospital/finance forms never leak through to an academic contributor.
+      if (!filterDomain) {
+        const { rows: uRows } = await pool.query(
+          "SELECT COALESCE(role_domain, 'academic') AS d FROM users WHERE id = $1",
+          [req.user.userId]
+        );
+        const contribDomain = uRows[0]?.d || "academic";
+        rows = rows.filter((f) => (f.form_domain || "academic") === contribDomain);
+      }
+      const headerYear = Number(req.get("X-Academic-Year"));
+      const y = req.query.year != null ? Number(req.query.year)
+              : (Number.isInteger(headerYear) && headerYear > 0 ? headerYear : new Date().getFullYear());
       const assignedIds = new Set(await getAssignedFormIds(pool, req.user.userId, y));
       rows = rows.filter((f) => assignedIds.has(String(f.id)));
     }
@@ -367,30 +383,66 @@ router.get("/:formName/schema", async (req, res) => {
       return res.status(400).json({ success: false, message: "Institution ID required." });
     }
 
+    // Get year-specific schema row; if none exists yet for that year (e.g. no
+    // edit has happened in this year yet), fall back to the latest active row
+    // — its fields are inherited via the base-merge below.
     const params = [formName, institutionId];
     let yearClause = "";
     if (year) { yearClause = " AND year = $3"; params.push(year); }
-
-    const { rows } = await pool.query(
+    let { rows } = await pool.query(
       `SELECT * FROM custom_field_schemas
        WHERE form_name = $1 AND institution_id = $2 AND is_active = true
        ${yearClause}
        ORDER BY year DESC LIMIT 1`,
       params
     );
-
+    if (!rows.length && year) {
+      const fb = await pool.query(
+        `SELECT * FROM custom_field_schemas
+         WHERE form_name = $1 AND institution_id = $2 AND is_active = true
+         ORDER BY year DESC LIMIT 1`,
+        [formName, institutionId]
+      );
+      rows = fb.rows;
+    }
     if (!rows.length) {
       return res.status(404).json({ success: false, message: "Schema not found." });
     }
+    const row = rows[0];
 
-    // Form-level Hindi translation toggle lives on table_list (per form).
+    // Get the base (creation-year) schema to merge in base fields.
+    // When the fetched row IS the base row (single row or creation year), no merge needed.
+    const { rows: baseRows } = await pool.query(
+      `SELECT * FROM custom_field_schemas
+       WHERE form_name = $1 AND institution_id = $2 AND is_active = true
+       ORDER BY year ASC NULLS LAST, created_at ASC NULLS LAST LIMIT 1`,
+      [formName, institutionId]
+    );
+    const baseRow = baseRows[0] || null;
+
+    let mergedSchema = row;
+    if (baseRow && baseRow.id !== row.id) {
+      const baseFields    = baseRow.schema?.fields || [];
+      const extraFields   = row.schema?.fields || [];
+      const baseFieldNames = new Set(baseFields.map(f => f.column_name));
+      const uniqueExtra   = extraFields.filter(f => !baseFieldNames.has(f.column_name));
+      mergedSchema = {
+        ...row,
+        schema: { ...row.schema, fields: [...baseFields, ...uniqueExtra] },
+        used_column_names: [
+          ...(baseRow.used_column_names || []),
+          ...(row.used_column_names || []).filter(n => !baseFieldNames.has(n)),
+        ],
+      };
+    }
+
     const { rows: tlRows } = await pool.query(
       `SELECT COALESCE(translate_to_hindi, true) AS translate_to_hindi FROM table_list WHERE form_name = $1`,
       [formName]
     );
     const translateToHindi = tlRows[0] ? tlRows[0].translate_to_hindi : true;
 
-    return res.json({ success: true, schema: rows[0], translate_to_hindi: translateToHindi });
+    return res.json({ success: true, schema: mergedSchema, translate_to_hindi: translateToHindi });
   } catch (err) {
     logger.error("GET /api/forms/:formName/schema", { stack: err.stack });
     return res.status(500).json({ success: false, message: "Failed to fetch schema." });
@@ -428,7 +480,7 @@ function buildRecordsTableDDL(tableName, fields) {
   ];
   const fixed = (fields || []).map((f) => {
     const col = f.column_name.toLowerCase().replace(/\s+/g, "_");
-    return `${col} ${pgType(f.type)}`;
+    return `"${col}" ${pgType(f.type)}`;
   });
   return `CREATE TABLE IF NOT EXISTS ${tableName} (\n  ${[...standard, ...fixed].join(",\n  ")}\n)`;
 }
@@ -611,7 +663,7 @@ router.post(
           const colName = field.column_name.trim().toLowerCase().replace(/\s+/g, "_");
           if (/^[a-z][a-z0-9_]*$/.test(colName)) {
             await client.query(
-              `ALTER TABLE ${recordsTable} ADD COLUMN IF NOT EXISTS ${colName} ${pgType(field.type)}`
+              `ALTER TABLE ${recordsTable} ADD COLUMN IF NOT EXISTS "${colName}" ${pgType(field.type)}`
             );
           }
         }
@@ -693,6 +745,18 @@ router.post(
             );
             const institutionName = instRows[0]?.institution_name || "Your Institution";
 
+            // Admin role to notify depends on the form's domain:
+            //   academic → institute_admin
+            //   hospital → hospital_admin (+ institute_admin as fallback)
+            //   finance  → finance_admin  (+ institute_admin as fallback)
+            const domainAdminRole =
+              effectiveFormDomain === "hospital" ? "hospital_admin"
+              : effectiveFormDomain === "finance" ? "finance_admin"
+              : "institute_admin";
+            const adminRoles = domainAdminRole === "institute_admin"
+              ? ["institute_admin"]
+              : [domainAdminRole, "institute_admin"];
+
             const { rows: admins } = await pool.query(
               `SELECT DISTINCT u.id, u.full_name, u.email
                FROM users u
@@ -700,10 +764,10 @@ router.post(
                JOIN roles r ON r.id = ur.role_id
                WHERE u.institution_id = $1
                  AND u.account_status = 'ACTIVE'
-                 AND r.name = 'institute_admin'
+                 AND r.name = ANY($2::text[])
                  AND ur.revoked_at IS NULL
                  AND (ur.expires_at IS NULL OR ur.expires_at > now())`,
-              [institutionId]
+              [institutionId, adminRoles]
             );
 
             const academicYear = formatAcademicYear(formYear);
@@ -910,32 +974,86 @@ router.put(
       try {
         await client.query("BEGIN");
 
-        // Load current schema row
+        // Try to find an existing schema row for the exact target year.
         const { rows: existing } = await client.query(
           `SELECT id, schema, used_column_names FROM custom_field_schemas
            WHERE form_name = $1 AND institution_id = $2 AND year = $3`,
           [formName, institutionId, formYear]
         );
 
-        if (!existing.length) {
-          await client.query("ROLLBACK");
-          return res.status(404).json({ success: false, message: "Schema not found for this form/institution/year." });
+        // When no row exists for this year, find the most recent year's row to use
+        // as the base (inheriting field definitions and type constraints). A new row
+        // is then INSERTED for formYear so each academic year has its own schema.
+        let currentRow;
+        let isNewYearSchema = false;
+        if (existing.length) {
+          currentRow = existing[0];
+        } else {
+          const { rows: baseRows } = await client.query(
+            `SELECT id, schema, used_column_names FROM custom_field_schemas
+             WHERE form_name = $1 AND institution_id = $2 AND is_active = true
+             ORDER BY year DESC NULLS LAST LIMIT 1`,
+            [formName, institutionId]
+          );
+          if (!baseRows.length) {
+            await client.query("ROLLBACK");
+            return res.status(404).json({ success: false, message: "No existing schema found for this form." });
+          }
+          currentRow = baseRows[0];
+          isNewYearSchema = true;
         }
 
-        const currentRow = existing[0];
-        const usedColumnNames = new Set(currentRow.used_column_names || []);
-        const currentFieldNames = new Set(
-          (currentRow.schema?.fields || []).map((f) => f.column_name)
+        // Collect the union of ALL years' used_column_names so reuse validation
+        // spans the full history — not just the current year's row.
+        const { rows: allUsedRows } = await client.query(
+          `SELECT used_column_names FROM custom_field_schemas
+           WHERE form_name = $1 AND institution_id = $2`,
+          [formName, institutionId]
+        );
+        const allHistoricalCols = new Set(
+          allUsedRows.flatMap((r) => r.used_column_names || [])
         );
 
-        // Validate: active (non-excluded) incoming fields must not reuse a previously-deleted column name
+        // Determine which fields are physical (base) columns and which are extra
+        // (JSONB). Physical columns are those that already exist in the records table.
+        // Base fields (physical) can never be re-added as extra fields.
+        const { rows: physCols } = await client.query(
+          `SELECT column_name FROM information_schema.columns
+           WHERE table_schema = 'public' AND table_name = $1
+             AND column_name NOT IN ('id','form_name','institution_id','department_id','year',
+                                      'schema_id','status','order_index','custom_fields',
+                                      'language','source_row_id','created_by','updated_by',
+                                      'created_at','updated_at','academic_year','role_name')`,
+          [recordsTable]
+        );
+        const physicalColSet = new Set(physCols.map(r => r.column_name));
+
+        // Get base (creation-year) schema row to identify the creation year.
+        const { rows: baseSchemaRows } = await client.query(
+          `SELECT year FROM custom_field_schemas
+           WHERE form_name = $1 AND institution_id = $2 AND is_active = true
+           ORDER BY year ASC NULLS LAST, created_at ASC NULLS LAST LIMIT 1`,
+          [formName, institutionId]
+        );
+        const creationYear = baseSchemaRows[0]?.year ?? formYear;
+        const isCreationYear = formYear === creationYear;
+
+        // currentFieldNames includes physical (base) cols so reuse-check doesn't
+        // block base field names appearing in subsequent-year extra schemas.
+        const currentFieldNames = new Set([
+          ...physicalColSet,
+          ...(currentRow.schema?.fields || []).map((f) => f.column_name),
+        ]);
+
         const incomingFields = schema.fields || [];
         const excludedFixedCols = new Set(schema.excluded_fixed_columns || []);
 
+        // Reuse validation: a column name that was EVER used (and deleted) in any
+        // year cannot appear again — prevents re-exposure of stale data.
         const reused = incomingFields
           .filter((f) => !excludedFixedCols.has(f.column_name))
           .map((f) => f.column_name?.trim().toLowerCase().replace(/\s+/g, "_"))
-          .filter((col) => col && usedColumnNames.has(col) && !currentFieldNames.has(col));
+          .filter((col) => col && allHistoricalCols.has(col) && !currentFieldNames.has(col));
 
         if (reused.length > 0) {
           await client.query("ROLLBACK");
@@ -945,11 +1063,8 @@ router.put(
           });
         }
 
-        // Bug 9 — an existing field's TYPE is immutable: its records-table column
-        // was created with that type and is never ALTERed, so accepting a changed
-        // type would make the schema disagree with the stored data and corrupt new
-        // writes. Force each already-saved field back to its stored type (the
-        // builder locks this in the UI; this is the defense-in-depth backstop).
+        // Field type is immutable once created (physical col types can't change;
+        // extra/JSONB field types are also locked for consistency).
         const existingTypeByCol = new Map(
           (currentRow.schema?.fields || []).map((f) => [f.column_name, f.type])
         );
@@ -957,22 +1072,45 @@ router.put(
           if (existingTypeByCol.has(f.column_name)) f.type = existingTypeByCol.get(f.column_name);
         }
 
-        // Merge new column names into used_column_names
-        const newColNames = collectColumnNames(incomingFields);
-        const mergedUsed = Array.from(new Set([...usedColumnNames, ...newColNames]));
+        /* For the creation year: save all fields (base + any extras added this year)
+           and ADD physical columns for brand-new fields (existing behaviour).
+           For subsequent years: save ONLY extra fields (those without a physical
+           column) — no ALTER TABLE ever runs. Extra field values are stored in the
+           custom_fields JSONB column of the records table. */
+        const fieldsToSave = isCreationYear
+          ? incomingFields
+          : incomingFields.filter(f => {
+              const col = f.column_name?.trim().toLowerCase().replace(/\s+/g, "_");
+              return col && !physicalColSet.has(col) && !excludedFixedCols.has(f.column_name);
+            });
 
-        // Update schema in-place
-        const { rows: sRows } = await client.query(
-          `UPDATE custom_field_schemas
-           SET schema = $1::jsonb,
-               used_column_names = $2,
-               updated_by = $3
-           WHERE form_name = $4 AND institution_id = $5 AND year = $6
-           RETURNING id`,
-          [JSON.stringify(schema), mergedUsed, req.user.userId, formName, institutionId, formYear]
-        );
+        const schemaToSave = { ...schema, fields: fieldsToSave };
+        const newColNames = collectColumnNames(fieldsToSave);
+        const mergedUsed  = Array.from(new Set([...allHistoricalCols, ...newColNames]));
 
-        // Update the form-level Hindi translation toggle (table_list) when provided.
+        let schemaId;
+        if (isNewYearSchema) {
+          const { rows: sRows } = await client.query(
+            `INSERT INTO custom_field_schemas
+               (form_name, institution_id, year, schema, is_active, created_by, used_column_names)
+             VALUES ($1, $2, $3, $4::jsonb, true, $5, $6)
+             RETURNING id`,
+            [formName, institutionId, formYear, JSON.stringify(schemaToSave), req.user.userId, mergedUsed]
+          );
+          schemaId = sRows[0].id;
+        } else {
+          const { rows: sRows } = await client.query(
+            `UPDATE custom_field_schemas
+             SET schema = $1::jsonb,
+                 used_column_names = $2,
+                 updated_by = $3
+             WHERE form_name = $4 AND institution_id = $5 AND year = $6
+             RETURNING id`,
+            [JSON.stringify(schemaToSave), mergedUsed, req.user.userId, formName, institutionId, formYear]
+          );
+          schemaId = sRows[0].id;
+        }
+
         if (typeof translate_to_hindi === "boolean") {
           await client.query(
             `UPDATE table_list SET translate_to_hindi = $1, updated_by = $2, updated_at = now()
@@ -981,33 +1119,41 @@ router.put(
           );
         }
 
-        // ADD COLUMN only for fields that are active (not excluded) and genuinely new
-        const visibleNewFields = incomingFields.filter(
-          (f) => !excludedFixedCols.has(f.column_name) && !currentFieldNames.has(f.column_name)
-        );
-        for (const field of visibleNewFields) {
-          const colName = field.column_name.trim().toLowerCase().replace(/\s+/g, "_");
-          if (/^[a-z][a-z0-9_]*$/.test(colName)) {
-            await client.query(
-              `ALTER TABLE ${recordsTable} ADD COLUMN IF NOT EXISTS ${colName} ${pgType(field.type)}`
-            );
+        // For the creation year only: ADD physical columns for genuinely new fields.
+        // Subsequent-year new fields are JSONB — no ALTER TABLE.
+        if (isCreationYear) {
+          const visibleNewFields = incomingFields.filter(
+            (f) => !excludedFixedCols.has(f.column_name) && !currentFieldNames.has(f.column_name)
+          );
+          for (const field of visibleNewFields) {
+            const colName = field.column_name.trim().toLowerCase().replace(/\s+/g, "_");
+            if (/^[a-z][a-z0-9_]*$/.test(colName)) {
+              await client.query(
+                `ALTER TABLE ${recordsTable} ADD COLUMN IF NOT EXISTS "${colName}" ${pgType(field.type)}`
+              );
+            }
           }
         }
 
         await client.query("COMMIT");
 
         await writeAuditLog(req, {
-          actionType: "UPDATE_FORM",
+          actionType: isNewYearSchema ? "CREATE_YEAR_SCHEMA" : "UPDATE_FORM",
           entityType: "form",
-          entityId: sRows[0].id,
-          newValue: { form_name: formName, year: formYear, institution_id: institutionId },
-          message: `Form Updated - "${formName}"`,
+          entityId: schemaId,
+          newValue: { form_name: formName, year: formYear, institution_id: institutionId, new_year_schema: isNewYearSchema },
+          message: isNewYearSchema
+            ? `Form schema created for year ${formYear} - "${formName}"`
+            : `Form Updated - "${formName}"`,
         });
 
         return res.json({
           success: true,
-          message: "Schema updated successfully.",
-          schema_id: sRows[0].id,
+          message: isNewYearSchema
+            ? `Schema created for academic year ${formYear}.`
+            : "Schema updated successfully.",
+          schema_id: schemaId,
+          new_year_schema: isNewYearSchema,
         });
       } catch (err) {
         await client.query("ROLLBACK");
@@ -1053,6 +1199,17 @@ router.get("/:formName/institution-records", async (req, res) => {
        ORDER BY year DESC LIMIT 1`,
       schemaParams
     );
+    // Year-specific lookup found nothing — fall back to the latest active schema
+    // (same pattern as formData.js getActiveSchema so the view never errors out
+    // just because the schema wasn't created for the exact selected year).
+    if (!schemaRows.length && year) {
+      ({ rows: schemaRows } = await pool.query(
+        `SELECT * FROM custom_field_schemas
+         WHERE form_name = $1 AND institution_id = $2 AND is_active = true
+         ORDER BY year DESC LIMIT 1`,
+        [formName, institutionId]
+      ));
+    }
     if (!schemaRows.length) {
       // Shared-form fallback: use the creator's canonical schema row.
       const fbParams = [formName];
@@ -1062,6 +1219,16 @@ router.get("/:formName/institution-records", async (req, res) => {
       if (year) { fq += ` AND cfs.year = $2`; fbParams.push(year); }
       fq += ` ORDER BY cfs.year DESC LIMIT 1`;
       ({ rows: schemaRows } = await pool.query(fq, fbParams));
+    }
+    // Shared-form year-specific fallback also found nothing — try latest shared schema.
+    if (!schemaRows.length && year) {
+      ({ rows: schemaRows } = await pool.query(
+        `SELECT cfs.* FROM custom_field_schemas cfs
+         JOIN table_list tl ON tl.form_name = cfs.form_name
+         WHERE cfs.form_name = $1 AND tl.share_table = true AND cfs.is_active = true
+         ORDER BY cfs.year DESC LIMIT 1`,
+        [formName]
+      ));
     }
     if (!schemaRows.length) {
       return res.status(404).json({ success: false, message: "No active schema found for this form." });
@@ -1077,7 +1244,22 @@ router.get("/:formName/institution-records", async (req, res) => {
       return res.json({ success: true, schema, departments: [], grouped: {} });
     }
 
-    const { rows: records } = await pool.query(
+    const recParams = [institutionId, language];
+    let yearRecClause = "";
+    let parsedYear = year != null ? Number(year) : NaN;
+    if (!Number.isInteger(parsedYear) || parsedYear <= 0) {
+      // No explicit year in query — fall back to the institution's active year so
+      // the view stays year-scoped even when the client hasn't resolved its year
+      // context yet (e.g. initial page load before sessionStorage is read).
+      const opYear = await resolveOperatingYear(pool, institutionId);
+      if (opYear != null) parsedYear = Number(opYear);
+    }
+    if (Number.isInteger(parsedYear) && parsedYear > 0) {
+      recParams.push(parsedYear);
+      yearRecClause = `AND r.year = $${recParams.length}`;
+    }
+
+    const { rows: rawRecords } = await pool.query(
       `SELECT r.*,
               COALESCE(d_rec.name, d_user.name) AS resolved_department_name
        FROM ${formName}_records r
@@ -1086,9 +1268,16 @@ router.get("/:formName/institution-records", async (req, res) => {
        LEFT JOIN departments d_user ON d_user.department_id  = u.department_id
        WHERE r.institution_id = $1
          AND (r.language = $2 OR ($2 = 'en' AND r.language IS NULL))
+         ${yearRecClause}
        ORDER BY r.created_at DESC`,
-      [institutionId, language]
+      recParams
     );
+
+    // Flatten custom_fields JSONB into top-level so the frontend sees a flat record.
+    const records = rawRecords.map(row => {
+      if (!row.custom_fields || typeof row.custom_fields !== "object") return row;
+      return { ...row, ...row.custom_fields };
+    });
 
     const grouped = {};
     const counts = new Map();
@@ -1376,6 +1565,53 @@ router.post(
         entityId: rows[0].id,
         newValue: { form_name: formName, institution_id: institutionId, is_locked: true },
         message: `Form Locked - "${formName}"`,
+      });
+
+      // Notify contributors assigned to this form that it is now locked (fire-and-forget).
+      setImmediate(async () => {
+        try {
+          const { rows: lockerRows } = await pool.query(
+            `SELECT full_name FROM users WHERE id = $1`, [req.user.userId]
+          );
+          const lockedByName = lockerRows[0]?.full_name || "Administrator";
+
+          const { rows: instRows } = await pool.query(
+            `SELECT institution_name FROM institutions WHERE institution_id = $1`, [institutionId]
+          );
+          const institutionName = instRows[0]?.institution_name || "";
+
+          // All contributors with an active assignment for this form in any year.
+          const { rows: assignees } = await pool.query(
+            `SELECT DISTINCT u.id, u.full_name, u.email
+             FROM form_assignments fa
+             JOIN table_list tl ON tl.id = fa.form_id
+             JOIN users u ON u.id = fa.assigned_to
+             WHERE tl.form_name = $1
+               AND fa.institution_id = $2
+               AND fa.is_active = true
+               AND u.account_status = 'ACTIVE'`,
+            [formName, institutionId]
+          );
+
+          const loginUrl = process.env.APP_LOGIN_URL || "http://localhost:5173/login";
+          await Promise.all(assignees.map((a) =>
+            enqueueEmail(pool, {
+              eventId:         "form_locked",
+              recipientEmail:  a.email,
+              recipientUserId: a.id,
+              payload: {
+                full_name:        a.full_name,
+                form_name:        formName,
+                institution_name: institutionName,
+                locked_by_name:   lockedByName,
+                login_url:        loginUrl,
+              },
+            })
+          ));
+          logger.info(`Enqueued form_locked for ${assignees.length} contributor(s) — form "${formName}"`);
+        } catch (err) {
+          logger.error("Failed to enqueue form_locked email", { stack: err.stack });
+        }
       });
 
       return res.json({ success: true, message: `Form "${formName}" locked.`, lock: rows[0] });

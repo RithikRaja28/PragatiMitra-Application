@@ -394,14 +394,16 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
     ? (initialData?.form_name || "")
     : toIdentifier(basics.form_name);
 
-  /* New forms inherit the top-bar academic year (institution context). The year
-     is no longer typed in — it follows the selected academic year. Edit mode
-     keeps the existing schema's year (that schema belongs to that year). */
+  /* Always follow the top-bar academic year — create, adapt, AND edit.
+     In edit mode this means the save targets the SELECTED year's schema row:
+     if one exists for that year it is updated in-place; if not, a new year-
+     specific schema row is created (backend UPSERT), giving each academic year
+     its own schema version (e.g. 2023: a,b,c  →  2024: a,b,c,d). */
   useEffect(() => {
-    if ((isCreate || isAdapt) && selectedYear != null) {
+    if (selectedYear != null) {
       setBasics((b) => (b.year === selectedYear ? b : { ...b, year: selectedYear }));
     }
-  }, [isCreate, isAdapt, selectedYear]);
+  }, [selectedYear]);
 
   /* ── Languages ── */
   const [languages, setLanguages] = useState([{ code: "en", name: "English" }]);
@@ -429,7 +431,7 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
   useEffect(() => {
     if (!isEdit || !initialData?.form_name) return;
 
-    function applySchema(existingSchema, year) {
+    function applySchema(existingSchema) {
       if (!existingSchema?.fields) return;
       // Deduplicate by normalised column name — old saves could have ghost duplicates
       const seen = new Set();
@@ -444,30 +446,32 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
       const fromExcluded = existingSchema.excluded_fixed_columns || [];
       const fromHidden   = existingSchema.fields.filter((f) => f.hidden).map((f) => f.column_name);
       setExcludedFixed(new Set([...fromExcluded, ...fromHidden]));
+      // NOTE: basics.year is intentionally NOT set here. It must always follow
+      // selectedYear (see the effect above) so a save always targets the
+      // currently-selected navbar year — never the year the loaded fields
+      // happened to come from (which can be an earlier year via merge/fallback).
       setBasics((b) => ({
         ...b,
         description: existingSchema.description || b.description,
-        year: year || b.year,
       }));
     }
 
-    // If initialData already carries a full schema object, use it directly
-    if (initialData.schema?.fields) {
-      applySchema(initialData.schema, initialData.year);
-      if (initialData.used_column_names?.length) {
-        setUsedColumnNames(new Set(initialData.used_column_names));
-      }
-      return;
-    }
+    // NOTE: initialData.schema (when present) is a RAW per-year custom_field_schemas
+    // row from the forms list — it is NOT merged with base/physical fields and may
+    // legitimately be empty (a year with no extra fields yet). It must never be
+    // trusted directly for the field list; always fetch the merged schema below.
 
-    // Otherwise fetch the active schema from the API
+    // Fetch the active schema from the API for the SELECTED year so
+    // the loaded fields match what the navbar year actually shows (merged
+    // base + that year's extra fields), not just whatever row sorts latest.
     setColsLoading(true);
     setColsError("");
-    apiFetch(`/api/forms/${initialData.form_name}/schema`)
+    const yearQuery = selectedYear != null ? `?year=${selectedYear}` : "";
+    apiFetch(`/api/forms/${initialData.form_name}/schema${yearQuery}`)
       .then((r) => r.json())
       .then((data) => {
         if (data.success && data.schema) {
-          applySchema(data.schema.schema, data.schema.year);
+          applySchema(data.schema.schema);
           if (data.schema.used_column_names?.length) {
             setUsedColumnNames(new Set(data.schema.used_column_names));
           }
@@ -480,7 +484,7 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
       })
       .catch((err) => { if (!isAuthError(err)) setColsError("Failed to fetch schema."); })
       .finally(() => setColsLoading(false));
-  }, [isEdit, initialData, apiFetch]);
+  }, [isEdit, initialData, apiFetch, selectedYear]);
 
   /* ── Load table columns in adapt mode ── */
   useEffect(() => {
@@ -601,11 +605,17 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
     const currentColumnNames = new Set(
       fields.map((f) => f.column_name.trim().toLowerCase().replace(/\s+/g, "_")).filter(Boolean)
     );
+    const seen = new Set();
     for (const f of activeFields) {
       if (!f.column_name.trim()) { setSubmitError("All fields must have a column name."); return false; }
       if (!f.label?.en?.trim())  { setSubmitError("All fields must have an English label."); return false; }
+      const normalized = f.column_name.trim().toLowerCase().replace(/\s+/g, "_");
+      if (seen.has(normalized)) {
+        setSubmitError(`Column name "${normalized}" is used by more than one field. Each field must have a unique column name.`);
+        return false;
+      }
+      seen.add(normalized);
       if (!f.is_fixed) {
-        const normalized = f.column_name.trim().toLowerCase().replace(/\s+/g, "_");
         if (usedColumnNames.has(normalized) && !currentColumnNames.has(normalized)) {
           setSubmitError(`Column name "${normalized}" was previously used and cannot be reused.`);
           return false;
@@ -638,7 +648,7 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
       } else {
         res = await apiFetch(`/api/forms/${initialData.form_name}/schema`, {
           method: "PUT",
-          body: JSON.stringify({ schema, year: initialData.year || basics.year, translate_to_hindi: basics.translate_to_hindi }),
+          body: JSON.stringify({ schema, year: basics.year, translate_to_hindi: basics.translate_to_hindi }),
         });
       }
 

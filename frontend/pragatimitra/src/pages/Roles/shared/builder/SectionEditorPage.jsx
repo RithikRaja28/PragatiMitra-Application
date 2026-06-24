@@ -542,8 +542,14 @@ const CON_H = A4_H  - MARG * 2;   // 979 px content height (page body)
 const TITLE_H = 110;               // approximate height taken by title block on page 1
 
 /* ── render one block in Word style ── */
-function WordBlock({ block }) {
-  const c = block.content || {};
+function WordBlock({ block, lang = "en", measureIdx = null }) {
+  const c    = block.content || {};
+  const isHi = lang === "hi";
+  // Block translations live in block.translations[language] (block_translations table),
+  // mirroring only the translatable text fields of `content`. Fall back to English
+  // whenever the active language has no translation row yet, or the field is empty.
+  const t    = isHi ? (block.translations?.hi || {}) : null;
+  const pick = (hiVal, enVal) => (isHi && hiVal) ? hiVal : enVal;
 
   switch (block.block_type) {
 
@@ -551,7 +557,7 @@ function WordBlock({ block }) {
       return (
         <div
           style={{ fontFamily: DOC_FONT, fontSize: 11, lineHeight: 1.8, color: "#111827", marginBottom: 10, wordBreak: "break-word" }}
-          dangerouslySetInnerHTML={{ __html: c.html || c.text || "<em style='color:#9ca3af'>Empty paragraph</em>" }}
+          dangerouslySetInnerHTML={{ __html: pick(t?.html, c.html || c.text) || "<em style='color:#9ca3af'>Empty paragraph</em>" }}
         />
       );
 
@@ -563,7 +569,7 @@ function WordBlock({ block }) {
       };
       return (
         <div style={{ fontFamily: DOC_FONT, fontWeight: 700, ...lvlStyle[c.level || 2] }}>
-          {c.text || "Heading"}
+          {pick(t?.text, c.text) || "Heading"}
         </div>
       );
     }
@@ -571,20 +577,22 @@ function WordBlock({ block }) {
     case "IMAGE": {
       const w = c.widthPct ?? 100;
       const alignMap = { left: "flex-start", center: "center", right: "flex-end" };
+      const alt     = pick(t?.alt, c.alt);
+      const caption = pick(t?.caption, c.caption);
       return (
         <div style={{ display: "flex", justifyContent: alignMap[c.align] || "center", margin: "8px 0 12px" }}>
           <div style={{ width: `${w}%` }}>
             {c.url ? (
-              <img src={c.url} alt={c.alt || c.caption || ""} style={{ width: "100%", borderRadius: 3, border: "1px solid #e5e7eb" }}
+              <img src={c.url} alt={alt || caption || ""} style={{ width: "100%", borderRadius: 3, border: "1px solid #e5e7eb" }}
                 onError={(e) => { e.currentTarget.style.display = "none"; }} />
             ) : (
               <div style={{ height: 60, background: "#f9fafb", border: "1px dashed #d1d5db", borderRadius: 4, display: "flex", alignItems: "center", justifyContent: "center", color: "#9ca3af", fontSize: 10 }}>
                 [Image]
               </div>
             )}
-            {c.caption && (
+            {caption && (
               <div style={{ fontFamily: DOC_FONT, fontSize: 9, color: "#6b7280", textAlign: "center", marginTop: 3, fontStyle: "italic" }}>
-                {c.caption}
+                {caption}
               </div>
             )}
           </div>
@@ -593,58 +601,86 @@ function WordBlock({ block }) {
     }
 
     case "IMAGE_GRID": {
-      const cols = c.cols || [];
+      const cols   = c.cols || [];
+      const hiCols = t?.cols || [];
       return (
         <div style={{ display: "grid", gridTemplateColumns: `repeat(${cols.length || 2}, 1fr)`, gap: 8, margin: "8px 0 12px" }}>
-          {cols.map((col, i) => (
-            <div key={i}>
-              {col.url ? (
-                <img src={col.url} alt={col.alt || col.caption || `Image ${i + 1}`} style={{ width: "100%", borderRadius: 3, border: "1px solid #e5e7eb" }}
-                  onError={(e) => { e.currentTarget.style.display = "none"; }} />
-              ) : (
-                <div style={{ height: 60, background: "#f9fafb", border: "1px dashed #d1d5db", borderRadius: 4, display: "flex", alignItems: "center", justifyContent: "center", color: "#9ca3af", fontSize: 9 }}>[Image {i + 1}]</div>
-              )}
-              {col.caption && (
-                <div style={{ fontFamily: DOC_FONT, fontSize: 9, color: "#6b7280", textAlign: "center", marginTop: 2, fontStyle: "italic" }}>{col.caption}</div>
-              )}
-            </div>
-          ))}
+          {cols.map((col, i) => {
+            const hiCol   = hiCols[i] || {};
+            const alt     = pick(hiCol.alt, col.alt);
+            const caption = pick(hiCol.caption, col.caption);
+            return (
+              <div key={i}>
+                {col.url ? (
+                  <img src={col.url} alt={alt || caption || `Image ${i + 1}`} style={{ width: "100%", borderRadius: 3, border: "1px solid #e5e7eb" }}
+                    onError={(e) => { e.currentTarget.style.display = "none"; }} />
+                ) : (
+                  <div style={{ height: 60, background: "#f9fafb", border: "1px dashed #d1d5db", borderRadius: 4, display: "flex", alignItems: "center", justifyContent: "center", color: "#9ca3af", fontSize: 9 }}>[Image {i + 1}]</div>
+                )}
+                {caption && (
+                  <div style={{ fontFamily: DOC_FONT, fontSize: 9, color: "#6b7280", textAlign: "center", marginTop: 2, fontStyle: "italic" }}>{caption}</div>
+                )}
+              </div>
+            );
+          })}
         </div>
       );
     }
 
     case "TABLE": {
       const isFormImport = c.source === "form_import";
-      // Form-import blocks store columns as [{key,label}] and rows as objects keyed by col.key;
-      // manually-built tables store headers as a string[] and rows as arrays of cell values.
-      const headers = isFormImport ? (c.columns || []).map(col => col.label || col.key) : (c.headers || []);
-      const rows    = c.rows || [];
+      const dataLanguage = c.language === "hi" ? "hi" : "en";
+      const useTranslation = isHi && lang !== dataLanguage && t;
+      const fmtColumns = (isFormImport && useTranslation && t.columns) || c.columns || [];
+      const fmtRows    = (isFormImport && useTranslation && t.rows)    || c.rows    || [];
+      const headers = isFormImport
+        ? fmtColumns.map(col => col.label || col.key)
+        : (pick(t?.headers, c.headers) || []);
+      const allRows = isFormImport ? fmtRows : (pick(t?.rows, c.rows) || []);
+
+      // Virtual split block props — set by distribution algorithm for row-level page splitting
+      const rowStart    = block._rowStart ?? 0;
+      const rowEnd      = block._rowEnd   != null ? block._rowEnd : allRows.length;
+      const displayRows = allRows.slice(rowStart, rowEnd);
+      const isCont      = !!block._isContinuation;
+      const noBottomMg  = !!block._noBottomMargin;
+
       const cell = { border: "1px solid #9ca3af", padding: "4px 7px", fontFamily: DOC_FONT, fontSize: 10, color: "#111827", verticalAlign: "top" };
+      const theadProps = measureIdx != null ? { "data-table-header": measureIdx } : {};
       return (
-        <div style={{ margin: "8px 0 12px", overflowX: "auto" }}>
+        <div style={{ margin: `8px 0 ${noBottomMg ? 2 : 12}px`, overflowX: "auto" }}>
           <table style={{ borderCollapse: "collapse", width: "100%" }}>
             {headers.length > 0 && (
-              <thead>
+              <thead {...theadProps}>
                 <tr>
-                  {headers.map((h, i) => (
-                    <th key={i} style={{ ...cell, background: "#D0CECE", fontWeight: 700, textAlign: "left" }}>{h || `Col ${i + 1}`}</th>
+                  {headers.map((h, hi) => (
+                    <th key={hi} style={{ ...cell, background: "#D0CECE", fontWeight: 700, textAlign: "left" }}>
+                      {h || `Col ${hi + 1}`}
+                      {isCont && hi === 0 && (
+                        <span style={{ fontSize: 8, color: "#9ca3af", fontStyle: "italic", marginLeft: 6 }}>(contd.)</span>
+                      )}
+                    </th>
                   ))}
                 </tr>
               </thead>
             )}
             <tbody>
-              {rows.map((row, ri) => (
-                <tr key={ri} style={{ background: ri % 2 === 0 ? "#fff" : "#f9fafb" }}>
-                  {isFormImport
-                    ? (c.columns || []).map((col, ci) => (
-                        <td key={ci} style={cell}>{row?.[col.key] != null ? String(row[col.key]) : ""}</td>
-                      ))
-                    : (Array.isArray(row) ? row : []).map((cell_val, ci) => (
-                        <td key={ci} style={cell}>{cell_val}</td>
-                      ))
-                  }
-                </tr>
-              ))}
+              {displayRows.map((row, ri) => {
+                const absRi   = rowStart + ri;
+                const rowProps = measureIdx != null ? { "data-table-row": `${measureIdx}-${ri}` } : {};
+                return (
+                  <tr key={ri} style={{ background: absRi % 2 === 0 ? "#fff" : "#f9fafb" }} {...rowProps}>
+                    {isFormImport
+                      ? fmtColumns.map((col, ci) => (
+                          <td key={ci} style={cell}>{row?.[col.key] != null ? String(row[col.key]) : ""}</td>
+                        ))
+                      : (Array.isArray(row) ? row : []).map((cell_val, ci) => (
+                          <td key={ci} style={cell}>{cell_val}</td>
+                        ))
+                    }
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -652,7 +688,7 @@ function WordBlock({ block }) {
     }
 
     case "LIST": {
-      const items = c.items || [];
+      const items = pick(t?.items, c.items) || [];
       const Tag   = c.ordered ? "ol" : "ul";
       const fs    = c.fontSize  || 11;
       const fc    = c.fontColor || "#111827";
@@ -809,7 +845,7 @@ function A4Page({ children, pageNum, totalPages, sectionTitle, reportTitle, scal
 }
 
 /* ── Paginated Word Document Preview ── */
-function WordDocumentPreview({ reportMeta, section, blocks, reportSections, currentSectionId, canvasRef }) {
+function WordDocumentPreview({ reportMeta, section, blocks, reportSections, currentSectionId, canvasRef, lang = "en" }) {
   const containerRef  = useRef(null);
   const measureRef    = useRef(null);
 
@@ -834,35 +870,102 @@ function WordDocumentPreview({ reportMeta, section, blocks, reportSections, curr
     return () => ro.disconnect();
   }, []);
 
-  /* Distribute blocks across pages using hidden measurement */
+  /* Distribute blocks across pages with per-row table splitting */
   useEffect(() => {
     if (!measureRef.current || !blocks.length) {
       setPageGroups([blocks]);
       return;
     }
 
-    const els = Array.from(measureRef.current.querySelectorAll("[data-block-idx]"));
-    if (!els.length) { setPageGroups([blocks]); return; }
+    requestAnimationFrame(() => {
+      const root = measureRef.current;
+      if (!root) return;
+      const els = Array.from(root.querySelectorAll("[data-block-idx]"));
+      if (!els.length) { setPageGroups([blocks]); return; }
 
-    const groups  = [];
-    let current   = [];
-    let usedH     = TITLE_H; // page 1 has title header above section
+      const SUBSEQ_INIT    = 40;  // subsequent pages: repeated section sub-heading
+      const INTER_BLOCK    = 12;  // inter-block margin
+      const TBL_HDR_REPEAT = 28;  // approx height of table header when repeated on continuation page
 
-    els.forEach((el) => {
-      const idx = Number(el.getAttribute("data-block-idx"));
-      const h   = el.offsetHeight + 12; // 12 = inter-block margin
-      if (usedH + h > CON_H && current.length > 0) {
-        groups.push(current);
-        current = [blocks[idx]];
-        usedH   = 40; // subsequent pages: section heading only
-      } else {
-        current.push(blocks[idx]);
-        usedH += h;
+      const groups = [];
+      let current  = [];
+      let usedH    = TITLE_H; // page 1 starts with section heading
+
+      function flushPage() {
+        if (current.length) groups.push(current);
+        current = [];
+        usedH   = SUBSEQ_INIT;
       }
+
+      for (const el of els) {
+        const idx   = Number(el.getAttribute("data-block-idx"));
+        const block = blocks[idx];
+
+        if (block.block_type === "TABLE") {
+          // Measure thead and each body row individually
+          const theadEl  = root.querySelector(`thead[data-table-header="${idx}"]`);
+          const theadH   = theadEl ? theadEl.offsetHeight : 28;
+          const trEls    = Array.from(root.querySelectorAll(`tr[data-table-row^="${idx}-"]`));
+          const rowHts   = trEls.map(tr => tr.offsetHeight || 20);
+
+          // Fast path: entire table fits on current page
+          const totalH = theadH + rowHts.reduce((s, h) => s + h, 0) + INTER_BLOCK;
+          if (usedH + totalH <= CON_H) {
+            current.push(block);
+            usedH += totalH;
+            continue;
+          }
+
+          // Slow path: split table row by row across pages
+          let rowStart = 0;
+          while (rowStart < rowHts.length) {
+            const hdrH  = rowStart === 0 ? theadH : TBL_HDR_REPEAT;
+            const avail = CON_H - usedH;
+
+            // Flush current page if header + at least 1 row won't fit
+            if (current.length > 0 && avail < hdrH + (rowHts[rowStart] || 20)) {
+              flushPage();
+              continue;  // retry with full page headroom
+            }
+
+            // Pack as many rows as fit in remaining space
+            const avail2 = CON_H - usedH;
+            let chunkH   = hdrH;
+            let rowEnd   = rowStart;
+            while (rowEnd < rowHts.length) {
+              const rh = rowHts[rowEnd] || 20;
+              if (chunkH + rh > avail2 && rowEnd > rowStart) break;
+              chunkH += rh;
+              rowEnd++;
+            }
+            if (rowEnd === rowStart) rowEnd = Math.min(rowStart + 1, rowHts.length); // force ≥1 row
+
+            const isLastChunk = rowEnd >= rowHts.length;
+            current.push({
+              ...block,
+              _rowStart:       rowStart,
+              _rowEnd:         rowEnd,
+              _isContinuation: rowStart > 0,
+              _noBottomMargin: !isLastChunk,
+            });
+            usedH  += chunkH + (isLastChunk ? INTER_BLOCK : 0);
+            rowStart = rowEnd;
+
+            if (!isLastChunk) flushPage();
+          }
+        } else {
+          // Non-table block: measure as a whole unit
+          const h = el.offsetHeight + INTER_BLOCK;
+          if (usedH + h > CON_H && current.length > 0) flushPage();
+          current.push(block);
+          usedH += h;
+        }
+      }
+
+      if (current.length) groups.push(current);
+      setPageGroups(groups.length ? groups : [blocks]);
     });
-    if (current.length) groups.push(current);
-    setPageGroups(groups.length ? groups : [blocks]);
-  }, [blocks]);
+  }, [blocks, lang]);
 
   /* Status colours for nav strip */
   const navSectionList = reportSections;
@@ -895,7 +998,7 @@ function WordDocumentPreview({ reportMeta, section, blocks, reportSections, curr
         >
           {blocks.map((b, i) => (
             <div key={b.id} data-block-idx={i}>
-              <WordBlock block={b} />
+              <WordBlock block={b} lang={lang} measureIdx={i} />
             </div>
           ))}
         </div>
@@ -936,7 +1039,7 @@ function WordDocumentPreview({ reportMeta, section, blocks, reportSections, curr
                       No content yet — add blocks using the editor on the left.
                     </div>
                   ) : (
-                    pageBlocks.map((b) => <WordBlock key={b.id} block={b} />)
+                    pageBlocks.map((b) => <WordBlock key={b.id} block={b} lang={lang} />)
                   )}
                 </A4Page>
               </div>
@@ -979,19 +1082,163 @@ function WordDocumentPreview({ reportMeta, section, blocks, reportSections, curr
   );
 }
 
-/* ── Inline block inserter ──────────────────────────────────────────────── */
-const INLINE_BLOCK_MENU = [
-  { type: "PARAGRAPH",  icon: "P",   label: "Text" },
-  { type: "HEADING",    icon: "H",   label: "Heading" },
-  { type: "IMAGE",      icon: "Img", label: "Image" },
-  { type: "IMAGE_GRID", icon: "Grd", label: "Image Grid" },
-  { type: "TABLE",      icon: "Tbl", label: "Table" },
-  { type: "LIST",       icon: "Lst", label: "List" },
-  { type: "DIVIDER",    icon: "--",  label: "Divider" },
-  { type: "FILE",       icon: "Fil", label: "File" },
-  { type: "KPI",        icon: "KPI", label: "KPI Chart" },
-];
+/* ── Block type metadata — icons, labels, colours (shared by sidebar cards,
+   the block detail header, and the add-block menu) ─────────────────────── */
+function TypeGlyph({ type, size = 16 }) {
+  const s = { width: size, height: size, display: "block" };
+  switch (type) {
+    case "PARAGRAPH":
+      return <span style={{ ...s, fontWeight: 800, fontSize: size * 0.85, lineHeight: 1, textAlign: "center" }}>T</span>;
+    case "HEADING":
+      return <span style={{ ...s, fontWeight: 800, fontSize: size * 0.85, lineHeight: 1, textAlign: "center" }}>H</span>;
+    case "TABLE":
+      return (
+        <svg style={s} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.7">
+          <rect x="2.5" y="3.5" width="15" height="13" rx="1.5"/><path d="M2.5 8h15M2.5 12.5h15M9 3.5v13"/>
+        </svg>
+      );
+    case "IMAGE": case "IMAGE_GRID":
+      return (
+        <svg style={s} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.7">
+          <rect x="2.5" y="3.5" width="15" height="13" rx="1.5"/><circle cx="7" cy="8" r="1.4"/><path d="M3 14.5l4.5-4.5 3 3 2.5-3 4 4.5" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+      );
+    case "LIST":
+      return (
+        <svg style={s} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+          <circle cx="3.5" cy="5" r="1"/><circle cx="3.5" cy="10" r="1"/><circle cx="3.5" cy="15" r="1"/>
+          <path d="M7 5h10M7 10h10M7 15h10"/>
+        </svg>
+      );
+    case "FILE":
+      return (
+        <svg style={s} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M14 3.5l2.5 2.5v9a1.5 1.5 0 01-1.5 1.5H5a1.5 1.5 0 01-1.5-1.5v-11A1.5 1.5 0 015 2.5h9z"/>
+          <path d="M7.5 9.5h5M7.5 12.5h5"/>
+        </svg>
+      );
+    case "KPI":
+      return (
+        <svg style={s} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+          <path d="M3 16.5h14"/><rect x="5" y="10" width="2.6" height="6.5" rx="0.5" fill="currentColor" stroke="none"/>
+          <rect x="9.7" y="6" width="2.6" height="10.5" rx="0.5" fill="currentColor" stroke="none"/>
+          <rect x="14.4" y="3" width="2.6" height="13.5" rx="0.5" fill="currentColor" stroke="none"/>
+        </svg>
+      );
+    case "DIVIDER":
+      return <svg style={s} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M3 10h14"/></svg>;
+    default:
+      return <span style={{ ...s, fontWeight: 800, fontSize: size * 0.7 }}>?</span>;
+  }
+}
 
+const BLOCK_TYPE_META = {
+  PARAGRAPH:  { label: "Rich Text Block", menuLabel: "Rich Text", hint: "Formatted text — font, size, color, alignment, lists, links",        color: "#1d4ed8", bg: "#eff6ff" },
+  HEADING:    { label: "Heading",         menuLabel: "Heading",   hint: "Section heading (H1–H3)",                                            color: "#6d28d9", bg: "#f5f3ff" },
+  TABLE:      { label: "Table",           menuLabel: "Table",     hint: "A grid of cells, or imported data from a form",                       color: "#0e7490", bg: "#ecfeff" },
+  IMAGE:      { label: "Image",           menuLabel: "Image",     hint: "A single image with caption",                                        color: "#15803d", bg: "#f0fdf4" },
+  IMAGE_GRID: { label: "Image Grid",      menuLabel: "Image Grid", hint: "Up to 4 images side by side",                                        color: "#15803d", bg: "#f0fdf4" },
+  LIST:       { label: "List",            menuLabel: "List",      hint: "Bulleted or numbered list",                                          color: "#b45309", bg: "#fffbeb" },
+  FILE:       { label: "File Attachment", menuLabel: "File",      hint: "Link to a downloadable file",                                        color: "#475569", bg: "#f1f5f9" },
+  KPI:        { label: "KPI Chart",       menuLabel: "KPI Chart", hint: "A chart imported from the KPI module",                                color: "#be185d", bg: "#fdf2f8" },
+  DIVIDER:    { label: "Divider",         menuLabel: "Divider",   hint: "A horizontal rule separating content",                                color: "#64748b", bg: "#f8fafc" },
+};
+function typeMeta(type) { return BLOCK_TYPE_META[type] || { label: type, menuLabel: type, hint: "", color: "#64748b", bg: "#f8fafc" }; }
+
+function IconChip({ type, size = 30 }) {
+  const m = typeMeta(type);
+  return (
+    <div style={{
+      width: size, height: size, borderRadius: 8, flexShrink: 0,
+      background: m.bg, color: m.color,
+      display: "flex", alignItems: "center", justifyContent: "center",
+    }}>
+      <TypeGlyph type={type} size={Math.round(size * 0.55)} />
+    </div>
+  );
+}
+
+const ADD_BLOCK_TYPES = ["PARAGRAPH", "HEADING", "TABLE", "IMAGE", "IMAGE_GRID", "LIST", "FILE", "KPI", "DIVIDER"];
+
+/* ── Block-type picker list, shared by InlineAdder's dropdown and the big
+   "+ Add Block" button below. ────────────────────────────────────────────── */
+function BlockTypeMenu({ onAdd }) {
+  return (
+    <>
+      <div style={{ width: "100%", fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.7, marginBottom: 4 }}>
+        Insert block
+      </div>
+      {ADD_BLOCK_TYPES.map((type) => {
+        const m = typeMeta(type);
+        return (
+          <button
+            key={type}
+            onMouseDown={(e) => { e.preventDefault(); onAdd(type); }}
+            style={{
+              display: "flex", alignItems: "center", gap: 5, padding: "6px 10px",
+              borderRadius: 7, border: "1px solid #e2e8f0", background: "#fff",
+              fontSize: 12, color: "#374151", cursor: "pointer", fontFamily: "inherit",
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = "#faf5ff"; e.currentTarget.style.borderColor = "#c4b5fd"; e.currentTarget.style.color = "#7c3aed"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = "#fff"; e.currentTarget.style.borderColor = "#e2e8f0"; e.currentTarget.style.color = "#374151"; }}
+          >
+            <IconChip type={type} size={18} />
+            {m.menuLabel}
+          </button>
+        );
+      })}
+    </>
+  );
+}
+
+/* ── Prominent, always-visible "+ Add Block" button — the primary, unmissable
+   way to add content. Sits at the end of the block list (and doubles as the
+   empty-state call-to-action) so first-time users don't have to discover the
+   thin inline "+" separators to get started. ─────────────────────────────── */
+function BigAddBlockButton({ onAdd, label = "+ Add Block" }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handler(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false); }
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  return (
+    <div ref={ref} style={{ position: "relative" }}>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        style={{
+          width: "100%", padding: "13px 16px", borderRadius: 10,
+          border: `2px dashed ${open ? "#7c3aed" : "#c4b5fd"}`,
+          background: open ? "#faf5ff" : "#fff", color: "#7c3aed",
+          fontSize: 13.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit",
+          display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+          transition: "all 0.15s",
+        }}
+        onMouseEnter={(e) => { if (!open) e.currentTarget.style.background = "#faf5ff"; }}
+        onMouseLeave={(e) => { if (!open) e.currentTarget.style.background = "#fff"; }}
+      >
+        {label}
+      </button>
+      {open && (
+        <div style={{
+          position: "absolute", bottom: "calc(100% + 6px)", left: "50%", transform: "translateX(-50%)",
+          background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12,
+          boxShadow: "0 8px 28px rgba(0,0,0,0.13)", padding: "10px 12px",
+          display: "flex", flexWrap: "wrap", gap: 5, width: 308, zIndex: 100,
+        }}>
+          <BlockTypeMenu onAdd={(type) => { onAdd(type); setOpen(false); }} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Inline block inserter — thin separator with an always-visible "+" that
+   opens a dropdown of block types to insert at that position ───────────── */
 function InlineAdder({ isOpen, onToggle, onAdd }) {
   const [hovered, setHovered] = useState(false);
   const dropdownRef = useRef(null);
@@ -1018,25 +1265,26 @@ function InlineAdder({ isOpen, onToggle, onAdd }) {
       {/* Line */}
       <div style={{ flex: 1, height: 1.5, borderRadius: 1, background: show ? "#c4b5fd" : "#f1f5f9", transition: "background 0.15s" }} />
 
-      {/* + button */}
-      {show && (
-        <button
-          onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); onToggle(!isOpen); }}
-          style={{
-            position: "absolute", left: "50%", transform: "translateX(-50%)",
-            width: 24, height: 24, borderRadius: "50%",
-            border: `1.5px solid ${isOpen ? "#7c3aed" : "#c4b5fd"}`,
-            background: isOpen ? "#7c3aed" : "#faf5ff",
-            color: isOpen ? "#fff" : "#7c3aed",
-            fontSize: 16, fontWeight: 300, lineHeight: 1,
-            display: "flex", alignItems: "center", justifyContent: "center",
-            cursor: "pointer", boxShadow: isOpen ? "0 2px 8px rgba(124,58,237,0.3)" : "none",
-            transition: "all 0.15s",
-          }}
-        >
-          +
-        </button>
-      )}
+      {/* + button — always present so the insert affordance is discoverable without hovering */}
+      <button
+        title="Insert block"
+        aria-label="Insert block"
+        onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); onToggle(!isOpen); }}
+        style={{
+          position: "absolute", left: "50%", transform: "translateX(-50%)",
+          width: show ? 24 : 18, height: show ? 24 : 18, borderRadius: "50%",
+          border: `1.5px solid ${isOpen ? "#7c3aed" : show ? "#c4b5fd" : "#e2e8f0"}`,
+          background: isOpen ? "#7c3aed" : show ? "#faf5ff" : "#fff",
+          color: isOpen ? "#fff" : show ? "#7c3aed" : "#94a3b8",
+          opacity: show ? 1 : 0.6,
+          fontSize: show ? 16 : 12, fontWeight: 300, lineHeight: 1,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          cursor: "pointer", boxShadow: isOpen ? "0 2px 8px rgba(124,58,237,0.3)" : "none",
+          transition: "all 0.15s",
+        }}
+      >
+        +
+      </button>
 
       {/* Dropdown */}
       {isOpen && (
@@ -1046,27 +1294,134 @@ function InlineAdder({ isOpen, onToggle, onAdd }) {
           boxShadow: "0 8px 28px rgba(0,0,0,0.13)", padding: "10px 12px",
           display: "flex", flexWrap: "wrap", gap: 5, width: 308, zIndex: 100,
         }}>
-          <div style={{ width: "100%", fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.7, marginBottom: 4 }}>
-            Insert block
-          </div>
-          {INLINE_BLOCK_MENU.map((t) => (
-            <button
-              key={t.type}
-              onMouseDown={(e) => { e.preventDefault(); onAdd(t.type); onToggle(false); }}
-              style={{
-                display: "flex", alignItems: "center", gap: 5, padding: "6px 10px",
-                borderRadius: 7, border: "1px solid #e2e8f0", background: "#fff",
-                fontSize: 12, color: "#374151", cursor: "pointer", fontFamily: "inherit",
-              }}
-              onMouseEnter={(e) => { e.currentTarget.style.background = "#faf5ff"; e.currentTarget.style.borderColor = "#c4b5fd"; e.currentTarget.style.color = "#7c3aed"; }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = "#fff"; e.currentTarget.style.borderColor = "#e2e8f0"; e.currentTarget.style.color = "#374151"; }}
-            >
-              <span style={{ fontSize: 10, fontWeight: 700 }}>{t.icon}</span>
-              {t.label}
-            </button>
-          ))}
+          <BlockTypeMenu onAdd={(type) => { onAdd(type); onToggle(false); }} />
         </div>
       )}
+    </div>
+  );
+}
+
+/* ── Shared neutral "tool" button — consistent ghost styling for secondary
+   top-bar actions (Export, History, Preview, Comments), so colour is reserved
+   for the one primary call-to-action per row. ───────────────────────────── */
+function ToolBtn({ onClick, active, title, children, disabled }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      style={{
+        display: "flex", alignItems: "center", gap: 6, padding: "6px 12px",
+        border: `1.5px solid ${active ? "#818cf8" : "#e2e8f0"}`,
+        borderRadius: 8, flexShrink: 0,
+        background: active ? "#eef2ff" : "#fff",
+        fontSize: 12, fontWeight: 600,
+        color: disabled ? "#cbd5e1" : active ? "#4338ca" : "#64748b",
+        cursor: disabled ? "not-allowed" : "pointer",
+        opacity: disabled ? 0.6 : 1,
+        transition: "all 0.15s", fontFamily: "inherit",
+      }}
+      onMouseEnter={e => { if (!active && !disabled) { e.currentTarget.style.borderColor = "#c7d2fe"; e.currentTarget.style.color = "#4f46e5"; }}}
+      onMouseLeave={e => { if (!active && !disabled) { e.currentTarget.style.borderColor = "#e2e8f0"; e.currentTarget.style.color = "#64748b"; }}}
+    >
+      {children}
+    </button>
+  );
+}
+
+/* ── "Export ▾" dropdown — merges Convert to Word / Convert to PDF into one
+   tool-bar button instead of two competing full-width buttons. ──────────── */
+function ExportMenu({ onWord, onPdf, exporting, disabled }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handler(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false); }
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  return (
+    <div ref={ref} style={{ position: "relative" }}>
+      <ToolBtn onClick={() => setOpen(o => !o)} active={open} disabled={disabled} title="Export this section">
+        {exporting ? "⏳ Exporting…" : "Export"} <span style={{ fontSize: 9 }}>{open ? "▲" : "▼"}</span>
+      </ToolBtn>
+      {open && (
+        <div style={{
+          position: "absolute", top: "calc(100% + 6px)", right: 0,
+          background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10,
+          boxShadow: "0 8px 28px rgba(0,0,0,0.13)", padding: 6, zIndex: 100, width: 190,
+        }}>
+          <button
+            onMouseDown={(e) => { e.preventDefault(); onWord(); setOpen(false); }}
+            style={{ width: "100%", textAlign: "left", display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", borderRadius: 7, border: "none", background: "transparent", fontSize: 12.5, color: "#1e293b", cursor: "pointer", fontFamily: "inherit" }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = "#f8fafc"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+          >
+            <svg width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="#047857" strokeWidth="2"><path d="M4 16v1a1 1 0 001 1h10a1 1 0 001-1v-1M10 3v10m0 0l-3-3m3 3l3-3" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            Convert to Word
+          </button>
+          <button
+            onMouseDown={(e) => { e.preventDefault(); onPdf(); setOpen(false); }}
+            style={{ width: "100%", textAlign: "left", display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", borderRadius: 7, border: "none", background: "transparent", fontSize: 12.5, color: "#1e293b", cursor: "pointer", fontFamily: "inherit" }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = "#f8fafc"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+          >
+            <svg width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="#1d4ed8" strokeWidth="2"><path d="M7 7H5a2 2 0 00-2 2v6a2 2 0 002 2h10a2 2 0 002-2V9a2 2 0 00-2-2h-2M7 7V5a2 2 0 012-2h2a2 2 0 012 2v2M7 7h6" strokeLinecap="round" strokeLinejoin="round"/><path d="M10 13v-2m0 4h.01" strokeLinecap="round"/></svg>
+            Convert to PDF
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Collapsible block outline rail — icon strip by default, expands to show
+   labels on hover. Click to scroll a block into view in the main column. ── */
+function BlockOutlineRail({ blocks, onSelect, activeBlockId }) {
+  const [expanded, setExpanded] = useState(false);
+  if (!blocks.length) return null;
+
+  return (
+    <div
+      onMouseEnter={() => setExpanded(true)}
+      onMouseLeave={() => setExpanded(false)}
+      style={{
+        width: expanded ? 196 : 40, flexShrink: 0,
+        borderRight: "1px solid #e2e8f0", background: "#fff",
+        overflow: "hidden", transition: "width 0.16s ease",
+      }}
+    >
+      <div style={{ padding: "8px 0", overflowY: "auto", height: "100%" }}>
+        {blocks.map((block, idx) => {
+          const m        = typeMeta(block.block_type);
+          const isActive = block.id === activeBlockId;
+          return (
+            <button
+              key={block.id}
+              onClick={() => onSelect(block.id)}
+              title={`${idx + 1}. ${m.label}`}
+              style={{
+                width: "100%", display: "flex", alignItems: "center", gap: 8,
+                padding: expanded ? "7px 11px" : "7px 0", justifyContent: expanded ? "flex-start" : "center",
+                border: "none", background: isActive ? "#eef2ff" : "transparent",
+                cursor: "pointer", fontFamily: "inherit", textAlign: "left", whiteSpace: "nowrap",
+                transition: "background 0.12s",
+              }}
+              onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = "#f8fafc"; }}
+              onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = "transparent"; }}
+            >
+              <IconChip type={block.block_type} size={20} />
+              {expanded && (
+                <span style={{ fontSize: 11.5, color: "#475569", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  {idx + 1}. {m.label}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -1095,6 +1450,49 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
   const [exporting,        setExporting]        = useState(false);
   const [blockCounts,      setBlockCounts]      = useState({});
   const [selectedBlockId,  setSelectedBlockId]  = useState(null);
+  const [activeInserter,   setActiveInserter]   = useState(null);
+
+  // Section-wide content authoring language — switches whether the block editors
+  // below read/write the primary content (English) or that block's row in
+  // block_translations (e.g. language="hi"). Independent from the app's own
+  // UI-chrome language (useLanguage()/i18n).
+  const [contentLang, setContentLang] = useState("en");
+
+  // Live preview is a slide-over drawer, opened on demand rather than a permanent column.
+  const [previewOpen,  setPreviewOpen]  = useState(false);
+  const [previewWidth, setPreviewWidth] = useState(720); // user-resizable via the drag handle
+  const resizingPreviewRef = useRef(false);
+  // Brief highlight applied to a block card when navigated to from the outline rail.
+  const [highlightedBlockId, setHighlightedBlockId] = useState(null);
+
+  /* ── Preview drawer resize (drag the left edge) ── */
+  const startPreviewResize = useCallback((e) => {
+    e.preventDefault();
+    resizingPreviewRef.current = true;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  }, []);
+
+  useEffect(() => {
+    function onMove(e) {
+      if (!resizingPreviewRef.current) return;
+      const maxW = Math.min(1200, window.innerWidth * 0.92);
+      const next = Math.min(Math.max(window.innerWidth - e.clientX, 360), maxW);
+      setPreviewWidth(next);
+    }
+    function onUp() {
+      if (!resizingPreviewRef.current) return;
+      resizingPreviewRef.current = false;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    }
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, []);
 
   // table type choice modal + form import wizard
   const [tableTypeModal,   setTableTypeModal]   = useState({ open: false, afterIndex: undefined });
@@ -1105,8 +1503,19 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
   const [kpiImportWizard, setKpiImportWizard] = useState({ open: false, afterIndex: undefined, orderIndex: undefined });
 
   // dirty tracking + save description modal
-  const [dirtyBlocks,     setDirtyBlocks]     = useState(new Set());
-  const [saveDescModal,   setSaveDescModal]   = useState({ open: false, desc: "", error: "" });
+  const [dirtyBlocks,       setDirtyBlocks]       = useState(new Set());
+  // Pending, unsaved translation edits: { [blockId]: { [language]: partialContent } } —
+  // tracked separately from dirtyBlocks (primary content) but counted as "unsaved changes"
+  // too, since editing/translating Hindi content must require an explicit Save like any
+  // other edit, not silently autosave.
+  const [dirtyTranslations, setDirtyTranslations] = useState({});
+  const [saveDescModal,     setSaveDescModal]     = useState({ open: false, desc: "", error: "" });
+  // Pre-save prompt: ask whether to auto-translate updated English content into Hindi
+  // for blocks that already have a Hindi translation, before the save actually runs.
+  const [translatePromptModal, setTranslatePromptModal] = useState({ open: false, blocks: [] });
+  const [translatingBeforeSave, setTranslatingBeforeSave] = useState(false);
+  const hasUnsavedChanges = dirtyBlocks.size > 0 || Object.keys(dirtyTranslations).length > 0;
+  const dirtyBlockCount   = new Set([...dirtyBlocks, ...Object.keys(dirtyTranslations)]).size;
 
   // submit modal
   const [submitModal,     setSubmitModal]     = useState({ open: false, desc: "", error: "", validationErrors: [], unresolvedCount: 0 });
@@ -1122,7 +1531,6 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
 
   const editorScrollRef  = useRef(null);
   const previewCanvasRef = useRef(null);
-  const [activeInserter, setActiveInserter] = useState(null);
 
   const syncScroll = useCallback(() => {
     const ed = editorScrollRef.current;
@@ -1132,6 +1540,14 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
     if (edMax <= 0) return;
     const pct = ed.scrollTop / edMax;
     pv.scrollTop = pct * (pv.scrollHeight - pv.clientHeight);
+  }, []);
+
+  /* ── Outline rail navigation: scroll a block into view and briefly highlight it ── */
+  const scrollToBlock = useCallback((blockId) => {
+    const el = editorScrollRef.current?.querySelector(`[data-block-id="${blockId}"]`);
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+    setHighlightedBlockId(blockId);
+    setTimeout(() => setHighlightedBlockId((cur) => (cur === blockId ? null : cur)), 1400);
   }, []);
 
   const loadBlockCounts = useCallback(async () => {
@@ -1225,6 +1641,20 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
     } catch {}
   };
 
+  /* ── toggle a block's required flag — saves immediately, no dirty-tracking needed ── */
+  async function toggleRequired(blockId, current) {
+    setBlocks((prev) => prev.map((b) => b.id === blockId ? { ...b, is_required: !current } : b));
+    try {
+      await apiFetch(`/api/builder/blocks/${blockId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ is_required: !current }),
+      });
+    } catch {
+      setBlocks((prev) => prev.map((b) => b.id === blockId ? { ...b, is_required: current } : b));
+    }
+  }
+
   /* ── block change — mark dirty, no auto-save ── */
   function handleBlockChange(blockId, newContent) {
     setBlocks((prev) => prev.map((b) => b.id === blockId ? { ...b, content: newContent } : b));
@@ -1232,9 +1662,153 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
     setSaveLabel("Unsaved changes");
   }
 
-  /* ── save all dirty blocks with description ── */
+  /* ── block translation change — queued like a primary-content edit; only
+     persisted to block_translations when the user clicks "Save Changes". ── */
+  function saveBlockTranslation(blockId, language, partialContent) {
+    // Local-only update — does NOT call the API. Editing/translating Hindi content is a
+    // change like any other; it's queued here and only persisted when the user clicks
+    // "Save Changes", same as primary-content edits.
+    setBlocks((prev) => prev.map((b) => b.id === blockId
+      ? { ...b, translations: { ...b.translations, [language]: { ...(b.translations?.[language] || {}), ...partialContent } } }
+      : b
+    ));
+    setDirtyTranslations((prev) => ({
+      ...prev,
+      [blockId]: {
+        ...(prev[blockId] || {}),
+        [language]: { ...(prev[blockId]?.[language] || {}), ...partialContent },
+      },
+    }));
+    setSaveLabel("Unsaved changes");
+  }
+
+  /* ── Extract the English translatable text out of a block, in the shape the
+     /translate endpoint and onTranslated handlers in BlockEditors.jsx expect.
+     Returns null for block types with nothing to translate (DIVIDER, FILE, KPI,
+     or a form-import TABLE — those already auto-fetch their own translation). ── */
+  function extractTranslatableFields(block) {
+    const c = block.content || {};
+    switch (block.block_type) {
+      case "PARAGRAPH": {
+        const tmp = document.createElement("div");
+        tmp.innerHTML = c.html || c.text || "";
+        return { kind: "html", text: tmp.textContent || "" };
+      }
+      case "HEADING":
+        return { kind: "text", text: c.text || "" };
+      case "LIST":
+        return { kind: "items", items: c.items || [] };
+      case "IMAGE":
+        return { kind: "image", caption: c.caption || "", alt: c.alt || "" };
+      case "IMAGE_GRID":
+        return { kind: "image_grid", cols: (c.cols || []).map((col) => ({ caption: col.caption || "", alt: col.alt || "" })) };
+      case "TABLE":
+        if (c.source === "form_import") return null;
+        return { kind: "table", headers: c.headers || [], rows: c.rows || [] };
+      default:
+        return null;
+    }
+  }
+
+  /* ── Call the translate endpoint for one block's English fields and return the
+     partial block_translations content to merge (or null if nothing to translate). ── */
+  async function autoTranslateBlock(block) {
+    const extracted = extractTranslatableFields(block);
+    if (!extracted) return null;
+    const translateOne = async (text) => {
+      const res  = await apiFetch("/api/report-integration/translate", { method: "POST", body: JSON.stringify({ text }) });
+      const data = await res.json();
+      return data?.data?.hi || "";
+    };
+    const translateMany = async (texts) => {
+      const res  = await apiFetch("/api/report-integration/translate", { method: "POST", body: JSON.stringify({ texts }) });
+      const data = await res.json();
+      return data?.data?.translations || texts.map(() => "");
+    };
+
+    switch (extracted.kind) {
+      case "html": {
+        if (!extracted.text.trim()) return null;
+        return { html: `<p>${await translateOne(extracted.text)}</p>`, _stale: false };
+      }
+      case "text": {
+        if (!extracted.text.trim()) return null;
+        return { text: await translateOne(extracted.text), _stale: false };
+      }
+      case "items": {
+        if (!extracted.items.some(Boolean)) return null;
+        return { items: await translateMany(extracted.items), _stale: false };
+      }
+      case "image": {
+        if (!extracted.caption && !extracted.alt) return null;
+        const [capHi, altHi] = await translateMany([extracted.caption, extracted.alt]);
+        return { caption: capHi, alt: altHi, _stale: false };
+      }
+      case "image_grid": {
+        const flat = extracted.cols.flatMap((col) => [col.caption, col.alt]);
+        if (!flat.some(Boolean)) return null;
+        const translated = await translateMany(flat);
+        const cols = extracted.cols.map((_, i) => ({ caption: translated[i * 2], alt: translated[i * 2 + 1] }));
+        return { cols, _stale: false };
+      }
+      case "table": {
+        const flat = [...extracted.headers, ...extracted.rows.flat()];
+        if (!flat.some(Boolean)) return null;
+        const translated = await translateMany(flat);
+        const headers   = translated.slice(0, extracted.headers.length);
+        const cellsFlat = translated.slice(extracted.headers.length);
+        const rows = [];
+        let idx = 0;
+        for (const r of extracted.rows) { rows.push(cellsFlat.slice(idx, idx + r.length)); idx += r.length; }
+        return { headers, rows, _stale: false };
+      }
+      default:
+        return null;
+    }
+  }
+
+  /* ── Entry point for the "Save Changes" button: if any dirty (English-edited)
+     block already has a Hindi translation, ask whether to auto-translate the
+     updated content before saving. Otherwise skip straight to the description modal. ── */
+  function openSaveFlow() {
+    const blocksNeedingPrompt = [...dirtyBlocks]
+      .map((id) => blocks.find((b) => b.id === id))
+      .filter((b) => b && b.translations?.hi && Object.keys(b.translations.hi).length > 0 && extractTranslatableFields(b));
+    if (blocksNeedingPrompt.length > 0) {
+      setTranslatePromptModal({ open: true, blocks: blocksNeedingPrompt });
+    } else {
+      setSaveDescModal({ open: true, desc: "", error: "" });
+    }
+  }
+
+  /* ── User chose to auto-translate the updated English content before saving. ── */
+  async function handleTranslateBeforeSave() {
+    const targets = translatePromptModal.blocks;
+    setTranslatePromptModal({ open: false, blocks: [] });
+    setTranslatingBeforeSave(true);
+    try {
+      for (const block of targets) {
+        const partial = await autoTranslateBlock(block).catch(() => null);
+        if (partial) saveBlockTranslation(block.id, "hi", partial);
+      }
+    } finally {
+      setTranslatingBeforeSave(false);
+      setSaveDescModal({ open: true, desc: "", error: "" });
+    }
+  }
+
+  /* ── User chose to skip auto-translation — mark those translations stale so the
+     "Translate from English" affordance reappears even though the field isn't empty. ── */
+  function handleSkipTranslateBeforeSave() {
+    const targets = translatePromptModal.blocks;
+    setTranslatePromptModal({ open: false, blocks: [] });
+    for (const block of targets) saveBlockTranslation(block.id, "hi", { _stale: true });
+    setSaveDescModal({ open: true, desc: "", error: "" });
+  }
+
+  /* ── save all dirty blocks (+ pending translations) with description ── */
   async function executeSave(description) {
-    if (dirtyBlocks.size === 0 || saving) return;
+    if ((dirtyBlocks.size === 0 && Object.keys(dirtyTranslations).length === 0) || saving) return;
     setSaving(true);
     setSaveLabel("Saving…");
     let currentLock = section?.version_lock ?? 0;
@@ -1268,7 +1842,18 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
         }
       }
       if (!conflictOccurred) {
+        // Persist any pending translation edits alongside the primary content.
+        for (const [blockId, langs] of Object.entries(dirtyTranslations)) {
+          for (const [language, partial] of Object.entries(langs)) {
+            await apiFetch(`/api/builder/blocks/${blockId}/translations/${language}`, {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ content: partial }),
+            }).catch(() => {});
+          }
+        }
         setDirtyBlocks(new Set());
+        setDirtyTranslations({});
         setSaveLabel("✓ Saved");
         setTimeout(() => setSaveLabel(""), 2000);
         loadBlockCounts();
@@ -1354,8 +1939,11 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
     setKpiImportWizard({ open: false, afterIndex: undefined, orderIndex: undefined });
   }
 
-  function handleBlockRefetched(blockId, newContent) {
-    setBlocks((prev) => prev.map((b) => b.id === blockId ? { ...b, content: newContent } : b));
+  function handleBlockRefetched(blockId, newContent, translations) {
+    setBlocks((prev) => prev.map((b) => b.id === blockId
+      ? { ...b, content: newContent, ...(translations && Object.keys(translations).length ? { translations } : {}) }
+      : b
+    ));
     // Does NOT add to dirtyBlocks — DB was already updated by the refetch/reimport endpoint
   }
 
@@ -1470,8 +2058,8 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
       <div style={{
         background: "linear-gradient(135deg, #ffffff 0%, #f8faff 100%)",
         borderBottom: "1px solid #e2e8f0",
-        padding: "0 20px", display: "flex", alignItems: "center", gap: 10,
-        flexShrink: 0, height: 56,
+        padding: "8px 20px", display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, rowGap: 8,
+        flexShrink: 0, minHeight: 56,
         boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
       }}>
         {/* Back button */}
@@ -1514,149 +2102,88 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
           </div>
         </div>
 
-        {/* Save indicator */}
+        {/* ── Group: content language ── */}
+        <div
+          title="Author content in English or Hindi"
+          style={{ display: "flex", border: "1.5px solid #e2e8f0", borderRadius: 8, overflow: "hidden", flexShrink: 0 }}
+        >
+          {[["en", "EN"], ["hi", "HI"]].map(([val, label]) => (
+            <button
+              key={val}
+              onClick={() => setContentLang(val)}
+              style={{
+                padding: "5px 12px", border: "none", cursor: "pointer",
+                fontSize: 12, fontWeight: 700, fontFamily: "inherit",
+                background: contentLang === val ? "#7c3aed" : "#fff",
+                color: contentLang === val ? "#fff" : "#64748b",
+                transition: "all 0.15s",
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        <div style={{ width: 1, height: 22, background: "#e2e8f0", flexShrink: 0 }} />
+
+        {/* ── Group: document tools (Export, History, Preview) ── */}
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+          <ExportMenu onWord={handleExportDocx} onPdf={handleExportPdf} exporting={exporting} disabled={blocks.length === 0} />
+          <ToolBtn onClick={() => setVersionHistOpen(o => !o)} active={versionHistOpen} title="Version history">
+            <svg width="12" height="12" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="10" cy="10" r="8"/><path d="M10 6v4l3 3"/></svg>
+            History
+          </ToolBtn>
+          {!hidePreview && (
+            <ToolBtn onClick={() => setPreviewOpen(o => !o)} active={previewOpen} title="Live document preview">
+              <svg width="12" height="12" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2"><path d="M2 10s3-6 8-6 8 6 8 6-3 6-8 6-8-6-8-6z"/><circle cx="10" cy="10" r="2.5"/></svg>
+              Preview
+            </ToolBtn>
+          )}
+        </div>
+
+        <div style={{ width: 1, height: 22, background: "#e2e8f0", flexShrink: 0 }} />
+
+        {/* ── Group: collaboration ── */}
+        <ToolBtn onClick={() => setChatOpen(o => !o)} active={chatOpen} title={chatOpen ? "Hide comments" : "Show comments"}>
+          <svg width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2"><path d="M2 5a2 2 0 012-2h12a2 2 0 012 2v7a2 2 0 01-2 2H7l-4 3v-3H4a2 2 0 01-2-2V5z"/></svg>
+          Comments
+        </ToolBtn>
+
+        <div style={{ width: 1, height: 22, background: "#e2e8f0", flexShrink: 0 }} />
+
+        {/* ── Group: save state + the single primary action ── */}
         {saveLabel && (
           <div style={{
             display: "flex", alignItems: "center", gap: 5, flexShrink: 0,
             fontSize: 11, fontWeight: 500,
             color: saveLabel.startsWith("✓") ? "#15803d" : saveLabel.startsWith("⚠") ? "#b91c1c" : saveLabel === "Unsaved changes" ? "#b45309" : "#64748b",
-            background: saveLabel.startsWith("✓") ? "#f0fdf4" : saveLabel.startsWith("⚠") ? "#fef2f2" : saveLabel === "Unsaved changes" ? "#fef3c7" : "#f8fafc",
-            padding: "4px 10px", borderRadius: 20,
-            border: `1px solid ${saveLabel.startsWith("✓") ? "#bbf7d0" : saveLabel.startsWith("⚠") ? "#fecaca" : saveLabel === "Unsaved changes" ? "#fcd34d" : "#e2e8f0"}`,
           }}>
             {saveLabel}
           </div>
         )}
 
-        {/* Export to Word */}
-        <button
-          onClick={handleExportDocx}
-          disabled={exporting || blocks.length === 0}
-          title="Download as Word document (.docx)"
-          style={{
-            display: "flex", alignItems: "center", gap: 6, padding: "6px 14px",
-            border: "1.5px solid #d1fae5",
-            borderRadius: 20, flexShrink: 0,
-            background: exporting
-              ? "#f0fdf4"
-              : "linear-gradient(135deg,#ecfdf5,#d1fae5)",
-            fontSize: 12, fontWeight: 700,
-            color: exporting ? "#6ee7b7" : "#047857",
-            cursor: exporting || blocks.length === 0 ? "not-allowed" : "pointer",
-            opacity: blocks.length === 0 ? 0.5 : 1,
-            transition: "all 0.18s",
-            boxShadow: "0 1px 4px rgba(5,150,105,0.12)",
-          }}
-          onMouseEnter={e => { if (!exporting && blocks.length > 0) e.currentTarget.style.boxShadow = "0 3px 10px rgba(5,150,105,0.22)"; }}
-          onMouseLeave={e => { e.currentTarget.style.boxShadow = "0 1px 4px rgba(5,150,105,0.12)"; }}
-        >
-          {exporting ? (
-            <>⏳ Exporting…</>
-          ) : (
-            <>
-              <svg width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M4 16v1a1 1 0 001 1h10a1 1 0 001-1v-1M10 3v10m0 0l-3-3m3 3l3-3" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-              Convert to Word
-            </>
-          )}
-        </button>
-
-        {/* Convert to PDF */}
-        <button
-          onClick={handleExportPdf}
-          disabled={blocks.length === 0}
-          title="Print / Save as PDF"
-          style={{
-            display: "flex", alignItems: "center", gap: 6, padding: "6px 14px",
-            border: "1.5px solid #bfdbfe",
-            borderRadius: 20, flexShrink: 0,
-            background: "linear-gradient(135deg,#eff6ff,#dbeafe)",
-            fontSize: 12, fontWeight: 700,
-            color: "#1d4ed8",
-            cursor: blocks.length === 0 ? "not-allowed" : "pointer",
-            opacity: blocks.length === 0 ? 0.5 : 1,
-            transition: "all 0.18s",
-            boxShadow: "0 1px 4px rgba(59,130,246,0.12)",
-          }}
-          onMouseEnter={e => { if (blocks.length > 0) e.currentTarget.style.boxShadow = "0 3px 10px rgba(59,130,246,0.22)"; }}
-          onMouseLeave={e => { e.currentTarget.style.boxShadow = "0 1px 4px rgba(59,130,246,0.12)"; }}
-        >
-          <svg width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M7 7H5a2 2 0 00-2 2v6a2 2 0 002 2h10a2 2 0 002-2V9a2 2 0 00-2-2h-2M7 7V5a2 2 0 012-2h2a2 2 0 012 2v2M7 7h6" strokeLinecap="round" strokeLinejoin="round"/>
-            <path d="M10 13v-2m0 4h.01" strokeLinecap="round"/>
-          </svg>
-          Convert to PDF
-        </button>
-
-        {/* Version history */}
-        <button
-          onClick={() => setVersionHistOpen(o => !o)}
-          title="Version history"
-          style={{
-            display: "flex", alignItems: "center", gap: 5, padding: "6px 12px",
-            border: `1.5px solid ${versionHistOpen ? "#818cf8" : "#e2e8f0"}`,
-            borderRadius: 20, flexShrink: 0,
-            background: versionHistOpen ? "#eef2ff" : "#fff",
-            fontSize: 12, fontWeight: 700,
-            color: versionHistOpen ? "#4338ca" : "#64748b",
-            cursor: "pointer", transition: "all 0.18s",
-          }}
-        >
-          <svg width="12" height="12" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2">
-            <circle cx="10" cy="10" r="8"/><path d="M10 6v4l3 3"/>
-          </svg>
-          History
-        </button>
-
-        {/* Comments toggle */}
-        <button
-          onClick={() => setChatOpen(o => !o)}
-          title={chatOpen ? "Hide comments" : "Show comments"}
-          style={{
-            display: "flex", alignItems: "center", gap: 6, padding: "6px 14px",
-            border: `1.5px solid ${chatOpen ? "#818cf8" : "#e2e8f0"}`,
-            borderRadius: 20, flexShrink: 0,
-            background: chatOpen ? "linear-gradient(135deg,#eef2ff,#ede9fe)" : "#fff",
-            fontSize: 12, fontWeight: 700,
-            color: chatOpen ? "#4338ca" : "#64748b",
-            cursor: "pointer",
-            transition: "all 0.18s",
-            boxShadow: chatOpen ? "0 2px 8px rgba(79,70,229,0.15)" : "none",
-          }}
-          onMouseEnter={e => { if (!chatOpen) { e.currentTarget.style.borderColor = "#c7d2fe"; e.currentTarget.style.color = "#4f46e5"; }}}
-          onMouseLeave={e => { if (!chatOpen) { e.currentTarget.style.borderColor = "#e2e8f0"; e.currentTarget.style.color = "#64748b"; }}}
-        >
-          <svg width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M2 5a2 2 0 012-2h12a2 2 0 012 2v7a2 2 0 01-2 2H7l-4 3v-3H4a2 2 0 01-2-2V5z"/>
-          </svg>
-          {chatOpen ? "Hide Comments" : "Comments"}
-        </button>
-
-        {/* Save button — shown when dirty */}
-        {canEdit && !statusLock && dirtyBlocks.size > 0 && (
+        {canEdit && !statusLock && hasUnsavedChanges && (
           <button
-            onClick={() => setSaveDescModal({ open: true, desc: "", error: "" })}
+            onClick={openSaveFlow}
             disabled={saving}
             style={{
               display: "flex", alignItems: "center", gap: 6, padding: "7px 16px",
               background: saving ? "#a3e635" : "linear-gradient(135deg,#16a34a,#15803d)",
-              color: "#fff", border: "none", borderRadius: 20, fontSize: 12,
+              color: "#fff", border: "none", borderRadius: 8, fontSize: 12,
               fontWeight: 700, cursor: saving ? "not-allowed" : "pointer",
               flexShrink: 0, boxShadow: saving ? "none" : "0 2px 8px rgba(22,163,74,0.3)",
               transition: "all 0.15s",
             }}
           >
-            {saving ? "Saving…" : `Save Changes (${dirtyBlocks.size})`}
+            {saving ? "Saving…" : `Save Changes (${dirtyBlockCount})`}
           </button>
         )}
 
-        {/* Status-based action buttons */}
         {canEdit && (section?.status === "NOT_STARTED" || section?.status === "IN_PROGRESS") && (
           <button onClick={openSubmitModal} disabled={submitting} style={{
-            display: "flex", alignItems: "center", gap: 6, padding: "7px 18px",
+            display: "flex", alignItems: "center", gap: 6, padding: "7px 16px",
             background: submitting ? "#93c5fd" : "linear-gradient(135deg, #2563eb, #4f46e5)",
-            color: "#fff", border: "none", borderRadius: 20, fontSize: 12,
+            color: "#fff", border: "none", borderRadius: 8, fontSize: 12,
             fontWeight: 700, cursor: submitting ? "not-allowed" : "pointer",
             flexShrink: 0, boxShadow: submitting ? "none" : "0 2px 8px rgba(37,99,235,0.3)",
             transition: "all 0.15s",
@@ -1667,9 +2194,9 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
 
         {canEdit && section?.status === "SENT_BACK" && (
           <button onClick={openSubmitModal} disabled={submitting} style={{
-            display: "flex", alignItems: "center", gap: 6, padding: "7px 18px",
+            display: "flex", alignItems: "center", gap: 6, padding: "7px 16px",
             background: submitting ? "#fca5a5" : "linear-gradient(135deg,#dc2626,#b91c1c)",
-            color: "#fff", border: "none", borderRadius: 20, fontSize: 12,
+            color: "#fff", border: "none", borderRadius: 8, fontSize: 12,
             fontWeight: 700, cursor: submitting ? "not-allowed" : "pointer",
             flexShrink: 0, boxShadow: submitting ? "none" : "0 2px 8px rgba(220,38,38,0.3)",
             transition: "all 0.15s",
@@ -1679,25 +2206,25 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
         )}
 
         {section?.status === "SUBMITTED" && (
-          <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0, padding: "5px 12px", background: "#eff6ff", borderRadius: 20, border: "1px solid #bfdbfe" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0, padding: "5px 12px", background: "#eff6ff", borderRadius: 8, border: "1px solid #bfdbfe" }}>
             <span style={{ fontSize: 12 }}>⏳</span>
             <span style={{ fontSize: 11, fontWeight: 600, color: "#1d4ed8" }}>Pending Review…</span>
           </div>
         )}
         {section?.status === "UNDER_REVIEW" && (
-          <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0, padding: "5px 12px", background: "#f5f3ff", borderRadius: 20, border: "1px solid #ddd6fe" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0, padding: "5px 12px", background: "#f5f3ff", borderRadius: 8, border: "1px solid #ddd6fe" }}>
             <span style={{ fontSize: 12 }}>👁</span>
             <span style={{ fontSize: 11, fontWeight: 600, color: "#6d28d9" }}>Under Review</span>
           </div>
         )}
         {section?.status === "APPROVED" && (
-          <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0, padding: "5px 12px", background: "#f0fdf4", borderRadius: 20, border: "1px solid #bbf7d0" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0, padding: "5px 12px", background: "#f0fdf4", borderRadius: 8, border: "1px solid #bbf7d0" }}>
             <span style={{ fontSize: 12 }}>✓</span>
             <span style={{ fontSize: 11, fontWeight: 600, color: "#15803d" }}>Approved ✓</span>
           </div>
         )}
         {section?.status === "LOCKED" && (
-          <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0, padding: "5px 12px", background: "#f1f5f9", borderRadius: 20, border: "1px solid #cbd5e1" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0, padding: "5px 12px", background: "#f1f5f9", borderRadius: 8, border: "1px solid #cbd5e1" }}>
             <span style={{ fontSize: 12 }}>🔒</span>
             <span style={{ fontSize: 11, fontWeight: 600, color: "#475569" }}>Locked</span>
           </div>
@@ -1796,14 +2323,20 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
               </div>
             );
           })}
-          {/* Snapshot viewer note — preview is shown in right panel */}
+          {/* Snapshot viewer */}
           {viewingSnapshot && (
-            <div style={{ padding: "10px 20px", background: "#fdf4ff", borderTop: "2px solid #c4b5fd", display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{ fontSize: 11, color: "#6d28d9", fontWeight: 700 }}>👁 Previewing v{viewingSnapshot.version} in the right panel</span>
-              <button onClick={() => setViewingSnapshot(null)}
-                style={{ marginLeft: "auto", padding: "3px 10px", borderRadius: 6, border: "1px solid #c4b5fd", background: "#fff", fontSize: 11, color: "#6d28d9", cursor: "pointer", fontWeight: 600 }}>
-                ← Back to current
-              </button>
+            <div style={{ padding: "14px 20px", background: "#fdf4ff", borderTop: "2px solid #c4b5fd" }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#6d28d9", marginBottom: 10 }}>
+                Snapshot — Version {viewingSnapshot.version} (read-only preview)
+              </div>
+              {(viewingSnapshot.data?.snapshot?.blocks || []).map((b, i) => (
+                <div key={i} style={{ padding: "8px 12px", background: "#fff", borderRadius: 8, border: "1px solid #ede9fe", marginBottom: 8 }}>
+                  <div style={{ fontSize: 9, fontWeight: 800, color: "#818cf8", marginBottom: 4, textTransform: "uppercase" }}>{b.block_type}</div>
+                  <div style={{ fontSize: 11, color: "#374151", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+                    {JSON.stringify(b.content, null, 2)}
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </div>
@@ -1812,11 +2345,13 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
       {/* ── two-panel body ── */}
       <div style={{ flex: 1, display: "flex", overflow: "hidden", minHeight: 0 }}>
 
-        {/* LEFT: editor */}
+        {/* LEFT: editor — full width by default; the live preview is now a slide-over
+           drawer (triggered from the top bar) rather than a permanent column, so only
+           the comments panel still claims a fixed-width sibling column. */}
         <div style={{
-          flex: (hidePreview && !chatOpen && !viewingSnapshot) ? "1 1 100%" : "0 0 58%",
+          flex: chatOpen ? "0 0 58%" : "1 1 100%",
           display: "flex", flexDirection: "column",
-          borderRight: (hidePreview && !chatOpen && !viewingSnapshot) ? "none" : "1px solid #e2e8f0",
+          borderRight: chatOpen ? "1px solid #e2e8f0" : "none",
           overflow: "hidden", background: "#f8fafc",
           transition: "flex-basis 0.25s ease",
           minWidth: 0,
@@ -1953,8 +2488,10 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
             </div>
           )}
 
-          {/* blocks scroll area */}
-          <div ref={editorScrollRef} onScroll={syncScroll} style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "20px 24px" }}>
+          {/* outline rail + blocks scroll area */}
+          <div style={{ flex: 1, minHeight: 0, display: "flex", overflow: "hidden" }}>
+            <BlockOutlineRail blocks={blocks} onSelect={scrollToBlock} activeBlockId={highlightedBlockId} />
+            <div ref={editorScrollRef} onScroll={syncScroll} style={{ flex: 1, minWidth: 0, overflowY: "auto", padding: "20px 24px" }}>
             <div style={{ maxWidth: 720, margin: "0 auto" }}>
 
               {/* Empty — read only */}
@@ -1967,15 +2504,13 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
 
               {/* Empty — editable: centered prompt */}
               {blocks.length === 0 && !readOnly && (
-                <div style={{ padding: "60px 0", textAlign: "center" }}>
+                <div style={{ padding: "60px 0 24px", textAlign: "center" }}>
                   <div style={{ fontSize: 40, marginBottom: 14, opacity: 0.35 }}>✏️</div>
                   <div style={{ fontSize: 14, fontWeight: 600, color: "#475569", marginBottom: 6 }}>Start writing your section</div>
                   <div style={{ fontSize: 12, color: "#94a3b8", marginBottom: 24 }}>Add a paragraph, heading, table, image and more</div>
-                  <InlineAdder
-                    isOpen={activeInserter === -1}
-                    onToggle={(open) => setActiveInserter(open ? -1 : null)}
-                    onAdd={(type) => handleAddBlock(type, -1)}
-                  />
+                  <div style={{ maxWidth: 280, margin: "0 auto" }}>
+                    <BigAddBlockButton onAdd={(type) => handleAddBlock(type, -1)} />
+                  </div>
                 </div>
               )}
 
@@ -1989,30 +2524,44 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
               )}
 
               {blocks.map((block, idx) => {
-                const isDirty = dirtyBlocks.has(block.id);
+                const isDirty     = dirtyBlocks.has(block.id) || !!dirtyTranslations[block.id];
+                const isHighlight = highlightedBlockId === block.id;
+                const m           = typeMeta(block.block_type);
                 return (
                 <React.Fragment key={block.id}>
-                  <div style={{
+                  <div data-block-id={block.id} style={{
                     background: "#fff",
-                    border: `1px solid ${isDirty ? "#fcd34d" : "#e8edf3"}`,
+                    border: `1px solid ${isHighlight ? "#818cf8" : isDirty ? "#fcd34d" : "#e8edf3"}`,
                     borderRadius: 12, padding: "14px 18px",
-                    boxShadow: isDirty ? "0 0 0 3px rgba(252,211,77,0.2)" : "0 1px 4px rgba(15,23,42,0.05)",
-                    transition: "box-shadow 0.15s, border-color 0.15s",
+                    boxShadow: isHighlight ? "0 0 0 3px rgba(129,140,248,0.25)" : isDirty ? "0 0 0 3px rgba(252,211,77,0.2)" : "0 1px 4px rgba(15,23,42,0.05)",
+                    transition: "box-shadow 0.2s, border-color 0.2s",
                   }}
-                    onMouseEnter={e => { if (!isDirty) { e.currentTarget.style.borderColor = "#c7d2fe"; e.currentTarget.style.boxShadow = "0 2px 8px rgba(79,70,229,0.08)"; }}}
-                    onMouseLeave={e => { if (!isDirty) { e.currentTarget.style.borderColor = "#e8edf3"; e.currentTarget.style.boxShadow = "0 1px 4px rgba(15,23,42,0.05)"; }}}
+                    onMouseEnter={e => { if (!isDirty && !isHighlight) { e.currentTarget.style.borderColor = "#c7d2fe"; e.currentTarget.style.boxShadow = "0 2px 8px rgba(79,70,229,0.08)"; }}}
+                    onMouseLeave={e => { if (!isDirty && !isHighlight) { e.currentTarget.style.borderColor = "#e8edf3"; e.currentTarget.style.boxShadow = "0 1px 4px rgba(15,23,42,0.05)"; }}}
                   >
                     {/* Block header */}
                     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                        <span style={{
-                          fontSize: 9, fontWeight: 800, color: "#818cf8",
-                          background: "#eef2ff", padding: "2px 7px",
-                          borderRadius: 4, textTransform: "uppercase", letterSpacing: 0.7,
-                        }}>
-                          {BLOCK_ICONS[block.block_type]} {block.block_type}
-                        </span>
-                      </div>
+                      <IconChip type={block.block_type} size={22} />
+                      <span style={{
+                        fontSize: 9, fontWeight: 800, color: "#818cf8",
+                        background: "#eef2ff", padding: "2px 7px",
+                        borderRadius: 4, textTransform: "uppercase", letterSpacing: 0.7,
+                      }}>
+                        {m.label}
+                      </span>
+                      {!readOnly ? (
+                        <button
+                          onClick={() => toggleRequired(block.id, !!block.is_required)}
+                          title={block.is_required ? "Required — click to make optional" : "Mark as required"}
+                          style={{
+                            background: "none", border: "none", cursor: "pointer",
+                            color: block.is_required ? "#ef4444" : "#cbd5e1",
+                            fontSize: 13, lineHeight: 1, padding: 0,
+                          }}
+                        >*</button>
+                      ) : block.is_required && (
+                        <span title="Required" style={{ color: "#ef4444", fontSize: 13, lineHeight: 1 }}>*</span>
+                      )}
                       {/* Comment badge — always visible */}
                       <button
                         onClick={() => { setSelectedBlockId(block.id); setChatOpen(true); }}
@@ -2050,10 +2599,12 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
                       block={block}
                       readOnly={readOnly}
                       onChange={(newContent) => handleBlockChange(block.id, newContent)}
+                      onSaveTranslation={(language, partial) => saveBlockTranslation(block.id, language, partial)}
                       kpiScope={kpiScope}
-                      onRefetched={(newContent) => handleBlockRefetched(block.id, newContent)}
+                      onRefetched={(newContent, translations) => handleBlockRefetched(block.id, newContent, translations)}
                       blockId={block.id}
                       apiFetch={apiFetch}
+                      lang={contentLang}
                     />
                   </div>
 
@@ -2068,9 +2619,63 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
                 </React.Fragment>
                 );
               })}
+
+              {/* Prominent, always-visible add-block action — the primary way to add
+                 content; the thin inline "+" separators above are a secondary shortcut
+                 for inserting mid-list once a user already knows they exist. */}
+              {!readOnly && blocks.length > 0 && (
+                <div style={{ marginTop: 6 }}>
+                  <BigAddBlockButton onAdd={(type) => handleAddBlock(type, blocks.length - 1)} />
+                </div>
+              )}
+            </div>
             </div>
           </div>
         </div>
+
+        {/* ── Pre-save: auto-translate updated content into Hindi? ── */}
+        {translatePromptModal.open && (
+          <div style={{
+            position: "fixed", inset: 0, background: "rgba(15,23,42,0.45)",
+            display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000,
+            fontFamily: "'Plus Jakarta Sans', sans-serif",
+          }}>
+            <div style={{
+              background: "#fff", borderRadius: 16, padding: "28px 32px",
+              width: 460, boxShadow: "0 20px 60px rgba(15,23,42,0.25)",
+            }}>
+              <div style={{ fontSize: 16, fontWeight: 800, color: "#0f172a", marginBottom: 6 }}>
+                Update Hindi translation too?
+              </div>
+              <div style={{ fontSize: 12.5, color: "#64748b", marginBottom: 18, lineHeight: 1.6 }}>
+                {translatePromptModal.blocks.length} block{translatePromptModal.blocks.length !== 1 ? "s" : ""} you
+                edited already {translatePromptModal.blocks.length !== 1 ? "have" : "has"} a Hindi translation. If you
+                skip, those translations will be marked as possibly outdated until someone re-translates them manually.
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10, maxHeight: 160, overflowY: "auto", marginBottom: 20 }}>
+                {translatePromptModal.blocks.map((b) => (
+                  <div key={b.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "#374151" }}>
+                    <IconChip type={b.block_type} size={22} />
+                    <span>{typeMeta(b.block_type).label}</span>
+                  </div>
+                ))}
+              </div>
+              <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+                <button onClick={handleSkipTranslateBeforeSave} disabled={translatingBeforeSave} style={{
+                  padding: "8px 16px", borderRadius: 10, border: "1.5px solid #e2e8f0",
+                  background: "#fff", color: "#64748b", fontSize: 13, fontWeight: 600,
+                  cursor: translatingBeforeSave ? "not-allowed" : "pointer", fontFamily: "inherit",
+                }}>Skip — Save as is</button>
+                <button onClick={handleTranslateBeforeSave} disabled={translatingBeforeSave} style={{
+                  padding: "8px 20px", borderRadius: 10, border: "none",
+                  background: translatingBeforeSave ? "#a78bfa" : "linear-gradient(135deg,#7c3aed,#6d28d9)",
+                  color: "#fff", fontSize: 13, fontWeight: 700,
+                  cursor: translatingBeforeSave ? "not-allowed" : "pointer", fontFamily: "inherit",
+                }}>{translatingBeforeSave ? "Translating…" : "Translate & Continue →"}</button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* ── Save Description Modal ── */}
         {saveDescModal.open && (
@@ -2420,103 +3025,101 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
           />
         )}
 
-        {/* RIGHT PANEL: shared container, cross-fades between Word preview and Comments */}
-        {(!hidePreview || chatOpen || viewingSnapshot) && (
-          <div style={{
-            flex: "0 0 42%",
-            position: "relative",
-            overflow: "hidden",
-            display: "flex",
-            flexDirection: "column",
-            minWidth: 0,
-          }}>
-
-            {/* Word preview layer — fades out when comments open */}
-            {(!hidePreview || viewingSnapshot) && (
-              <div style={{
-                position: "absolute", inset: 0,
-                background: "#808080",
-                display: "flex", flexDirection: "column",
-                opacity: chatOpen ? 0 : 1,
-                transform: chatOpen ? "translateX(-10px)" : "translateX(0)",
-                transition: "opacity 0.22s ease, transform 0.22s ease",
-                pointerEvents: chatOpen ? "none" : "auto",
-              }}>
-                {/* Snapshot banner */}
-                {viewingSnapshot && (
-                  <div style={{
-                    display: "flex", alignItems: "center", gap: 10, flexShrink: 0,
-                    padding: "8px 16px", background: "#4f46e5", color: "#fff",
-                    fontSize: 12, fontWeight: 600,
-                  }}>
-                    <span>📄 Version {viewingSnapshot.version} preview</span>
-                    <button onClick={() => setViewingSnapshot(null)}
-                      style={{ marginLeft: "auto", padding: "3px 12px", borderRadius: 6, border: "1.5px solid rgba(255,255,255,0.5)", background: "transparent", color: "#fff", fontSize: 11, cursor: "pointer", fontWeight: 600 }}>
-                      ← Back to current
-                    </button>
-                    {isAdmin && (
-                      <button
-                        onClick={async () => {
-                          const desc = window.prompt(`Restore description (optional):`, `Restored to version ${viewingSnapshot.version}`);
-                          if (desc === null) return;
-                          try {
-                            const res = await apiFetch(`/api/builder/versions/section/${sectionId}/${viewingSnapshot.version}/restore`, {
-                              method: "POST",
-                              headers: { "Content-Type": "application/json" },
-                              body: JSON.stringify({ description: desc || `Restored to version ${viewingSnapshot.version}` }),
-                            });
-                            const json = await res.json();
-                            if (json.success) {
-                              alert(`Restored to version ${viewingSnapshot.version}. Page will reload.`);
-                              window.location.reload();
-                            } else {
-                              alert(json.message || "Restore failed");
-                            }
-                          } catch { alert("Restore failed"); }
-                        }}
-                        style={{ padding: "3px 12px", borderRadius: 6, border: "none", background: "#fff", color: "#4f46e5", fontSize: 11, cursor: "pointer", fontWeight: 700 }}>
-                        Restore this version
-                      </button>
-                    )}
-                  </div>
-                )}
-                <WordDocumentPreview
-                  reportMeta={reportMeta}
-                  section={viewingSnapshot ? (viewingSnapshot.data?.snapshot?.section || section) : section}
-                  blocks={viewingSnapshot ? (viewingSnapshot.data?.snapshot?.blocks || []) : blocks}
-                  reportSections={reportSections}
-                  currentSectionId={sectionId}
-                  canvasRef={previewCanvasRef}
-                />
-              </div>
-            )}
-
-            {/* Comments layer — fades in when chatOpen */}
-            <div style={{
-              position: "absolute", inset: 0,
-              display: "flex", flexDirection: "column",
-              opacity: chatOpen ? 1 : 0,
-              transform: chatOpen ? "translateX(0)" : "translateX(10px)",
-              transition: "opacity 0.22s ease, transform 0.22s ease",
-              pointerEvents: chatOpen ? "auto" : "none",
-            }}>
-              <BlockCommentsSidebar
-                sectionId={sectionId}
-                blockId={selectedBlockId}
-                blocks={blocks}
-                blockCounts={blockCounts}
-                currentUserId={user?.id}
-                apiFetch={apiFetch}
-                onClose={() => { setChatOpen(false); setSelectedBlockId(null); }}
-                showBackToPreview={!hidePreview}
-                onBlockSelect={id => setSelectedBlockId(id)}
-                onCountRefresh={loadBlockCounts}
-              />
-            </div>
-
+        {/* RIGHT PANEL: comments — its own column, only while open */}
+        {chatOpen && (
+          <div style={{ flex: "0 0 42%", overflow: "hidden", display: "flex", flexDirection: "column", minWidth: 0 }}>
+            <BlockCommentsSidebar
+              sectionId={sectionId}
+              blockId={selectedBlockId}
+              blocks={blocks}
+              blockCounts={blockCounts}
+              currentUserId={user?.id}
+              apiFetch={apiFetch}
+              onClose={() => { setChatOpen(false); setSelectedBlockId(null); }}
+              showBackToPreview={false}
+              onBlockSelect={id => setSelectedBlockId(id)}
+              onCountRefresh={loadBlockCounts}
+            />
           </div>
         )}
       </div>
+
+      {/* ── Live preview — slide-over drawer, opened on demand from the top bar ── */}
+      {!hidePreview && (
+        <>
+          {previewOpen && (
+            <div
+              onClick={() => setPreviewOpen(false)}
+              style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.35)", zIndex: 900 }}
+            />
+          )}
+          <div style={{
+            position: "fixed", top: 0, right: 0, bottom: 0, zIndex: 901,
+            width: previewWidth,
+            transform: previewOpen ? "translateX(0)" : "translateX(100%)",
+            transition: resizingPreviewRef.current ? "none" : "transform 0.25s ease",
+            background: "#808080",
+            boxShadow: "-8px 0 32px rgba(0,0,0,0.25)",
+            display: "flex", flexDirection: "column",
+          }}>
+            {/* Drag handle — resizes the drawer */}
+            <div
+              onMouseDown={startPreviewResize}
+              title="Drag to resize"
+              style={{
+                position: "absolute", top: 0, left: -4, bottom: 0, width: 8,
+                cursor: "col-resize", zIndex: 2,
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(124,58,237,0.18)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+            />
+            <div style={{
+              position: "absolute", top: 8, right: 8, zIndex: 1,
+              display: "flex", alignItems: "center", gap: 6,
+            }}>
+              <button
+                onClick={() => setPreviewWidth((w) => Math.max(360, w - 120))}
+                title="Decrease width"
+                style={{
+                  background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, cursor: "pointer",
+                  fontSize: 14, color: "#64748b", width: 28, height: 28,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  boxShadow: "0 2px 6px rgba(0,0,0,0.12)",
+                }}
+              >−</button>
+              <button
+                onClick={() => setPreviewWidth((w) => Math.min(Math.min(1200, window.innerWidth * 0.92), w + 120))}
+                title="Increase width"
+                style={{
+                  background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, cursor: "pointer",
+                  fontSize: 14, color: "#64748b", width: 28, height: 28,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  boxShadow: "0 2px 6px rgba(0,0,0,0.12)",
+                }}
+              >+</button>
+              <button onClick={() => setPreviewOpen(false)} title="Close preview" style={{
+                background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, cursor: "pointer",
+                fontSize: 13, color: "#64748b", width: 28, height: 28,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                boxShadow: "0 2px 6px rgba(0,0,0,0.12)",
+              }}>✕</button>
+            </div>
+            <div style={{ flex: 1, minHeight: 0 }}>
+              {previewOpen && (
+                <WordDocumentPreview
+                  reportMeta={reportMeta}
+                  section={section}
+                  blocks={blocks}
+                  reportSections={reportSections}
+                  currentSectionId={sectionId}
+                  canvasRef={previewCanvasRef}
+                  lang={contentLang}
+                />
+              )}
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

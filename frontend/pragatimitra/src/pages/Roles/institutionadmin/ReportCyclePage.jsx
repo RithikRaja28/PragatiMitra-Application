@@ -114,19 +114,24 @@ function SkeletonRow() {
   );
 }
 
-/* ─── Year option generator ─────────────────────────────────────── */
-function generateYearOptions() {
-  const cur = new Date().getFullYear();
-  const opts = [];
-  for (let y = cur - 3; y <= cur + 5; y++) opts.push(`${y}-${y + 1}`);
-  return opts;
-}
-const YEAR_OPTIONS = generateYearOptions();
-
 /* ─── CycleForm ─────────────────────────────────────────────────── */
 function CycleForm({ mode, entity, onCreated, onSaved, onBack }) {
   const { apiFetch } = useApi();
   const isEdit = mode === "edit";
+
+  const [yearOptions, setYearOptions] = useState([]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res  = await apiFetch("/api/academic-years");
+        const data = await res.json();
+        if (data.success) setYearOptions(data.years.map(y => y.academic_year));
+      } catch (err) {
+        if (!isAuthError(err)) { /* leave dropdown empty on failure */ }
+      }
+    })();
+  }, [apiFetch]);
 
   const EMPTY = {
     name: "", description: "", reporting_year: "",
@@ -163,7 +168,7 @@ function CycleForm({ mode, entity, onCreated, onSaved, onBack }) {
       setForm(f => ({
         ...f,
         start_date: value,
-        reporting_year: f.reporting_year || suggested,
+        reporting_year: f.reporting_year || (yearOptions.includes(suggested) ? suggested : f.reporting_year),
       }));
       return;
     }
@@ -299,7 +304,10 @@ function CycleForm({ mode, entity, onCreated, onSaved, onBack }) {
           style={S.select(false)}
         >
           <option value="">— Select year —</option>
-          {YEAR_OPTIONS.map(y => (
+          {isEdit && form.reporting_year && !yearOptions.includes(form.reporting_year) && (
+            <option value={form.reporting_year}>{form.reporting_year}</option>
+          )}
+          {yearOptions.map(y => (
             <option key={y} value={y}>{y}</option>
           ))}
         </select>

@@ -58,6 +58,36 @@ async function ensureSourceRowIdColumn(pool, tableName) {
   ensuredSourceRowIdTables.add(tableName);
 }
 
+/* Load the merged schema for (form, year): creation year → base schema;
+   subsequent years → base fields + year-specific extra fields. Falls back to
+   form.schema when no department_form_schemas row exists (migration path). */
+async function loadEffectiveSchema(pool, form, year) {
+  const creationYear = form.academic_year;
+  if (year === creationYear) return form.schema;
+  const { rows } = await pool.query(
+    `SELECT academic_year, schema, is_base FROM department_form_schemas
+     WHERE department_form_id = $1 AND (is_base = true OR academic_year = $2)`,
+    [form.id, year]
+  );
+  const baseRow = rows.find((r) => r.is_base);
+  const yearRow = rows.find((r) => r.academic_year === year && !r.is_base);
+  const baseSchema = baseRow?.schema || form.schema || { fields: [] };
+  const baseFields = baseSchema?.fields || [];
+  const baseColSet = new Set(baseFields.map((f) => f.column_name));
+  const extraFields = (yearRow?.schema?.fields || []).filter((f) => !baseColSet.has(f.column_name));
+  return { ...baseSchema, fields: [...baseFields, ...extraFields] };
+}
+
+/* Which columns physically exist in the records table. Used to split fields
+   between physical columns (creation-year) and custom_fields JSONB (extra). */
+async function getPhysicalCols(pool, tableName) {
+  const { rows } = await pool.query(
+    `SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = $1`,
+    [tableName]
+  );
+  return new Set(rows.map((r) => r.column_name));
+}
+
 function dbCol(col) { return col.trim().toLowerCase().replace(/\s+/g, "_"); }
 function validSlug(s) { return /^[a-z][a-z0-9_]*$/.test(s); }
 
@@ -221,15 +251,14 @@ router.get("/:id/records", async (req, res) => {
       "SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = $1",
       [table]
     );
+    const effectiveSchema = await loadEffectiveSchema(pool, form, year);
     if (!ex.length) {
       const lk = await deptLockBlock(pool, form, year);
-      return res.json({ success: true, records: [], schema: { schema: form.schema, year, form_name: form.form_name }, lock: { is_locked: lk.locked, message: lk.message } });
+      return res.json({ success: true, records: [], schema: { schema: effectiveSchema, year, form_name: form.form_name }, lock: { is_locked: lk.locked, message: lk.message } });
     }
 
     // Only original (English) rows — any legacy Hindi mirror rows are ignored.
-    // entered_by = the full name of the user who created the row (resolved from
-    // created_by), so admins can see who entered each record.
-    const { rows: records } = await pool.query(
+    const { rows: rawRecords } = await pool.query(
       `SELECT t.*, u.full_name AS entered_by
        FROM ${table} t
        LEFT JOIN users u ON u.id = t.created_by
@@ -239,10 +268,16 @@ router.get("/:id/records", async (req, res) => {
     );
     const lock = await deptLockBlock(pool, form, year);
 
+    // Flatten custom_fields (extra JSONB fields from non-creation years) into each row.
+    const records = rawRecords.map((row) => {
+      if (!row.custom_fields || typeof row.custom_fields !== "object") return row;
+      return { ...row, ...row.custom_fields };
+    });
+
     return res.json({
       success: true,
       records,
-      schema: { schema: form.schema, year, form_name: form.form_name },
+      schema: { schema: effectiveSchema, year, form_name: form.form_name },
       lock: { is_locked: lock.locked, message: lock.message },
     });
   } catch (err) {
@@ -271,15 +306,23 @@ router.post("/:id/records", async (req, res) => {
     const lock = await deptLockBlock(pool, form, year);
     if (lock.locked) return res.status(403).json({ success: false, message: lock.message });
 
-    const fields = activeFields(form.schema);
+    const effectiveSchema = await loadEffectiveSchema(pool, form, year);
+    const fields = activeFields(effectiveSchema);
     const fieldCols = fields.map((f) => dbCol(f.column_name));
     const createdBy = req.user.userId || null;
 
-    // role_name is no longer collected from the user — kept null for column compat.
-    const stdCols = ["form_name", "department_id", "institution_id", "academic_year", "role_name", "schema_id", "language", "created_by"];
-    const stdVals = [form.form_name, departmentId, institutionId, year, null, form.id, "en", createdBy];
-    const allCols = [...stdCols, ...fieldCols.map(quoteIdent)];
-    const allVals = [...stdVals, ...fieldCols.map((c) => data[c] ?? null)];
+    // Split: physical columns (creation-year) go directly; extra fields go to custom_fields JSONB.
+    const physicalCols = await getPhysicalCols(pool, table);
+    const baseFieldCols = fieldCols.filter((c) => physicalCols.has(c));
+    const extraFieldCols = fieldCols.filter((c) => !physicalCols.has(c));
+    const customFieldsJson = extraFieldCols.length > 0
+      ? JSON.stringify(Object.fromEntries(extraFieldCols.map((c) => [c, data[c] ?? null])))
+      : null;
+
+    const stdCols = ["form_name", "department_id", "institution_id", "academic_year", "role_name", "schema_id", "language", "created_by", "custom_fields"];
+    const stdVals = [form.form_name, departmentId, institutionId, year, null, form.id, "en", createdBy, customFieldsJson];
+    const allCols = [...stdCols, ...baseFieldCols.map(quoteIdent)];
+    const allVals = [...stdVals, ...baseFieldCols.map((c) => data[c] ?? null)];
     const ph = allVals.map((_, i) => `$${i + 1}`).join(", ");
 
     const { rows } = await pool.query(
@@ -287,7 +330,12 @@ router.post("/:id/records", async (req, res) => {
       allVals
     );
 
-    return res.json({ success: true, record: rows[0], message: "Record created successfully." });
+    const record = rows[0];
+    if (record.custom_fields && typeof record.custom_fields === "object") {
+      Object.assign(record, record.custom_fields);
+    }
+
+    return res.json({ success: true, record, message: "Record created successfully." });
   } catch (err) {
     logger.error("POST /api/department-form-data/:id/records", { stack: err.stack });
     return res.status(500).json({ success: false, message: "Failed to create record." });
@@ -312,13 +360,31 @@ router.put("/:id/records/:recordId", async (req, res) => {
     const lock = await deptLockBlock(pool, form, year);
     if (lock.locked) return res.status(403).json({ success: false, message: lock.message });
 
-    const fields = activeFields(form.schema);
+    const effectiveSchema = await loadEffectiveSchema(pool, form, year);
+    const fields = activeFields(effectiveSchema);
     const fieldCols = fields.map((f) => dbCol(f.column_name));
 
+    // Split: physical vs extra fields.
+    const physicalCols = await getPhysicalCols(pool, table);
+    const baseFieldCols = fieldCols.filter((c) => physicalCols.has(c));
+    const extraFieldCols = fieldCols.filter((c) => !physicalCols.has(c));
+    const customFieldsJson = extraFieldCols.length > 0
+      ? JSON.stringify(Object.fromEntries(extraFieldCols.map((c) => [c, data[c] ?? null])))
+      : null;
+
     let idx = 1;
-    const setClauses = [...fieldCols.map((c) => `${quoteIdent(c)} = $${idx++}`), "updated_at = now()"];
+    const setClauses = [
+      ...baseFieldCols.map((c) => `${quoteIdent(c)} = $${idx++}`),
+      ...(extraFieldCols.length > 0 ? [`custom_fields = $${idx++}`] : []),
+      "updated_at = now()",
+    ];
     const whereClause = `department_id = $${idx++} AND id = $${idx++}`;
-    const vals = [...fieldCols.map((c) => data[c] ?? null), departmentId, req.params.recordId];
+    const vals = [
+      ...baseFieldCols.map((c) => data[c] ?? null),
+      ...(extraFieldCols.length > 0 ? [customFieldsJson] : []),
+      departmentId,
+      req.params.recordId,
+    ];
 
     const { rows } = await pool.query(
       `UPDATE ${table} SET ${setClauses.join(", ")} WHERE ${whereClause} RETURNING *`,
@@ -326,7 +392,12 @@ router.put("/:id/records/:recordId", async (req, res) => {
     );
     if (!rows.length) return res.status(404).json({ success: false, message: "Record not found." });
 
-    return res.json({ success: true, record: rows[0], message: "Record updated successfully." });
+    const record = rows[0];
+    if (record.custom_fields && typeof record.custom_fields === "object") {
+      Object.assign(record, record.custom_fields);
+    }
+
+    return res.json({ success: true, record, message: "Record updated successfully." });
   } catch (err) {
     logger.error("PUT /api/department-form-data/:id/records/:recordId", { stack: err.stack });
     return res.status(500).json({ success: false, message: "Failed to update record." });
@@ -387,7 +458,8 @@ router.get("/:id/export", async (req, res) => {
     const table = deptRecordsTable(form.department_id, form.form_name);
     const year = resolveYear(req);
 
-    const fields = activeFields(form.schema);
+    const effectiveSchema = await loadEffectiveSchema(pool, form, year);
+    const fields = activeFields(effectiveSchema);
     const cols = fields.map((f) => dbCol(f.column_name));
     const headers = fields.map((f) => f.label?.en || f.column_name.replace(/_/g, " "));
 
@@ -401,18 +473,24 @@ router.get("/:id/export", async (req, res) => {
     );
 
     const allHeaders = ["#", "Added By", ...headers, "Created"];
-    const dataRows = rows.map((r, i) => [
-      i + 1,
-      r.entered_by || "",
-      ...cols.map((c) => {
-        const v = r[c];
-        if (v == null) return "";
-        if (v === true) return "Yes";
-        if (v === false) return "No";
-        return String(v);
-      }),
-      r.created_at ? new Date(r.created_at).toISOString().slice(0, 10) : "",
-    ]);
+    const dataRows = rows.map((r, i) => {
+      // Flatten custom_fields (extra JSONB fields from non-creation years) into the row.
+      const flat = (r.custom_fields && typeof r.custom_fields === "object")
+        ? { ...r, ...r.custom_fields }
+        : r;
+      return [
+        i + 1,
+        r.entered_by || "",
+        ...cols.map((c) => {
+          const v = flat[c];
+          if (v == null) return "";
+          if (v === true) return "Yes";
+          if (v === false) return "No";
+          return String(v);
+        }),
+        r.created_at ? new Date(r.created_at).toISOString().slice(0, 10) : "",
+      ];
+    });
 
     const baseName = `${form.form_name}_${year}`;
 

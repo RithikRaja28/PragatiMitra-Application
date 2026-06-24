@@ -91,11 +91,7 @@ export function AcademicYearProvider({ children }) {
      exist yet, offer a sensible range so the selector is still usable. */
   const options = useMemo(() => {
     const visible = years.filter((y) => !y.is_archived);
-    if (visible.length) {
-      return visible.map((y) => ({ value: y.start_year, label: y.academic_year, active: !!y.active, locked: !!y.is_locked }));
-    }
-    const now = new Date().getFullYear();
-    return Array.from({ length: 5 }, (_, i) => now - 2 + i).map((y) => ({ value: y, label: fmt(y), active: false, locked: false }));
+    return visible.map((y) => ({ value: y.start_year, label: y.academic_year, active: !!y.active, locked: !!y.is_locked }));
   }, [years]);
 
   const academicYear = selectedYear != null ? fmt(selectedYear) : null;

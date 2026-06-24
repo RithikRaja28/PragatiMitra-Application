@@ -175,7 +175,7 @@ export default function DepartmentFormBuilderPage({ mode, initialData, onDone, o
   /* Edit mode: load existing schema for this department form */
   useEffect(() => {
     if (!isEdit || !initialData?.id) return;
-    apiFetch(`/api/department-forms/${initialData.id}/schema`).then((r) => r.json()).then((d) => {
+    apiFetch(`/api/department-forms/${initialData.id}/schema?year=${selectedYear ?? ""}`).then((r) => r.json()).then((d) => {
       if (d.success && d.schema) {
         setDescription(d.schema.description || "");
         setFields((d.schema.fields || []).map((f) => ({ _key: nextKey(), ...f })));
@@ -231,7 +231,7 @@ export default function DepartmentFormBuilderPage({ mode, initialData, onDone, o
       let res;
       if (isEdit) {
         res = await apiFetch(`/api/department-forms/${initialData.id}/schema`, {
-          method: "PUT", body: JSON.stringify({ schema }),
+          method: "PUT", body: JSON.stringify({ schema, year: selectedYear }),
         });
       } else {
         const deadline = (deadlineEnabled && deadlineDate)

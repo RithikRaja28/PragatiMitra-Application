@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo, useLayoutEffect } from "react";
 import { useNavigate, useLocation, Navigate } from "react-router-dom";
 import ReactDOM from "react-dom";
-import { createPortal } from "react-dom";
 
 const SLUG = "form-data";
 import { Trash2, FileText, FilePlus, Lock, Clock, Globe, SearchX, Table2, LayoutGrid, UserPlus, Eye } from "lucide-react";
@@ -310,20 +309,14 @@ function RecordEditPage({ fields, record, onSave, onBack, getToken, formName, fo
     setSaving(true); setError("");
     const res = await onSave(formData);
     if (res?.success) {
-      if (!isEdit) {
-        // New record added → return to the list. Prevents a second click from
-        // re-submitting the still-populated form (duplicate record).
-        onBack();
-        return;
-      }
-      // Edit: stay on the page and refresh the Hindi preview once the
-      // server-side translation has had a moment to run (async on the backend).
-      setSaving(false);
-      if (showReference) setTimeout(refetchCounterpart, 1200);
-    } else {
-      setSaving(false);
-      setError(res?.message || "Failed to save record.");
+      // Both new and updated records return to the list immediately — Update
+      // Record now matches the Create Record flow. onBack() also reloads the
+      // list so the saved changes show up right away (no manual back needed).
+      onBack();
+      return;
     }
+    setSaving(false);
+    setError(res?.message || "Failed to save record.");
   }
 
   const noFields = <div style={{ textAlign: "center", color: "#94a3b8", fontSize: 13, padding: "24px 0" }}>No schema fields configured for this form.</div>;
@@ -1186,6 +1179,7 @@ export default function FormDataPage() {
         dir:      sortDir,
       });
       if (searchTerm.trim()) params.set("search", searchTerm.trim());
+      if (selectedYear != null) params.set("year", String(selectedYear));
       const res  = await apiFetch(`/api/form-data/${form.form_name}/records?${params.toString()}`);
       const data = await res.json();
       if (data.success) {
@@ -1198,12 +1192,24 @@ export default function FormDataPage() {
       }
     } catch (err) { if (!isAuthError(err)) setRecsError("Failed to load records."); }
     finally { setRecsLoading(false); }
-  }, [apiFetch, lang, currentPage, pageSize, searchTerm, sortField, sortDir]);
+  }, [apiFetch, lang, currentPage, pageSize, searchTerm, sortField, sortDir, selectedYear]);
 
   /* Re-fetch when the records route loads (formEntity comes from nav state) */
   useEffect(() => {
     if (isRecords && formEntity) loadRecords(formEntity);
   }, [isRecords, formEntity, loadRecords]);
+
+  /* When the academic year changes while viewing a form's records, `loadForms`
+     reloads with the new year. If the current form is no longer in the list
+     (not assigned / not active for that year), redirect to the form list so the
+     user doesn't see stale data for an unrelated year. */
+  useEffect(() => {
+    if (!isRecords || !formEntity || formsLoading || !formsLoadedRef.current) return;
+    const available = forms.some((f) => f.form_name === formEntity.form_name);
+    if (!available) {
+      navigate(listPath, { replace: true });
+    }
+  }, [forms, formsLoading, isRecords, formEntity, navigate, listPath]);
 
   function openForm(form) {
     navigate(`${listPath}/records`, { state: { entity: form } });
@@ -1229,6 +1235,14 @@ export default function FormDataPage() {
       const data = await res.json();
       if (data.success) {
         showToast(data.message);
+        // The edit page stays open after a save (see comment above), so a second
+        // Save in the same session must compare against the row's NEW updated_at —
+        // otherwise it sends the stale value from when the page first opened and
+        // false-conflicts against its own prior save. Sync editTarget from the
+        // server's RETURNING * row (data.record) before the next save can fire.
+        if (editing && data.record) {
+          setEditTarget((prev) => (prev && prev !== "new" ? { ...prev, ...data.record } : prev));
+        }
         loadRecords(formEntity);
         return { success: true, message: data.message };
       }
@@ -1574,16 +1588,6 @@ export default function FormDataPage() {
             )}
           </>
         }
-        description={
-          <>
-            {recsLoading
-              ? t("Loading…", lang)
-              : searchTerm
-                ? `${totalCount} ${t("matching record", lang)}${totalCount !== 1 ? "s" : ""}`
-                : `${totalCount} ${t("record", lang)}${totalCount !== 1 ? "s" : ""}`}
-            {schema && <span style={{ marginLeft: 8, fontFamily: "monospace", fontSize: 11 }}>· {schema.year}</span>}
-          </>
-        }
         actions={
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <SortDropdown
@@ -1640,11 +1644,6 @@ export default function FormDataPage() {
           <div style={{ padding: "12px 20px", borderBottom: "1px solid #f1f5f9", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: "#1e293b" }}>
               {t("Records", lang)}
-              {searchTerm && (
-                <span style={{ marginLeft: 8, fontSize: 12, fontWeight: 500, color: "#94a3b8" }}>
-                  · {totalCount} {t("matching", lang)}
-                </span>
-              )}
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               {/* Table / Cards view toggle — both reuse the same handlers */}
@@ -1867,31 +1866,12 @@ export default function FormDataPage() {
       {/* ── Pagination — stays mounted while loading so it doesn't pop in/out ── */}
       {totalCount > 0 && (
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 16, padding: "10px 4px", flexWrap: "wrap", gap: 10 }}>
-          {/* Left: rows-per-page + record range */}
+          {/* Left: rows-per-page */}
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <RowsPerPageDropdown pageSize={pageSize} onPageSizeChange={handlePageSizeChange} />
-            <div style={{ fontSize: 13, color: "#64748b" }}>
-              {totalCount <= pageSize ? (
-                <>
-                  <strong style={{ color: "#1e293b" }}>{totalCount.toLocaleString()}</strong>{" "}
-                  {lang === "hi" ? "रिकॉर्ड" : `record${totalCount !== 1 ? "s" : ""}`}
-                  {searchTerm && <span style={{ color: "#94a3b8", marginLeft: 4 }}>({t("matching", lang)})</span>}
-                </>
-              ) : (
-                <>
-                  {t("Showing", lang)}{" "}
-                  <strong style={{ color: "#1e293b" }}>
-                    {(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, totalCount)}
-                  </strong>{" "}
-                  {t("of", lang)}{" "}
-                  <strong style={{ color: "#1e293b" }}>{totalCount.toLocaleString()}</strong>
-                  {searchTerm && <span style={{ color: "#94a3b8", marginLeft: 4 }}>({t("matching", lang)})</span>}
-                </>
-              )}
-              {selectedIds.size > 0 && (
-                <span style={{ marginLeft: 8, color: ACCENT, fontWeight: 700 }}>({selectedIds.size} {t("selected", lang)})</span>
-              )}
-            </div>
+            {selectedIds.size > 0 && (
+              <span style={{ fontSize: 13, color: ACCENT, fontWeight: 700 }}>{selectedIds.size} {t("selected", lang)}</span>
+            )}
           </div>
           {/* Right: page navigation */}
           {totalPages > 1 && (

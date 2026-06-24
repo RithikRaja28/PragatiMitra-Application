@@ -86,6 +86,7 @@ function canAssignRole(req, roleName) {
   if (roles.includes("super_admin")) return true;            // god — anything
   const rn = String(roleName || "").trim().toLowerCase();
   if (rn === "super_admin")    return false;                 // only super_admin may grant
+  if (rn === "nodal_officer")  return false;                 // assigned via NOA module only
   if (rn === "institute_admin") return roles.includes("institute_admin");
   return true;                                                // department-level roles
 }

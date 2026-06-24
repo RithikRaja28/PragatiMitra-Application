@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useNavigate }         from "react-router-dom";
-import { Mail, Lock, Eye, EyeOff, AlertCircle, ShieldCheck, Loader2, User, KeyRound, CheckCircle2 } from "lucide-react";
+import { Mail, Lock, Eye, EyeOff, AlertCircle, ShieldCheck, Loader2, CheckCircle2 } from "lucide-react";
 import { authApi } from "../../services";
 
 function injectCSS(id, css) {
@@ -80,10 +80,6 @@ const CSS = `
   }
   .sas-eye:hover { color: #dc2626; }
 
-  .sas-hint {
-    font-size: 11.5px; color: #94a3b8; margin-top: 2px;
-  }
-
   .sas-btn {
     height: 46px; width: 100%; border-radius: 6px; border: none;
     background: #dc2626; color: #fff;
@@ -108,37 +104,33 @@ export default function SuperAdminSignup() {
 
   const navigate = useNavigate();
 
-  const [fullName,  setFullName]  = useState("");
-  const [email,     setEmail]     = useState("");
-  const [password,  setPassword]  = useState("");
-  const [setupKey,  setSetupKey]  = useState("");
-  const [showPwd,   setShowPwd]   = useState(false);
-  const [showKey,   setShowKey]   = useState(false);
-  const [loading,   setLoading]   = useState(false);
-  const [error,     setError]     = useState("");
-  const [success,   setSuccess]   = useState(false);
-  const [touched,   setTouched]   = useState({ fullName: false, email: false, password: false, setupKey: false });
+  const [email,           setEmail]           = useState("");
+  const [password,        setPassword]        = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPwd,         setShowPwd]         = useState(false);
+  const [showConfirm,     setShowConfirm]     = useState(false);
+  const [loading,         setLoading]         = useState(false);
+  const [error,           setError]           = useState("");
+  const [success,         setSuccess]         = useState(false);
+  const [touched,         setTouched]         = useState({ email: false, password: false, confirmPassword: false });
 
-  const nameErr     = touched.fullName && !fullName.trim();
-  const emailErr    = touched.email    && !email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/);
-  const passwordErr = touched.password && password.length < 8;
-  const keyErr      = touched.setupKey && !setupKey.trim();
+  const emailErr           = touched.email           && !email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/);
+  const passwordErr        = touched.password        && password.length < 8;
+  const confirmPasswordErr = touched.confirmPassword && confirmPassword !== password;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setTouched({ fullName: true, email: true, password: true, setupKey: true });
-    if (nameErr || emailErr || passwordErr || keyErr) return;
-    if (!fullName.trim() || !email || !password || !setupKey) return;
+    setTouched({ email: true, password: true, confirmPassword: true });
+    if (emailErr || passwordErr || confirmPasswordErr) return;
+    if (!email || !password || confirmPassword !== password) return;
 
     setLoading(true);
     setError("");
 
     try {
       const res  = await authApi.superAdminRegister({
-        fullName: fullName.trim(),
         email:    email.trim().toLowerCase(),
         password,
-        setupKey,
       });
       const data = await res.json();
 
@@ -150,7 +142,6 @@ export default function SuperAdminSignup() {
 
       setSuccess(true);
       setLoading(false);
-      // Redirect to login after 2 seconds
       setTimeout(() => navigate("/admin-login", { replace: true }), 2000);
 
     } catch {
@@ -187,7 +178,7 @@ export default function SuperAdminSignup() {
 
         <div className="sas-head">
           <h1 className="sas-title">Create Super Admin Account</h1>
-          <p className="sas-sub">A setup key is required to register.</p>
+          <p className="sas-sub">Register a new super administrator account.</p>
         </div>
 
         {error && (
@@ -199,24 +190,8 @@ export default function SuperAdminSignup() {
 
         <form className="sas-form" onSubmit={handleSubmit} noValidate>
 
-          <div className={`sas-field ${nameErr ? "sas-field--error" : ""}`}>
-            <label htmlFor="sa-name">Full name</label>
-            <div className="sas-inp">
-              <span className="sas-inp-icon"><User size={16} /></span>
-              <input
-                id="sa-name" type="text" autoComplete="name"
-                placeholder="e.g. System Administrator"
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
-                onBlur={() => setTouched((t) => ({ ...t, fullName: true }))}
-                disabled={loading}
-              />
-            </div>
-            {nameErr && <span className="sas-msg">Full name is required.</span>}
-          </div>
-
           <div className={`sas-field ${emailErr ? "sas-field--error" : ""}`}>
-            <label htmlFor="sa-reg-email">Email address</label>
+            <label htmlFor="sa-reg-email">Email ID</label>
             <div className="sas-inp">
               <span className="sas-inp-icon"><Mail size={16} /></span>
               <input
@@ -232,7 +207,7 @@ export default function SuperAdminSignup() {
           </div>
 
           <div className={`sas-field ${passwordErr ? "sas-field--error" : ""}`}>
-            <label htmlFor="sa-reg-password">Password</label>
+            <label htmlFor="sa-reg-password">New Password</label>
             <div className="sas-inp">
               <span className="sas-inp-icon"><Lock size={16} /></span>
               <input
@@ -253,26 +228,26 @@ export default function SuperAdminSignup() {
             {passwordErr && <span className="sas-msg">Password must be at least 8 characters.</span>}
           </div>
 
-          <div className={`sas-field ${keyErr ? "sas-field--error" : ""}`}>
-            <label htmlFor="sa-setup-key">Setup key</label>
+          <div className={`sas-field ${confirmPasswordErr ? "sas-field--error" : ""}`}>
+            <label htmlFor="sa-confirm-password">Confirm Password</label>
             <div className="sas-inp">
-              <span className="sas-inp-icon"><KeyRound size={16} /></span>
+              <span className="sas-inp-icon"><Lock size={16} /></span>
               <input
-                id="sa-setup-key"
-                type={showKey ? "text" : "password"}
-                placeholder="Enter the setup key"
-                value={setupKey}
-                onChange={(e) => setSetupKey(e.target.value)}
-                onBlur={() => setTouched((t) => ({ ...t, setupKey: true }))}
+                id="sa-confirm-password"
+                type={showConfirm ? "text" : "password"}
+                autoComplete="new-password"
+                placeholder="Re-enter your password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                onBlur={() => setTouched((t) => ({ ...t, confirmPassword: true }))}
                 disabled={loading}
               />
-              <button type="button" className="sas-eye" onClick={() => setShowKey((v) => !v)} tabIndex={-1}
-                aria-label={showKey ? "Hide key" : "Show key"}>
-                {showKey ? <EyeOff size={16} /> : <Eye size={16} />}
+              <button type="button" className="sas-eye" onClick={() => setShowConfirm((v) => !v)} tabIndex={-1}
+                aria-label={showConfirm ? "Hide password" : "Show password"}>
+                {showConfirm ? <EyeOff size={16} /> : <Eye size={16} />}
               </button>
             </div>
-            {keyErr && <span className="sas-msg">Setup key is required.</span>}
-            <span className="sas-hint">Provided by the system administrator in the server configuration.</span>
+            {confirmPasswordErr && <span className="sas-msg">Passwords do not match.</span>}
           </div>
 
           <button type="submit" className="sas-btn" disabled={loading}>
