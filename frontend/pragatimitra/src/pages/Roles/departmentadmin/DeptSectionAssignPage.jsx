@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useCallback } from "react";
 import {
-  FileText, CheckCircle2, Clock, UserRound, RefreshCw, X, ChevronRight,
+  CheckCircle2, Clock, UserRound, RefreshCw, X, ChevronRight,
 } from "lucide-react";
 import { useApi } from "../../../hooks/useApi";
-import PageHeader from "../../../components/shared/PageHeader";
+import { PageContainer, PageHeader, Toolbar, FilterChip, Card, EmptyState, ErrorState } from "../../../ui";
 
 const C = {
   primary: "#2563eb",
@@ -315,7 +315,7 @@ export default function DeptSectionAssignPage() {
   const activeList = tab === "pending" ? pending : delegated;
 
   return (
-    <div style={{ padding: "24px 28px", fontFamily: "'Plus Jakarta Sans', sans-serif", background: "transparent", minHeight: "100%", display: "flex", flexDirection: "column", gap: 0 }}>
+    <PageContainer style={{ gap: 0 }}>
       <PageHeader
         breadcrumb={["Home", "Reports", "Department Sections"]}
         title="Department Report Sections"
@@ -354,28 +354,16 @@ export default function DeptSectionAssignPage() {
         </div>
       )}
 
-      {/* tab switcher */}
+      {/* tab switcher — standardized FilterChips */}
       {!loading && !err && (
-        <div style={{ display: "flex", borderBottom: `1px solid ${C.border}`, marginBottom: 16 }}>
-          {[
-            { key: "pending",   label: `Pending (${pending.length})`    },
-            { key: "delegated", label: `Delegated (${delegated.length})` },
-          ].map(t => (
-            <button
-              key={t.key}
-              onClick={() => setTab(t.key)}
-              style={{
-                padding: "9px 20px", fontSize: 13, fontWeight: 600,
-                border: "none", background: "none", cursor: "pointer",
-                color:       tab === t.key ? C.primary : C.muted,
-                borderBottom: tab === t.key ? `2px solid ${C.primary}` : "2px solid transparent",
-                marginBottom: -1,
-              }}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
+        <Toolbar>
+          <FilterChip active={tab === "pending"} count={pending.length} onClick={() => setTab("pending")}>
+            Pending
+          </FilterChip>
+          <FilterChip active={tab === "delegated"} count={delegated.length} onClick={() => setTab("delegated")}>
+            Delegated
+          </FilterChip>
+        </Toolbar>
       )}
 
       {/* loading state */}
@@ -388,35 +376,26 @@ export default function DeptSectionAssignPage() {
 
       {/* error state */}
       {!loading && err && (
-        <div style={{
-          ...card,
-          padding: "14px 18px",
-          background: "#fef2f2", border: `1px solid #fca5a5`,
-          color: C.danger, fontSize: 13, fontWeight: 500,
-        }}>
-          {err}
-        </div>
+        <Card padding={0}>
+          <ErrorState title="Couldn’t load department sections" description={err} />
+        </Card>
       )}
 
       {/* empty state */}
       {!loading && !err && activeList.length === 0 && (
-        <div style={{ ...card, padding: "64px 40px", textAlign: "center" }}>
-          <div style={{
-            width: 56, height: 56, borderRadius: 14, margin: "0 auto 16px",
-            background: "#f1f5f9", border: `1px solid ${C.border}`,
-            display: "flex", alignItems: "center", justifyContent: "center",
-          }}>
-            <FileText size={24} strokeWidth={1.5} color={C.muted} />
-          </div>
-          <div style={{ fontSize: 14.5, fontWeight: 700, color: "#475569", marginBottom: 5 }}>
-            {tab === "pending" ? "No sections pending assignment" : "No delegated sections yet"}
-          </div>
-          <div style={{ fontSize: 12.5, color: C.muted }}>
-            {tab === "pending"
+        <Card padding={0}>
+          <EmptyState
+            icon={
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6" />
+              </svg>
+            }
+            title={tab === "pending" ? "No sections pending assignment" : "No delegated sections yet"}
+            description={tab === "pending"
               ? "When sections are assigned to your department, they will appear here."
               : "Sections you assign to team members will show here."}
-          </div>
-        </div>
+          />
+        </Card>
       )}
 
       {/* section list */}
@@ -463,6 +442,6 @@ export default function DeptSectionAssignPage() {
       )}
 
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-    </div>
+    </PageContainer>
   );
 }
