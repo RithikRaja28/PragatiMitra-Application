@@ -57,9 +57,10 @@ import DirectorsDashboardPage from "../../pages/Roles/directorsoffice/DirectorsD
 import ReviewQueuePage        from "../../pages/Roles/directorsoffice/ReviewQueuePage";
 
 /* ── Department Admin page imports ───────────────────────────── */
-import DeptAdminDashboardPage from "../../pages/Roles/departmentadmin/DeptAdminDashboardPage";
-import DeptUsersPage          from "../../pages/Roles/departmentadmin/DeptUsersPage";
-import FormDataPage           from "../../pages/Forms/FormDataPage";
+import DeptAdminDashboardPage  from "../../pages/Roles/departmentadmin/DeptAdminDashboardPage";
+import DeptUsersPage           from "../../pages/Roles/departmentadmin/DeptUsersPage";
+import DeptSectionAssignPage   from "../../pages/Roles/departmentadmin/DeptSectionAssignPage";
+import FormDataPage            from "../../pages/Forms/FormDataPage";
 import DepartmentFormManagementPage from "../../pages/Forms/DepartmentFormManagementPage";
 
 /* ── Dept Nodal Officer page imports ─────────────────────────── */
@@ -483,19 +484,21 @@ export const ROLE_CONFIG = {
       {
         group: "Report Sections",
         items: [
-          { id: "da-my-sections",  label: "My Sections",  icon: "FileEdit",      permission: null, slug: "my-sections",  subRoutes: MY_SECTIONS_SUB },
-          { id: "da-review-queue", label: "Review Queue", icon: "ClipboardList", permission: null, slug: "review-queue", subRoutes: REVIEW_QUEUE_SUB },
+          { id: "da-dept-sections", label: "Dept. Report Sections", icon: "FolderOpen",   permission: null, slug: "dept-sections"  },
+          { id: "da-my-sections",   label: "My Sections",           icon: "FileEdit",     permission: null, slug: "my-sections",  subRoutes: MY_SECTIONS_SUB },
+          { id: "da-review-queue",  label: "Review Queue",          icon: "ClipboardList",permission: null, slug: "review-queue", subRoutes: REVIEW_QUEUE_SUB },
         ],
       },
     ],
     pages: {
-      "da-dashboard":    <DeptAdminDashboardPage />,
-      "da-users":        <DeptUsersPage />,
-      "da-kpi":          <DeptKpiPage />,
-      "da-dept-forms":   <DepartmentFormManagementPage />,
-      "da-form-data":    <FormDataPage />,
-      "da-my-sections":  <MyAssignedSectionsPage />,
-      "da-review-queue": <ReviewQueuePage />,
+      "da-dashboard":     <DeptAdminDashboardPage />,
+      "da-users":         <DeptUsersPage />,
+      "da-kpi":           <DeptKpiPage />,
+      "da-dept-forms":    <DepartmentFormManagementPage />,
+      "da-form-data":     <FormDataPage />,
+      "da-dept-sections": <DeptSectionAssignPage />,
+      "da-my-sections":   <MyAssignedSectionsPage />,
+      "da-review-queue":  <ReviewQueuePage />,
     },
     defaultPage: "da-dashboard",
     user: {
