@@ -84,6 +84,23 @@ function IcoPlus() {
     </svg>
   );
 }
+function IcoEyeOff() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/>
+      <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/>
+      <line x1="1" y1="1" x2="23" y2="23"/>
+    </svg>
+  );
+}
+function IcoEye() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+      <circle cx="12" cy="12" r="3"/>
+    </svg>
+  );
+}
 
 /* ── Step indicator — horizontal progress rail (enterprise SaaS style) ── */
 function StepBar({ step }) {
@@ -133,7 +150,7 @@ function StepBar({ step }) {
 }
 
 /* ── Field row — uses stable _key so expanded state survives typing ── */
-function FieldRow({ field, index, total, isFixed, isEdit, onChange, onRemove, onMoveUp, onMoveDown, languages, usedColumnNames, currentColumnNames }) {
+function FieldRow({ field, index, total, isFixed, isEdit, onChange, onRemove, onToggleHide, onMoveUp, onMoveDown, languages, usedColumnNames, currentColumnNames }) {
   const [expanded, setExpanded] = useState(false);
 
   const typeLabel = FIELD_TYPES.find((t) => t.value === field.type)?.label || field.type;
@@ -145,11 +162,15 @@ function FieldRow({ field, index, total, isFixed, isEdit, onChange, onRemove, on
   // newly added) are therefore locked; brand-new fields can still set a name.
   const lockColumnName = isFixed || (isEdit && !field.isNew);
 
+  // Hidden fields: grayed-out border/background; visible to admin for toggling
+  const isHidden = !!field.hidden;
+
   return (
     <div style={{
-      border: `1.5px solid ${isFixed ? "#e0f2fe" : "#e2e8f0"}`,
+      border: `1.5px solid ${isHidden ? "#e2e8f0" : isFixed ? "#e0f2fe" : "#e2e8f0"}`,
       borderRadius: 8, overflow: "hidden", marginBottom: 10,
-      background: isFixed ? "#f0f9ff" : "#fff",
+      background: isHidden ? "#f8fafc" : isFixed ? "#f0f9ff" : "#fff",
+      opacity: isHidden ? 0.7 : 1,
     }}>
       {/* header row — clicking toggles expansion */}
       <div
@@ -158,23 +179,26 @@ function FieldRow({ field, index, total, isFixed, isEdit, onChange, onRemove, on
       >
         <div style={{
           width: 22, height: 22, borderRadius: 6, flexShrink: 0,
-          background: isFixed ? "#bae6fd" : "#cffafe",
+          background: isHidden ? "#e2e8f0" : isFixed ? "#bae6fd" : "#cffafe",
           display: "flex", alignItems: "center", justifyContent: "center",
-          fontSize: 10.5, fontWeight: 700, color: isFixed ? "#0369a1" : ACCENT,
+          fontSize: 10.5, fontWeight: 700, color: isHidden ? "#94a3b8" : isFixed ? "#0369a1" : ACCENT,
         }}>
           {index + 1}
         </div>
 
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ fontSize: 13, fontWeight: 600, color: "#1e293b", fontFamily: "monospace" }}>
+            <span style={{ fontSize: 13, fontWeight: 600, color: isHidden ? "#94a3b8" : "#1e293b", fontFamily: "monospace", textDecoration: isHidden ? "line-through" : "none" }}>
               {field.column_name || <span style={{ color: "#94a3b8", fontStyle: "italic", fontFamily: "inherit" }}>unnamed_field</span>}
             </span>
             {isFixed && (
               <span style={{ fontSize: 10, fontWeight: 700, padding: "1px 7px", borderRadius: 20, background: "#2563eb18", color: "#2563eb", textTransform: "uppercase" }}>Fixed</span>
             )}
-            {field.required && (
+            {!isHidden && field.required && (
               <span style={{ fontSize: 10, fontWeight: 700, padding: "1px 7px", borderRadius: 20, background: "#fef3c718", color: "#d97706", textTransform: "uppercase" }}>Required</span>
+            )}
+            {isHidden && (
+              <span style={{ fontSize: 10, fontWeight: 700, padding: "1px 7px", borderRadius: 20, background: "#f1f5f9", color: "#94a3b8", textTransform: "uppercase" }}>Hidden</span>
             )}
           </div>
           <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 1 }}>
@@ -192,9 +216,21 @@ function FieldRow({ field, index, total, isFixed, isEdit, onChange, onRemove, on
             <IcoChevron />
           </button>
           {!isFixed && (
-            <button onClick={() => onRemove(index)} title="Remove field" style={{ ...ghostBtn, color: "#dc2626" }}>
-              <IcoTrash />
-            </button>
+            isEdit && !field.isNew ? (
+              // Saved column: hide/show toggle instead of delete so DB data is never lost
+              <button
+                onClick={() => onToggleHide()}
+                title={isHidden ? "Make column visible" : "Hide column"}
+                style={{ ...ghostBtn, color: isHidden ? ACCENT : "#94a3b8" }}
+              >
+                {isHidden ? <IcoEye /> : <IcoEyeOff />}
+              </button>
+            ) : (
+              // Unsaved (new) column: delete is safe — no data exists yet
+              <button onClick={() => onRemove(index)} title="Remove field" style={{ ...ghostBtn, color: "#dc2626" }}>
+                <IcoTrash />
+              </button>
+            )
           )}
         </div>
 
@@ -430,22 +466,41 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
   /* ── Load existing schema in edit mode ── */
   useEffect(() => {
     if (!isEdit || !initialData?.form_name) return;
+    // Wait until the year context has resolved — a null year would fetch the
+    // latest-year schema (possibly a different year) and then get overwritten
+    // when the real year resolves, creating a visible flash and a potential
+    // race where the "wrong year" response arrives last.
+    if (selectedYear == null) return;
 
     function applySchema(existingSchema) {
       if (!existingSchema?.fields) return;
       // Deduplicate by normalised column name — old saves could have ghost duplicates
       const seen = new Set();
+      // Columns that were "hidden" via the old mechanism (stored in
+      // excluded_fixed_columns) — migrate them to field.hidden = true on load
+      // so the eye-toggle UI controls them consistently going forward.
+      const legacyExcluded = new Set(
+        (existingSchema.excluded_fixed_columns || []).map(c => c.trim().toLowerCase().replace(/\s+/g, "_"))
+      );
       const uniqueFields = existingSchema.fields.filter((f) => {
         const col = f.column_name?.trim().toLowerCase().replace(/\s+/g, "_");
         if (!col || seen.has(col)) return false;
         seen.add(col);
         return true;
       });
-      setFields(uniqueFields.map((f, i) => ({ _key: nextKey(), ...f, order: i })));
-      // Populate excludedFixed from: explicit excluded_fixed_columns + legacy hidden:true fields
-      const fromExcluded = existingSchema.excluded_fixed_columns || [];
-      const fromHidden   = existingSchema.fields.filter((f) => f.hidden).map((f) => f.column_name);
-      setExcludedFixed(new Set([...fromExcluded, ...fromHidden]));
+      setFields(uniqueFields.map((f, i) => {
+        const col = f.column_name?.trim().toLowerCase().replace(/\s+/g, "_");
+        // A custom (non-fixed) column in excluded_fixed_columns was "hidden" the
+        // old way — represent it as hidden: true on the field object instead.
+        const hiddenViaLegacy = !f.is_fixed && legacyExcluded.has(col);
+        return { _key: nextKey(), ...f, hidden: !!(f.hidden || hiddenViaLegacy), order: i };
+      }));
+      // excludedFixed is now only for system fixed columns (adapt mode).
+      // Filter out any custom-field names that were migrated to field.hidden above.
+      const fixedCols = new Set(
+        uniqueFields.filter(f => f.is_fixed).map(f => f.column_name?.trim().toLowerCase().replace(/\s+/g, "_"))
+      );
+      setExcludedFixed(new Set([...legacyExcluded].filter(c => fixedCols.has(c))));
       // NOTE: basics.year is intentionally NOT set here. It must always follow
       // selectedYear (see the effect above) so a save always targets the
       // currently-selected navbar year — never the year the loaded fields
@@ -461,15 +516,17 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
     // legitimately be empty (a year with no extra fields yet). It must never be
     // trusted directly for the field list; always fetch the merged schema below.
 
-    // Fetch the active schema from the API for the SELECTED year so
-    // the loaded fields match what the navbar year actually shows (merged
-    // base + that year's extra fields), not just whatever row sorts latest.
+    // Stale flag: when selectedYear changes (or the effect reruns), the cleanup
+    // sets this to true so any in-flight response from the previous year is
+    // silently discarded instead of overwriting the newly-loaded year's fields.
+    let stale = false;
+
     setColsLoading(true);
     setColsError("");
-    const yearQuery = selectedYear != null ? `?year=${selectedYear}` : "";
-    apiFetch(`/api/forms/${initialData.form_name}/schema${yearQuery}`)
+    apiFetch(`/api/forms/${initialData.form_name}/schema?year=${selectedYear}`)
       .then((r) => r.json())
       .then((data) => {
+        if (stale) return;
         if (data.success && data.schema) {
           applySchema(data.schema.schema);
           if (data.schema.used_column_names?.length) {
@@ -482,8 +539,10 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
           setColsError(data.message || "Could not load schema.");
         }
       })
-      .catch((err) => { if (!isAuthError(err)) setColsError("Failed to fetch schema."); })
-      .finally(() => setColsLoading(false));
+      .catch((err) => { if (!stale && !isAuthError(err)) setColsError("Failed to fetch schema."); })
+      .finally(() => { if (!stale) setColsLoading(false); });
+
+    return () => { stale = true; };
   }, [isEdit, initialData, apiFetch, selectedYear]);
 
   /* ── Load table columns in adapt mode ── */
@@ -536,17 +595,15 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
 
   function removeField(idx) {
     setFields((prev) => {
-      const removed = prev[idx];
-      const colName = removed.column_name?.trim().toLowerCase().replace(/\s+/g, "_");
-      if (isEdit && colName && !removed.isNew) {
-        // Field came from the DB: keep it in fields[] so schema.fields stays
-        // complete; express exclusion only via excluded_fixed_columns.
-        setExcludedFixed((ex) => { const n = new Set(ex); n.add(colName); return n; });
-        return prev;
-      }
-      // New field (never saved) or create/adapt mode: remove it entirely.
+      const field = prev[idx];
+      // Safety guard: saved fields in edit mode use toggleFieldHidden, not delete.
+      if (isEdit && field && !field.isNew) return prev;
       return prev.filter((_, i) => i !== idx).map((f, i) => ({ ...f, order: i }));
     });
+  }
+
+  function toggleFieldHidden(idx) {
+    setFields((prev) => prev.map((f, i) => i === idx ? { ...f, hidden: !f.hidden } : f));
   }
 
   function moveField(idx, dir) {
@@ -574,21 +631,32 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
       })
     : fields;
 
+  // For the Step 3 review preview: exclude hidden columns (they stay in the DB but aren't shown)
+  const reviewFields = activeFields.filter((f) => !f.hidden);
+
   /* ── Build schema object ── */
   function buildSchema() {
-    // All fields are kept in fields[] regardless of exclusion status.
-    // excluded_fixed_columns is the sole indicator of what is inactive.
-    const allFields = fields.map((f, i) => {
-      const { _key, hidden, isNew, ...rest } = f; // strip internal flags
-      return {
-        // translation_mode is always derived from the field type (never chosen
-        // by the admin); this explicit value overrides any older stored mode.
-        ...rest,
-        column_name: f.column_name.trim().toLowerCase().replace(/\s+/g, "_"),
-        translation_mode: defaultTranslationMode(f.type),
-        order: i,
-      };
-    });
+    // All fields are kept in fields[] regardless of hidden status.
+    // hidden: true is preserved so the backend knows which columns to exclude
+    // from data collection and record display.
+    // excluded_fixed_columns covers system fixed-column toggles (adapt mode only).
+    const allFields = fields
+      .filter((f) => {
+        // System fixed columns toggled off in adapt mode — exclude from saved schema
+        const col = f.column_name?.trim().toLowerCase().replace(/\s+/g, "_");
+        return !excludedFixed.has(f.column_name) && !excludedFixed.has(col);
+      })
+      .map((f, i) => {
+        const { _key, isNew, ...rest } = f; // strip React-internal flags; 'hidden' is kept
+        return {
+          // translation_mode is always derived from the field type (never chosen
+          // by the admin); this explicit value overrides any older stored mode.
+          ...rest,
+          column_name: f.column_name.trim().toLowerCase().replace(/\s+/g, "_"),
+          translation_mode: defaultTranslationMode(f.type),
+          order: i,
+        };
+      });
 
     return {
       display_label: basics.form_name.trim() || identifier,
@@ -887,6 +955,7 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
                           currentColumnNames={currentColumnNames}
                           onChange={(_, path, val) => updateField(globalIdx !== -1 ? globalIdx : i, path, val)}
                           onRemove={() => removeField(globalIdx !== -1 ? globalIdx : i)}
+                          onToggleHide={() => toggleFieldHidden(globalIdx !== -1 ? globalIdx : i)}
                           onMoveUp={() => moveField(i, -1)}
                           onMoveDown={() => moveField(i, 1)}
                         />
@@ -1075,12 +1144,12 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
               </ReviewSection>
             )}
 
-            <ReviewSection title={`Schema Architecture Preview · ${activeFields.length} field${activeFields.length !== 1 ? "s" : ""}`}>
-              {activeFields.length === 0 ? (
+            <ReviewSection title={`Schema Architecture Preview · ${reviewFields.length} field${reviewFields.length !== 1 ? "s" : ""}${activeFields.some(f => f.hidden) ? ` (${activeFields.filter(f => f.hidden).length} hidden)` : ""}`}>
+              {reviewFields.length === 0 ? (
                 <div style={{ fontSize: 13, color: "#94a3b8", fontStyle: "italic" }}>No fields defined.</div>
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  {activeFields.map((f, i) => (
+                  {reviewFields.map((f, i) => (
                     <div key={f._key || i} style={{
                       display: "flex", alignItems: "center", gap: 12, padding: "8px 12px",
                       background: f.is_fixed ? "#f0f9ff" : "#f8fafc", borderRadius: 8,

@@ -205,7 +205,7 @@ export default function InstituteFormRecordsPage({ form, onBack }) {
   );
   const schemaFields = useMemo(
     () => (schema?.schema?.fields || []).filter(
-      (f) => !excludedCols.has(dbCol(f.column_name)) && !excludedCols.has(f.column_name)
+      (f) => !f.hidden && !excludedCols.has(dbCol(f.column_name)) && !excludedCols.has(f.column_name)
     ),
     [schema, excludedCols]
   );
