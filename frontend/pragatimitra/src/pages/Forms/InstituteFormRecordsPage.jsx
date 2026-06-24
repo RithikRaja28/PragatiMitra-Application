@@ -4,7 +4,7 @@ import { useAcademicYear } from "../../store/AcademicYearContext";
 import { useLanguage } from "../../i18n/LanguageContext";
 import { Lock, Inbox, Search as SearchIcon } from "lucide-react";
 import { S, Toast, isAuthError, formatDate } from "../../components/shared/formUtils";
-import PageHeader from "../../components/shared/PageHeader";
+import { PageContainer, PageHeader } from "../../ui";
 import { tableCardStyle } from "../../components/shared/ui";
 import { Input, Select, Button } from "../../ui";
 
@@ -248,7 +248,7 @@ export default function InstituteFormRecordsPage({ form, onBack }) {
   const formTitle = form.form_name.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 
   return (
-    <div style={{ padding: "20px 28px", fontFamily: "'Plus Jakarta Sans', sans-serif", minHeight: "100%", maxWidth: 1440 }}>
+    <PageContainer>
       {toast && <Toast message={toast.message} type={toast.type} />}
 
       {/* View-only banner */}
@@ -519,7 +519,7 @@ export default function InstituteFormRecordsPage({ form, onBack }) {
           </div>
         )}
       </div>
-    </div>
+    </PageContainer>
   );
 }
 

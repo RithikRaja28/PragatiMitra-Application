@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useApi } from "../../../../hooks/useApi";
-import PageHeader from "../../../../components/shared/PageHeader";
+import { PageContainer, PageHeader, Toolbar, SearchInput, FilterChip, Button, Card, EmptyState, ErrorState } from "../../../../ui";
 
 /* ── constants ─────────────────────────────────────────────────────────── */
 const ENTITY_TYPES = "SECTION,REPORT,WORKFLOW,CYCLE,TEMPLATE";
@@ -202,7 +202,7 @@ export default function ReportAuditLogsPage() {
   };
 
   return (
-    <div style={{ padding: "28px 32px", fontFamily: "'Plus Jakarta Sans', sans-serif", maxWidth: 1200 }}>
+    <PageContainer>
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
 
       <PageHeader
@@ -211,62 +211,34 @@ export default function ReportAuditLogsPage() {
         description="Complete history of all actions across the report module"
       />
 
-      {/* ── Category filter chips ── */}
-      <div style={{ display: "flex", gap: 8, marginBottom: 20, flexWrap: "wrap" }}>
-        {CATEGORIES.map(cat => {
-          const active = entityFilter === cat.key;
-          return (
-            <button key={String(cat.key)} onClick={() => setEntityFilter(cat.key)} style={{
-              padding: "6px 14px", borderRadius: 20, fontSize: 12, fontWeight: 600,
-              border: active ? "none" : "1.5px solid #e2e8f0",
-              background: active ? cat.bg : "#fff",
-              color: active ? cat.color : "#64748b",
-              cursor: "pointer", transition: "all 0.15s",
-            }}>
-              {cat.label}
-            </button>
-          );
-        })}
-      </div>
+      {/* ── Category filter chips — standardized ── */}
+      <Toolbar>
+        {CATEGORIES.map(cat => (
+          <FilterChip
+            key={String(cat.key)}
+            active={entityFilter === cat.key}
+            onClick={() => setEntityFilter(cat.key)}
+          >
+            {cat.label}
+          </FilterChip>
+        ))}
+      </Toolbar>
 
       {/* ── Search ── */}
-      <div style={{ display: "flex", gap: 10, marginBottom: 20 }}>
-        <div style={{ position: "relative", flex: 1 }}>
-          <svg style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "#94a3b8" }}
-            width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35" strokeLinecap="round"/>
-          </svg>
-          <input
-            ref={searchRef}
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            onKeyDown={handleSearch}
-            placeholder="Search by actor, action, message…"
-            style={{
-              width: "100%", boxSizing: "border-box", paddingLeft: 36, paddingRight: 12,
-              height: 38, borderRadius: 8, border: "1px solid #e2e8f0",
-              fontSize: 13, fontFamily: "inherit", outline: "none",
-              background: "#f8fafc", color: "#0f172a",
-            }}
-          />
-        </div>
-        <button onClick={() => load()} style={{
-          padding: "0 18px", height: 38, borderRadius: 8,
-          background: "#2563eb", color: "#fff", border: "none",
-          fontSize: 13, fontWeight: 600, cursor: "pointer", flexShrink: 0,
-        }}>
-          Search
-        </button>
+      <Toolbar>
+        <SearchInput
+          ref={searchRef}
+          value={search}
+          onChange={setSearch}
+          onKeyDown={handleSearch}
+          placeholder="Search by actor, action, message…"
+          style={{ flex: 1, width: "auto" }}
+        />
+        <Button variant="primary" onClick={() => load()}>Search</Button>
         {(search || entityFilter !== null) && (
-          <button onClick={() => { setSearch(""); setEntityFilter(null); }} style={{
-            padding: "0 14px", height: 38, borderRadius: 8,
-            border: "1px solid #e2e8f0", background: "#fff",
-            fontSize: 12, fontWeight: 600, color: "#64748b", cursor: "pointer",
-          }}>
-            Clear
-          </button>
+          <Button variant="secondary" onClick={() => { setSearch(""); setEntityFilter(null); }}>Clear</Button>
         )}
-      </div>
+      </Toolbar>
 
       {/* ── Loading ── */}
       {loading && (
@@ -278,24 +250,30 @@ export default function ReportAuditLogsPage() {
 
       {/* ── Error ── */}
       {!loading && err && (
-        <div style={{ background: "#fee2e2", color: "#b91c1c", padding: "14px 18px", borderRadius: 10, fontSize: 14 }}>
-          {err}
-        </div>
+        <Card padding={0}>
+          <ErrorState title="Couldn’t load audit logs" description={err} />
+        </Card>
       )}
 
       {/* ── Empty ── */}
       {!loading && !err && logs.length === 0 && (
-        <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, padding: "60px 40px", textAlign: "center" }}>
-          <div style={{ fontSize: 40, marginBottom: 12 }}>📋</div>
-          <div style={{ fontSize: 16, fontWeight: 700, color: "#1e293b", marginBottom: 6 }}>No logs found</div>
-          <div style={{ fontSize: 13, color: "#94a3b8" }}>No report module activity matches your current filters.</div>
-        </div>
+        <Card padding={0}>
+          <EmptyState
+            icon={
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6" /><path d="M8 13h8M8 17h5" />
+              </svg>
+            }
+            title="No logs found"
+            description="No report module activity matches your current filters."
+          />
+        </Card>
       )}
 
       {/* ── Table ── */}
       {!loading && !err && logs.length > 0 && (
         <>
-          <div style={{ background: "#fff", borderRadius: 12, border: "1px solid #e2e8f0", overflow: "hidden", boxShadow: "0 1px 6px rgba(0,0,0,0.04)" }}>
+          <Card padding={0} style={{ overflow: "hidden" }}>
             <div style={{ padding: "10px 16px", borderBottom: "1px solid #f1f5f9", fontSize: 11, color: "#94a3b8", fontWeight: 600 }}>
               {pagination.total} total log{pagination.total !== 1 ? "s" : ""} · page {page} of {pagination.totalPages}
             </div>
@@ -355,7 +333,7 @@ export default function ReportAuditLogsPage() {
                 ))}
               </tbody>
             </table>
-          </div>
+          </Card>
 
           {/* ── Pagination ── */}
           {pagination.totalPages > 1 && (
@@ -389,6 +367,6 @@ export default function ReportAuditLogsPage() {
 
       {/* ── Detail Modal ── */}
       {selected && <LogDetailModal log={selected} onClose={() => setSelected(null)} />}
-    </div>
+    </PageContainer>
   );
 }

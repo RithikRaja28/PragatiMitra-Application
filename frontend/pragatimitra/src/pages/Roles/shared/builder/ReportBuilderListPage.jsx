@@ -4,7 +4,7 @@ import { useAuth } from "../../../../store/AuthContext";
 import { useApi }  from "../../../../hooks/useApi";
 import { useLanguage } from "../../../../i18n/LanguageContext";
 import { t } from "../../../../i18n/translations";
-import PageHeader from "../../../../ui/PageHeader";
+import { PageContainer, PageHeader, Toolbar, SearchInput, FilterChip, Select, Button, Card, EmptyState, ErrorState } from "../../../../ui";
 import FormScreen              from "../../../../components/shared/FormScreen";
 import { S }                  from "../../../../components/shared/formUtils";
 import CollaborativeEditorPage   from "./CollaborativeEditorPage";
@@ -367,7 +367,7 @@ function CreateReportForm({ onBack, onCreate }) {
       pageTitle="Reports"
       formTitle="New Report"
       formSubtitle="Create a new collaborative institutional report"
-      icon="📋"
+      icon={<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1d4ed8" strokeWidth="1.8"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="13" y2="16"/></svg>}
       iconBg="#dbeafe"
       onBack={onBack}
       onSubmit={handleSubmit}
@@ -601,10 +601,7 @@ export default function ReportBuilderListPage() {
   const totalArchived  = reports.filter(r => r.status === "ARCHIVED").length;
 
   return (
-    <div style={{
-      padding: "28px 32px", fontFamily: "'Plus Jakarta Sans', sans-serif",
-      background: "transparent", minHeight: "100%",
-    }}>
+    <PageContainer>
       <style>{`
         @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.45} }
         @keyframes spin   { to { transform: rotate(360deg) } }
@@ -615,110 +612,69 @@ export default function ReportBuilderListPage() {
         title={t("Collaborative Reports", lang)}
         description={t("Create and manage institutional reports with section-level collaboration", lang)}
         actions={canCreate && (
-          <button
+          <Button
+            variant="primary"
             onClick={() => navFn(`${listPath}/create`)}
-            style={{
-              display: "flex", alignItems: "center", gap: 7, padding: "10px 20px",
-              background: "#2563eb", color: "#fff", border: "none", borderRadius: 10,
-              fontSize: 13, fontWeight: 700, cursor: "pointer", flexShrink: 0,
-              boxShadow: "0 2px 10px rgba(37,99,235,0.28)",
-            }}
+            icon={<span style={{ fontSize: 16, lineHeight: 1 }}>＋</span>}
           >
-            <span style={{ fontSize: 18, lineHeight: 1 }}>＋</span> {t("New Report", lang)}
-          </button>
+            {t("New Report", lang)}
+          </Button>
         )}
       />
 
-      {/* ── Stat chips ── */}
+      {/* ── Stat chips (double as status filters) — standardized ── */}
       {!loading && reports.length > 0 && (
-        <div style={{ display: "flex", gap: 10, marginBottom: 22, flexWrap: "wrap" }}>
+        <Toolbar>
           {[
-            { label: "Total",     val: reports.length, bg: "#f8fafc",  color: "#1e293b", dot: "#2563eb" },
-            { label: "Draft",     val: totalDraft,     bg: "#f8fafc",  color: "#475569", dot: "#94a3b8" },
-            { label: "Published", val: totalPublished, bg: "#f0fdf4",  color: "#15803d", dot: "#22c55e" },
-            { label: "Archived",  val: totalArchived,  bg: "#fff1f2",  color: "#b91c1c", dot: "#ef4444" },
-          ].map(s => (
-            <button
-              key={s.label}
-              onClick={() => setFilterStatus(s.label === "Total" ? "" : s.label.toUpperCase())}
-              style={{
-                display: "flex", alignItems: "center", gap: 7,
-                padding: "7px 14px", borderRadius: 20,
-                border: `1.5px solid ${
-                  filterStatus === (s.label === "Total" ? "" : s.label.toUpperCase()) ? s.dot : "rgba(0,0,0,0.08)"
-                }`,
-                background: filterStatus === (s.label === "Total" ? "" : s.label.toUpperCase()) ? s.bg : "#fff",
-                cursor: "pointer", fontSize: 12, fontWeight: 700, color: s.color,
-                transition: "all 0.15s",
-              }}
-            >
-              <span style={{ width: 7, height: 7, borderRadius: "50%", background: s.dot }} />
-              {s.val} {s.label}
-            </button>
-          ))}
-        </div>
+            { label: "Total",     val: reports.length, dot: "#2563eb" },
+            { label: "Draft",     val: totalDraft,     dot: "#94a3b8" },
+            { label: "Published", val: totalPublished, dot: "#22c55e" },
+            { label: "Archived",  val: totalArchived,  dot: "#ef4444" },
+          ].map(s => {
+            const key = s.label === "Total" ? "" : s.label.toUpperCase();
+            return (
+              <FilterChip
+                key={s.label}
+                active={filterStatus === key}
+                count={s.val}
+                onClick={() => setFilterStatus(key)}
+                icon={<span style={{ width: 7, height: 7, borderRadius: "50%", background: s.dot }} />}
+              >
+                {s.label}
+              </FilterChip>
+            );
+          })}
+        </Toolbar>
       )}
 
-      {/* ── Search + filter bar ── */}
-      <div style={{
-        display: "flex", gap: 10, marginBottom: 22,
-        background: "#fff", border: "1px solid rgba(0,0,0,0.07)",
-        borderRadius: 12, padding: "12px 16px",
-        boxShadow: "0 1px 4px rgba(0,0,0,0.04)",
-      }}>
-        <div style={{ position: "relative", flex: 1 }}>
-          <svg style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "#94a3b8" }}
-            width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35" strokeLinecap="round"/>
-          </svg>
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by title, type, or year…"
-            style={{
-              ...S.input(false), paddingLeft: 32, height: 36,
-              background: "#f8fafc", border: "1px solid #e2e8f0",
-            }}
-          />
-        </div>
-        <select
+      {/* ── Search + filter bar — standardized ── */}
+      <Toolbar>
+        <SearchInput
+          value={search}
+          onChange={setSearch}
+          placeholder="Search by title, type, or year…"
+          style={{ flex: 1, width: "auto" }}
+        />
+        <Select
           value={filterStatus}
           onChange={(e) => setFilterStatus(e.target.value)}
-          style={{
-            ...S.select(false), width: 150, height: 36,
-            background: "#f8fafc url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='none' stroke='%2364748b' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round' d='M1 1.5l5 5 5-5'/%3E%3C/svg%3E\") no-repeat right 12px center",
-            border: "1px solid #e2e8f0",
-          }}
+          style={{ width: 160, height: 40 }}
         >
           <option value="">All Statuses</option>
           <option value="DRAFT">Draft</option>
           <option value="PUBLISHED">Published</option>
           <option value="ARCHIVED">Archived</option>
-        </select>
+        </Select>
         {(search || filterStatus) && (
-          <button
-            onClick={() => { setSearch(""); setFilterStatus(""); }}
-            style={{
-              padding: "0 12px", height: 36, borderRadius: 8,
-              border: "1px solid #e2e8f0", background: "#fff",
-              fontSize: 12, fontWeight: 600, color: "#64748b", cursor: "pointer",
-              flexShrink: 0,
-            }}
-          >
-            Clear
-          </button>
+          <Button variant="secondary" onClick={() => { setSearch(""); setFilterStatus(""); }}>Clear</Button>
         )}
-      </div>
+      </Toolbar>
 
       {/* ── Error ── */}
       {!loading && err && (
-        <div style={{
-          background: "#fef2f2", border: "1px solid #fca5a5",
-          color: "#b91c1c", padding: "14px 18px", borderRadius: 12,
-          fontSize: 13, marginBottom: 20,
-        }}>
-          {err}
-        </div>
+        <Card padding={0} style={{ marginBottom: 20 }}>
+          <ErrorState title="Couldn’t load reports" description={err} />
+        </Card>
       )}
 
       {/* ── Loading skeleton grid ── */}
@@ -730,33 +686,24 @@ export default function ReportBuilderListPage() {
 
       {/* ── Empty state ── */}
       {!loading && !err && filtered.length === 0 && (
-        <div style={{
-          background: "#fff", border: "1.5px solid rgba(0,0,0,0.07)",
-          borderRadius: 16, padding: "64px 40px", textAlign: "center",
-          boxShadow: "0 1px 6px rgba(0,0,0,0.05)",
-        }}>
-          <div style={{ fontSize: 44, marginBottom: 14 }}>📋</div>
-          <div style={{ fontSize: 16, fontWeight: 700, color: "#1e293b", marginBottom: 8 }}>
-            {search || filterStatus ? "No reports match your filters" : "No reports yet"}
-          </div>
-          <div style={{ fontSize: 13, color: "#94a3b8", marginBottom: 24 }}>
-            {search || filterStatus
+        <Card padding={0}>
+          <EmptyState
+            icon={
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6" /><path d="M8 13h8M8 17h5" />
+              </svg>
+            }
+            title={search || filterStatus ? "No reports match your filters" : "No reports yet"}
+            description={search || filterStatus
               ? "Try a different search or clear the filters."
               : "Start by creating your first institutional report."}
-          </div>
-          {!search && !filterStatus && canCreate && (
-            <button
-              onClick={() => navFn(`${listPath}/create`)}
-              style={{
-                padding: "10px 24px", background: "#2563eb", color: "#fff",
-                border: "none", borderRadius: 10, fontSize: 13, fontWeight: 700,
-                cursor: "pointer", boxShadow: "0 2px 10px rgba(37,99,235,0.28)",
-              }}
-            >
-              ＋ Create First Report
-            </button>
-          )}
-        </div>
+            action={!search && !filterStatus && canCreate && (
+              <Button variant="primary" onClick={() => navFn(`${listPath}/create`)} icon={<span style={{ fontSize: 16, lineHeight: 1 }}>＋</span>}>
+                Create First Report
+              </Button>
+            )}
+          />
+        </Card>
       )}
 
       {/* ── Card grid ── */}
@@ -781,6 +728,6 @@ export default function ReportBuilderListPage() {
           </div>
         </>
       )}
-    </div>
+    </PageContainer>
   );
 }

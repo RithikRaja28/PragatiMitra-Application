@@ -7,7 +7,7 @@ import { t } from "../../../i18n/translations";
 import PageHeader from "../../../ui/PageHeader";
 import { S, Toast } from "../../../components/shared/formUtils";
 import FormScreen from "../../../components/shared/FormScreen";
-import { Button } from "../../../ui";
+import { PageContainer, Button, Toolbar, SearchInput, Card } from "../../../ui";
 import { Plus } from "lucide-react";
 
 const SLUG = "user-management";
@@ -233,7 +233,7 @@ function UserForm({ mode, entity, onCreated, onSaved, onBack, apiFetch, institut
       pageTitle="Users"
       formTitle={isEdit ? "Edit User" : "New User"}
       formSubtitle={isEdit ? entity.full_name : "Add a new user to your institution"}
-      icon="👤"
+      icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>}
       iconBg="#ede9fe"
       onBack={onBack}
       onSubmit={handleSubmit}
@@ -488,7 +488,7 @@ function UserList({ apiFetch, onEdit, institutionId }) {
   return (
     <>
       {/* ── Server-side filter row ── */}
-      <div style={{ display: "flex", gap: 10, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
+      <Toolbar style={{ marginBottom: 12 }}>
         <Select
           fullWidth={false}
           value={filterRole}
@@ -518,27 +518,17 @@ function UserList({ apiFetch, onEdit, institutionId }) {
         </Select>
 
         {hasActiveFilters && (
-          <button
-            onClick={clearFilters}
-            style={{
-              padding: "8px 14px", borderRadius: 8,
-              border: "1.5px solid #e2e8f0", background: "#fff",
-              fontSize: 12, fontWeight: 600, color: "#64748b",
-              cursor: "pointer", whiteSpace: "nowrap",
-            }}
-          >
-            Clear Filters
-          </button>
+          <Button variant="secondary" onClick={clearFilters}>Clear Filters</Button>
         )}
-      </div>
+      </Toolbar>
 
-      {/* ── Search + status filter row — unchanged ── */}
-      <div style={{ display: "flex", gap: 10, marginBottom: 20, flexWrap: "wrap" }}>
-        <input
+      {/* ── Search + status filter row ── */}
+      <Toolbar>
+        <SearchInput
           placeholder="Search name or email…"
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          style={{ ...S.input(false), flex: 1, minWidth: 200 }}
+          onChange={setSearch}
+          style={{ flex: 1, width: "auto" }}
         />
         <Select
           fullWidth={false}
@@ -551,13 +541,10 @@ function UserList({ apiFetch, onEdit, institutionId }) {
             <option key={s} value={s}>{s.charAt(0) + s.slice(1).toLowerCase()}</option>
           ))}
         </Select>
-      </div>
+      </Toolbar>
 
       {/* Table */}
-      <div style={{
-        background: "#fff", border: "1px solid rgba(0,0,0,0.07)",
-        borderRadius: 14, overflow: "hidden", boxShadow: "0 1px 4px rgba(0,0,0,0.05)",
-      }}>
+      <Card padding={0} style={{ overflow: "hidden" }}>
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
             <tr style={{ background: "#f8fafc", borderBottom: "1px solid rgba(0,0,0,0.06)" }}>
@@ -651,7 +638,7 @@ function UserList({ apiFetch, onEdit, institutionId }) {
             )}
           </tbody>
         </table>
-      </div>
+      </Card>
     </>
   );
 }
@@ -695,7 +682,7 @@ export default function InstituteAdminUserManagementPage() {
   }
 
   return (
-    <div style={{ padding: "32px 36px", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+    <PageContainer>
       {toast && <Toast message={toast.message} type={toast.type} />}
 
       <PageHeader
@@ -714,6 +701,6 @@ export default function InstituteAdminUserManagementPage() {
         institutionId={institutionId}
         onEdit={(u) => navigate(`${listPath}/edit`, { state: { entity: u } })}
       />
-    </div>
+    </PageContainer>
   );
 }

@@ -376,7 +376,7 @@ export default function AssignSectionsPage({ reportId, onBack }) {
             <div style={{ marginBottom: 14 }}>
               <label style={lbl}>Assign By</label>
               <div style={{ display: "flex", gap: 4 }}>
-                {[["user","👤 User"],["role","🏷 Role"],["dept","🏢 Dept"]].map(([t, label]) => (
+                {[["user","User"],["role","Role"],["dept","Dept"]].map(([t, label]) => (
                   <button key={t} type="button"
                     onClick={() => { setAssignType(t); setAssignUserId(""); setAssignRoleName(""); setAssignDeptId(""); setUserSearch(""); }}
                     style={{ flex: 1, padding: "6px 4px", border: "none", borderRadius: 7, cursor: "pointer", fontSize: 11, fontWeight: 700,

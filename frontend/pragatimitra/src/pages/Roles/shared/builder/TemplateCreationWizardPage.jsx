@@ -144,7 +144,7 @@ function StepHeading({ icon, title, subtitle }) {
   return (
     <div style={{ marginBottom: 28 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
-        <span style={{ fontSize: 22 }}>{icon}</span>
+        <span style={{ display: "flex", alignItems: "center", color: C.primary }}>{icon}</span>
         <h2 style={{ fontSize: 20, fontWeight: 700, color: C.text, margin: 0 }}>{title}</h2>
       </div>
       <p style={{ fontSize: 13, color: C.textSub, margin: 0, paddingLeft: 34 }}>{subtitle}</p>
@@ -186,7 +186,7 @@ function Step1Details({ name, setName, desc, setDesc, reportType, setReportType,
   version, setVersion, wfId, setWfId, workflows, onNext, busy }) {
   return (
     <div>
-      <StepHeading icon="📝" title="Template Details"
+      <StepHeading icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>} title="Template Details"
         subtitle="Name and describe this template. A draft is created when you click Next." />
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 28px" }}>
         <div style={{ gridColumn: "1/-1" }}>
@@ -648,8 +648,8 @@ function Step2Structure({
                 <div style={{
                   width: 52, height: 52, borderRadius: 12, background: C.primaryLt,
                   margin: "0 auto 14px",
-                  display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22,
-                }}>🗂</div>
+                  display: "flex", alignItems: "center", justifyContent: "center", color: C.primary,
+                }}><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></div>
                 <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 6 }}>
                   No sections yet
                 </div>
@@ -719,8 +719,8 @@ function Step2Structure({
             }}>
               <div style={{
                 width: 56, height: 56, borderRadius: 14, background: C.primaryLt,
-                display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26,
-              }}>📄</div>
+                display: "flex", alignItems: "center", justifyContent: "center", color: C.primary,
+              }}><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div>
               <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>
                 {tree.length === 0 ? "Add a section first" : "Select a section"}
               </div>
@@ -740,9 +740,9 @@ function Step2Structure({
                 <div style={{
                   width: 30, height: 30, borderRadius: 8, background: C.primary,
                   display: "flex", alignItems: "center", justifyContent: "center",
-                  fontSize: 13, color: "#fff", fontWeight: 800, flexShrink: 0,
+                  color: "#fff", flexShrink: 0,
                 }}>
-                  📋
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg>
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{
@@ -848,7 +848,9 @@ function Step3Review({ name, desc, reportType, version, sections, tmplStatus, pu
     return (
       <div style={{ textAlign: "center", padding: "56px 0" }}>
         <div style={{ width: 72, height: 72, borderRadius: "50%", background: C.successLt,
-          display: "flex", alignItems: "center", justifyContent: "center", fontSize: 34, margin: "0 auto 20px" }}>🎉</div>
+          display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 20px" }}>
+          <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="1.8"><circle cx="12" cy="12" r="10"/><polyline points="8 12 11 15 16 9"/></svg>
+        </div>
         <h3 style={{ margin: "0 0 8px", fontSize: 22, fontWeight: 800, color: C.success }}>Template Published!</h3>
         <p style={{ color: C.textSub, fontSize: 13, marginBottom: 32, maxWidth: 400, margin: "8px auto 32px" }}>
           <strong>{name}</strong> is now <strong>ACTIVE</strong> and visible to institute admins for stamping onto reports.
@@ -872,12 +874,12 @@ function Step3Review({ name, desc, reportType, version, sections, tmplStatus, pu
 
   return (
     <div>
-      <StepHeading icon="✅" title="Review & Publish"
+      <StepHeading icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="8 12 11 15 16 9"/></svg>} title="Review & Publish"
         subtitle="Everything is auto-saved. Publish to make this template available to institute admins." />
 
       <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 24 }}>
         {/* summary card */}
-        <SumCard label="Template Details" icon="📝">
+        <SumCard label="Template Details" icon={<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>}>
           <SumRow k="Name"        v={name || "—"} />
           <SumRow k="Description" v={desc || "—"} />
           <SumRow k="Report Type" v={reportType || "—"} />
@@ -887,7 +889,7 @@ function Step3Review({ name, desc, reportType, version, sections, tmplStatus, pu
         </SumCard>
 
         {/* structure card */}
-        <SumCard label="Structure" icon="🗂">
+        <SumCard label="Structure" icon={<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>}>
           <SumRow k="Sections"       v={sectionCount} />
           <SumRow k="Total Blocks"   v={totalBlocks} />
           <SumRow k="Required Blocks" v={requiredBlocks} />

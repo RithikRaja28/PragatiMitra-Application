@@ -178,7 +178,7 @@ function ReadOnlyField({ field, value, lang = "en" }) {
   if (field.type === "boolean")
     display = value === true || value === "true" ? "Yes" : value === false || value === "false" ? "No" : "—";
   else if (field.type === "document")
-    display = empty ? "—" : "📎 File attached";
+    display = empty ? "—" : "File attached";
   else
     display = empty ? "—" : String(value);
 
@@ -403,7 +403,7 @@ function DeleteModal({ count = 1, onConfirm, onClose, deleting }) {
           style={{ background: "#fff", borderRadius: 8, width: 400, padding: "32px 28px", boxShadow: "0 24px 64px rgba(0,0,0,0.22)", textAlign: "center" }}
           onClick={e => e.stopPropagation()}
         >
-          <div style={{ width: 56, height: 56, borderRadius: "50%", background: "#fef2f2", border: "2px solid #fecaca", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px", fontSize: 24 }}>🗑️</div>
+          <div style={{ width: 56, height: 56, borderRadius: "50%", background: "#fef2f2", border: "2px solid #fecaca", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px", color: "#dc2626" }}><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg></div>
           <div style={{ fontSize: 16, fontWeight: 700, color: "#1e293b", marginBottom: 8 }}>
             {isBulk
               ? (lang === "hi" ? `${count} रिकॉर्ड हटाएं?` : `Delete ${count} Records?`)
@@ -418,7 +418,7 @@ function DeleteModal({ count = 1, onConfirm, onClose, deleting }) {
           </div>
           {isBulk && (
             <div style={{ background: "#fef3c7", border: "1px solid #fcd34d", borderRadius: 8, padding: "8px 12px", fontSize: 12, color: "#92400e", marginBottom: 20, textAlign: "left" }}>
-              ⚠️ {t("Tip: Use bulk delete to clean up failed imports before re-importing.", lang)}
+              {t("Tip: Use bulk delete to clean up failed imports before re-importing.", lang)}
             </div>
           )}
           <div style={{ display: "flex", gap: 10, justifyContent: "center", marginTop: isBulk ? 0 : 20 }}>
@@ -640,8 +640,8 @@ function FormImportWizard({ formName, onClose, onDone, apiFetch, getToken, selec
           <div style={{ overflowY: "auto", maxHeight: "calc(100vh - 260px)" }}>
             {step === 1 && (
               <div style={{ padding: "16px 20px" }}>
-                {isDeptAdmin && <div style={{ background: "#f0fdf4", border: "1px solid #86efac", borderRadius: 8, padding: "9px 14px", marginBottom: 14, fontSize: 13, color: "#15803d" }}>🏢 {t("Importing as Department Admin — data will be saved to your department only.", lang)}</div>}
-                {isInstAdmin && <div style={{ background: ACCENT + "0d", border: `1px solid ${ACCENT}25`, borderRadius: 8, padding: "9px 14px", marginBottom: 14, fontSize: 13, color: "#1d4ed8" }}>🏛️ {t("Importing as Institute Admin — you can tag data to a specific department below.", lang)}</div>}
+                {isDeptAdmin && <div style={{ background: "#f0fdf4", border: "1px solid #86efac", borderRadius: 8, padding: "9px 14px", marginBottom: 14, fontSize: 13, color: "#15803d", display: "flex", alignItems: "center", gap: 8 }}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>{t("Importing as Department Admin — data will be saved to your department only.", lang)}</div>}
+                {isInstAdmin && <div style={{ background: ACCENT + "0d", border: `1px solid ${ACCENT}25`, borderRadius: 8, padding: "9px 14px", marginBottom: 14, fontSize: 13, color: "#1d4ed8", display: "flex", alignItems: "center", gap: 8 }}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>{t("Importing as Institute Admin — you can tag data to a specific department below.", lang)}</div>}
                 {isInstAdmin && (
                   <div style={{ marginBottom: 14 }}>
                     <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#475569", marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.5 }}>{t("Department (optional)", lang)}</label>
@@ -748,7 +748,14 @@ function FormImportWizard({ formName, onClose, onDone, apiFetch, getToken, selec
             )}
             {step === 3 && result && (
               <div style={{ padding: "28px 24px", textAlign: "center" }}>
-                <div style={{ fontSize: 42, marginBottom: 12 }}>{result.failed === 0 ? "✅" : result.imported === 0 ? "❌" : "⚠️"}</div>
+                <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}>
+                  {result.failed === 0
+                    ? <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="1.8"><circle cx="12" cy="12" r="10"/><polyline points="8 12 11 15 16 9"/></svg>
+                    : result.imported === 0
+                      ? <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="1.8"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+                      : <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="1.8"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                  }
+                </div>
                 <div style={{ fontSize: 16, fontWeight: 700, color: "#1e293b", marginBottom: 4 }}>{t("Import Complete", lang)}</div>
                 <div style={{ fontSize: 13, color: "#64748b", marginBottom: 20 }}>{result.message}</div>
                 <div style={{ marginBottom: 20, textAlign: "left" }}>

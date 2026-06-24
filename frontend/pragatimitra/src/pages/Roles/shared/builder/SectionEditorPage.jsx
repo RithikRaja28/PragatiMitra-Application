@@ -1518,7 +1518,8 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
   const dirtyBlockCount   = new Set([...dirtyBlocks, ...Object.keys(dirtyTranslations)]).size;
 
   // submit modal
-  const [submitModal,     setSubmitModal]     = useState({ open: false, desc: "", error: "", validationErrors: [], unresolvedCount: 0 });
+  const [submitModal,        setSubmitModal]        = useState({ open: false, desc: "", error: "", validationErrors: [], unresolvedCount: 0 });
+  const [submitUnsavedWarn,  setSubmitUnsavedWarn]  = useState(false);
 
   // 409 conflict modal
   const [conflictModal,   setConflictModal]   = useState({ open: false, latestVersion: null });
@@ -1771,11 +1772,22 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
      block already has a Hindi translation, ask whether to auto-translate the
      updated content before saving. Otherwise skip straight to the description modal. ── */
   function openSaveFlow() {
-    const blocksNeedingPrompt = [...dirtyBlocks]
+    const dirtyList = [...dirtyBlocks]
       .map((id) => blocks.find((b) => b.id === id))
-      .filter((b) => b && b.translations?.hi && Object.keys(b.translations.hi).length > 0 && extractTranslatableFields(b));
-    if (blocksNeedingPrompt.length > 0) {
-      setTranslatePromptModal({ open: true, blocks: blocksNeedingPrompt });
+      .filter(Boolean);
+    // Blocks that already have a Hindi translation — ask whether to re-translate
+    const withHindi    = dirtyList.filter((b) =>
+      b.translations?.hi && Object.keys(b.translations.hi).filter(k => k !== "_stale").length > 0
+      && extractTranslatableFields(b)
+    );
+    // Blocks with NO Hindi translation yet — ask whether to create one
+    const withoutHindi = dirtyList.filter((b) =>
+      (!b.translations?.hi || Object.keys(b.translations.hi).filter(k => k !== "_stale").length === 0)
+      && extractTranslatableFields(b)
+    );
+    const allNeedingPrompt = [...withHindi, ...withoutHindi];
+    if (allNeedingPrompt.length > 0) {
+      setTranslatePromptModal({ open: true, blocks: allNeedingPrompt, hasNew: withoutHindi.length > 0, hasExisting: withHindi.length > 0 });
     } else {
       setSaveDescModal({ open: true, desc: "", error: "" });
     }
@@ -2019,6 +2031,10 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
   }
 
   function openSubmitModal() {
+    if (hasUnsavedChanges) {
+      setSubmitUnsavedWarn(true);
+      return;
+    }
     const unresCnt = Object.values(blockCounts).reduce((a, c) => a + (c.unresolved || 0), 0);
     setSubmitModal({ open: true, desc: "", error: "", validationErrors: [], unresolvedCount: unresCnt });
   }
@@ -2028,7 +2044,7 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
     return (
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
         <div style={{ textAlign: "center", color: "#94a3b8" }}>
-          <div style={{ fontSize: 32, marginBottom: 10 }}>⏳</div>
+          <div style={{ width: 32, height: 32, border: "3px solid #e2e8f0", borderTopColor: "#94a3b8", borderRadius: "50%", margin: "0 auto 10px", animation: "spin 1s linear infinite" }} />
           <div>Loading section…</div>
         </div>
       </div>
@@ -2207,25 +2223,25 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
 
         {section?.status === "SUBMITTED" && (
           <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0, padding: "5px 12px", background: "#eff6ff", borderRadius: 8, border: "1px solid #bfdbfe" }}>
-            <span style={{ fontSize: 12 }}>⏳</span>
-            <span style={{ fontSize: 11, fontWeight: 600, color: "#1d4ed8" }}>Pending Review…</span>
+            <svg width="12" height="12" viewBox="0 0 20 20" fill="none" stroke="#1d4ed8" strokeWidth="2"><circle cx="10" cy="10" r="8"/><path d="M10 6v4l3 3"/></svg>
+            <span style={{ fontSize: 11, fontWeight: 600, color: "#1d4ed8" }}>Pending Review</span>
           </div>
         )}
         {section?.status === "UNDER_REVIEW" && (
           <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0, padding: "5px 12px", background: "#f5f3ff", borderRadius: 8, border: "1px solid #ddd6fe" }}>
-            <span style={{ fontSize: 12 }}>👁</span>
+            <svg width="12" height="12" viewBox="0 0 20 20" fill="none" stroke="#6d28d9" strokeWidth="2"><circle cx="10" cy="6" r="3"/><path d="M2 17c0-4 3.6-6 8-6s8 2 8 6"/></svg>
             <span style={{ fontSize: 11, fontWeight: 600, color: "#6d28d9" }}>Under Review</span>
           </div>
         )}
         {section?.status === "APPROVED" && (
           <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0, padding: "5px 12px", background: "#f0fdf4", borderRadius: 8, border: "1px solid #bbf7d0" }}>
-            <span style={{ fontSize: 12 }}>✓</span>
-            <span style={{ fontSize: 11, fontWeight: 600, color: "#15803d" }}>Approved ✓</span>
+            <svg width="12" height="12" viewBox="0 0 20 20" fill="none" stroke="#15803d" strokeWidth="2.5"><polyline points="4 10 8 14 16 6"/></svg>
+            <span style={{ fontSize: 11, fontWeight: 600, color: "#15803d" }}>Approved</span>
           </div>
         )}
         {section?.status === "LOCKED" && (
           <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0, padding: "5px 12px", background: "#f1f5f9", borderRadius: 8, border: "1px solid #cbd5e1" }}>
-            <span style={{ fontSize: 12 }}>🔒</span>
+            <svg width="12" height="12" viewBox="0 0 20 20" fill="none" stroke="#475569" strokeWidth="2"><rect x="4" y="9" width="12" height="10" rx="2"/><path d="M7 9V6a3 3 0 0 1 6 0v3"/></svg>
             <span style={{ fontSize: 11, fontWeight: 600, color: "#475569" }}>Locked</span>
           </div>
         )}
@@ -2378,7 +2394,10 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
               borderBottom: `1px solid ${statusLock ? "#fde68a" : "#e8edf3"}`,
               fontSize: 12,
             }}>
-              <span style={{ fontSize: 14 }}>{statusLock ? "🔒" : "👁"}</span>
+              <span style={{ display: "flex" }}>{statusLock
+                ? <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#b45309" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                : <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              }</span>
               {statusLock && (
                 <>
                   <span style={{ fontWeight: 700, color: "#92400e" }}>{section?.status?.replace(/_/g, " ")}</span>
@@ -2429,62 +2448,61 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
                 );
               })()}
               {/* header row — only when there are comments */}
-              {reviewerComments.length > 0 && (
-              <div style={{
-                display: "flex", alignItems: "center", gap: 8,
-                padding: "10px 20px", cursor: "pointer", userSelect: "none",
-              }} onClick={() => setCommentsOpen(o => !o)}>
-                <span style={{ fontSize: 14 }}>💬</span>
-                <span style={{ fontSize: 12, fontWeight: 700, color: "#92400e" }}>
-                  Reviewer Comments ({reviewerComments.length})
-                </span>
-                <span style={{ fontSize: 11, color: "#a16207", flex: 1 }}>
-                  — address these before resubmitting
-                </span>
-                <span style={{ fontSize: 11, color: "#a16207" }}>{commentsOpen ? "▲" : "▼"}</span>
-              </div>
-              )}
-
-              {commentsOpen && reviewerComments.length > 0 && (
-                <div style={{ padding: "0 20px 14px" }}>
-                  {reviewerComments.map((h, i) => (
-                    <div key={i} style={{
-                      display: "flex", gap: 10, marginBottom: i < reviewerComments.length - 1 ? 12 : 0,
-                    }}>
-                      {/* avatar */}
-                      <div style={{
-                        width: 30, height: 30, borderRadius: "50%", flexShrink: 0,
-                        background: "#fee2e2", color: "#b91c1c",
-                        display: "flex", alignItems: "center", justifyContent: "center",
-                        fontSize: 12, fontWeight: 700,
-                      }}>
-                        {h.reviewer_name?.[0]?.toUpperCase() || "R"}
-                      </div>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 4 }}>
-                          <span style={{ fontSize: 12, fontWeight: 700, color: "#1e293b" }}>
-                            {h.reviewer_name || "Reviewer"}
-                          </span>
-                          {h.workflow_step_name && (
-                            <span style={{ fontSize: 10, color: "#94a3b8" }}>{h.workflow_step_name}</span>
-                          )}
-                          <span style={{ fontSize: 10, color: "#94a3b8", marginLeft: "auto" }}>
-                            {new Date(h.created_at).toLocaleString()}
-                          </span>
-                        </div>
-                        <div style={{
-                          padding: "9px 13px", background: "#fef2f2",
-                          border: "1px solid rgba(239,68,68,0.2)",
-                          borderRadius: "0 8px 8px 8px",
-                          fontSize: 12, color: "#1e293b", lineHeight: 1.6,
-                        }}>
-                          {h.reviewer_comment}
-                        </div>
-                      </div>
+              {reviewerComments.length > 0 && (() => {
+                const latest = reviewerComments[0];
+                return (
+                  <>
+                    <div style={{
+                      display: "flex", alignItems: "center", gap: 8,
+                      padding: "10px 20px", cursor: "pointer", userSelect: "none",
+                    }} onClick={() => setCommentsOpen(o => !o)}>
+                      <span style={{ fontSize: 14 }}>💬</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: "#92400e" }}>
+                        Reviewer Feedback
+                      </span>
+                      <span style={{ fontSize: 11, color: "#a16207", flex: 1 }}>
+                        — address this before resubmitting
+                      </span>
+                      <span style={{ fontSize: 11, color: "#a16207" }}>{commentsOpen ? "▲" : "▼"}</span>
                     </div>
-                  ))}
-                </div>
-              )}
+                    {commentsOpen && (
+                      <div style={{ padding: "0 20px 14px" }}>
+                        <div style={{ display: "flex", gap: 10 }}>
+                          <div style={{
+                            width: 30, height: 30, borderRadius: "50%", flexShrink: 0,
+                            background: "#fee2e2", color: "#b91c1c",
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                            fontSize: 12, fontWeight: 700,
+                          }}>
+                            {latest.reviewer_name?.[0]?.toUpperCase() || "R"}
+                          </div>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 4 }}>
+                              <span style={{ fontSize: 12, fontWeight: 700, color: "#1e293b" }}>
+                                {latest.reviewer_name || "Reviewer"}
+                              </span>
+                              {latest.workflow_step_name && (
+                                <span style={{ fontSize: 10, color: "#94a3b8" }}>{latest.workflow_step_name}</span>
+                              )}
+                              <span style={{ fontSize: 10, color: "#94a3b8", marginLeft: "auto" }}>
+                                {new Date(latest.created_at).toLocaleString()}
+                              </span>
+                            </div>
+                            <div style={{
+                              padding: "9px 13px", background: "#fef2f2",
+                              border: "1px solid rgba(239,68,68,0.2)",
+                              borderRadius: "0 8px 8px 8px",
+                              fontSize: 12, color: "#1e293b", lineHeight: 1.6,
+                            }}>
+                              {latest.reviewer_comment}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
             </div>
           )}
 
@@ -2497,7 +2515,7 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
               {/* Empty — read only */}
               {blocks.length === 0 && readOnly && (
                 <div style={{ textAlign: "center", padding: "80px 0" }}>
-                  <div style={{ fontSize: 36, marginBottom: 12, opacity: 0.4 }}>📄</div>
+                  <div style={{ width: 48, height: 56, background: "#f1f5f9", borderRadius: 6, margin: "0 auto 12px", display: "flex", alignItems: "center", justifyContent: "center", opacity: 0.5 }}><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div>
                   <div style={{ fontSize: 14, color: "#94a3b8", fontWeight: 500 }}>This section has no content yet.</div>
                 </div>
               )}
@@ -2505,7 +2523,7 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
               {/* Empty — editable: centered prompt */}
               {blocks.length === 0 && !readOnly && (
                 <div style={{ padding: "60px 0 24px", textAlign: "center" }}>
-                  <div style={{ fontSize: 40, marginBottom: 14, opacity: 0.35 }}>✏️</div>
+                  <div style={{ width: 48, height: 48, background: "#f1f5f9", borderRadius: 10, margin: "0 auto 14px", display: "flex", alignItems: "center", justifyContent: "center", opacity: 0.45 }}><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#475569" strokeWidth="1.5"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></div>
                   <div style={{ fontSize: 14, fontWeight: 600, color: "#475569", marginBottom: 6 }}>Start writing your section</div>
                   <div style={{ fontSize: 12, color: "#94a3b8", marginBottom: 24 }}>Add a paragraph, heading, table, image and more</div>
                   <div style={{ maxWidth: 280, margin: "0 auto" }}>
@@ -2633,6 +2651,50 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
           </div>
         </div>
 
+        {/* ── Unsaved changes warning — shown when user tries to submit without saving ── */}
+        {submitUnsavedWarn && (
+          <div style={{
+            position: "fixed", inset: 0, background: "rgba(15,23,42,0.45)",
+            display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000,
+            fontFamily: "'Plus Jakarta Sans', sans-serif",
+          }}>
+            <div style={{
+              background: "#fff", borderRadius: 16, padding: "28px 32px",
+              width: 420, boxShadow: "0 20px 60px rgba(15,23,42,0.25)",
+            }}>
+              <div style={{ display: "flex", align: "center", gap: 10, marginBottom: 10 }}>
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" style={{ flexShrink: 0, marginTop: 1 }}>
+                  <circle cx="10" cy="10" r="9" stroke="#d97706" strokeWidth="1.5"/>
+                  <path d="M10 6v5M10 14h.01" stroke="#d97706" strokeWidth="1.8" strokeLinecap="round"/>
+                </svg>
+                <div style={{ fontSize: 15, fontWeight: 800, color: "#0f172a" }}>Unsaved changes</div>
+              </div>
+              <div style={{ fontSize: 12.5, color: "#64748b", marginBottom: 20, lineHeight: 1.6 }}>
+                You have unsaved edits{dirtyTranslations && Object.keys(dirtyTranslations).length > 0 ? " (including Hindi translations)" : ""}. Please save your changes before requesting review so reviewers see the latest content.
+              </div>
+              <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+                <button
+                  onClick={() => setSubmitUnsavedWarn(false)}
+                  style={{
+                    padding: "8px 16px", borderRadius: 10, border: "1.5px solid #e2e8f0",
+                    background: "#fff", color: "#64748b", fontSize: 13, fontWeight: 600,
+                    cursor: "pointer", fontFamily: "inherit",
+                  }}
+                >Dismiss</button>
+                <button
+                  onClick={() => { setSubmitUnsavedWarn(false); openSaveFlow(); }}
+                  style={{
+                    padding: "8px 20px", borderRadius: 10, border: "none",
+                    background: "linear-gradient(135deg,#16a34a,#15803d)",
+                    color: "#fff", fontSize: 13, fontWeight: 700,
+                    cursor: "pointer", fontFamily: "inherit",
+                  }}
+                >Save Changes →</button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* ── Pre-save: auto-translate updated content into Hindi? ── */}
         {translatePromptModal.open && (
           <div style={{
@@ -2645,12 +2707,18 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
               width: 460, boxShadow: "0 20px 60px rgba(15,23,42,0.25)",
             }}>
               <div style={{ fontSize: 16, fontWeight: 800, color: "#0f172a", marginBottom: 6 }}>
-                Update Hindi translation too?
+                {translatePromptModal.hasNew && !translatePromptModal.hasExisting
+                  ? "Auto-translate to Hindi?"
+                  : translatePromptModal.hasNew
+                  ? "Translate to Hindi?"
+                  : "Update Hindi translation too?"}
               </div>
               <div style={{ fontSize: 12.5, color: "#64748b", marginBottom: 18, lineHeight: 1.6 }}>
-                {translatePromptModal.blocks.length} block{translatePromptModal.blocks.length !== 1 ? "s" : ""} you
-                edited already {translatePromptModal.blocks.length !== 1 ? "have" : "has"} a Hindi translation. If you
-                skip, those translations will be marked as possibly outdated until someone re-translates them manually.
+                {translatePromptModal.hasNew && !translatePromptModal.hasExisting
+                  ? `${translatePromptModal.blocks.length} block${translatePromptModal.blocks.length !== 1 ? "s" : ""} ${translatePromptModal.blocks.length !== 1 ? "don't" : "doesn't"} have a Hindi translation yet. Auto-translate now so Hindi content stays in sync?`
+                  : translatePromptModal.hasNew
+                  ? `Some blocks have no Hindi translation yet, others already do. Auto-translate all ${translatePromptModal.blocks.length} now to keep Hindi content in sync?`
+                  : `${translatePromptModal.blocks.length} block${translatePromptModal.blocks.length !== 1 ? "s" : ""} you edited already ${translatePromptModal.blocks.length !== 1 ? "have" : "has"} a Hindi translation. If you skip, those translations will be marked as possibly outdated until someone re-translates them manually.`}
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 10, maxHeight: 160, overflowY: "auto", marginBottom: 20 }}>
                 {translatePromptModal.blocks.map((b) => (
@@ -2665,13 +2733,13 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
                   padding: "8px 16px", borderRadius: 10, border: "1.5px solid #e2e8f0",
                   background: "#fff", color: "#64748b", fontSize: 13, fontWeight: 600,
                   cursor: translatingBeforeSave ? "not-allowed" : "pointer", fontFamily: "inherit",
-                }}>Skip — Save as is</button>
+                }}>Skip — English only</button>
                 <button onClick={handleTranslateBeforeSave} disabled={translatingBeforeSave} style={{
                   padding: "8px 20px", borderRadius: 10, border: "none",
                   background: translatingBeforeSave ? "#a78bfa" : "linear-gradient(135deg,#7c3aed,#6d28d9)",
                   color: "#fff", fontSize: 13, fontWeight: 700,
                   cursor: translatingBeforeSave ? "not-allowed" : "pointer", fontFamily: "inherit",
-                }}>{translatingBeforeSave ? "Translating…" : "Translate & Continue →"}</button>
+                }}>{translatingBeforeSave ? "Translating…" : (translatePromptModal.hasNew ? "Auto-translate & Save →" : "Translate & Continue →")}</button>
               </div>
             </div>
           </div>
@@ -2894,7 +2962,7 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
                   onMouseEnter={e => { e.currentTarget.style.borderColor = "#818cf8"; e.currentTarget.style.background = "#fafafe"; }}
                   onMouseLeave={e => { e.currentTarget.style.borderColor = "#e2e8f0"; e.currentTarget.style.background = "#fff"; }}
                 >
-                  <div style={{ fontSize: 24, marginBottom: 10 }}>📋</div>
+                  <div style={{ display: "flex", justifyContent: "center", marginBottom: 10, color: "#818cf8" }}><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/></svg></div>
                   <div style={{ fontSize: 13, fontWeight: 700, color: "#1e293b", marginBottom: 4 }}>Manual Table</div>
                   <div style={{ fontSize: 11, color: "#64748b", lineHeight: 1.5 }}>
                     Blank table — type in each cell yourself.
@@ -2974,7 +3042,7 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
                   onMouseEnter={e => { e.currentTarget.style.borderColor = "#818cf8"; e.currentTarget.style.background = "#fafafe"; }}
                   onMouseLeave={e => { e.currentTarget.style.borderColor = "#e2e8f0"; e.currentTarget.style.background = "#fff"; }}
                 >
-                  <div style={{ fontSize: 24, marginBottom: 10 }}>📊</div>
+                  <div style={{ display: "flex", justifyContent: "center", marginBottom: 10, color: "#818cf8" }}><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></div>
                   <div style={{ fontSize: 13, fontWeight: 700, color: "#1e293b", marginBottom: 4 }}>Manual KPI</div>
                   <div style={{ fontSize: 11, color: "#64748b", lineHeight: 1.5 }}>
                     Blank KPI block — enter values yourself.

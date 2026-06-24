@@ -6,7 +6,7 @@ import { useApi } from "../../../hooks/useApi";
 import FormScreen from "../../../components/shared/FormScreen";
 import { S, Toast, isAuthError } from "../../../components/shared/formUtils";
 import PageHeader from "../../../components/shared/PageHeader";
-import { Button, Badge, EmptyState, DataTable, Dropdown, MenuItem } from "../../../ui";
+import { PageContainer, Button, Badge, EmptyState, ErrorState, Card, DataTable, Dropdown, MenuItem } from "../../../ui";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { t } from "../../../i18n/translations";
 
@@ -689,26 +689,17 @@ export default function CommitteeManagementPage() {
   /* ── Meta error screen ── */
   if (metaError) {
     return (
-      <div style={{ padding: "32px 36px", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
-        <div
-          style={{
-            background: "#fef2f2",
-            border: "1px solid #fecaca",
-            borderRadius: 12,
-            padding: "20px 24px",
-            color: "#b91c1c",
-            fontSize: 14,
-          }}
-        >
-          {metaError}
-        </div>
-      </div>
+      <PageContainer>
+        <Card padding={0}>
+          <ErrorState title={t("Couldn’t load committees", lang)} description={metaError} />
+        </Card>
+      </PageContainer>
     );
   }
 
   /* ── List view ── */
   return (
-    <div style={{ padding: "32px 36px", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+    <PageContainer>
       <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.42}}`}</style>
 
       {/* Delete confirm overlay (stays as modal — it's a short confirm, not a form) */}
@@ -926,6 +917,6 @@ export default function CommitteeManagementPage() {
           />
         }
       />
-    </div>
+    </PageContainer>
   );
 }
