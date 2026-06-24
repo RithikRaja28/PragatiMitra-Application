@@ -100,6 +100,22 @@ router.post(
            RETURNING id, role_name, due_at, assigned_at`,
           [reportId, sectionId, role_name.trim(), due_at || null, req.user.userId]
         );
+        // Notify all active users with this role
+        pool.query(
+          `SELECT ur.user_id
+           FROM public.user_roles ur
+           JOIN public.roles r ON r.id = ur.role_id
+           WHERE r.name = $1 AND ur.revoked_at IS NULL`,
+          [role_name.trim()]
+        ).then(res2 => {
+          for (const { user_id } of res2.rows) {
+            pool.query(
+              `INSERT INTO public.notifications (user_id, type, title, body, entity_type, entity_id)
+               VALUES ($1,'SECTION_ASSIGNED','Section assigned to you',$2,'SECTION',$3)`,
+              [user_id, `A section has been assigned to your role (${role_name.trim()}).`, sectionId]
+            ).catch(() => {});
+          }
+        }).catch(() => {});
         return res.status(201).json({ success: true, data: rows[0] });
       }
 
@@ -272,6 +288,22 @@ router.post(
              RETURNING id, role_name, due_at, assigned_at`,
             [reportId, secId, role_name.trim(), due_at || null, req.user.userId]
           );
+          // Notify all active users with this role
+          pool.query(
+            `SELECT ur.user_id
+             FROM public.user_roles ur
+             JOIN public.roles r ON r.id = ur.role_id
+             WHERE r.name = $1 AND ur.revoked_at IS NULL`,
+            [role_name.trim()]
+          ).then(rr => {
+            for (const { user_id } of rr.rows) {
+              pool.query(
+                `INSERT INTO public.notifications (user_id, type, title, body, entity_type, entity_id)
+                 VALUES ($1,'SECTION_ASSIGNED','Section assigned to you',$2,'SECTION',$3)`,
+                [user_id, `A section has been assigned to your role (${role_name.trim()}).`, secId]
+              ).catch(() => {});
+            }
+          }).catch(() => {});
           created.push({ type: "role", ...rows[0] });
         }
       }
