@@ -194,6 +194,28 @@ async function ensureDepartmentFormTables(pool) {
     await pool.query(`ALTER TABLE department_form_roles ADD COLUMN IF NOT EXISTS ${col}`);
   }
 
+  /* Year-scoped schema storage. Mirrors institution custom_field_schemas:
+     - is_base = true  → creation-year schema (physical columns)
+     - is_base = false → subsequent-year extra fields (stored in custom_fields JSONB)
+     UNIQUE (department_form_id, academic_year) — one row per (form, year). */
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS department_form_schemas (
+      id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      department_form_id UUID NOT NULL REFERENCES department_table_list(id) ON DELETE CASCADE,
+      academic_year      INT  NOT NULL,
+      schema             JSONB,
+      is_base            BOOLEAN NOT NULL DEFAULT FALSE,
+      created_by         UUID,
+      updated_by         UUID,
+      created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+      UNIQUE (department_form_id, academic_year)
+    )
+  `);
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS idx_dfs_form_year ON department_form_schemas (department_form_id, academic_year)`
+  );
+
   logger.info("department_form tables ensured");
 }
 

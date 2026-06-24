@@ -375,19 +375,43 @@ router.get("/assigned", async (req, res) => {
 });
 
 /* ─────────────────────────────────────────────────────────────────────
-   GET /api/department-forms/:id/schema
+   GET /api/department-forms/:id/schema?year=YYYY
+   Creation year → base schema (physical columns).
+   Subsequent years → base fields merged with year-specific extra fields.
 ───────────────────────────────────────────────────────────────────── */
 router.get("/:id/schema", async (req, res) => {
   const pool = req.app.locals.pool;
   try {
     const { form, error } = await loadOwnedForm(pool, req, req.params.id);
     if (error) return res.status(404).json({ success: false, message: error });
+
+    const year = resolveYear(req);
+    const creationYear = form.academic_year;
+    const isCreationYear = year === creationYear;
+
+    let schema = form.schema;
+    if (!isCreationYear) {
+      const { rows: schemaRows } = await pool.query(
+        `SELECT academic_year, schema, is_base FROM department_form_schemas
+         WHERE department_form_id = $1 AND (is_base = true OR academic_year = $2)`,
+        [form.id, year]
+      );
+      const baseRow = schemaRows.find((r) => r.is_base);
+      const yearRow = schemaRows.find((r) => r.academic_year === year && !r.is_base);
+      const baseSchema = baseRow?.schema || form.schema || { fields: [] };
+      const baseFields = baseSchema?.fields || [];
+      const baseColSet = new Set(baseFields.map((f) => f.column_name));
+      const extraFields = (yearRow?.schema?.fields || []).filter((f) => !baseColSet.has(f.column_name));
+      schema = { ...baseSchema, fields: [...baseFields, ...extraFields] };
+    }
+
     return res.json({
       success: true,
-      schema: form.schema,
+      schema,
       form_name: form.form_name,
       academic_year: form.academic_year,
       translate_enabled: form.translate_enabled,
+      is_creation_year: isCreationYear,
     });
   } catch (err) {
     logger.error("GET /api/department-forms/:id/schema", { stack: err.stack });
@@ -477,6 +501,15 @@ router.post("/", requireRole(WRITE_ROLES), requireActiveDepartment, async (req, 
       const formId = insRows[0].id;
 
       await ensureDeptYearRow(client, { departmentFormId: formId, academicYear: year, active: true });
+
+      // Seed the base (creation-year) schema row for year-aware schema tracking.
+      await client.query(
+        `INSERT INTO department_form_schemas
+           (department_form_id, academic_year, schema, is_base, created_by)
+         VALUES ($1, $2, $3::jsonb, true, $4)
+         ON CONFLICT (department_form_id, academic_year) DO NOTHING`,
+        [formId, year, JSON.stringify(schema), req.user.userId]
+      );
 
       await client.query(
         `INSERT INTO department_form_lock_config (department_form_id, department_id, is_locked, auto_locked)
@@ -602,26 +635,39 @@ router.post("/", requireRole(WRITE_ROLES), requireActiveDepartment, async (req, 
 
 /* ─────────────────────────────────────────────────────────────────────
    PUT /api/department-forms/:id/schema   — update schema (edit)
-   Body: { schema }
+   Body: { schema, year? }
+   Creation year → ALTER TABLE for new physical columns (same as before).
+   Subsequent years → extra fields saved to department_form_schemas JSONB only.
 ───────────────────────────────────────────────────────────────────── */
 router.put("/:id/schema", requireRole(WRITE_ROLES), requireActiveDepartment, async (req, res) => {
   const pool = req.app.locals.pool;
   const { schema } = req.body;
   if (!schema) return res.status(400).json({ success: false, message: "schema is required." });
 
+  const year = resolveYear(req);
+
   try {
     const { form, error } = await loadOwnedForm(pool, req, req.params.id);
     if (error) return res.status(404).json({ success: false, message: error });
 
+    const creationYear = form.academic_year;
+    const isCreationYear = year === creationYear;
     const table = deptRecordsTable(form.department_id, form.form_name);
-    const currentNames = new Set((form.schema?.fields || []).map((f) => f.column_name));
 
-    // Bug 8 — a previously-used (now deleted) column name must not be reintroduced:
-    // the underlying table column still holds the old data (ADD COLUMN IF NOT EXISTS
-    // is a no-op), so a new field reusing that name would silently expose orphaned
-    // values. Reject it — mirrors the institution PUT /schema guard. Renames are a
-    // label-only change (column_name is locked in the builder), so this never fires
-    // for a genuine rename.
+    // Build the set of currently active column names for this (form, year).
+    // For non-creation years also include year-specific extras already saved.
+    const baseFieldNames = new Set((form.schema?.fields || []).map((f) => f.column_name));
+    const currentNames = new Set(baseFieldNames);
+    if (!isCreationYear) {
+      const { rows: yrRows } = await pool.query(
+        `SELECT schema FROM department_form_schemas
+         WHERE department_form_id = $1 AND academic_year = $2 AND is_base = false`,
+        [form.id, year]
+      );
+      for (const f of (yrRows[0]?.schema?.fields || [])) currentNames.add(f.column_name);
+    }
+
+    // Bug 8 — a previously-used (now deleted) column name must not be reintroduced.
     const usedColumnNames = new Set(form.used_column_names || []);
     const excludedIncoming = new Set(schema.excluded_fixed_columns || []);
     const reused = (schema.fields || [])
@@ -635,10 +681,7 @@ router.put("/:id/schema", requireRole(WRITE_ROLES), requireActiveDepartment, asy
       });
     }
 
-    // Bug 9 — an existing field's TYPE is immutable: its records-table column was
-    // created with that type and is never ALTERed, so a changed type would corrupt
-    // stored data. Force already-saved fields back to their stored type (the builder
-    // locks this in the UI; this is the defense-in-depth backstop).
+    // Bug 9 — an existing field's TYPE is immutable.
     const existingTypeByCol = new Map((form.schema?.fields || []).map((f) => [f.column_name, f.type]));
     for (const f of (schema.fields || [])) {
       if (existingTypeByCol.has(f.column_name)) f.type = existingTypeByCol.get(f.column_name);
@@ -649,22 +692,49 @@ router.put("/:id/schema", requireRole(WRITE_ROLES), requireActiveDepartment, asy
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
-      await client.query(
-        `UPDATE department_table_list
-           SET schema = $1::jsonb, used_column_names = $2,
-               updated_by = $3, updated_at = now()
-         WHERE id = $4`,
-        [JSON.stringify(schema), mergedUsed, req.user.userId, form.id]
-      );
 
-      const excluded = new Set(schema.excluded_fixed_columns || []);
-      for (const field of (schema.fields || [])) {
-        if (excluded.has(field.column_name) || currentNames.has(field.column_name)) continue;
-        const col = field.column_name.trim().toLowerCase().replace(/\s+/g, "_");
-        if (/^[a-z][a-z0-9_]*$/.test(col)) {
-          await client.query(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS ${quoteIdent(col)} ${pgType(field.type)}`);
+      if (isCreationYear) {
+        // Creation year: update main schema + base schema row + ALTER TABLE for new columns.
+        await client.query(
+          `UPDATE department_table_list
+             SET schema = $1::jsonb, used_column_names = $2, updated_by = $3, updated_at = now()
+           WHERE id = $4`,
+          [JSON.stringify(schema), mergedUsed, req.user.userId, form.id]
+        );
+        await client.query(
+          `INSERT INTO department_form_schemas
+             (department_form_id, academic_year, schema, is_base, created_by, updated_by)
+           VALUES ($1, $2, $3::jsonb, true, $4, $4)
+           ON CONFLICT (department_form_id, academic_year) DO UPDATE
+             SET schema = EXCLUDED.schema, updated_by = EXCLUDED.updated_by, updated_at = now()`,
+          [form.id, year, JSON.stringify(schema), req.user.userId]
+        );
+        const excluded = new Set(schema.excluded_fixed_columns || []);
+        for (const field of (schema.fields || [])) {
+          if (excluded.has(field.column_name) || baseFieldNames.has(field.column_name)) continue;
+          const col = field.column_name.trim().toLowerCase().replace(/\s+/g, "_");
+          if (/^[a-z][a-z0-9_]*$/.test(col)) {
+            await client.query(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS ${quoteIdent(col)} ${pgType(field.type)}`);
+          }
         }
+      } else {
+        // Non-creation year: extra (non-base) fields go to JSONB only — no ALTER TABLE.
+        const extraFields = (schema.fields || []).filter((f) => !baseFieldNames.has(f.column_name));
+        const yearSchema = { ...schema, fields: extraFields };
+        await client.query(
+          `INSERT INTO department_form_schemas
+             (department_form_id, academic_year, schema, is_base, created_by, updated_by)
+           VALUES ($1, $2, $3::jsonb, false, $4, $4)
+           ON CONFLICT (department_form_id, academic_year) DO UPDATE
+             SET schema = EXCLUDED.schema, updated_by = EXCLUDED.updated_by, updated_at = now()`,
+          [form.id, year, JSON.stringify(yearSchema), req.user.userId]
+        );
+        await client.query(
+          `UPDATE department_table_list SET used_column_names = $1, updated_by = $2, updated_at = now() WHERE id = $3`,
+          [mergedUsed, req.user.userId, form.id]
+        );
       }
+
       await client.query("COMMIT");
       return res.json({ success: true, message: "Schema updated successfully." });
     } catch (err) {
