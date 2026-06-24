@@ -74,7 +74,7 @@ export default function ContributorDashboardPage() {
 
       <PageHeader
         breadcrumb={[t("Home", lang), t("Dashboard", lang)]}
-        title={t("Dashboard", lang)}
+        title={t("My Workspace", lang)}
         description={user?.institutionName || t("Contributor", lang)}
       />
 

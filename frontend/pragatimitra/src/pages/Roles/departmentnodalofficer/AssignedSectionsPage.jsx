@@ -403,8 +403,8 @@ export default function AssignedSectionsPage() {
 
       <PageHeader
         breadcrumb={[t("Home", lang), t("Department", lang), t("Sections", lang)]}
-        title={t("My Assigned Sections", lang)}
-        description="Click any section to edit content, view comments, or compare versions"
+        title={t("Assigned Sections", lang)}
+        description="Your assigned report sections — edit content, review comments, and compare versions."
       />
 
       {/* Filters — standardized toolbar */}

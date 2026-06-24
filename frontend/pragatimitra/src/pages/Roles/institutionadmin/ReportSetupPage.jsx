@@ -349,7 +349,7 @@ export default function ReportSetupPage() {
       <PageHeader
         breadcrumb={[t("Home", lang), t("Reports", lang), t("Report Setup", lang)]}
         title={t("Report Configuration", lang)}
-        description="Manage sections, subsections, dates and workflow"
+        description="Configure sections, deadlines, and the approval workflow for this report."
         actions={
           <button style={{ ...btn("primary"), display: "inline-flex", alignItems: "center", gap: 7, padding: "10px 20px", fontSize: 12, borderRadius: 9,
             boxShadow: "0 2px 8px rgba(99,102,241,0.3)" }}>

@@ -679,8 +679,8 @@ export default function InstitutionManagementPage() {
       {/* Page Header */}
       <PageHeader
         breadcrumb={[t("Home", lang), t("Institution Management", lang), t("Institutions", lang)]}
-        title={t("Institutions", lang)}
-        description="Create and manage institutions on the platform."
+        title={t("Institution Management", lang)}
+        description="Onboard and manage institutions across the platform."
         actions={
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <ExportMenu loading={exportingFormat} onExport={handleExport} />

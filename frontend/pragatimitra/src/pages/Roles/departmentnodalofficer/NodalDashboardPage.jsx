@@ -54,7 +54,7 @@ export default function NodalDashboardPage() {
       {/* Header */}
       <PageHeader
         breadcrumb={[t("Home", lang), t("Department", lang), t("Dashboard", lang)]}
-        title={t("My Dashboard", lang)}
+        title={t("My Workspace", lang)}
         description="Annual Report 2026 — Samhita Siddhanta"
       />
 

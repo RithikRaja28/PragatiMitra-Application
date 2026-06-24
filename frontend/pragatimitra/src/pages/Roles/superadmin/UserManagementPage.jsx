@@ -604,7 +604,7 @@ function UserList({ apiFetch, onEdit }) {
       {/* ── Existing search + status filter row — unchanged ── */}
       <div style={{ display: "flex", gap: 10, marginBottom: 20, flexWrap: "wrap" }}>
         <input
-          placeholder="Search name or email…"
+          placeholder="Search by name or email…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           style={{ ...S.input(false), flex: 1, minWidth: 200 }}
@@ -863,8 +863,8 @@ export default function UserManagementPage() {
       {/* Header */}
       <PageHeader
         breadcrumb={[t("Home", lang), t("User Management", lang), t("Users", lang)]}
-        title={t("Users", lang)}
-        description="Create, edit, activate/deactivate, and manage roles for all platform users."
+        title={t("User Administration", lang)}
+        description="Administer platform users, roles, and account access."
         actions={
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <ExportMenu loading={exportingFormat} onExport={handleExport} />
