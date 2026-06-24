@@ -141,7 +141,7 @@ export default function SubmissionsPage() {
       <PageHeader
         breadcrumb={[t("Home", lang), t("Department", lang), t("Submissions", lang)]}
         title={t("My Submissions", lang)}
-        description="Track section submissions through the approval pipeline — hover a row to see the full timeline"
+        description="Track your section submissions through the approval pipeline."
       />
 
       {/* Stage progress legend */}

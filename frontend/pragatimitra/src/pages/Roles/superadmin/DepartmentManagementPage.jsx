@@ -705,8 +705,8 @@ export default function DepartmentManagementPage() {
       {/* ── Header ── */}
       <PageHeader
         breadcrumb={[t("Home", lang), t("Dept Management", lang), t("Departments", lang)]}
-        title={t("Departments", lang)}
-        description="Create and manage departments across institutions."
+        title={t("Department Management", lang)}
+        description="Organize and manage departments across institutions."
         actions={
           <div style={{ display: "flex", alignItems: "flex-end", gap: 12, flexWrap: "wrap" }}>
             {/* Institution selector */}

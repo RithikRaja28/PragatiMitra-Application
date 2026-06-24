@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useApi } from "../../../../hooks/useApi";
 import { Button } from "../../../../ui";
 import Toast from "../../../../components/shared/Toast";
+import BuilderHeader from "./BuilderHeader";
 
 async function apiJson(apiFetch, path, opts) {
   const res  = await apiFetch(path, opts);
@@ -153,20 +154,16 @@ export default function ReportStructurePage({ reportId, onNavigate }) {
       {toast && <Toast {...toast} onClose={() => setToast(null)} />}
 
       {/* ── header ── */}
-      <header style={{ background: C.surface, borderBottom: `1px solid ${C.border}`,
-                       padding: "16px 32px", display: "flex", alignItems: "center", gap: 16 }}>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 20, fontWeight: 700, color: C.text }}>{report?.title}</div>
-          <div style={{ fontSize: 12, color: C.textSub }}>
-            {report?.report_type} · {report?.academic_year} ·{" "}
-            <StatusBadge status={report?.status} />
-          </div>
-        </div>
-        <div style={{ display: "flex", gap: 10 }}>
-          <button style={outlineBtn} onClick={() => onNavigate?.("assign", reportId)}>Assign Sections</button>
-          <Button variant="primary" onClick={() => onNavigate?.("compile", reportId)}>Compile Report</Button>
-        </div>
-      </header>
+      <BuilderHeader
+        title={report?.title}
+        subtitle={<>{report?.report_type} · {report?.academic_year} · <StatusBadge status={report?.status} /></>}
+        right={
+          <>
+            <button style={outlineBtn} onClick={() => onNavigate?.("assign", reportId)}>Assign Sections</button>
+            <Button variant="primary" onClick={() => onNavigate?.("compile", reportId)}>Compile Report</Button>
+          </>
+        }
+      />
 
       <main style={{ maxWidth: 1200, margin: "0 auto", padding: "28px 24px" }}>
         {/* ── progress banner ── */}
