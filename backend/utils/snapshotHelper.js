@@ -16,11 +16,20 @@ async function createSectionSnapshot(pool, sectionId, event, userId, reason = nu
   if (!sRows.length) throw new Error(`Section ${sectionId} not found`);
   const section = sRows[0];
 
-  // Load blocks (ordered)
+  // Load blocks (ordered), each carrying its current translations — every snapshot is a
+  // brand-new row in section_versions (never an UPDATE), so this captures both the primary
+  // content AND the Hindi/etc. translation state at this exact point in time as history.
   const { rows: blocks } = await pool.query(
-    `SELECT * FROM public.section_blocks
-     WHERE section_id = $1 AND deleted_at IS NULL
-     ORDER BY order_index`,
+    `SELECT b.*,
+            COALESCE(
+              (SELECT jsonb_object_agg(bt.language, bt.content)
+               FROM public.block_translations bt
+               WHERE bt.block_id = b.id),
+              '{}'::jsonb
+            ) AS translations
+     FROM public.section_blocks b
+     WHERE b.section_id = $1 AND b.deleted_at IS NULL
+     ORDER BY b.order_index`,
     [sectionId]
   );
 

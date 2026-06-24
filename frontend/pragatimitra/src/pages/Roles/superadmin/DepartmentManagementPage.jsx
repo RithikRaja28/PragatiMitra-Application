@@ -52,6 +52,17 @@ function DepartmentForm({
     nameRef.current?.focus();
   }, []);
 
+  // Sync institution_id once institutions load (handles the case where DepartmentForm
+  // mounts before the institutions API call completes — e.g. direct URL navigation or
+  // page refresh on /create — leaving institution_id="" while the select visually
+  // shows the first option due to browser fallback behaviour).
+  useEffect(() => {
+    if (isEdit) return;
+    const resolved = defaultInstitutionId || institutions[0]?.institution_id;
+    if (resolved == null) return;
+    setForm((f) => (f.institution_id ? f : { ...f, institution_id: resolved }));
+  }, [isEdit, defaultInstitutionId, institutions]);
+
   function set(key, value) {
     setForm((f) => ({ ...f, [key]: value }));
     if (fieldErrors[key]) setFieldErrors((e) => ({ ...e, [key]: "" }));

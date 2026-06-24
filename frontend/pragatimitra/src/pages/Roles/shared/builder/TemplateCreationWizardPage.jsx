@@ -461,13 +461,92 @@ function BlockRow({ blk, onContentChange, onToggleRequired, onDelete, immutable 
   );
 }
 
+/* ── HindiTitleEditor — inline Hindi title field for a selected section ── */
+function HindiTitleEditor({ sec, onSave, apiFetch, immutable }) {
+  const [val,       setVal]       = useState(sec.title_translations?.hi || "");
+  const [busy,      setBusy]      = useState(false);
+  const [saved,     setSaved]     = useState(false);
+
+  useEffect(() => { setVal(sec.title_translations?.hi || ""); setSaved(false); }, [sec.id, sec.title_translations?.hi]);
+
+  async function autoTranslate() {
+    if (!sec.title?.trim()) return;
+    setBusy(true);
+    try {
+      const res  = await apiFetch("/api/report-integration/translate", {
+        method: "POST", body: JSON.stringify({ text: sec.title }),
+      });
+      const data = await res.json();
+      if (data.success) setVal(data.data.hi || "");
+    } catch { /* ignore */ }
+    finally { setBusy(false); }
+  }
+
+  async function save() {
+    if (!val.trim()) return;
+    setBusy(true);
+    try {
+      await onSave(sec.id, val.trim());
+      setSaved(true);
+      setTimeout(() => setSaved(false), 1800);
+    } catch { /* ignore */ }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <div style={{ padding: "10px 16px", borderBottom: `1px solid ${C.border}`, background: "#fffbeb" }}>
+      <div style={{ fontSize: 10, fontWeight: 700, color: "#b45309", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 6 }}>
+        Hindi Title (हिंदी शीर्षक)
+      </div>
+      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+        <input
+          value={val}
+          onChange={e => { setVal(e.target.value); setSaved(false); }}
+          disabled={immutable || busy}
+          placeholder="हिंदी शीर्षक यहाँ लिखें…"
+          style={{
+            ...inp, flex: 1, fontSize: 13,
+            border: `1.5px solid ${saved ? "#86efac" : "#fcd34d"}`,
+            background: immutable ? C.bg : "#fff",
+          }}
+          onKeyDown={e => { if (e.key === "Enter") save(); }}
+        />
+        {!immutable && (
+          <>
+            <button
+              onClick={autoTranslate}
+              disabled={busy}
+              title="Auto-translate English title to Hindi"
+              style={{
+                padding: "6px 10px", borderRadius: 7, border: `1px solid #fcd34d`,
+                background: "#fef3c7", color: "#b45309", cursor: busy ? "not-allowed" : "pointer",
+                fontSize: 11, fontWeight: 700, fontFamily: "inherit", whiteSpace: "nowrap",
+              }}
+            >{busy ? "…" : "⚡ Auto"}</button>
+            <button
+              onClick={save}
+              disabled={busy || !val.trim()}
+              style={{
+                padding: "6px 12px", borderRadius: 7, border: "none",
+                background: saved ? C.success : C.primary, color: "#fff",
+                cursor: busy || !val.trim() ? "not-allowed" : "pointer",
+                fontSize: 11, fontWeight: 700, fontFamily: "inherit",
+              }}
+            >{saved ? "✓ Saved" : "Save"}</button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /* ── Step2Structure ─────────────────────────────────────────────────────── */
 function Step2Structure({
   tree, sections, selectedSec, setSelectedSec, blocks,
   immutable, savingLabel,
-  onAddSection, onDeleteSection, onRenameSection,
+  onAddSection, onDeleteSection, onRenameSection, onSaveHindiTitle,
   onAddBlock, onUpdateBlock, onToggleRequired, onDeleteBlock,
-  onBack, onNext,
+  onBack, onNext, apiFetch,
 }) {
   const blockCount = {};
   for (const s of sections) blockCount[s.id] = (s.blocks || []).length;
@@ -677,6 +756,14 @@ function Step2Structure({
                   </div>
                 </div>
               </div>
+
+              {/* Hindi title editor */}
+              <HindiTitleEditor
+                sec={selectedSec}
+                onSave={onSaveHindiTitle}
+                apiFetch={apiFetch}
+                immutable={immutable}
+              />
 
               {/* blocks list */}
               <div style={{ flex: 1, overflowY: "auto", padding: "14px 16px" }}>
@@ -978,6 +1065,17 @@ export default function TemplateCreationWizardPage({ initialId = null, onDone: o
     } catch (e) { setErr(e.message); flash(""); }
   }
 
+  async function saveHindiTitle(secId, hiTitle) {
+    const title_translations = { hi: hiTitle };
+    await apj(apiFetch, `/api/builder/templates/${templateId}/sections/${secId}`, {
+      method: "PUT", body: JSON.stringify({ title_translations }),
+    });
+    setSections(prev => prev.map(s => s.id === secId
+      ? { ...s, title_translations: { ...(s.title_translations || {}), hi: hiTitle } } : s));
+    if (selectedSec?.id === secId)
+      setSelectedSec(prev => ({ ...prev, title_translations: { ...(prev.title_translations || {}), hi: hiTitle } }));
+  }
+
   async function addBlock(blockType) {
     if (!selectedSec) return;
     setErr(""); flash("Saving…");
@@ -1101,6 +1199,7 @@ export default function TemplateCreationWizardPage({ initialId = null, onDone: o
             selectedSec={selectedSec} setSelectedSec={setSelectedSec}
             blocks={blocks} immutable={immutable} savingLabel={savingLabel}
             onAddSection={addSection} onDeleteSection={deleteSection} onRenameSection={renameSection}
+            onSaveHindiTitle={saveHindiTitle} apiFetch={apiFetch}
             onAddBlock={addBlock} onUpdateBlock={updateBlockContent}
             onToggleRequired={toggleRequired} onDeleteBlock={deleteBlock}
             onBack={() => setStep(0)} onNext={() => setStep(2)}

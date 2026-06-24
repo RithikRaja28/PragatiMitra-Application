@@ -74,7 +74,7 @@ async function ensureRecordsTrgmIndexes(pool, tableName) {
     if (STD_COLS.has(col) || !/^[a-z][a-z0-9_]*$/.test(col)) continue;
     const ix = `ix_${tableName}_${col}_trgm`.slice(0, 63);
     try {
-      await pool.query(`CREATE INDEX CONCURRENTLY IF NOT EXISTS ${ix} ON ${tableName} USING gin (${col} gin_trgm_ops)`);
+      await pool.query(`CREATE INDEX CONCURRENTLY IF NOT EXISTS ${ix} ON ${tableName} USING gin ("${col}" gin_trgm_ops)`);
     } catch (e) {
       logger.error(`trgm index failed for ${tableName}.${col}`, { stack: e.stack });
     }

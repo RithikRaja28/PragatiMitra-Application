@@ -174,7 +174,16 @@ export default function AcademicYearPage() {
     try {
       const res = await apiFetch(`/api/academic-years/${encodeURIComponent(ay)}/activate`, { method: "PATCH" });
       const data = await res.json();
-      if (data.success) { showToast(`${ay} is now the current academic year`); loadYears(); academicCtx?.reload(); }
+      if (data.success) {
+        showToast(`${ay} is now the current academic year`);
+        loadYears();
+        // reload() alone won't switch the top-bar selection — it deliberately
+        // KEEPS the user's existing pick if still valid. An explicit "make
+        // current" action must actually move the top bar to this year.
+        const sy = Number(String(ay).match(/\d+/)?.[0]);
+        if (Number.isInteger(sy)) academicCtx?.setYear(sy);
+        academicCtx?.reload();
+      }
       else showToast(data.message || "Failed to set current year.", "error");
     } catch (err) { if (!isAuthError(err)) showToast("Network error.", "error"); }
   }
@@ -431,7 +440,17 @@ export default function AcademicYearPage() {
         <CreateYearWizard
           apiFetch={apiFetch}
           onClose={() => setWizardOpen(false)}
-          onCreated={(ay) => { setWizardOpen(false); showToast(`Academic year ${ay} created`); setViewYear(ay); loadYears(); academicCtx?.reload(); }}
+          onCreated={(ay, sy) => {
+            setWizardOpen(false);
+            showToast(`Academic year ${ay} created`);
+            setViewYear(ay);
+            loadYears();
+            // makeCurrent:true on the backend doesn't move the top-bar selection by
+            // itself — reload() preserves whatever year was already selected. Force
+            // the switch explicitly so the navbar actually reflects the new year.
+            if (Number.isInteger(sy)) academicCtx?.setYear(sy);
+            academicCtx?.reload();
+          }}
           onError={(m) => showToast(m, "error")}
         />
       )}
@@ -544,7 +563,7 @@ function CreateYearWizard({ apiFetch, onClose, onCreated, onError }) {
         body: JSON.stringify({ startYear, activeFormIds, archivedFormIds, makeCurrent: true }),
       });
       const data = await res.json();
-      if (data.success) onCreated(data.academicYear);
+      if (data.success) onCreated(data.academicYear, startYear);
       else onError(data.message || "Failed to create academic year.");
     } catch (err) {
       if (!isAuthError(err)) onError("Network error.");

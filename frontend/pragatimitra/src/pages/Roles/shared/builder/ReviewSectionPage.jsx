@@ -12,20 +12,20 @@ async function apiJson(apiFetch, path, opts) {
 
 /* ── colours ─────────────────────────────────────────────────────────────── */
 const C = {
-  primary: "#4f8ef7", primaryLt: "#e8f0fe",
-  success: "#43a047", successLt: "#e8f5e9",
-  danger:  "#e53935", dangerLt:  "#fef2f2",
-  warning: "#f9a825", warningLt: "#fffde7",
-  purple:  "#7c4dff", purpleLt:  "#ede7f6",
-  text:    "#1a1a2e", textSub:   "#555",
-  border:  "#e0e4ea", bg:        "#f7f8fa", surface: "#fff",
+  primary: "#2563eb", primaryLt: "#dbeafe",
+  success: "#16a34a", successLt: "#dcfce7",
+  danger:  "#dc2626", dangerLt:  "#fee2e2",
+  warning: "#d97706", warningLt: "#fef3c7",
+  purple:  "#6366f1", purpleLt:  "#e0e7ff",
+  text:    "#0f172a", textSub:   "#64748b",
+  border:  "#e2e8f0", bg:        "#f8fafc", surface: "#fff",
 };
 
 const STATUS_META = {
   NOT_STARTED:  { label: "Not Started",  color: "#64748b", bg: "#f1f5f9" },
   IN_PROGRESS:  { label: "In Progress",  color: C.primary, bg: C.primaryLt },
   SUBMITTED:    { label: "Submitted",    color: C.warning, bg: C.warningLt },
-  UNDER_REVIEW: { label: "Under Review", color: C.purple,  bg: C.purpleLt  },
+  UNDER_REVIEW: { label: "Under Review", color: "#1e40af", bg: "#dbeafe"   },
   APPROVED:     { label: "Approved",     color: C.success, bg: C.successLt },
   SENT_BACK:    { label: "Sent Back",    color: C.danger,  bg: C.dangerLt  },
   LOCKED:       { label: "Locked",       color: "#555",    bg: "#e0e0e0"   },
@@ -336,8 +336,17 @@ export default function ReviewSectionPage({ sectionId, onBack }) {
       {/* ── header ── */}
       <header style={{ background: C.surface, borderBottom: `1px solid ${C.border}`,
         padding: "14px 32px", display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
-        <button style={{ background: "none", border: "none", cursor: "pointer",
-          fontSize: 16, color: C.primary, flexShrink: 0 }} onClick={onBack}>←</button>
+        <button onClick={onBack} style={{
+          display: "inline-flex", alignItems: "center", gap: 5,
+          padding: "6px 12px", background: "#fff", border: "1px solid #e2e8f0",
+          borderRadius: 8, fontSize: 12, fontWeight: 600, color: "#475569",
+          cursor: "pointer", flexShrink: 0, fontFamily: "inherit",
+        }}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M19 12H5M12 19l-7-7 7-7"/>
+          </svg>
+          Back
+        </button>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 17, fontWeight: 700, color: C.text,
             overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -350,7 +359,14 @@ export default function ReviewSectionPage({ sectionId, onBack }) {
             {pipeline?.workflow_name && (
               <span style={{ color: C.textSub }}>Workflow: {pipeline.workflow_name}</span>
             )}
-            {pipeline?.current_step && (
+            {pipeline?.needs_director_approval && (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 4,
+                padding: "2px 10px", borderRadius: 20, fontSize: 10, fontWeight: 700,
+                background: "#fae8ff", color: "#7e22ce", border: "1px solid #e9d5ff" }}>
+                Director's Office Final Approval
+              </span>
+            )}
+            {!pipeline?.needs_director_approval && pipeline?.current_step && (
               <span style={{ color: C.primary, fontWeight: 600 }}>
                 Step: {pipeline.current_step.step_name}
               </span>
@@ -359,10 +375,12 @@ export default function ReviewSectionPage({ sectionId, onBack }) {
         </div>
         {canReview && !showReview && (
           <button onClick={() => setShowReview(true)}
-            style={{ padding: "9px 20px", background: C.success, color: "#fff",
+            style={{ display: "inline-flex", alignItems: "center", gap: 6,
+              padding: "9px 18px", background: C.success, color: "#fff",
               border: "none", borderRadius: 8, cursor: "pointer", fontSize: 13,
-              fontWeight: 700, flexShrink: 0 }}>
-            Review this Section
+              fontWeight: 700, flexShrink: 0, boxShadow: "0 2px 8px rgba(22,163,74,0.25)" }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            Review Section
           </button>
         )}
       </header>
@@ -388,8 +406,14 @@ export default function ReviewSectionPage({ sectionId, onBack }) {
             )}
             {(pipeline?.steps || []).map((step, i) => (
               <PipelineStep key={step.id || i} step={step} index={i}
-                isLast={i === (pipeline?.steps?.length || 1) - 1} />
+                isLast={i === (pipeline?.steps?.length || 1) - 1 && !pipeline?.needs_director_approval && section?.status !== "APPROVED"} />
             ))}
+            {/* Director's Office final approval step — always shown at end */}
+            {(pipeline?.steps?.length > 0 || pipeline?.needs_director_approval) && (
+              <DirectorStep
+                active={!!pipeline?.needs_director_approval}
+                done={section?.status === "APPROVED"} />
+            )}
           </div>
 
           {/* Approval History */}
@@ -563,14 +587,19 @@ export default function ReviewSectionPage({ sectionId, onBack }) {
 
           {/* not yet reviewing — prompt */}
           {canReview && !showReview && (
-            <div style={{ background: "#f0f9f0", border: `1px solid ${C.success}44`,
+            <div style={{ background: pipeline?.needs_director_approval ? "#faf5ff" : "#f0f9f0",
+              border: `1px solid ${pipeline?.needs_director_approval ? "#7e22ce44" : C.success + "44"}`,
               borderRadius: 10, padding: 16 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: C.success, marginBottom: 4 }}>
-                You can review this section
+              <div style={{ fontSize: 12, fontWeight: 700,
+                color: pipeline?.needs_director_approval ? "#7e22ce" : C.success, marginBottom: 4 }}>
+                {pipeline?.needs_director_approval
+                  ? "Director's Office Final Approval"
+                  : "You can review this section"}
               </div>
               <div style={{ fontSize: 11, color: C.textSub, lineHeight: 1.6 }}>
-                Read the document, then click "Review this Section" to approve or send it back
-                with comments.
+                {pipeline?.needs_director_approval
+                  ? "All workflow steps have been completed. This section is awaiting your final approval as Director's Office."
+                  : `Read the document, then click "Review Section" to approve or send it back with comments.`}
               </div>
             </div>
           )}
@@ -818,6 +847,31 @@ function MetaRow({ k, v, vColor }) {
     <div style={{ display: "flex", gap: 6, fontSize: 12, marginBottom: 6 }}>
       <span style={{ color: "#888", width: 100, flexShrink: 0 }}>{k}</span>
       <span style={{ color: vColor || C.text, fontWeight: 600 }}>{v}</span>
+    </div>
+  );
+}
+
+function DirectorStep({ active, done }) {
+  const col = done ? C.success : active ? "#7e22ce" : "#ccc";
+  return (
+    <div style={{ display: "flex", gap: 10, alignItems: "flex-start", marginTop: 4 }}>
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+        <div style={{ width: 28, height: 28, borderRadius: "50%", background: col,
+          color: "#fff", display: "flex", alignItems: "center", justifyContent: "center",
+          fontSize: 10, fontWeight: 700, flexShrink: 0, border: active ? "2px solid #7e22ce" : "none" }}>
+          {done ? "✓" : "D"}
+        </div>
+      </div>
+      <div style={{ paddingTop: 4 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: active || done ? C.text : "#aaa" }}>
+          Director's Office
+        </div>
+        <div style={{ fontSize: 10, color: C.textSub }}>Final Approval</div>
+        <div style={{ fontSize: 9, marginTop: 2, padding: "1px 6px", borderRadius: 4,
+          display: "inline-block", background: col + "22", color: col }}>
+          {done ? "COMPLETED" : active ? "ACTIVE" : "PENDING"}
+        </div>
+      </div>
     </div>
   );
 }

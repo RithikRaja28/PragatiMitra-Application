@@ -233,15 +233,37 @@ export default function CreateReportWizardPage({ onCreated, onCancel, initialRep
 
   /* ══ section helpers ════════════════════════════════════════════ */
   const addSection = () => setSections(p => [
-    ...p, { id: `new_${Date.now()}`, title: "", desc: "", order_index: (p.length + 1) * 1000, isNew: true, subsections: [] },
+    ...p, { id: `new_${Date.now()}`, title: "", title_hi: "", desc: "", order_index: (p.length + 1) * 1000, isNew: true, subsections: [] },
   ]);
   const addSub = (pid) => setSections(p => p.map(s =>
-    s.id === pid ? { ...s, subsections: [...s.subsections, { id: `nsub_${Date.now()}`, title: "", isNew: true }] } : s
+    s.id === pid ? { ...s, subsections: [...s.subsections, { id: `nsub_${Date.now()}`, title: "", title_hi: "", isNew: true }] } : s
   ));
   const updSec = (id, k, v)  => setSections(p => p.map(s => s.id === id ? { ...s, [k]: v } : s));
   const updSub = (pid, sid, k, v) => setSections(p => p.map(s =>
     s.id === pid ? { ...s, subsections: s.subsections.map(sub => sub.id === sid ? { ...sub, [k]: v } : sub) } : s
   ));
+
+  const autoTranslateSec = async (id, englishTitle) => {
+    if (!englishTitle?.trim()) return;
+    try {
+      const res  = await apiFetch("/api/report-integration/translate", {
+        method: "POST", body: JSON.stringify({ text: englishTitle.trim() }),
+      });
+      const data = await res.json();
+      if (data.success) updSec(id, "title_hi", data.data.hi || "");
+    } catch { /* ignore */ }
+  };
+
+  const autoTranslateSub = async (pid, sid, englishTitle) => {
+    if (!englishTitle?.trim()) return;
+    try {
+      const res  = await apiFetch("/api/report-integration/translate", {
+        method: "POST", body: JSON.stringify({ text: englishTitle.trim() }),
+      });
+      const data = await res.json();
+      if (data.success) updSub(pid, sid, "title_hi", data.data.hi || "");
+    } catch { /* ignore */ }
+  };
   const delSec = (id) => {
     const sec = sections.find(s => s.id === id);
     if (sec && !sec.isNew) apj(apiFetch, `/api/builder/sections/${id}`, { method: "DELETE" }).catch(() => {});
@@ -351,13 +373,19 @@ export default function CreateReportWizardPage({ onCreated, onCancel, initialRep
         if (s.isNew) {
           const r = await apj(apiFetch, "/api/builder/sections", {
             method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ report_id: reportId, title: s.title || `Section ${i+1}`, description: s.desc || null, order_index: (i+1)*1000 }),
+            body: JSON.stringify({
+              report_id: reportId, title: s.title || `Section ${i+1}`, description: s.desc || null, order_index: (i+1)*1000,
+              title_translations: s.title_hi?.trim() ? { hi: s.title_hi.trim() } : undefined,
+            }),
           });
           for (let j = 0; j < (s.subsections||[]).length; j++) {
             const sub = s.subsections[j];
             await apj(apiFetch, "/api/builder/sections", {
               method: "POST", headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ report_id: reportId, parent_id: r.data.id, title: sub.title || `Sub ${j+1}`, order_index: (j+1)*1000 }),
+              body: JSON.stringify({
+                report_id: reportId, parent_id: r.data.id, title: sub.title || `Sub ${j+1}`, order_index: (j+1)*1000,
+                title_translations: sub.title_hi?.trim() ? { hi: sub.title_hi.trim() } : undefined,
+              }),
             });
           }
         } else {
@@ -757,11 +785,15 @@ export default function CreateReportWizardPage({ onCreated, onCancel, initialRep
                         key={sec.id}
                         section={sec} index={si} total={sections.length}
                         onTitleChange={v => updSec(sec.id, "title", v)}
+                        onTitleHiChange={v => updSec(sec.id, "title_hi", v)}
+                        onAutoTranslate={() => autoTranslateSec(sec.id, sec.title)}
                         onDelete={() => delSec(sec.id)}
                         onAddSub={() => addSub(sec.id)}
                         onMoveUp={() => mvUp(si)}
                         onMoveDown={() => mvDown(si)}
                         onSubTitleChange={(sid, v) => updSub(sec.id, sid, "title", v)}
+                        onSubTitleHiChange={(sid, v) => updSub(sec.id, sid, "title_hi", v)}
+                        onSubAutoTranslate={(sid) => autoTranslateSub(sec.id, sid, sec.subsections.find(s=>s.id===sid)?.title)}
                         onSubDelete={sid => delSub(sec.id, sid)}
                       />
                     ))}
@@ -1271,85 +1303,142 @@ export default function CreateReportWizardPage({ onCreated, onCancel, initialRep
 }
 
 /* ══ Section row ══════════════════════════════════════════════════════════ */
-function SectionRow({ section, index, total, onTitleChange, onDelete, onAddSub,
-    onMoveUp, onMoveDown, onSubTitleChange, onSubDelete }) {
+function SectionRow({ section, index, total, onTitleChange, onTitleHiChange, onAutoTranslate,
+    onDelete, onAddSub, onMoveUp, onMoveDown, onSubTitleChange, onSubTitleHiChange, onSubAutoTranslate, onSubDelete }) {
   const [editing, setEditing] = useState(!section.title);
+  const [translating, setTranslating] = useState(false);
   const inputRef = useRef();
   useEffect(() => { if (editing && inputRef.current) inputRef.current.focus(); }, [editing]);
+
+  async function handleAutoTranslate() {
+    setTranslating(true);
+    await onAutoTranslate();
+    setTranslating(false);
+  }
 
   return (
     <div style={{ marginBottom: 8 }}>
       <div style={{
-        display: "flex", alignItems: "center", gap: 8, padding: "10px 12px",
-        borderRadius: 9, background: C.bg, border: `1.5px solid ${C.border}`,
+        borderRadius: 9, background: C.bg, border: `1.5px solid ${C.border}`, overflow: "hidden",
       }}>
-        <div style={{ width: 22, height: 22, borderRadius: 6, background: C.primary, color: "#fff",
-          fontSize: 10, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-          {index + 1}
+        {/* English title row */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 12px" }}>
+          <div style={{ width: 22, height: 22, borderRadius: 6, background: C.primary, color: "#fff",
+            fontSize: 10, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            {index + 1}
+          </div>
+          {editing ? (
+            <input ref={inputRef} value={section.title}
+              onChange={e => onTitleChange(e.target.value)}
+              onBlur={() => setEditing(false)}
+              onKeyDown={e => e.key === "Enter" && setEditing(false)}
+              placeholder="Section name…"
+              style={{ ...inp, flex: 1, padding: "4px 8px", fontSize: 13, fontWeight: 600,
+                border: `1.5px solid ${C.primary}`, borderRadius: 6 }} />
+          ) : (
+            <span onClick={() => setEditing(true)} style={{ flex: 1, fontSize: 13, fontWeight: 600,
+              cursor: "text", color: section.title ? C.text : C.textMuted }}>
+              {section.title || <em>Click to name…</em>}
+              {section.isNew && <span style={{ fontSize: 9, color: C.primaryMid, marginLeft: 6, fontWeight: 400 }}>new</span>}
+            </span>
+          )}
+          {(section.subsections?.length || 0) > 0 && (
+            <span style={{ fontSize: 10, color: C.textSub }}>{section.subsections.length} sub</span>
+          )}
+          <button onClick={onMoveUp} disabled={index === 0} style={arrowBtn(index === 0)}>↑</button>
+          <button onClick={onMoveDown} disabled={index === total - 1} style={arrowBtn(index === total - 1)}>↓</button>
+          <button onClick={onAddSub} style={{ padding: "3px 9px", background: "#e0e7ff", border: "none",
+            borderRadius: 6, cursor: "pointer", fontSize: 11, fontWeight: 600, color: C.primary, fontFamily: "inherit" }}>
+            + Sub
+          </button>
+          <button onClick={onDelete} style={{ width: 26, height: 26, background: C.dangerLt,
+            border: "1px solid #fca5a5", borderRadius: 6, cursor: "pointer", color: C.danger,
+            fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>×</button>
         </div>
-        {editing ? (
-          <input ref={inputRef} value={section.title}
-            onChange={e => onTitleChange(e.target.value)}
-            onBlur={() => setEditing(false)}
-            onKeyDown={e => e.key === "Enter" && setEditing(false)}
-            placeholder="Section name…"
-            style={{ ...inp, flex: 1, padding: "4px 8px", fontSize: 13, fontWeight: 600,
-              border: `1.5px solid ${C.primary}`, borderRadius: 6 }} />
-        ) : (
-          <span onClick={() => setEditing(true)} style={{ flex: 1, fontSize: 13, fontWeight: 600,
-            cursor: "text", color: section.title ? C.text : C.textMuted }}>
-            {section.title || <em>Click to name…</em>}
-            {section.isNew && <span style={{ fontSize: 9, color: C.primaryMid, marginLeft: 6, fontWeight: 400 }}>new</span>}
-          </span>
+        {/* Hindi title row — only for manually added sections */}
+        {section.isNew && (
+          <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px 8px 42px",
+            borderTop: "1px solid #fde68a", background: "#fffbeb" }}>
+            <input
+              value={section.title_hi || ""}
+              onChange={e => onTitleHiChange(e.target.value)}
+              placeholder="हिंदी शीर्षक (optional)…"
+              style={{ ...inp, flex: 1, fontSize: 12, padding: "3px 8px", border: "1px solid #fcd34d", background: "#fff" }}
+            />
+            <button onClick={handleAutoTranslate} disabled={translating || !section.title?.trim()}
+              style={{ padding: "3px 9px", border: "1px solid #fcd34d", borderRadius: 6, background: "#fef3c7",
+                color: "#b45309", cursor: translating || !section.title?.trim() ? "not-allowed" : "pointer",
+                fontSize: 11, fontWeight: 700, fontFamily: "inherit", whiteSpace: "nowrap" }}>
+              {translating ? "…" : "⚡ Auto"}
+            </button>
+          </div>
         )}
-        {(section.subsections?.length || 0) > 0 && (
-          <span style={{ fontSize: 10, color: C.textSub }}>{section.subsections.length} sub</span>
-        )}
-        <button onClick={onMoveUp} disabled={index === 0} style={arrowBtn(index === 0)}>↑</button>
-        <button onClick={onMoveDown} disabled={index === total - 1} style={arrowBtn(index === total - 1)}>↓</button>
-        <button onClick={onAddSub} style={{ padding: "3px 9px", background: "#e0e7ff", border: "none",
-          borderRadius: 6, cursor: "pointer", fontSize: 11, fontWeight: 600, color: C.primary, fontFamily: "inherit" }}>
-          + Sub
-        </button>
-        <button onClick={onDelete} style={{ width: 26, height: 26, background: C.dangerLt,
-          border: "1px solid #fca5a5", borderRadius: 6, cursor: "pointer", color: C.danger,
-          fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>×</button>
       </div>
       {(section.subsections || []).map(sub => (
         <SubRow key={sub.id} sub={sub}
           onChange={v => onSubTitleChange(sub.id, v)}
+          onHiChange={v => onSubTitleHiChange(sub.id, v)}
+          onAutoTranslate={() => onSubAutoTranslate(sub.id)}
           onDelete={() => onSubDelete(sub.id)} />
       ))}
     </div>
   );
 }
 
-function SubRow({ sub, onChange, onDelete }) {
+function SubRow({ sub, onChange, onHiChange, onAutoTranslate, onDelete }) {
   const [editing, setEditing] = useState(!sub.title);
+  const [translating, setTranslating] = useState(false);
   const ref = useRef();
   useEffect(() => { if (editing && ref.current) ref.current.focus(); }, [editing]);
+
+  async function handleAutoTranslate() {
+    setTranslating(true);
+    await onAutoTranslate();
+    setTranslating(false);
+  }
+
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8, marginLeft: 32, marginTop: 4,
-      padding: "7px 10px", borderRadius: 7, background: C.surface, border: `1px solid ${C.border}` }}>
-      <div style={{ width: 12, height: 1, background: C.border }} />
-      <div style={{ width: 12, height: 12, borderRadius: 3, background: C.primaryLt,
-        border: `1px solid ${C.primaryMid}55`, flexShrink: 0 }} />
-      {editing ? (
-        <input ref={ref} value={sub.title}
-          onChange={e => onChange(e.target.value)}
-          onBlur={() => setEditing(false)}
-          onKeyDown={e => e.key === "Enter" && setEditing(false)}
-          placeholder="Subsection name…"
-          style={{ ...inp, flex: 1, padding: "3px 7px", fontSize: 12, border: `1.5px solid ${C.primary}`, borderRadius: 5 }} />
-      ) : (
-        <span onClick={() => setEditing(true)} style={{ flex: 1, fontSize: 12, cursor: "text",
-          color: sub.title ? C.text : C.textMuted }}>
-          {sub.title || <em>Click to name…</em>}
-        </span>
+    <div style={{ marginLeft: 32, marginTop: 4, borderRadius: 7, background: C.surface,
+      border: `1px solid ${C.border}`, overflow: "hidden" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px" }}>
+        <div style={{ width: 12, height: 1, background: C.border }} />
+        <div style={{ width: 12, height: 12, borderRadius: 3, background: C.primaryLt,
+          border: `1px solid ${C.primaryMid}55`, flexShrink: 0 }} />
+        {editing ? (
+          <input ref={ref} value={sub.title}
+            onChange={e => onChange(e.target.value)}
+            onBlur={() => setEditing(false)}
+            onKeyDown={e => e.key === "Enter" && setEditing(false)}
+            placeholder="Subsection name…"
+            style={{ ...inp, flex: 1, padding: "3px 7px", fontSize: 12, border: `1.5px solid ${C.primary}`, borderRadius: 5 }} />
+        ) : (
+          <span onClick={() => setEditing(true)} style={{ flex: 1, fontSize: 12, cursor: "text",
+            color: sub.title ? C.text : C.textMuted }}>
+            {sub.title || <em>Click to name…</em>}
+          </span>
+        )}
+        <button onClick={onDelete} style={{ width: 22, height: 22, background: "transparent",
+          border: `1px solid ${C.border}`, borderRadius: 5, cursor: "pointer", color: C.danger,
+          fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center" }}>×</button>
+      </div>
+      {/* Hindi title row — only for manually added subsections */}
+      {sub.isNew && (
+        <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 10px 6px 34px",
+          borderTop: "1px solid #fde68a", background: "#fffbeb" }}>
+          <input
+            value={sub.title_hi || ""}
+            onChange={e => onHiChange(e.target.value)}
+            placeholder="हिंदी शीर्षक (optional)…"
+            style={{ ...inp, flex: 1, fontSize: 11, padding: "3px 7px", border: "1px solid #fcd34d", background: "#fff" }}
+          />
+          <button onClick={handleAutoTranslate} disabled={translating || !sub.title?.trim()}
+            style={{ padding: "3px 8px", border: "1px solid #fcd34d", borderRadius: 5, background: "#fef3c7",
+              color: "#b45309", cursor: translating || !sub.title?.trim() ? "not-allowed" : "pointer",
+              fontSize: 10, fontWeight: 700, fontFamily: "inherit", whiteSpace: "nowrap" }}>
+            {translating ? "…" : "⚡ Auto"}
+          </button>
+        </div>
       )}
-      <button onClick={onDelete} style={{ width: 22, height: 22, background: "transparent",
-        border: `1px solid ${C.border}`, borderRadius: 5, cursor: "pointer", color: C.danger,
-        fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center" }}>×</button>
     </div>
   );
 }

@@ -108,14 +108,21 @@ router.get("/section/:sectionId/pipeline", async (req, res) => {
       state: idx < currentIdx ? "COMPLETED" : idx === currentIdx ? "ACTIVE" : "PENDING",
     }));
 
+    const needsDirectorApproval = !!section.needs_director_approval;
+    const isDirectorsOffice     = (req.user.roles || []).includes("directors_office");
+    const canReviewNow          =
+      (needsDirectorApproval && isDirectorsOffice) ||
+      canReview(req.user, steps[currentIdx]);
+
     return res.json({
       success: true,
       data: {
-        section_status: section.status,
-        workflow_name:  section.workflow_name,
-        current_step:   steps[currentIdx] || null,
-        steps: pipeline,
-        can_review: canReview(req.user, steps[currentIdx]),
+        section_status:          section.status,
+        workflow_name:           section.workflow_name,
+        current_step:            steps[currentIdx] || null,
+        steps:                   pipeline,
+        can_review:              canReviewNow,
+        needs_director_approval: needsDirectorApproval,
       },
     });
   } catch (err) {
@@ -263,12 +270,14 @@ router.post("/section/:sectionId/review", async (req, res) => {
     if (!["SUBMITTED", "UNDER_REVIEW"].includes(section.status))
       return res.status(422).json({ success: false, message: `Cannot review from status: ${section.status}` });
 
-    // Verify permission: admin bypass OR matching workflow step
-    const steps       = await getWorkflowSteps(pool, sectionId);
-    const currentStep = steps.find(s => s.id === section.current_step_id) || steps[0];
-    const isAdmin     = (req.user.roles || []).some(r => ["super_admin","institute_admin"].includes(r));
+    // Verify permission: admin bypass OR matching workflow step OR director final approval
+    const steps               = await getWorkflowSteps(pool, sectionId);
+    const currentStep         = steps.find(s => s.id === section.current_step_id) || steps[0];
+    const isAdmin             = (req.user.roles || []).some(r => ["super_admin","institute_admin"].includes(r));
+    const isDirectorsOffice   = (req.user.roles || []).includes("directors_office");
+    const needsDirectorApproval = !!section.needs_director_approval;
 
-    if (!isAdmin && !canReview(req.user, currentStep))
+    if (!isAdmin && !canReview(req.user, currentStep) && !(needsDirectorApproval && isDirectorsOffice))
       return res.status(403).json({ success: false, message: "You are not the designated approver for this step" });
 
     const dec = decision.toUpperCase();
@@ -300,15 +309,47 @@ router.post("/section/:sectionId/review", async (req, res) => {
       );
     }
 
-    let newStatus      = dec === "SENT_BACK" ? "SENT_BACK" : null;
-    let nextStepId     = section.current_step_id;
+    let newStatus  = null;
+    let nextStepId = section.current_step_id;
 
-    if (dec === "APPROVED") {
-      // Advance to next step or final APPROVED
+    if (needsDirectorApproval && (isDirectorsOffice || isAdmin)) {
+      // ── Director's Office final approval path ──────────────────────────────
+      nextStepId = null;
+      await pool.query(
+        `UPDATE public.report_sections SET needs_director_approval = FALSE WHERE id = $1`,
+        [sectionId]
+      );
+
+      if (dec === "APPROVED") {
+        newStatus = "APPROVED";
+        // Notify section owner of final approval
+        await pool.query(
+          `INSERT INTO public.notifications (user_id, type, title, body, entity_type, entity_id)
+           SELECT sa.user_id, 'SECTION_APPROVED', 'Your section has been finally approved',
+                  'Director''s Office has given final approval. The section is now APPROVED.', 'SECTION', $1
+           FROM public.section_assignments sa
+           WHERE sa.section_id = $1 AND sa.role = 'OWNER' AND sa.completed_at IS NULL`,
+          [sectionId]
+        ).catch(() => {});
+      } else {
+        // SENT_BACK by director → owner must revise and resubmit
+        newStatus = "SENT_BACK";
+        await pool.query(
+          `INSERT INTO public.notifications (user_id, type, title, body, entity_type, entity_id)
+           SELECT sa.user_id, 'SECTION_SENT_BACK', 'Your section was sent back by Director''s Office',
+                  $1, 'SECTION', $2
+           FROM public.section_assignments sa
+           WHERE sa.section_id = $2 AND sa.role = 'OWNER' AND sa.completed_at IS NULL`,
+          [comment || "Director's Office has sent the section back. Please revise and resubmit.", sectionId]
+        ).catch(() => {});
+      }
+    } else if (dec === "APPROVED") {
+      // ── Normal workflow step approval ──────────────────────────────────────
       const currentStepIdx = steps.findIndex(s => s.id === section.current_step_id);
       const nextStep = steps[currentStepIdx + 1];
 
       if (nextStep) {
+        // Advance to next step in workflow
         newStatus  = "UNDER_REVIEW";
         nextStepId = nextStep.id;
 
@@ -322,21 +363,33 @@ router.post("/section/:sectionId/review", async (req, res) => {
           ).catch(() => {});
         }
       } else {
-        newStatus  = "APPROVED";
+        // Last workflow step approved → route to Director's Office for final approval
+        newStatus  = "SUBMITTED";
         nextStepId = null;
+        await pool.query(
+          `UPDATE public.report_sections SET needs_director_approval = TRUE WHERE id = $1`,
+          [sectionId]
+        );
 
-        // Notify section owner
+        // Notify all directors_office users
         await pool.query(
           `INSERT INTO public.notifications (user_id, type, title, body, entity_type, entity_id)
-           SELECT sa.user_id, 'SECTION_APPROVED', 'Your section has been approved',
-                  'All workflow steps completed.', 'SECTION', $1
-           FROM public.section_assignments sa
-           WHERE sa.section_id = $1 AND sa.role = 'OWNER' AND sa.completed_at IS NULL`,
+           SELECT DISTINCT u.id, 'REVIEW_REQUESTED',
+                  'Section awaiting Director''s Office final approval',
+                  'All workflow steps have been completed. This section requires your final approval.',
+                  'SECTION', $1
+           FROM public.users u
+           JOIN public.user_roles ur ON ur.user_id = u.id
+             AND ur.revoked_at IS NULL
+             AND (ur.expires_at IS NULL OR ur.expires_at > now())
+           JOIN public.roles r ON r.id = ur.role_id AND r.name = 'directors_office'
+           WHERE u.account_status = 'ACTIVE'`,
           [sectionId]
         ).catch(() => {});
       }
     } else {
       // SENT_BACK → reset to IN_PROGRESS, clear step
+      newStatus  = "SENT_BACK";
       nextStepId = null;
 
       // Notify owner

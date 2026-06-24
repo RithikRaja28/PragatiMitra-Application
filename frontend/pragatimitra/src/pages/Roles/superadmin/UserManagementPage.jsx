@@ -80,6 +80,7 @@ function PasswordInput({ value, onChange, hasError }) {
     <div style={{ position: "relative" }}>
       <input
         type={show ? "text" : "password"}
+        autoComplete="new-password"
         placeholder="Min 8 characters"
         value={value}
         onChange={(e) => onChange(e.target.value)}
@@ -253,6 +254,7 @@ function UserForm({ mode, entity, onCreated, onSaved, onBack, apiFetch }) {
         <input
           style={S.input(!!fieldErrs.email)}
           type="email"
+          autoComplete="off"
           placeholder="e.g. arun@aiia.edu.in"
           value={form.email}
           onChange={(e) => set("email", e.target.value)}

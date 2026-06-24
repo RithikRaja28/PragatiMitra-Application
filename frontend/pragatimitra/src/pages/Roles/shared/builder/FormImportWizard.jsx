@@ -36,6 +36,7 @@ export default function FormImportWizard({ sectionId, orderIndex, apiFetch, onIm
   const [loadingForms,  setLoadingForms]  = useState(true);
   const [selectedForm,  setSelectedForm]  = useState("");
   const [academicYear,  setAcademicYear]  = useState("");
+  const [language,      setLanguage]      = useState("en");
 
   // Step 2 state
   const [columns,        setColumns]        = useState([]);
@@ -68,7 +69,10 @@ export default function FormImportWizard({ sectionId, orderIndex, apiFetch, onIm
     setStepErr("");
     setLoadingCols(true);
     try {
-      const q    = academicYear ? `?year=${encodeURIComponent(academicYear)}` : "";
+      const qParams = new URLSearchParams();
+      if (academicYear) qParams.set("year", academicYear);
+      if (language === "hi") qParams.set("language", "hi");
+      const q    = qParams.toString() ? `?${qParams}` : "";
       const res  = await apiFetch(`/api/report-integration/forms/${encodeURIComponent(selectedForm)}/columns${q}`);
       const data = await res.json();
       if (!data.success) throw new Error(data.message || "Failed to load columns");
@@ -95,6 +99,7 @@ export default function FormImportWizard({ sectionId, orderIndex, apiFetch, onIm
     try {
       const params = new URLSearchParams({ columns: selectedCols.join(",") });
       if (academicYear) params.set("year", academicYear);
+      if (language === "hi") params.set("language", "hi");
       const res  = await apiFetch(`/api/report-integration/forms/${encodeURIComponent(selectedForm)}/preview?${params}`);
       const data = await res.json();
       if (!data.success) throw new Error(data.message || "Failed to load preview");
@@ -120,6 +125,7 @@ export default function FormImportWizard({ sectionId, orderIndex, apiFetch, onIm
           academic_year:    academicYear || null,
           columns:          selectedCols,
           order_index:      orderIndex,
+          language,
         }),
       });
       const data = await res.json();
@@ -245,8 +251,29 @@ export default function FormImportWizard({ sectionId, orderIndex, apiFetch, onIm
                       outline: "none", boxSizing: "border-box",
                     }}
                   />
-                  <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 5 }}>
+                  <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 5, marginBottom: 20 }}>
                     Leave blank to include all records regardless of academic year.
+                  </div>
+
+                  <label style={{ fontSize: 11, fontWeight: 700, color: "#64748b", display: "block", marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.5 }}>
+                    Data Language
+                  </label>
+                  <div style={{ display: "flex", gap: 16 }}>
+                    {[["en", "English"], ["hi", "Hindi"]].map(([val, label]) => (
+                      <label key={val} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "#1e293b", cursor: "pointer" }}>
+                        <input
+                          type="radio"
+                          name="import-language"
+                          checked={language === val}
+                          onChange={() => setLanguage(val)}
+                          style={{ width: 14, height: 14, accentColor: "#7c3aed" }}
+                        />
+                        {label}
+                      </label>
+                    ))}
+                  </div>
+                  <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 5 }}>
+                    Hindi pulls the translated mirror records (only available for forms with Hindi translation enabled).
                   </div>
                 </>
               )}
@@ -334,6 +361,7 @@ export default function FormImportWizard({ sectionId, orderIndex, apiFetch, onIm
                 <div style={{ fontSize: 11, color: "#64748b" }}>
                   Importing from <strong>{formObj?.form_display_name || selectedForm}</strong>
                   {academicYear && ` · Academic Year: ${academicYear}`}
+                  {" "}· Language: {language === "hi" ? "Hindi" : "English"}
                   {" "}· {selectedCols.length} columns
                 </div>
               </div>
@@ -371,15 +399,21 @@ export default function FormImportWizard({ sectionId, orderIndex, apiFetch, onIm
                     <tbody>
                       {preview.rows.map((row, ri) => (
                         <tr key={ri} style={{ background: ri % 2 === 0 ? "#fff" : "#f9fafb" }}>
-                          {selectedCols.map(key => (
-                            <td key={key} style={{
-                              padding: "7px 10px", color: "#475569",
-                              borderBottom: "1px solid #f1f5f9",
-                              maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                            }}>
-                              {row[key] != null ? String(row[key]) : "—"}
-                            </td>
-                          ))}
+                          {selectedCols.map(key => {
+                            // Preview rows come back keyed by the column's display label (the SQL
+                            // aliases columns by label), not by its stable key — look up accordingly.
+                            const col = columns.find(c => c.key === key);
+                            const cellVal = row[col?.label || key];
+                            return (
+                              <td key={key} style={{
+                                padding: "7px 10px", color: "#475569",
+                                borderBottom: "1px solid #f1f5f9",
+                                maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                              }}>
+                                {cellVal != null ? String(cellVal) : "—"}
+                              </td>
+                            );
+                          })}
                         </tr>
                       ))}
                     </tbody>
