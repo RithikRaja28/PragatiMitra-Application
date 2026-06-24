@@ -92,6 +92,29 @@ function canAssignRole(req, roleName) {
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
+   INSTITUTION EMAIL-DOMAIN OWNERSHIP
+   A user's email must belong to its institution's configured email_domain
+   (institutions.email_domain — the single source of truth; no separate storage).
+   Returns a professional error message if the email's domain does not match,
+   else null. An institution with no domain configured imposes no restriction
+   (backward compatible). Mirrors the guard already enforced in the bulk-import
+   validate/execute flows so single create + edit behave identically.
+───────────────────────────────────────────────────────────────────────────── */
+async function emailDomainError(pool, institutionId, email) {
+  if (!institutionId || !email) return null;
+  const { rows } = await pool.query(
+    "SELECT LOWER(COALESCE(email_domain, '')) AS domain FROM institutions WHERE institution_id = $1",
+    [institutionId]
+  );
+  const instDomain = (rows[0]?.domain || "").trim();
+  if (!instDomain) return null; // no domain configured → unrestricted
+  const emailDomain = String(email).split("@")[1]?.toLowerCase().trim() || "";
+  if (emailDomain !== instDomain)
+    return `Email domain must match the institution domain. Allowed: @${instDomain}`;
+  return null;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
    IMPORT HELPERS
 ───────────────────────────────────────────────────────────────────────────── */
 
@@ -1227,6 +1250,16 @@ router.put("/:id", verifyToken, requireRole(["super_admin", "institute_admin", "
       institution_id = req.user.institutionId;
     }
 
+    // 3b. Institution email-domain ownership — revalidate ONLY when the email is
+    //     actually changing, against the institution the user will belong to.
+    //     A legacy user whose email is left untouched is never blocked
+    //     (existing users are not modified/deactivated by this rule).
+    if (normalizedEmail !== String(existing.email || "").toLowerCase()) {
+      const domainErr = await emailDomainError(pool, institution_id || existing.institution_id, normalizedEmail);
+      if (domainErr)
+        return res.status(400).json({ success: false, field: "email", message: domainErr });
+    }
+
     // 4. Perform the update
     const { rows } = await pool.query(
       `UPDATE users
@@ -1424,6 +1457,12 @@ router.post("/", verifyToken, requireRole(["super_admin", "institute_admin", "de
         field:   "email",
         message: "An account with this email already exists.",
       });
+
+    // 1b. Institution email-domain ownership — the email must belong to the
+    //     institution's configured domain. Fails fast, before bcrypt.
+    const domainErr = await emailDomainError(pool, institution_id, normalizedEmail);
+    if (domainErr)
+      return res.status(400).json({ success: false, field: "email", message: domainErr });
 
     // 2. Validate role
     const { rows: roleRows } = await pool.query("SELECT id FROM roles WHERE name = $1", [role_name]);
