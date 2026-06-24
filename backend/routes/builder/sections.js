@@ -468,6 +468,57 @@ router.post("/:id/lock", async (req, res) => {
   }
 });
 
+/* ─── GET /:id/access — list section_access grants ──────────────────────── */
+router.get("/:id/access", async (req, res) => {
+  const pool = req.app.locals.pool;
+  try {
+    const { id } = req.params;
+    if (!isUUID(id)) return res.status(400).json({ success: false, message: "Invalid section id" });
+    const { rows } = await pool.query(
+      `SELECT id, user_id, role_name, department_id, permission
+       FROM public.section_access
+       WHERE section_id = $1 AND revoked_at IS NULL
+       ORDER BY granted_at`, [id]
+    );
+    return res.json({ success: true, data: rows });
+  } catch (err) {
+    logger.error("builder/sections GET /:id/access", { ...getLogContext(req), err: err.message });
+    return res.status(500).json({ success: false, message: "Failed to get section access" });
+  }
+});
+
+/* ─── PUT /:id/access — bulk replace section_access grants ──────────────── */
+router.put("/:id/access", async (req, res) => {
+  const pool = req.app.locals.pool;
+  try {
+    const { id } = req.params;
+    if (!isUUID(id)) return res.status(400).json({ success: false, message: "Invalid section id" });
+    const { grants = [] } = req.body;
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query(`UPDATE public.section_access SET revoked_at = NOW() WHERE section_id = $1 AND revoked_at IS NULL`, [id]);
+      for (const g of grants) {
+        const roleN = g.role_name     || null;
+        const userI = g.user_id       || null;
+        const deptI = g.department_id || null;
+        if (!roleN && !userI && !deptI) continue;
+        await client.query(
+          `INSERT INTO public.section_access (section_id, user_id, role_name, department_id, granted_by)
+           VALUES ($1,$2,$3,$4,$5)`,
+          [id, userI, roleN, deptI, req.user.userId]
+        );
+      }
+      await client.query("COMMIT");
+    } catch (e) { await client.query("ROLLBACK"); throw e; }
+    finally { client.release(); }
+    return res.json({ success: true });
+  } catch (err) {
+    logger.error("builder/sections PUT /:id/access", { ...getLogContext(req), err: err.message });
+    return res.status(500).json({ success: false, message: "Failed to update section access" });
+  }
+});
+
 /* ─── DELETE /:id/lock — release editing lock ───────────────────────────── */
 router.delete("/:id/lock", async (req, res) => {
   const pool = req.app.locals.pool;

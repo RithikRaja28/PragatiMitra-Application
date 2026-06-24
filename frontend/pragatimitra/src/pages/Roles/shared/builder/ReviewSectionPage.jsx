@@ -214,7 +214,7 @@ function WordBlock({ block }) {
         <div style={{ fontFamily: DOC_FONT, fontSize: 10, margin: "6px 0 10px", padding: "5px 10px",
           background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 2,
           display: "flex", alignItems: "center", gap: 5 }}>
-          <span>📎</span>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#1d4ed8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
           <a href={c.url || "#"} target="_blank" rel="noreferrer"
             style={{ color: "#1d4ed8", textDecoration: "underline" }}>
             {c.name || c.url || "Attachment"}
@@ -238,8 +238,11 @@ export default function ReviewSectionPage({ sectionId, onBack }) {
   const [loading,       setLoading]       = useState(true);
   const [toast,         setToast]         = useState(null);
   const [busy,          setBusy]          = useState(false);
-  const [blockComments, setBlockComments] = useState({});
-  const [resolvingId,   setResolvingId]   = useState(null);
+  const [blockComments,       setBlockComments]       = useState({});
+  const [resolvingId,         setResolvingId]         = useState(null);
+  const [activeCommentBlock,  setActiveCommentBlock]  = useState(null);
+  const [commentDraft,        setCommentDraft]        = useState({});
+  const [postingComment,      setPostingComment]      = useState(false);
 
   /* review form */
   const [decision,    setDecision]    = useState("APPROVED");
@@ -297,6 +300,14 @@ export default function ReviewSectionPage({ sectionId, onBack }) {
     }
   };
 
+  const refreshBlockComments = useCallback(async () => {
+    try {
+      const res  = await apiFetch(`/api/builder/comments/section/${sectionId}`);
+      const json = await res.json();
+      if (json.success) setBlockComments(json.blocks || {});
+    } catch {}
+  }, [sectionId, apiFetch]);
+
   const handleResolveBlockComment = async (id) => {
     setResolvingId(id);
     try {
@@ -313,6 +324,29 @@ export default function ReviewSectionPage({ sectionId, onBack }) {
         });
       }
     } catch {} finally { setResolvingId(null); }
+  };
+
+  const postBlockComment = async (blockId) => {
+    const text = (commentDraft[blockId] || "").trim();
+    if (!text || postingComment) return;
+    setPostingComment(true);
+    try {
+      const res  = await apiFetch(`/api/builder/comments/block/${blockId}`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ body: text }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        setCommentDraft(prev => ({ ...prev, [blockId]: "" }));
+        await refreshBlockComments();
+      } else {
+        setToast({ type: "error", message: json.message || "Failed to post comment" });
+      }
+    } catch {
+      setToast({ type: "error", message: "Failed to post comment" });
+    } finally {
+      setPostingComment(false);
+    }
   };
 
   /* only show Review button if user is designated approver AND section is reviewable */
@@ -507,9 +541,141 @@ export default function ReviewSectionPage({ sectionId, onBack }) {
                 color: "#bbb", fontSize: 12, fontFamily: DOC_FONT, fontStyle: "italic" }}>
                 No content has been added to this section yet.
               </div>
-            ) : (
-              blocks.map(b => <WordBlock key={b.id} block={b} />)
-            )}
+            ) : blocks.map(b => {
+              const bc         = blockComments[b.id];
+              const unresCnt   = bc?.unresolved || 0;
+              const allThreads = bc?.comments   || [];
+              const isOpen     = activeCommentBlock === b.id;
+              return (
+                <div key={b.id}>
+                  <WordBlock block={b} />
+                  {/* comment toggle bar */}
+                  <div
+                    onClick={() => setActiveCommentBlock(isOpen ? null : b.id)}
+                    style={{
+                      display: "inline-flex", alignItems: "center", gap: 5,
+                      marginTop: 2, marginBottom: 10, cursor: "pointer",
+                      padding: "3px 9px", borderRadius: 5, fontSize: 10, fontWeight: 600,
+                      background: unresCnt > 0 ? "#fef3c7" : isOpen ? "#eef2ff" : "#f8fafc",
+                      border: `1px solid ${unresCnt > 0 ? "#fcd34d" : isOpen ? "#c7d2fe" : "#e2e8f0"}`,
+                      color: unresCnt > 0 ? "#92400e" : isOpen ? "#4338ca" : "#94a3b8",
+                      transition: "all 0.15s",
+                    }}
+                  >
+                    <span>💬</span>
+                    <span>
+                      {unresCnt > 0
+                        ? `${unresCnt} unresolved`
+                        : allThreads.length > 0
+                        ? `${allThreads.length} comment${allThreads.length !== 1 ? "s" : ""}`
+                        : "Add comment"}
+                    </span>
+                  </div>
+
+                  {/* inline comment panel */}
+                  {isOpen && (
+                    <div style={{
+                      background: "#f8fafc", border: "1px solid #e2e8f0",
+                      borderRadius: 8, padding: "12px 14px", marginBottom: 14,
+                    }}>
+                      {/* existing threads */}
+                      {allThreads.map(thread => (
+                        <div key={thread.id} style={{
+                          display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 10,
+                          opacity: thread.is_resolved ? 0.55 : 1,
+                        }}>
+                          <div style={{
+                            width: 24, height: 24, borderRadius: "50%", flexShrink: 0,
+                            background: thread.is_resolved ? "#f0fdf4" : "#dbeafe",
+                            color: thread.is_resolved ? "#16a34a" : "#1d4ed8",
+                            fontSize: 9, fontWeight: 700,
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                          }}>
+                            {(thread.author_name || "?")[0].toUpperCase()}
+                          </div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 11, fontWeight: 700, color: "#0f172a", marginBottom: 1 }}>
+                              {thread.author_name || "User"}
+                              {thread.is_resolved && (
+                                <span style={{ fontSize: 10, fontWeight: 400, color: "#16a34a", marginLeft: 6 }}>✓ Resolved</span>
+                              )}
+                            </div>
+                            <div style={{ fontSize: 11, color: "#334155", lineHeight: 1.5, wordBreak: "break-word" }}>
+                              {thread.body}
+                            </div>
+                            {thread.replies?.length > 0 && (
+                              <div style={{ marginTop: 8, paddingLeft: 8, borderLeft: "2px solid #e2e8f0" }}>
+                                {thread.replies.map(reply => (
+                                  <div key={reply.id} style={{ display: "flex", gap: 6, marginBottom: 6 }}>
+                                    <div style={{
+                                      width: 18, height: 18, borderRadius: "50%", flexShrink: 0,
+                                      background: "#f1f5f9", color: "#64748b",
+                                      fontSize: 8, fontWeight: 700,
+                                      display: "flex", alignItems: "center", justifyContent: "center",
+                                    }}>
+                                      {(reply.author_name || "?")[0].toUpperCase()}
+                                    </div>
+                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                      <div style={{ fontSize: 10, fontWeight: 700, color: "#0f172a", marginBottom: 1 }}>
+                                        {reply.author_name || "User"}
+                                      </div>
+                                      <div style={{ fontSize: 10, color: "#334155", lineHeight: 1.5, wordBreak: "break-word" }}>
+                                        {reply.body}
+                                      </div>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                          {!thread.is_resolved && (
+                            <button
+                              onClick={e => { e.stopPropagation(); handleResolveBlockComment(thread.id); }}
+                              disabled={resolvingId === thread.id}
+                              style={{
+                                padding: "3px 9px", background: "#f0fdf4",
+                                border: "1px solid #bbf7d0", borderRadius: 5,
+                                cursor: resolvingId === thread.id ? "not-allowed" : "pointer",
+                                fontSize: 10, color: "#15803d", flexShrink: 0,
+                                fontFamily: "inherit", opacity: resolvingId === thread.id ? 0.6 : 1,
+                              }}
+                            >{resolvingId === thread.id ? "…" : "✓ Resolve"}</button>
+                          )}
+                        </div>
+                      ))}
+
+                      {/* new comment input */}
+                      <div style={{ display: "flex", gap: 8, marginTop: allThreads.length ? 8 : 0 }}>
+                        <textarea
+                          value={commentDraft[b.id] || ""}
+                          onChange={e => setCommentDraft(prev => ({ ...prev, [b.id]: e.target.value }))}
+                          onKeyDown={e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) postBlockComment(b.id); }}
+                          placeholder="Add a review comment on this block… (Ctrl+Enter to send)"
+                          style={{
+                            flex: 1, padding: "7px 10px", fontSize: 11, lineHeight: 1.5,
+                            border: "1px solid #e2e8f0", borderRadius: 6,
+                            fontFamily: "inherit", resize: "none", height: 56, outline: "none",
+                            background: "#fff",
+                          }}
+                        />
+                        <button
+                          onClick={() => postBlockComment(b.id)}
+                          disabled={postingComment || !(commentDraft[b.id] || "").trim()}
+                          style={{
+                            padding: "7px 14px", background: C.primary, color: "#fff",
+                            border: "none", borderRadius: 6,
+                            cursor: postingComment || !(commentDraft[b.id] || "").trim() ? "not-allowed" : "pointer",
+                            fontSize: 11, fontWeight: 700, alignSelf: "flex-end",
+                            fontFamily: "inherit",
+                            opacity: !(commentDraft[b.id] || "").trim() ? 0.45 : 1,
+                          }}
+                        >{postingComment ? "…" : "Comment"}</button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
 
             {/* running footer */}
             <div style={{ borderTop: "0.5px solid #d1d5db", marginTop: 40, paddingTop: 6,
@@ -624,7 +790,7 @@ export default function ReviewSectionPage({ sectionId, onBack }) {
               borderRadius: 10, overflow: "hidden" }}>
               <div style={{ padding: "12px 16px", borderBottom: `1px solid ${C.border}`,
                 background: "#fff9f0", display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ fontSize: 14 }}>💬</span>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
                 <div>
                   <div style={{ fontSize: 12, fontWeight: 700, color: "#92400e" }}>
                     Reviewer Comments
@@ -682,7 +848,7 @@ export default function ReviewSectionPage({ sectionId, onBack }) {
               borderRadius: 10, overflow: "hidden" }}>
               <div style={{ padding: "12px 16px", borderBottom: `1px solid ${C.border}`,
                 background: "#fffbeb", display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ fontSize: 14 }}>💬</span>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
                 <div>
                   <div style={{ fontSize: 12, fontWeight: 700, color: "#92400e" }}>
                     Unresolved Block Comments
@@ -758,7 +924,7 @@ export default function ReviewSectionPage({ sectionId, onBack }) {
               borderRadius: 10, overflow: "hidden" }}>
               <div style={{ padding: "12px 16px", borderBottom: `1px solid ${C.border}`,
                 background: "#f0fdf4", display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ fontSize: 14 }}>✅</span>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={C.success} strokeWidth="2.5" strokeLinecap="round"><circle cx="12" cy="12" r="9"/><polyline points="8 12 11 15 16 9"/></svg>
                 <div style={{ fontSize: 12, fontWeight: 700, color: C.success }}>Approvals</div>
               </div>
               <div style={{ padding: "0 16px" }}>
