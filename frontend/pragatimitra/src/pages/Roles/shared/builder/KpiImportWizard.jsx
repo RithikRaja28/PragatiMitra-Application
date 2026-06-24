@@ -138,11 +138,11 @@ export default function KpiImportWizard({ sectionId, orderIndex, defaultYear, ap
     ? kpiList.filter(k => k.title.toLowerCase().includes(search.trim().toLowerCase()))
     : kpiList;
 
-  const headerBg = "linear-gradient(135deg,#7c3aed,#4f46e5)";
+  const headerBg = "linear-gradient(135deg,#7c3aed,#2563eb)";
 
   const btnPrimary = {
     padding: "8px 22px", borderRadius: 10, border: "none",
-    background: "linear-gradient(135deg,#7c3aed,#4f46e5)",
+    background: "linear-gradient(135deg,#7c3aed,#2563eb)",
     color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit",
   };
   const btnSecondary = {

@@ -12,13 +12,14 @@ import { useShell } from "../../../../components/Dashboard/shellContext";
 import { BlockEditor, AddBlockMenu, DEFAULT_CONTENT, BLOCK_ICONS } from "./BlockEditors";
 
 /* ─── colour tokens — matches app-wide theme (#2563eb blue) ────────────── */
+/* Standardized to the project blue theme (src/ui/tokens.js). */
 const C = {
-  primary: "#2563eb", primaryDk: "#1d4ed8", primaryLt: "#eff6ff", primaryMid: "#93c5fd",
+  primary: "#2563eb", primaryDk: "#1d4ed8", primaryLt: "#dbeafe", primaryMid: "#93c5fd",
   success: "#16a34a", successLt: "#dcfce7",
-  danger:  "#ef4444", dangerLt:  "#fef2f2",
+  danger:  "#dc2626", dangerLt:  "#fef2f2",
   warning: "#d97706", warningLt: "#fef3c7",
-  text:    "#1e293b", textSub: "#64748b", textMuted: "#94a3b8",
-  border:  "#e2e8f0", bg: "#f8fafc", surface: "#fff",
+  text:    "#111827", textSub: "#6b7280", textMuted: "#94a3b8",
+  border:  "#e5e7eb", bg: "#f8fafc", surface: "#fff",
 };
 const inp = {
   width: "100%", boxSizing: "border-box", padding: "9px 13px", fontSize: 13,

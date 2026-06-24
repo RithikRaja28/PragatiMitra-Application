@@ -36,7 +36,7 @@ function TBtn({ onClick, title, children, style, active }) {
       style={{
         border: "none",
         background: active ? "#dde4ff" : "transparent",
-        color: active ? "#3730a3" : "#374151",
+        color: active ? "#1d4ed8" : "#374151",
         borderRadius: 4, padding: "3px 6px", fontSize: 13,
         cursor: "pointer", fontFamily: "inherit", fontWeight: 600, lineHeight: 1.3,
         transition: "background 0.1s",
@@ -1037,7 +1037,7 @@ export function ListBlock({ content, onChange, readOnly, lang = "en", apiFetch, 
               onClick={() => onChange({ ...content, ordered: isOrd })}
               style={{
                 padding: "4px 10px", border: "none", cursor: "pointer", fontSize: 11, fontFamily: "inherit",
-                background: ordered === isOrd ? "#4f46e5" : "#fff",
+                background: ordered === isOrd ? "#2563eb" : "#fff",
                 color: ordered === isOrd ? "#fff" : "#6b7280",
                 fontWeight: ordered === isOrd ? 700 : 400,
               }}>
@@ -1102,7 +1102,7 @@ export function ListBlock({ content, onChange, readOnly, lang = "en", apiFetch, 
               outline: "none", fontFamily: "inherit",
               background: "#fff",
             }}
-            onFocus={(e) => (e.target.style.borderColor = "#818cf8")}
+            onFocus={(e) => (e.target.style.borderColor = "#60a5fa")}
             onBlur={(e) => (e.target.style.borderColor = "#e2e8f0")}
           />
           <button

@@ -12,14 +12,15 @@ async function apiJson(apiFetch, path, opts) {
   return json;
 }
 
+/* Standardized to the project blue theme (src/ui/tokens.js). */
 const C = {
-  primary: "#4f8ef7", primaryDark: "#1565c0", primaryLt: "#e8f0fe",
-  success: "#43a047", successLt: "#e8f5e9",
-  danger: "#e53935", dangerLt: "#fef2f2",
-  warning: "#f9a825", warningLt: "#fffde7",
-  text: "#1a1a2e", textSub: "#555", border: "#e0e4ea",
-  bg: "#f7f8fa", surface: "#fff",
-  purple: "#7c4dff", purpleLt: "#ede7f6",
+  primary: "#2563eb", primaryDark: "#1d4ed8", primaryLt: "#dbeafe",
+  success: "#16a34a", successLt: "#dcfce7",
+  danger: "#dc2626", dangerLt: "#fef2f2",
+  warning: "#d97706", warningLt: "#fef3c7",
+  text: "#111827", textSub: "#6b7280", border: "#e5e7eb",
+  bg: "#f8fafc", surface: "#fff",
+  purple: "#7c3aed", purpleLt: "#ede9fe",
 };
 
 const STATUS_META = {
@@ -236,7 +237,7 @@ function SectionCard({ sec, depth, expanded, onToggle, hover, onHover,
         style={{ background: C.surface, border: `1px solid ${isHover ? C.primary : C.border}`,
                  borderRadius: 8, padding: "10px 14px", transition: "all .12s",
                  marginLeft: depth * 20, display: "flex", alignItems: "center", gap: 10,
-                 boxShadow: isHover ? "0 2px 8px rgba(79,142,247,.12)" : "none" }}>
+                 boxShadow: isHover ? "0 2px 8px rgba(37,99,235,.12)" : "none" }}>
 
         {/* expand toggle */}
         <span style={{ width: 20, cursor: hasKids ? "pointer" : "default", color: "#aaa",

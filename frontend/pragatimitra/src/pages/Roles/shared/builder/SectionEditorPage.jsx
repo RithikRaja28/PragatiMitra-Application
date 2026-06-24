@@ -15,7 +15,7 @@ import KpiImportWizard  from "./KpiImportWizard";
 /* ═══════════════════════════════════════════════════════════════════════════
    BLOCK COMMENTS SIDEBAR — threaded inline comments per content block
 ═══════════════════════════════════════════════════════════════════════════ */
-const AVATAR_COLORS = ["#4f46e5","#0891b2","#16a34a","#d97706","#dc2626","#7c3aed","#db2777"];
+const AVATAR_COLORS = ["#2563eb","#0891b2","#16a34a","#d97706","#dc2626","#7c3aed","#db2777"];
 function avatarColor(id) {
   const n = (id || "").split("").reduce((a, c) => a + c.charCodeAt(0), 0);
   return AVATAR_COLORS[n % AVATAR_COLORS.length];
@@ -138,7 +138,7 @@ function BlockCommentsSidebar({
 
   const BC = {
     border: "#e2e8f0", surface: "#fff", bg: "#f8fafc",
-    primary: "#4f46e5", primaryLt: "#eef2ff",
+    primary: "#2563eb", primaryLt: "#eff6ff",
     text: "#0f172a", textSub: "#64748b", muted: "#94a3b8",
     success: "#16a34a", successLt: "#f0fdf4",
   };
@@ -195,7 +195,7 @@ function BlockCommentsSidebar({
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <span style={{
-            fontSize: 9, fontWeight: 800, color: "#818cf8", background: "#eef2ff",
+            fontSize: 9, fontWeight: 800, color: "#60a5fa", background: "#eff6ff",
             padding: "2px 7px", borderRadius: 4, textTransform: "uppercase", letterSpacing: 0.5,
           }}>{blockLabel}</span>
           {unresolvedCnt > 0 ? (
@@ -242,16 +242,16 @@ function BlockCommentsSidebar({
                     style={{
                       display: "flex", alignItems: "center", gap: 8,
                       padding: "6px 14px", cursor: "pointer",
-                      background: isCur ? "#eef2ff" : "transparent",
-                      borderLeft: isCur ? "3px solid #4f46e5" : "3px solid transparent",
+                      background: isCur ? "#eff6ff" : "transparent",
+                      borderLeft: isCur ? "3px solid #2563eb" : "3px solid transparent",
                     }}
                     onMouseEnter={e => { if (!isCur) e.currentTarget.style.background = "#f4f6fa"; }}
                     onMouseLeave={e => { if (!isCur) e.currentTarget.style.background = "transparent"; }}
                   >
                     <span style={{
                       fontSize: 8, fontWeight: 800,
-                      color: isCur ? "#4f46e5" : "#94a3b8",
-                      background: isCur ? "#eef2ff" : "#f1f5f9",
+                      color: isCur ? "#2563eb" : "#94a3b8",
+                      background: isCur ? "#eff6ff" : "#f1f5f9",
                       padding: "1px 5px", borderRadius: 3, textTransform: "uppercase", flexShrink: 0,
                     }}>{BLOCK_ICONS[b.block_type]} {b.block_type}</span>
                     <span style={{ fontSize: 10, color: isCur ? "#312e81" : BC.textSub, flex: 1 }}>Block {i + 1}</span>
@@ -316,12 +316,12 @@ function BlockCommentsSidebar({
               color: "#1e293b", outline: "none", lineHeight: 1.5, minHeight: 38, maxHeight: 100,
               transition: "border-color 0.15s", background: "#fff",
             }}
-            onFocus={e => e.target.style.borderColor = "#818cf8"}
+            onFocus={e => e.target.style.borderColor = "#60a5fa"}
             onBlur={e  => e.target.style.borderColor = "#e2e8f0"}
           />
           <button onClick={postComment} disabled={!input.trim() || posting} style={{
             width: 34, height: 34, borderRadius: 9, border: "none",
-            background: !input.trim() || posting ? "#c7d2fe" : "#4f46e5",
+            background: !input.trim() || posting ? "#bfdbfe" : "#2563eb",
             color: "#fff", cursor: !input.trim() || posting ? "not-allowed" : "pointer",
             display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
           }}>
@@ -462,7 +462,7 @@ function BlockCommentThread({
               placeholder={`Reply to ${authorName}…`}
               rows={2}
               style={{
-                flex: 1, resize: "none", border: "1.5px solid #c7d2fe", borderRadius: 8,
+                flex: 1, resize: "none", border: "1.5px solid #bfdbfe", borderRadius: 8,
                 padding: "6px 10px", fontSize: 11, fontFamily: "inherit",
                 color: "#1e293b", outline: "none", lineHeight: 1.5, background: "#fff",
               }}
@@ -470,7 +470,7 @@ function BlockCommentThread({
             <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
               <button onClick={() => onPostReply(thread.id)} disabled={!replyInput.trim() || postingReply} style={{
                 width: 30, height: 30, borderRadius: 7, border: "none",
-                background: !replyInput.trim() || postingReply ? "#c7d2fe" : "#4f46e5",
+                background: !replyInput.trim() || postingReply ? "#bfdbfe" : "#2563eb",
                 color: "#fff", cursor: !replyInput.trim() || postingReply ? "not-allowed" : "pointer",
                 display: "flex", alignItems: "center", justifyContent: "center",
               }}>
@@ -1313,16 +1313,16 @@ function ToolBtn({ onClick, active, title, children, disabled }) {
       title={title}
       style={{
         display: "flex", alignItems: "center", gap: 6, padding: "6px 12px",
-        border: `1.5px solid ${active ? "#818cf8" : "#e2e8f0"}`,
+        border: `1.5px solid ${active ? "#60a5fa" : "#e2e8f0"}`,
         borderRadius: 8, flexShrink: 0,
-        background: active ? "#eef2ff" : "#fff",
+        background: active ? "#eff6ff" : "#fff",
         fontSize: 12, fontWeight: 600,
-        color: disabled ? "#cbd5e1" : active ? "#4338ca" : "#64748b",
+        color: disabled ? "#cbd5e1" : active ? "#1d4ed8" : "#64748b",
         cursor: disabled ? "not-allowed" : "pointer",
         opacity: disabled ? 0.6 : 1,
         transition: "all 0.15s", fontFamily: "inherit",
       }}
-      onMouseEnter={e => { if (!active && !disabled) { e.currentTarget.style.borderColor = "#c7d2fe"; e.currentTarget.style.color = "#4f46e5"; }}}
+      onMouseEnter={e => { if (!active && !disabled) { e.currentTarget.style.borderColor = "#bfdbfe"; e.currentTarget.style.color = "#2563eb"; }}}
       onMouseLeave={e => { if (!active && !disabled) { e.currentTarget.style.borderColor = "#e2e8f0"; e.currentTarget.style.color = "#64748b"; }}}
     >
       {children}
@@ -1406,7 +1406,7 @@ function BlockOutlineRail({ blocks, onSelect, activeBlockId }) {
               style={{
                 width: "100%", display: "flex", alignItems: "center", gap: 8,
                 padding: expanded ? "7px 11px" : "7px 0", justifyContent: expanded ? "flex-start" : "center",
-                border: "none", background: isActive ? "#eef2ff" : "transparent",
+                border: "none", background: isActive ? "#eff6ff" : "transparent",
                 cursor: "pointer", fontFamily: "inherit", textAlign: "left", whiteSpace: "nowrap",
                 transition: "background 0.12s",
               }}
@@ -2199,7 +2199,7 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
         {canEdit && (section?.status === "NOT_STARTED" || section?.status === "IN_PROGRESS") && (
           <button onClick={openSubmitModal} disabled={submitting} style={{
             display: "flex", alignItems: "center", gap: 6, padding: "7px 16px",
-            background: submitting ? "#93c5fd" : "linear-gradient(135deg, #2563eb, #4f46e5)",
+            background: submitting ? "#93c5fd" : "linear-gradient(135deg, #2563eb, #2563eb)",
             color: "#fff", border: "none", borderRadius: 8, fontSize: 12,
             fontWeight: 700, cursor: submitting ? "not-allowed" : "pointer",
             flexShrink: 0, boxShadow: submitting ? "none" : "0 2px 8px rgba(37,99,235,0.3)",
@@ -2286,7 +2286,7 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
               <div key={v.id} style={{
                 display: "flex", alignItems: "flex-start", gap: 12, padding: "10px 20px",
                 borderBottom: "1px solid #f1f5f9",
-                background: isViewing ? "#eef2ff" : "transparent",
+                background: isViewing ? "#eff6ff" : "transparent",
               }}>
                 <div style={{ flexShrink: 0, marginTop: 2 }}>
                   <span style={{ fontSize: 9, fontWeight: 800, padding: "2px 7px", borderRadius: 4, background: ec.bg, color: ec.color, textTransform: "uppercase" }}>{v.event}</span>
@@ -2304,8 +2304,8 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
                   <button
                     onClick={() => isViewing ? setViewingSnapshot(null) : loadSnapshot(v.version_num)}
                     style={{
-                      padding: "3px 10px", borderRadius: 6, border: `1px solid ${isViewing ? "#818cf8" : "#d1d5db"}`,
-                      background: isViewing ? "#eef2ff" : "#fff", color: isViewing ? "#4f46e5" : "#374151",
+                      padding: "3px 10px", borderRadius: 6, border: `1px solid ${isViewing ? "#60a5fa" : "#d1d5db"}`,
+                      background: isViewing ? "#eff6ff" : "#fff", color: isViewing ? "#2563eb" : "#374151",
                       fontSize: 11, cursor: "pointer", fontFamily: "inherit", fontWeight: 600,
                     }}
                   >{isViewing ? "Close" : "View"}</button>
@@ -2348,7 +2348,7 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
               </div>
               {(viewingSnapshot.data?.snapshot?.blocks || []).map((b, i) => (
                 <div key={i} style={{ padding: "8px 12px", background: "#fff", borderRadius: 8, border: "1px solid #ede9fe", marginBottom: 8 }}>
-                  <div style={{ fontSize: 9, fontWeight: 800, color: "#818cf8", marginBottom: 4, textTransform: "uppercase" }}>{b.block_type}</div>
+                  <div style={{ fontSize: 9, fontWeight: 800, color: "#60a5fa", marginBottom: 4, textTransform: "uppercase" }}>{b.block_type}</div>
                   <div style={{ fontSize: 11, color: "#374151", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
                     {JSON.stringify(b.content, null, 2)}
                   </div>
@@ -2380,7 +2380,7 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
               borderBottom: "1px solid #e8edf3",
               padding: "9px 24px", fontSize: 12.5, color: "#475569",
               flexShrink: 0, lineHeight: 1.6,
-              borderLeft: "3px solid #818cf8",
+              borderLeft: "3px solid #60a5fa",
             }}>
               {section.description}
             </div>
@@ -2550,20 +2550,20 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
                 <React.Fragment key={block.id}>
                   <div data-block-id={block.id} style={{
                     background: "#fff",
-                    border: `1px solid ${isHighlight ? "#818cf8" : isDirty ? "#fcd34d" : "#e8edf3"}`,
+                    border: `1px solid ${isHighlight ? "#60a5fa" : isDirty ? "#fcd34d" : "#e8edf3"}`,
                     borderRadius: 12, padding: "14px 18px",
                     boxShadow: isHighlight ? "0 0 0 3px rgba(129,140,248,0.25)" : isDirty ? "0 0 0 3px rgba(252,211,77,0.2)" : "0 1px 4px rgba(15,23,42,0.05)",
                     transition: "box-shadow 0.2s, border-color 0.2s",
                   }}
-                    onMouseEnter={e => { if (!isDirty && !isHighlight) { e.currentTarget.style.borderColor = "#c7d2fe"; e.currentTarget.style.boxShadow = "0 2px 8px rgba(79,70,229,0.08)"; }}}
+                    onMouseEnter={e => { if (!isDirty && !isHighlight) { e.currentTarget.style.borderColor = "#bfdbfe"; e.currentTarget.style.boxShadow = "0 2px 8px rgba(79,70,229,0.08)"; }}}
                     onMouseLeave={e => { if (!isDirty && !isHighlight) { e.currentTarget.style.borderColor = "#e8edf3"; e.currentTarget.style.boxShadow = "0 1px 4px rgba(15,23,42,0.05)"; }}}
                   >
                     {/* Block header */}
                     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
                       <IconChip type={block.block_type} size={22} />
                       <span style={{
-                        fontSize: 9, fontWeight: 800, color: "#818cf8",
-                        background: "#eef2ff", padding: "2px 7px",
+                        fontSize: 9, fontWeight: 800, color: "#60a5fa",
+                        background: "#eff6ff", padding: "2px 7px",
                         borderRadius: 4, textTransform: "uppercase", letterSpacing: 0.7,
                       }}>
                         {m.label}
@@ -2772,7 +2772,7 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
                   borderRadius: 10, padding: "10px 14px", fontSize: 13, fontFamily: "inherit",
                   color: "#1e293b", outline: "none", lineHeight: 1.6, boxSizing: "border-box",
                 }}
-                onFocus={e => e.target.style.borderColor = "#818cf8"}
+                onFocus={e => e.target.style.borderColor = "#60a5fa"}
                 onBlur={e  => e.target.style.borderColor = saveDescModal.error ? "#fca5a5" : "#e2e8f0"}
               />
               {saveDescModal.error && (
@@ -2861,7 +2861,7 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
                   borderRadius: 10, padding: "10px 14px", fontSize: 13, fontFamily: "inherit",
                   color: "#1e293b", outline: "none", lineHeight: 1.6, boxSizing: "border-box",
                 }}
-                onFocus={e => e.target.style.borderColor = "#818cf8"}
+                onFocus={e => e.target.style.borderColor = "#60a5fa"}
                 onBlur={e  => e.target.style.borderColor = "#e2e8f0"}
               />
               {submitModal.error && !submitModal.validationErrors.length && (
@@ -2880,7 +2880,7 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
                   disabled={submitting}
                   style={{
                     padding: "8px 22px", borderRadius: 10, border: "none",
-                    background: submitting ? "#93c5fd" : "linear-gradient(135deg,#2563eb,#4f46e5)",
+                    background: submitting ? "#93c5fd" : "linear-gradient(135deg,#2563eb,#2563eb)",
                     color: "#fff", fontSize: 13, fontWeight: 700,
                     cursor: submitting ? "not-allowed" : "pointer", fontFamily: "inherit",
                   }}
@@ -2924,7 +2924,7 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
                   onClick={() => { setConflictModal({ open: false, latestVersion: null }); window.location.reload(); }}
                   style={{
                     padding: "8px 20px", borderRadius: 10, border: "none",
-                    background: "linear-gradient(135deg,#2563eb,#4f46e5)",
+                    background: "linear-gradient(135deg,#2563eb,#2563eb)",
                     color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit",
                   }}
                 >Reload Page</button>
@@ -2960,10 +2960,10 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
                     background: "#fff", cursor: "pointer", textAlign: "left", fontFamily: "inherit",
                     transition: "all 0.15s",
                   }}
-                  onMouseEnter={e => { e.currentTarget.style.borderColor = "#818cf8"; e.currentTarget.style.background = "#fafafe"; }}
+                  onMouseEnter={e => { e.currentTarget.style.borderColor = "#60a5fa"; e.currentTarget.style.background = "#fafafe"; }}
                   onMouseLeave={e => { e.currentTarget.style.borderColor = "#e2e8f0"; e.currentTarget.style.background = "#fff"; }}
                 >
-                  <div style={{ display: "flex", justifyContent: "center", marginBottom: 10, color: "#818cf8" }}><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/></svg></div>
+                  <div style={{ display: "flex", justifyContent: "center", marginBottom: 10, color: "#60a5fa" }}><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/></svg></div>
                   <div style={{ fontSize: 13, fontWeight: 700, color: "#1e293b", marginBottom: 4 }}>Manual Table</div>
                   <div style={{ fontSize: 11, color: "#64748b", lineHeight: 1.5 }}>
                     Blank table — type in each cell yourself.
@@ -3040,10 +3040,10 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
                     background: "#fff", cursor: "pointer", textAlign: "left", fontFamily: "inherit",
                     transition: "all 0.15s",
                   }}
-                  onMouseEnter={e => { e.currentTarget.style.borderColor = "#818cf8"; e.currentTarget.style.background = "#fafafe"; }}
+                  onMouseEnter={e => { e.currentTarget.style.borderColor = "#60a5fa"; e.currentTarget.style.background = "#fafafe"; }}
                   onMouseLeave={e => { e.currentTarget.style.borderColor = "#e2e8f0"; e.currentTarget.style.background = "#fff"; }}
                 >
-                  <div style={{ display: "flex", justifyContent: "center", marginBottom: 10, color: "#818cf8" }}><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></div>
+                  <div style={{ display: "flex", justifyContent: "center", marginBottom: 10, color: "#60a5fa" }}><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></div>
                   <div style={{ fontSize: 13, fontWeight: 700, color: "#1e293b", marginBottom: 4 }}>Manual KPI</div>
                   <div style={{ fontSize: 11, color: "#64748b", lineHeight: 1.5 }}>
                     Blank KPI block — enter values yourself.
