@@ -17,6 +17,7 @@ const express           = require("express");
 const { verifyToken }   = require("../../middleware/auth");
 const { createSectionSnapshot } = require("../../utils/snapshotHelper");
 const { translateSentence }     = require("../../services/translationService");
+const { getActiveSchema }       = require("../../services/schemaResolver");
 const logger            = require("../../utils/logger");
 const { getLogContext } = logger;
 
@@ -234,32 +235,27 @@ router.get("/forms/:formName/columns", async (req, res) => {
 
     const dbCols = await getDbColumns(pool, tableName);
 
-    // System columns that actually exist in this table
-    const systemCols = SYSTEM_COLS.filter(c => dbCols.has(c.key) && !EXCLUDED_COLS.has(c.key));
+    // Resolve schema using the same multi-step logic as institution-records:
+    // year-specific → latest active → shared-form fallback → base-field merge.
+    const parsedYear = year != null ? Number(year) : null;
+    const schemaRow  = await getActiveSchema(pool, formName, iid, parsedYear);
+    const schemaFields = Array.isArray(schemaRow?.schema?.fields) ? schemaRow.schema.fields : [];
 
-    // Dynamic schema columns from custom_field_schemas
-    let schemaFields = [];
-    if (await tableExists(pool, "custom_field_schemas")) {
-      const params = [formName, iid];
-      let sq = `SELECT schema -> 'fields' AS fields FROM public.custom_field_schemas
-                WHERE form_name=$1 AND institution_id=$2 AND is_active=TRUE`;
-      if (year) { params.push(Number(year)); sq += ` AND year=$${params.length}`; }
-      sq += ` ORDER BY created_at DESC LIMIT 1`;
-      const { rows } = await pool.query(sq, params);
-      schemaFields = Array.isArray(rows[0]?.fields) ? rows[0].fields : [];
-    }
-
-    // Schema fields key on column_name (not "name") — match correctly so labels resolve,
-    // and extract the requested language from the { en, hi, ... } label object.
+    // Only dynamic (schema-defined) fields — system columns excluded.
+    const hasCustomFields = dbCols.has("custom_fields");
     let dynamicCols = schemaFields
-      .filter(f => f.column_name && dbCols.has(f.column_name) && !EXCLUDED_COLS.has(f.column_name))
+      .filter(f => {
+        if (!f.column_name || EXCLUDED_COLS.has(f.column_name)) return false;
+        if (f.hidden) return false;
+        return dbCols.has(f.column_name) || hasCustomFields;
+      })
       .map(f => ({ key: f.column_name, label: resolveFieldLabel(f, language) }));
 
-    // Fallback: if no schema, surface DB columns directly (minus hidden ones)
+    // Fallback: no schema — surface raw non-system DB columns
     if (!dynamicCols.length) {
-      const sysKeys    = new Set(SYSTEM_COLS.map(c => c.key));
-      const autoHide   = new Set(["id", "form_name", "schema_id", "status", "order_index",
-                                  "custom_fields", "institution_id", "updated_at", ...EXCLUDED_COLS]);
+      const sysKeys  = new Set(SYSTEM_COLS.map(c => c.key));
+      const autoHide = new Set(["id", "form_name", "schema_id", "status", "order_index",
+                                "custom_fields", "institution_id", "updated_at", ...EXCLUDED_COLS]);
       for (const col of dbCols) {
         if (!sysKeys.has(col) && !autoHide.has(col)) {
           dynamicCols.push({ key: col, label: col });
@@ -267,7 +263,7 @@ router.get("/forms/:formName/columns", async (req, res) => {
       }
     }
 
-    return res.json({ success: true, data: { system: systemCols, dynamic: dynamicCols, formName, year: year || null } });
+    return res.json({ success: true, data: { dynamic: dynamicCols, formName, year: parsedYear } });
   } catch (err) {
     logger.error("report-integration GET /forms/:formName/columns", { ...getLogContext(req), err: err.message });
     return res.status(500).json({ success: false, message: "Failed to get columns" });
@@ -293,27 +289,19 @@ router.get("/forms/:formName/preview", async (req, res) => {
     const requested = (columns || "").split(",").map(c => c.trim()).filter(Boolean);
     if (!requested.length) return res.status(400).json({ success: false, message: "columns required" });
 
-    // Resolve schema labels and physical-column set before validation so JSONB
-    // fields (added after form creation) are accepted alongside physical columns.
+    // Resolve schema using the same multi-step logic as institution-records.
     const physicalCols = await getPhysicalCols(pool, tableName);
-    let schemaFields = [];
-    if (await tableExists(pool, "custom_field_schemas")) {
-      const qParams = [formName, iid];
-      let sq = `SELECT schema -> 'fields' AS fields FROM public.custom_field_schemas
-                WHERE form_name=$1 AND institution_id=$2 AND is_active=TRUE`;
-      if (year) { qParams.push(Number(year)); sq += ` AND year=$${qParams.length}`; }
-      sq += ` ORDER BY created_at DESC LIMIT 1`;
-      const { rows } = await pool.query(sq, qParams);
-      schemaFields = Array.isArray(rows[0]?.fields) ? rows[0].fields : [];
-    }
+    const parsedYear   = year != null ? Number(year) : null;
+    const schemaRow    = await getActiveSchema(pool, formName, iid, parsedYear);
+    const schemaFields = Array.isArray(schemaRow?.schema?.fields) ? schemaRow.schema.fields : [];
 
     const safeSelected = validateColumns(requested, physicalCols, schemaFields);
     if (!safeSelected.length) return res.status(400).json({ success: false, message: "No valid columns" });
 
-    const baseQuery  = buildFullQuery(tableName, safeSelected, iid, year, schemaFields, language, physicalCols);
+    const baseQuery  = buildFullQuery(tableName, safeSelected, iid, parsedYear, schemaFields, language, physicalCols);
     const langClause = language === "hi" ? `r.language='hi'` : `(r.language='en' OR r.language IS NULL)`;
     const countSql   = `SELECT COUNT(*) AS cnt FROM public.${tableName} r
-                        WHERE r.institution_id='${iid}'${year ? ` AND r.year=${Number(year)}` : ""}
+                        WHERE r.institution_id='${iid}'${parsedYear ? ` AND r.year=${parsedYear}` : ""}
                           AND ${langClause}`;
 
     const [pvRes, cntRes] = await Promise.all([
