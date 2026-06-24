@@ -2,8 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useApi }  from "../../../hooks/useApi";
 import { useAuth } from "../../../store/AuthContext";
 import FormScreen  from "../../../components/shared/FormScreen";
-import PageHeader from "../../../ui/PageHeader";
-import { Button } from "../../../ui";
+import { PageContainer, PageHeader, Toolbar, FilterChip, Button, Card } from "../../../ui";
 import { Plus } from "lucide-react";
 import { S, Toast, ConfirmDialog, isAuthError } from "../../../components/shared/formUtils";
 import { useLanguage } from "../../../i18n/LanguageContext";
@@ -565,10 +564,7 @@ export default function ReportCyclePage() {
   };
 
   return (
-    <div style={{
-      fontFamily: "'Plus Jakarta Sans', sans-serif",
-      background: "transparent", minHeight: "100%", padding: 28,
-    }}>
+    <PageContainer>
       {toast && <Toast message={toast.message} type={toast.type} />}
       {confirm && (
         <ConfirmDialog
@@ -598,31 +594,21 @@ export default function ReportCyclePage() {
         <StatCard label="Total Reports"  value={totalReports}  icon="📄"  color="#2563eb" />
       </div>
 
-      {/* ── Status tabs ── */}
-      <div style={{
-        display: "flex", gap: 4, marginBottom: 20,
-        background: C.surface, border: `1px solid ${C.border}`,
-        borderRadius: 10, padding: 4, width: "fit-content",
-      }}>
-        {STATUS_TABS.map(t => (
-          <button
-            key={t.key}
-            onClick={() => setTab(t.key)}
-            style={{
-              padding: "6px 16px", borderRadius: 7, border: "none",
-              fontSize: 12, fontWeight: 600, cursor: "pointer",
-              background: tab === t.key ? C.primary : "transparent",
-              color:      tab === t.key ? "#fff"     : C.textSub,
-              transition: "all 0.15s",
-            }}
+      {/* ── Status tabs — standardized FilterChips ── */}
+      <Toolbar>
+        {STATUS_TABS.map(st => (
+          <FilterChip
+            key={st.key}
+            active={tab === st.key}
+            onClick={() => setTab(st.key)}
           >
-            {t.label}
-          </button>
+            {st.label}
+          </FilterChip>
         ))}
-      </div>
+      </Toolbar>
 
       {/* ── Table ── */}
-      <div style={{ ...card, overflow: "hidden" }}>
+      <Card padding={0} style={{ overflow: "hidden" }}>
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
@@ -850,7 +836,7 @@ export default function ReportCyclePage() {
             </span>
           </div>
         )}
-      </div>
-    </div>
+      </Card>
+    </PageContainer>
   );
 }

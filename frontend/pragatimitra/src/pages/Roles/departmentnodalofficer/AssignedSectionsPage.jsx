@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { Paperclip } from "lucide-react";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { t } from "../../../i18n/translations";
-import PageHeader from "../../../components/shared/PageHeader";
+import { PageContainer, PageHeader, Toolbar, SearchInput, Select, Card, EmptyState } from "../../../ui";
 import { S } from "../../../components/shared/formUtils";
 
 const C = {
@@ -399,8 +399,7 @@ export default function AssignedSectionsPage() {
 
   /* ── Section list view ── */
   return (
-    <div style={{ padding: "24px 28px", fontFamily: "'Plus Jakarta Sans', sans-serif",
-      background: "transparent", minHeight: "100vh" }}>
+    <PageContainer>
 
       <PageHeader
         breadcrumb={[t("Home", lang), t("Department", lang), t("Sections", lang)]}
@@ -408,30 +407,40 @@ export default function AssignedSectionsPage() {
         description="Click any section to edit content, view comments, or compare versions"
       />
 
-      {/* Filters */}
-      <div style={{ display: "flex", gap: 10, marginBottom: 16, background: C.surface,
-        padding: "12px 16px", borderRadius: 10, border: `0.5px solid ${C.border}` }}>
-        <input value={filters.search} onChange={e => setFilters(f => ({ ...f, search: e.target.value }))}
+      {/* Filters — standardized toolbar */}
+      <Toolbar>
+        <SearchInput
+          value={filters.search}
+          onChange={(val) => setFilters(f => ({ ...f, search: val }))}
           placeholder={t("Search sections…", lang)}
-          style={{ flex: 1, padding: "7px 12px", borderRadius: 8, border: `1px solid ${C.border}`,
-            outline: "none", fontSize: 13, color: C.text, fontFamily: "'Plus Jakarta Sans', sans-serif" }} />
-        <select value={filters.status} onChange={e => setFilters(f => ({ ...f, status: e.target.value }))}
-          style={{ ...S.select(false), width: "auto", minWidth: 160 }}>
+          style={{ flex: 1, width: "auto" }}
+        />
+        <Select
+          value={filters.status}
+          onChange={e => setFilters(f => ({ ...f, status: e.target.value }))}
+          style={{ width: 170, height: 40 }}
+        >
           <option value="">{t("All Statuses", lang)}</option>
           <option value="In Progress">{t("In Progress", lang)}</option>
           <option value="Sent Back">{t("Sent Back", lang)}</option>
           <option value="Overdue">{t("Overdue", lang)}</option>
           <option value="Submitted">{t("Submitted", lang)}</option>
-        </select>
-      </div>
+        </Select>
+      </Toolbar>
 
       {/* Section cards */}
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {filteredSections.length === 0 ? (
-          <div style={{ padding: "32px", textAlign: "center", fontSize: 13, color: C.textSub,
-            background: C.surface, borderRadius: 12, border: `0.5px solid ${C.border}` }}>
-            {t("No sections match the current filters.", lang)}
-          </div>
+          <Card padding={0}>
+            <EmptyState
+              icon={
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 7h18M3 12h18M3 17h18" />
+                </svg>
+              }
+              title={t("No sections match the current filters.", lang)}
+            />
+          </Card>
         ) : filteredSections.map(sec => (
           <div key={sec.id} onClick={() => openSection(sec)}
             style={{ background: C.surface, border: `0.5px solid ${C.border}`, borderRadius: 12,
@@ -488,6 +497,6 @@ export default function AssignedSectionsPage() {
           </div>
         ))}
       </div>
-    </div>
+    </PageContainer>
   );
 }

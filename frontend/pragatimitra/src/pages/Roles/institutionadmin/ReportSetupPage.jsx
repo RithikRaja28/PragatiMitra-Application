@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { Save, FolderTree } from "lucide-react";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { t } from "../../../i18n/translations";
-import PageHeader from "../../../components/shared/PageHeader";
+import { PageContainer, PageHeader } from "../../../ui";
 import { useApi }  from "../../../hooks/useApi";
 import { useShell } from "../../../components/Dashboard/shellContext";
 
@@ -343,8 +343,7 @@ export default function ReportSetupPage() {
   };
 
   return (
-    <div style={{ padding: "24px 28px", fontFamily: "'Plus Jakarta Sans', sans-serif",
-      display: "flex", flexDirection: "column", gap: 18, minHeight: "100vh", background: "transparent" }}>
+    <PageContainer style={{ gap: 18 }}>
 
       {/* Header */}
       <PageHeader
@@ -731,6 +730,6 @@ export default function ReportSetupPage() {
         </div>
 
       </div>
-    </div>
+    </PageContainer>
   );
 }
