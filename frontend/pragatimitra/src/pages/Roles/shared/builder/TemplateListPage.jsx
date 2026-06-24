@@ -2,17 +2,19 @@ import React, { useState, useEffect, useCallback } from "react";
 import { useApi }  from "../../../../hooks/useApi";
 import { useAuth } from "../../../../store/AuthContext";
 import { PageContainer, PageHeader, Toolbar, FilterChip, Button, Card, EmptyState, ErrorState } from "../../../../ui";
+import { Layers, Tag, AlertTriangle } from "lucide-react";
 import TemplateCreationWizardPage from "./TemplateCreationWizardPage";
 
 /* ── design tokens ─────────────────────────────────────────────────────── */
+/* Standardized to the project blue theme (src/ui/tokens.js). */
 const C = {
-  primary:   "#2563eb", primaryDk: "#1d4ed8", primaryLt: "#eff6ff", primaryMid: "#93c5fd",
+  primary:   "#2563eb", primaryDk: "#1d4ed8", primaryLt: "#dbeafe", primaryMid: "#93c5fd",
   success:   "#16a34a", successLt: "#dcfce7", successMid: "#4ade80",
   warning:   "#d97706", warningLt: "#fef3c7", warningMid: "#fbbf24",
-  danger:    "#ef4444", dangerLt:  "#fef2f2",
+  danger:    "#dc2626", dangerLt:  "#fef2f2",
   slate:     "#64748b", slateLt:   "#f1f5f9", slateMid:  "#cbd5e1",
-  text:      "#1e293b", textSub: "#475569", textMuted: "#94a3b8",
-  border:    "#e2e8f0", bg: "#f8fafc", surface: "#fff",
+  text:      "#111827", textSub: "#6b7280", textMuted: "#94a3b8",
+  border:    "#e5e7eb", bg: "#f8fafc", surface: "#fff",
 };
 
 const STATUS = {
@@ -227,7 +229,7 @@ function TemplateList({ onCreateNew, onEdit }) {
             fontSize: 12, color: "#92400e",
             display: "flex", alignItems: "center", gap: 10,
           }}>
-            <span style={{ fontSize: 16 }}>⚠️</span>
+            <AlertTriangle size={15} style={{ flexShrink: 0 }} />
             <span>
               <strong>{counts.DRAFT} draft{counts.DRAFT !== 1 ? "s" : ""}</strong> not yet visible
               in report creation. Publish {counts.DRAFT === 1 ? "it" : "them"} to make
@@ -307,10 +309,10 @@ function TemplateCard({ template: t, busy, onEdit, onChangeStatus }) {
 
         {/* meta row */}
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
-          <MetaPill icon="📑" value={`${t.section_count ?? 0} section${Number(t.section_count) !== 1 ? "s" : ""}`}
+          <MetaPill icon={<Layers size={12} />} value={`${t.section_count ?? 0} section${Number(t.section_count) !== 1 ? "s" : ""}`}
             color={Number(t.section_count) > 0 ? C.primary : C.textMuted}
             bg={Number(t.section_count) > 0 ? C.primaryLt : C.bg} />
-          <MetaPill icon="🔖" value={`v${t.version || "1.0"}`} color={C.textSub} bg={C.bg} />
+          <MetaPill icon={<Tag size={12} />} value={`v${t.version || "1.0"}`} color={C.textSub} bg={C.bg} />
         </div>
 
         {/* created by */}

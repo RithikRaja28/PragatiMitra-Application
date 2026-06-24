@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Check } from "lucide-react";
+import { Check, Languages } from "lucide-react";
 import { useApi }  from "../../../../hooks/useApi";
 import { useAuth } from "../../../../store/AuthContext";
 import { useAcademicYear } from "../../../../store/AcademicYearContext";
@@ -32,13 +32,14 @@ function buildTree(flat) {
 }
 
 /* ── colour tokens ───────────────────────────────────────────────────────── */
+/* Standardized to the project blue theme (src/ui/tokens.js). */
 const C = {
-  primary: "#4f46e5", primaryDk: "#3730a3", primaryLt: "#eef2ff", primaryMid: "#818cf8",
-  success: "#16a34a", successLt: "#f0fdf4",
+  primary: "#2563eb", primaryDk: "#1d4ed8", primaryLt: "#dbeafe", primaryMid: "#93c5fd",
+  success: "#16a34a", successLt: "#dcfce7",
   danger:  "#dc2626", dangerLt:  "#fef2f2",
-  warning: "#d97706", warningLt: "#fffbeb",
-  text:    "#0f172a", textSub: "#64748b", textMuted: "#94a3b8",
-  border:  "#e2e8f0", bg: "#f8fafc", surface: "#fff",
+  warning: "#d97706", warningLt: "#fef3c7",
+  text:    "#111827", textSub: "#6b7280", textMuted: "#94a3b8",
+  border:  "#e5e7eb", bg: "#f8fafc", surface: "#fff",
 };
 const inp = {
   width: "100%", boxSizing: "border-box", padding: "9px 13px", fontSize: 13,
@@ -686,7 +687,7 @@ export default function CreateReportWizardPage({ onCreated, onCancel, initialRep
                 <select style={inp} value={defaultWfId} onChange={e => setDefaultWfId(e.target.value)}>
                   <option value="">— No workflow —</option>
                   {allWorkflows.map(w =>
-                    <option key={w.id} value={w.id}>{w.name}{w.is_default ? " ★" : ""} ({w.step_count} steps)</option>)}
+                    <option key={w.id} value={w.id}>{w.name}{w.is_default ? " (Default)" : ""} ({w.step_count} steps)</option>)}
                 </select>
                 {allWorkflows.length === 0 && (
                   <button type="button" onClick={navigateToWorkflowTemplates} style={{
@@ -1149,7 +1150,7 @@ export default function CreateReportWizardPage({ onCreated, onCancel, initialRep
                           >
                             <option value="">— No workflow —</option>
                             {allWorkflows.map(w => (
-                              <option key={w.id} value={w.id}>{w.name}{w.is_default ? " ★" : ""}</option>
+                              <option key={w.id} value={w.id}>{w.name}{w.is_default ? " (Default)" : ""}</option>
                             ))}
                           </select>
                           {allWorkflows.length === 0 && (
@@ -1407,7 +1408,7 @@ function SectionRow({ section, index, total, onTitleChange, onTitleHiChange, onA
               style={{ padding: "3px 9px", border: "1px solid #fcd34d", borderRadius: 6, background: "#fef3c7",
                 color: "#b45309", cursor: translating || !section.title?.trim() ? "not-allowed" : "pointer",
                 fontSize: 11, fontWeight: 700, fontFamily: "inherit", whiteSpace: "nowrap" }}>
-              {translating ? "…" : "⚡ Auto"}
+              {translating ? "…" : <><Languages size={12} style={{ verticalAlign: "-2px", marginRight: 4 }} />Auto</>}
             </button>
           </div>
         )}
@@ -1473,7 +1474,7 @@ function SubRow({ sub, onChange, onHiChange, onAutoTranslate, onDelete }) {
             style={{ padding: "3px 8px", border: "1px solid #fcd34d", borderRadius: 5, background: "#fef3c7",
               color: "#b45309", cursor: translating || !sub.title?.trim() ? "not-allowed" : "pointer",
               fontSize: 10, fontWeight: 700, fontFamily: "inherit", whiteSpace: "nowrap" }}>
-            {translating ? "…" : "⚡ Auto"}
+            {translating ? "…" : <><Languages size={12} style={{ verticalAlign: "-2px", marginRight: 4 }} />Auto</>}
           </button>
         </div>
       )}

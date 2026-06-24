@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef, useState, useCallback } from "react";
-import { Trash2, Eye, Edit2, Download, Search, RefreshCw, Plus } from "lucide-react";
+import { Trash2, Eye, Edit2, Download, Search, RefreshCw, Plus, AlertTriangle, Ban } from "lucide-react";
 import Modal from "../../ui/Modal";
 import Button from "../../ui/Button";
 import PageHeader from "../../ui/PageHeader";
@@ -204,7 +204,7 @@ function ReusePrompt({ existing, apiFetch, notify, onReused, onCreateNew }) {
         borderBottom:"1px solid #fde68a",
         display:"flex", alignItems:"center", gap:10,
       }}>
-        <span style={{ fontSize:18, lineHeight:1 }}>⚠️</span>
+        <AlertTriangle size={18} color="#d97706" style={{ flexShrink: 0 }} />
         <div>
           <div style={{ fontSize:13, fontWeight:700, color:"#92400e" }}>
             {t("This table is used by", lang)} {existing.length} {existing.length>1?t("existing KPIs", lang):t("existing KPI", lang)}
@@ -732,7 +732,7 @@ function KpiForm({ cfg, tables, tabStatus, existingConfigs, scope, onBack, onSav
               });
               return bad.length > 0 ? (
                 <div style={{ marginTop:6, padding:"7px 12px", background:"#fef2f2", border:"1px solid #fecaca", borderRadius:7, fontSize:11, color:"#dc2626" }}>
-                  ⛔ "{bad.join('", "')}" is not numeric. {aggregationType.toUpperCase()} requires numeric columns. Switch to COUNT or COUNT DISTINCT, or select a numeric column.
+                  <Ban size={13} style={{ verticalAlign: "-2px", marginRight: 6 }} />"{bad.join('", "')}" is not numeric. {aggregationType.toUpperCase()} requires numeric columns. Switch to COUNT or COUNT DISTINCT, or select a numeric column.
                 </div>
               ) : null;
             })()}
@@ -1136,7 +1136,7 @@ export default function KpiManagementPage({ scope = "institute" }) {
               </div>
               {truncated && (
                 <div style={{ marginTop:6, padding:"5px 10px", background:"#fffbeb", border:"1px solid #fbbf24", borderRadius:6, fontSize:11, color:"#92400e" }}>
-                  ⚠️ Showing first 5,000 rows (dataset is larger). Enable an aggregation (Sum, Count, Avg…) to see complete totals across all records.
+                  <AlertTriangle size={12} style={{ verticalAlign: "-2px", marginRight: 6 }} />Showing first 5,000 rows (dataset is larger). Enable an aggregation (Sum, Count, Avg…) to see complete totals across all records.
                 </div>
               )}
             </div>

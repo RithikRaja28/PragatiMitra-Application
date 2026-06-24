@@ -1,4 +1,5 @@
 import React from "react";
+import { Paperclip } from "lucide-react";
 
 export const DOC_FONT = "'Calibri', 'Segoe UI', Arial, sans-serif";
 export const A4_W     = 794;
@@ -188,7 +189,7 @@ export function WordBlock({ block }) {
     case "FILE":
       return (
         <div style={{ fontFamily: DOC_FONT, fontSize: 10, margin: "6px 0 10px", padding: "5px 10px", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 2, display: "flex", alignItems: "center", gap: 5 }}>
-          <span>📎</span>
+          <span style={{ display: "inline-flex" }}><Paperclip size={12} /></span>
           <a href={c.url || "#"} target="_blank" rel="noreferrer" style={{ color: "#1d4ed8", textDecoration: "underline" }}>
             {c.name || c.url || "Attachment"}
           </a>
