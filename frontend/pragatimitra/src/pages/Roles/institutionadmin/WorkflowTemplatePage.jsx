@@ -1,8 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useApi }  from "../../../hooks/useApi";
 import { useAuth } from "../../../store/AuthContext";
-import PageHeader from "../../../ui/PageHeader";
-import { Button } from "../../../ui";
+import { PageContainer, PageHeader, Button, Card, EmptyState } from "../../../ui";
 import { Plus } from "lucide-react";
 import { S, Toast, ConfirmDialog, isAuthError } from "../../../components/shared/formUtils";
 import { useLanguage } from "../../../i18n/LanguageContext";
@@ -969,7 +968,7 @@ export default function WorkflowTemplatePage() {
   const totalSteps = templates.reduce((s, t) => s + Number(t.step_count || 0), 0);
 
   return (
-    <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", background: "transparent", minHeight: "100%", padding: 28 }}>
+    <PageContainer>
       {toast && <Toast message={toast.message} type={toast.type} />}
       {confirm && <ConfirmDialog {...confirm} onCancel={() => setConfirm(null)} />}
       <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}} @keyframes spin{to{transform:rotate(360deg)}}`}</style>
@@ -1040,27 +1039,20 @@ export default function WorkflowTemplatePage() {
           {[1, 2, 3].map(i => <SkeletonCard key={i} />)}
         </div>
       ) : templates.length === 0 ? (
-        <div style={{
-          ...card, padding: "56px 32px", textAlign: "center",
-        }}>
-          <div style={{ display: "flex", justifyContent: "center", marginBottom: 12, color: "#6366f1" }}><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></div>
-          <div style={{ fontSize: 15, fontWeight: 700, color: C.text, marginBottom: 6 }}>
-            No workflow templates yet
-          </div>
-          <div style={{ fontSize: 13, color: C.textSub, marginBottom: 20 }}>
-            Create your first workflow to define the approval chain for report sections.
-          </div>
-          <button
-            onClick={() => setScreen("create")}
-            style={{
-              padding: "9px 20px", borderRadius: 10, border: "none",
-              background: C.primary, color: "#fff",
-              fontSize: 13, fontWeight: 700, cursor: "pointer",
-            }}
-          >
-            Create First Workflow
-          </button>
-        </div>
+        <Card padding={0}>
+          <EmptyState
+            icon={
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+              </svg>
+            }
+            title="No workflow templates yet"
+            description="Create your first workflow to define the approval chain for report sections."
+            action={
+              <Button variant="primary" onClick={() => setScreen("create")}>Create First Workflow</Button>
+            }
+          />
+        </Card>
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))", gap: 18 }}>
           {templates.map(t => (
@@ -1077,6 +1069,6 @@ export default function WorkflowTemplatePage() {
           ))}
         </div>
       )}
-    </div>
+    </PageContainer>
   );
 }

@@ -1,8 +1,7 @@
 import React, { useState } from "react";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { t } from "../../../i18n/translations";
-import PageHeader from "../../../components/shared/PageHeader";
-import { S } from "../../../components/shared/formUtils";
+import { PageContainer, PageHeader, Toolbar, Select, Card } from "../../../ui";
 
 const C = {
   primary:   "#2563eb",
@@ -136,8 +135,7 @@ export default function SubmissionsPage() {
   });
 
   return (
-    <div style={{ padding: "24px 28px", fontFamily: "'Plus Jakarta Sans', sans-serif",
-      background: "transparent", minHeight: "100vh" }}>
+    <PageContainer>
 
       {/* Header */}
       <PageHeader
@@ -164,27 +162,25 @@ export default function SubmissionsPage() {
         ))}
       </div>
 
-      {/* Filters */}
-      <div style={{ display: "flex", gap: 10, marginBottom: 16, background: C.surface,
-        padding: "12px 16px", borderRadius: 10, border: `0.5px solid ${C.border}` }}>
-        <select value={filters.stage} onChange={e => setFilters(f => ({ ...f, stage: e.target.value }))}
-          style={{ ...S.select(false), width: "auto", minWidth: 160 }}>
+      {/* Filters — standardized toolbar */}
+      <Toolbar>
+        <Select value={filters.stage} onChange={e => setFilters(f => ({ ...f, stage: e.target.value }))}
+          style={{ width: 170, height: 40 }}>
           <option value="">{t("All Stages", lang)}</option>
           {STAGE_ORDER.slice(1).map(s => <option key={s} value={s}>{s}</option>)}
-        </select>
-        <select value={filters.status} onChange={e => setFilters(f => ({ ...f, status: e.target.value }))}
-          style={{ ...S.select(false), width: "auto", minWidth: 160 }}>
+        </Select>
+        <Select value={filters.status} onChange={e => setFilters(f => ({ ...f, status: e.target.value }))}
+          style={{ width: 170, height: 40 }}>
           <option value="">{t("All Statuses", lang)}</option>
           <option value="In Review">{t("In Review", lang)}</option>
           <option value="Approved">{t("Approved", lang)}</option>
           <option value="Sent Back">{t("Sent Back", lang)}</option>
           <option value="Pending">{t("Pending", lang)}</option>
-        </select>
-      </div>
+        </Select>
+      </Toolbar>
 
-      {/* Table */}
-      <div style={{ background: C.surface, borderRadius: 12, border: `0.5px solid ${C.border}`,
-        boxShadow: "0 1px 6px rgba(217,119,6,0.06)", overflow: "visible" }}>
+      {/* Table — overflow visible so the hover timeline popup is not clipped */}
+      <Card padding={0} style={{ overflow: "visible" }}>
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
             <tr style={{ background: "#fafaf9" }}>
@@ -236,11 +232,11 @@ export default function SubmissionsPage() {
             ))}
           </tbody>
         </table>
-      </div>
+      </Card>
 
       <div style={{ marginTop: 12, fontSize: 12, color: C.textSub, textAlign: "center" }}>
         Hover the "View timeline" cell to see the full approval trail for each section.
       </div>
-    </div>
+    </PageContainer>
   );
 }

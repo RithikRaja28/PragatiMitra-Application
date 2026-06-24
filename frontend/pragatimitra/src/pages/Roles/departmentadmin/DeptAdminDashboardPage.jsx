@@ -8,7 +8,7 @@ import { useApi } from "../../../hooks/useApi";
 import { useAuth } from "../../../store/AuthContext";
 import { useAcademicYear } from "../../../store/AcademicYearContext";
 import KpiDashboardPanel from "../../../components/KPI/KpiDashboardPanel";
-import PageHeader from "../../../components/shared/PageHeader";
+import { PageContainer, PageHeader } from "../../../ui";
 import { isAuthError } from "../../../components/shared/formUtils";
 
 /* Enterprise SaaS palette — shared with Institution Admin. */
@@ -101,7 +101,7 @@ export default function DeptAdminDashboardPage() {
   }
 
   return (
-    <div style={{ padding: "24px 28px", fontFamily: "'Plus Jakarta Sans', sans-serif", background: "transparent", minHeight: "100%", display: "flex", flexDirection: "column", gap: 16 }}>
+    <PageContainer style={{ gap: 16 }}>
       <PageHeader
         breadcrumb={[t("Home", lang), t("Department", lang), t("Dashboard", lang)]}
         title={t("Department Dashboard", lang)}
@@ -205,6 +205,6 @@ export default function DeptAdminDashboardPage() {
           </div>
         )}
       </div>
-    </div>
+    </PageContainer>
   );
 }

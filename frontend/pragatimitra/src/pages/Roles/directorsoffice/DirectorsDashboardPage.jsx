@@ -3,7 +3,7 @@ import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
 import { Flag } from "lucide-react";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { t } from "../../../i18n/translations";
-import PageHeader from "../../../ui/PageHeader";
+import { PageContainer, PageHeader, Button } from "../../../ui";
 
 const C = {
   primary:   "#1d4ed8",

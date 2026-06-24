@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate, useLocation, Navigate } from "react-router-dom";
 import { useApi }  from "../../../../hooks/useApi";
-import PageHeader from "../../../../components/shared/PageHeader";
+import { PageContainer, PageHeader, Toolbar, FilterChip, EmptyState, ErrorState, Card } from "../../../../ui";
 import SectionEditorPage from "./SectionEditorPage";
 
 const STATUS_CFG = {
@@ -175,7 +175,7 @@ export default function MyAssignedSectionsPage() {
   const pending = (counts.NOT_STARTED || 0) + (counts.IN_PROGRESS || 0) + (counts.SENT_BACK || 0);
 
   return (
-    <div style={{ padding: "28px 32px", fontFamily: "'Plus Jakarta Sans', sans-serif", maxWidth: 900 }}>
+    <PageContainer>
 
       {/* header */}
       <PageHeader
@@ -201,25 +201,20 @@ export default function MyAssignedSectionsPage() {
         </div>
       )}
 
-      {/* status filter */}
+      {/* status filter — standardized FilterChip toolbar */}
       {!loading && sections.length > 0 && (
-        <div style={{ display: "flex", gap: 8, marginBottom: 20, flexWrap: "wrap" }}>
-          {["", "NOT_STARTED", "IN_PROGRESS", "SUBMITTED", "UNDER_REVIEW", "APPROVED", "SENT_BACK"].map(s => {
-            const cfg    = s ? STATUS_CFG[s] : null;
-            const active = filterStatus === s;
-            return (
-              <button key={s} onClick={() => setFilterStatus(s)} style={{
-                padding: "5px 13px", borderRadius: 20, fontSize: 12, fontWeight: 600,
-                border: active ? "none" : "1px solid #e2e8f0",
-                background: active ? (cfg?.bg || "#1e293b") : "#fff",
-                color: active ? (cfg?.color || "#fff") : "#64748b",
-                cursor: "pointer",
-              }}>
-                {s ? (STATUS_CFG[s]?.label || s) : "All"}
-              </button>
-            );
-          })}
-        </div>
+        <Toolbar>
+          {["", "NOT_STARTED", "IN_PROGRESS", "SUBMITTED", "UNDER_REVIEW", "APPROVED", "SENT_BACK"].map(s => (
+            <FilterChip
+              key={s}
+              active={filterStatus === s}
+              count={s ? (counts[s] || 0) : sections.length}
+              onClick={() => setFilterStatus(s)}
+            >
+              {s ? (STATUS_CFG[s]?.label || s) : "All"}
+            </FilterChip>
+          ))}
+        </Toolbar>
       )}
 
       {loading && (
@@ -229,26 +224,23 @@ export default function MyAssignedSectionsPage() {
       )}
 
       {!loading && err && (
-        <div style={{ background: "#fee2e2", color: "#b91c1c", padding: "14px 18px", borderRadius: 10, fontSize: 14 }}>
-          {err}
-        </div>
+        <Card padding={0}>
+          <ErrorState title="Couldn’t load your sections" description={err} />
+        </Card>
       )}
 
       {!loading && !err && sections.length === 0 && (
-        <div style={{
-          background: "#fff", border: "1px solid rgba(0,0,0,0.07)",
-          borderRadius: 14, padding: "60px 40px", textAlign: "center",
-        }}>
-          <div style={{ width: 56, height: 56, background: "#f1f5f9", borderRadius: 14, margin: "0 auto 16px", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="1.5"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="13" y2="16"/></svg>
-          </div>
-          <div style={{ fontSize: 16, fontWeight: 700, color: "#1e293b", marginBottom: 8 }}>
-            No sections assigned yet
-          </div>
-          <p style={{ fontSize: 13, color: "#94a3b8", maxWidth: 360, margin: "0 auto" }}>
-            When an administrator assigns you to a report section, it will appear here.
-          </p>
-        </div>
+        <Card padding={0}>
+          <EmptyState
+            icon={
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9 2h6a2 2 0 0 1 2 2v0a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2v0a2 2 0 0 1 2-2z" /><path d="M5 6h14v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6z" /><path d="M9 12h6M9 16h4" />
+              </svg>
+            }
+            title="No sections assigned yet"
+            description="When an administrator assigns you to a report section, it will appear here."
+          />
+        </Card>
       )}
 
       {!loading && !err && groups.map(group => (
@@ -276,6 +268,6 @@ export default function MyAssignedSectionsPage() {
           </div>
         </div>
       ))}
-    </div>
+    </PageContainer>
   );
 }

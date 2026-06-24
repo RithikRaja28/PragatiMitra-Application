@@ -4,7 +4,7 @@ import { useApi } from "../../../hooks/useApi";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { t } from "../../../i18n/translations";
 import ReviewSectionPage from "../shared/builder/ReviewSectionPage";
-import PageHeader from "../../../ui/PageHeader";
+import { PageContainer, PageHeader, Toolbar, SearchInput, Select, Card, EmptyState, ErrorState } from "../../../ui";
 
 const SLUG = "review-queue";
 
@@ -85,7 +85,7 @@ export default function ReviewQueuePage() {
   const finalApproval  = queue.filter(q => q.needs_director_approval).length;
 
   return (
-    <div style={{ padding: "24px 28px", fontFamily: "'Plus Jakarta Sans', sans-serif", background: "transparent", minHeight: "100vh" }}>
+    <PageContainer>
 
       <PageHeader
         breadcrumb={[t("Home", lang), t("Director's Office", lang), t("Review Queue", lang)]}
@@ -110,27 +110,24 @@ export default function ReviewQueuePage() {
         </div>
       )}
 
-      {/* filters */}
-      <div style={{ display: "flex", gap: 10, marginBottom: 16, background: C.surface,
-        padding: "12px 16px", borderRadius: 10, border: `0.5px solid ${C.border}` }}>
-        <input
+      {/* filters — standardized toolbar */}
+      <Toolbar>
+        <SearchInput
           value={search}
-          onChange={e => setSearch(e.target.value)}
+          onChange={setSearch}
           placeholder="Search by section or report name…"
-          style={{ flex: 1, padding: "7px 12px", borderRadius: 8, border: `1px solid ${C.border}`,
-            outline: "none", fontSize: 13, color: C.text, fontFamily: "inherit" }}
+          style={{ flex: 1, width: "auto" }}
         />
-        <select
+        <Select
           value={statusFilter}
           onChange={e => setStatusFilter(e.target.value)}
-          style={{ padding: "7px 28px 7px 12px", borderRadius: 8, border: `1px solid ${C.border}`,
-            outline: "none", fontSize: 13, color: C.text, background: "#fff",
-            cursor: "pointer", fontFamily: "inherit", appearance: "none" }}>
+          style={{ width: 170, height: 40 }}
+        >
           <option value="">All Statuses</option>
           <option value="SUBMITTED">Submitted</option>
           <option value="UNDER_REVIEW">Under Review</option>
-        </select>
-      </div>
+        </Select>
+      </Toolbar>
 
       {/* loading */}
       {loading && (
@@ -141,27 +138,29 @@ export default function ReviewQueuePage() {
 
       {/* error */}
       {!loading && err && (
-        <div style={{ background: "#fee2e2", color: "#b91c1c", padding: "14px 18px", borderRadius: 10, fontSize: 14 }}>
-          {err}
-        </div>
+        <Card padding={0}>
+          <ErrorState title="Couldn’t load review queue" description={err} />
+        </Card>
       )}
 
       {/* empty */}
       {!loading && !err && queue.length === 0 && (
-        <div style={{ background: C.surface, borderRadius: 14, padding: "60px 40px", textAlign: "center",
-          border: `0.5px solid ${C.border}` }}>
-          <div style={{ fontSize: 40, marginBottom: 12 }}>✅</div>
-          <div style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 6 }}>All clear</div>
-          <p style={{ fontSize: 13, color: C.textSub, maxWidth: 340, margin: "0 auto" }}>
-            No sections are currently awaiting your review.
-          </p>
-        </div>
+        <Card padding={0}>
+          <EmptyState
+            icon={
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" />
+              </svg>
+            }
+            title="All clear"
+            description="No sections are currently awaiting your review."
+          />
+        </Card>
       )}
 
       {/* table */}
       {!loading && !err && filtered.length > 0 && (
-        <div style={{ background: C.surface, borderRadius: 12, border: `0.5px solid ${C.border}`,
-          boxShadow: "0 1px 6px rgba(29,78,216,0.06)", overflow: "hidden" }}>
+        <Card padding={0} style={{ overflow: "hidden" }}>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
               <tr style={{ background: "#f8fafc" }}>
@@ -225,15 +224,22 @@ export default function ReviewQueuePage() {
               })}
             </tbody>
           </table>
-        </div>
+        </Card>
       )}
 
       {/* no filter results */}
       {!loading && !err && queue.length > 0 && filtered.length === 0 && (
-        <div style={{ textAlign: "center", padding: "40px", color: C.textSub, fontSize: 13 }}>
-          No sections match the current filters.
-        </div>
+        <Card padding={0}>
+          <EmptyState
+            icon={
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+            }
+            title="No sections match the current filters."
+          />
+        </Card>
       )}
-    </div>
+    </PageContainer>
   );
 }
