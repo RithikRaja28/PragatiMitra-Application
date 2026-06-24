@@ -20,6 +20,7 @@ const { verifyToken, requireRole } = require("../../middleware/auth");
 const { writeAuditLog }            = require("../../utils/audit");
 const logger                       = require("../../utils/logger");
 const { getLogContext }            = logger;
+const { translateSentence }        = require("../../services/translationService");
 
 const router = express.Router();
 router.use(verifyToken);
@@ -120,6 +121,25 @@ async function fetchImageBuffer(url) {
       req.on("timeout", () => { req.destroy(); reject(new Error("timeout")); });
     });
   } catch { return null; }
+}
+
+/* ─── Pre-translate metadata strings for Hindi compilation ──────────────────
+   Translates report title + every section title/description in one parallel
+   batch before any document generator runs. Results are stored in opts.hiStrings
+   and referenced by generateDocx / buildHtml so the entire document is in Hindi. */
+async function translateForHindi(report, sections) {
+  const tr = (text) => (text ? translateSentence(text).catch(() => text) : Promise.resolve(""));
+  const results = await Promise.all([
+    tr(report.title),
+    ...sections.map(s => tr(s.title)),
+    ...sections.map(s => tr(s.description)),
+  ]);
+  const n = sections.length;
+  return {
+    reportTitle:    results[0] || report.title,
+    sectionTitles:  new Map(sections.map((s, i) => [s.id, results[1 + i]       || s.title])),
+    sectionDescs:   new Map(sections.map((s, i) => [s.id, results[1 + n + i]   || ""])),
+  };
 }
 
 /* ═════════════════════════════ STATUS CHECK ═════════════════════════════════ */
@@ -259,6 +279,11 @@ router.post(
 
       const sections = flattenToDocumentOrder(sectRes.rows);
       const opts     = { fmt, language, include_toc, include_numbering, approved_only };
+
+      // Pre-translate report title + section titles/descriptions when compiling in Hindi
+      if (language === "hi") {
+        opts.hiStrings = await translateForHindi(report, sections);
+      }
 
       const ts       = Date.now();
       const safeName = report.title.replace(/[^a-zA-Z0-9]/g, "_").slice(0, 60);
@@ -591,7 +616,10 @@ async function generateDocx(report, sections, outPath, opts) {
   function sectionHeadingPara(section) {
     const depth = section.depth || 0;
     const num   = sectionNumbers.get(section.id);
-    const label = opts.include_numbering && num ? `${num}.  ${section.title}` : section.title;
+    const hi    = lang === "hi" && opts.hiStrings;
+    const title = hi ? (opts.hiStrings.sectionTitles.get(section.id) || section.title) : section.title;
+    const desc  = hi ? (opts.hiStrings.sectionDescs.get(section.id)  || section.description) : section.description;
+    const label = opts.include_numbering && num ? `${num}.  ${title}` : title;
 
     if (depth === 0) {
       return [
@@ -601,8 +629,8 @@ async function generateDocx(report, sections, outPath, opts) {
           spacing: { before: 240, after: 120 },
           pageBreakBefore: undefined,
         }),
-        ...(section.description ? [new Paragraph({
-          children: [new TextRun({ text: section.description, italics: true, size: 18, color: C.gray, font: docFont })],
+        ...(desc ? [new Paragraph({
+          children: [new TextRun({ text: desc, italics: true, size: 18, color: C.gray, font: docFont })],
           spacing: { after: 80 },
         })] : []),
       ];
@@ -613,8 +641,8 @@ async function generateDocx(report, sections, outPath, opts) {
           children: [new TextRun({ text: label, bold: true, size: 24, color: C.secondary, font: docFont })],
           spacing: { before: 180, after: 80 },
         }),
-        ...(section.description ? [new Paragraph({
-          children: [new TextRun({ text: section.description, italics: true, size: 18, color: C.gray, font: docFont })],
+        ...(desc ? [new Paragraph({
+          children: [new TextRun({ text: desc, italics: true, size: 18, color: C.gray, font: docFont })],
           spacing: { after: 60 },
         })] : []),
       ];
@@ -625,8 +653,8 @@ async function generateDocx(report, sections, outPath, opts) {
         indent: { left: 180 },
         spacing: { before: 120, after: 60 },
       }),
-      ...(section.description ? [new Paragraph({
-        children: [new TextRun({ text: section.description, italics: true, size: 16, color: C.gray, font: docFont })],
+      ...(desc ? [new Paragraph({
+        children: [new TextRun({ text: desc, italics: true, size: 16, color: C.gray, font: docFont })],
         indent: { left: 180 },
         spacing: { after: 60 },
       })] : []),
@@ -1002,6 +1030,9 @@ async function generateDocx(report, sections, outPath, opts) {
   /* ── Build document children (title page + TOC + sections) ── */
   const children = [];
 
+  // Use translated report title when in Hindi mode
+  const docTitle = lang === "hi" && opts.hiStrings ? opts.hiStrings.reportTitle : report.title;
+
   // Report title block (matches A4Page + first-page block in wordDocUtils)
   children.push(new Paragraph({
     children: [new TextRun({ text: report.institution_name || "", bold: true, size: 24, color: C.primary })],
@@ -1009,7 +1040,7 @@ async function generateDocx(report, sections, outPath, opts) {
     spacing: { after: 60 },
   }));
   children.push(new Paragraph({
-    children: [new TextRun({ text: report.title, bold: true, size: 40, color: C.primary })],
+    children: [new TextRun({ text: docTitle, bold: true, size: 40, color: C.primary, font: docFont })],
     alignment: AlignmentType.CENTER,
     border: { bottom: { color: C.primary, space: 1, style: BorderStyle.SINGLE, size: 16 } },
     spacing: { after: 80 },
@@ -1083,7 +1114,10 @@ async function generateDocx(report, sections, outPath, opts) {
     for (const s of sections) {
       const depth  = s.depth || 0;
       const num    = sectionNumbers.get(s.id);
-      const label  = opts.include_numbering && num ? `${num}   ${s.title}` : s.title;
+      const sTitle = (lang === "hi" && opts.hiStrings)
+        ? (opts.hiStrings.sectionTitles.get(s.id) || s.title)
+        : s.title;
+      const label  = opts.include_numbering && num ? `${num}   ${sTitle}` : sTitle;
       const indent = depth * 360;
       const isH1   = depth === 0;
       const pgNum  = String(tocPageMap.get(s.id) || "");
@@ -1175,7 +1209,7 @@ async function generateDocx(report, sections, outPath, opts) {
         children: [
           new TextRun({ text: hdrMeta, size: 15, color: C.lightGray }),
           new TextRun({ text: "\t", size: 15 }),
-          new TextRun({ text: report.title, size: 15, color: C.lightGray }),
+          new TextRun({ text: docTitle, size: 15, color: C.lightGray, font: docFont }),
         ],
         tabStops: [{ type: TabStopType.RIGHT, position: TabStopPosition.MAX }],
         border: { bottom: { color: C.border, space: 1, style: BorderStyle.SINGLE, size: 2 } },
@@ -1293,7 +1327,11 @@ async function generatePdf(report, sections, outPath, opts) {
   ]);
 
   const html    = buildHtml(report, sections, opts, { logoDataUrl, bgDataUrl, coverDataUrl });
-  const hdrMeta = [report.report_type, report.academic_year].filter(Boolean).join("  ");
+  const hdrMeta     = [report.report_type, report.academic_year].filter(Boolean).join("  ");
+  const pdfDocTitle = opts.language === "hi" && opts.hiStrings ? opts.hiStrings.reportTitle : report.title;
+  const pdfFont     = opts.language === "hi"
+    ? "'Noto Sans Devanagari','Mangal','Arial Unicode MS',sans-serif"
+    : "'Times New Roman',Times,serif";
   const browser = await puppeteer.launch({ args: ["--no-sandbox", "--disable-setuid-sandbox"] });
   try {
     const page = await browser.newPage();
@@ -1303,11 +1341,11 @@ async function generatePdf(report, sections, outPath, opts) {
       printBackground: true,
       displayHeaderFooter: true,
       headerTemplate: `
-        <div style="font-size:8px;font-family:'Times New Roman',Times,serif;color:#9ca3af;
+        <div style="font-size:8px;font-family:${pdfFont};color:#9ca3af;
                     width:100%;padding:6px 25mm 4px;box-sizing:border-box;
                     display:flex;justify-content:space-between;border-bottom:1px solid #e5e7eb;">
           <span>${escHtml(hdrMeta)}</span>
-          <span>${escHtml(report.title || "")}</span>
+          <span>${escHtml(pdfDocTitle || "")}</span>
         </div>`,
       footerTemplate: `
         <div style="font-size:8px;font-family:'Times New Roman',Times,serif;color:#374151;
@@ -1457,12 +1495,15 @@ function buildHtml(report, sections, opts, assets = {}) {
 
   /* ── Section header HTML, matching SectionHeader component ── */
   function sectionHeaderHtml(section) {
-    const depth = section.depth || 0;
-    const num   = sectionNumbers.get(section.id);
-    const label = opts.include_numbering && num ? `${num}.&nbsp;&nbsp;${escHtml(section.title)}` : escHtml(section.title);
-    const cls   = depth === 0 ? "sec-h1" : depth === 1 ? "sec-h2" : "sec-h3";
+    const depth  = section.depth || 0;
+    const num    = sectionNumbers.get(section.id);
+    const hiStr  = isHindi && opts.hiStrings;
+    const title  = hiStr ? (opts.hiStrings.sectionTitles.get(section.id) || section.title) : section.title;
+    const descTx = hiStr ? (opts.hiStrings.sectionDescs.get(section.id)  || section.description) : section.description;
+    const label  = opts.include_numbering && num ? `${num}.&nbsp;&nbsp;${escHtml(title)}` : escHtml(title);
+    const cls    = depth === 0 ? "sec-h1" : depth === 1 ? "sec-h2" : "sec-h3";
     const indent = depth >= 2 ? ` style="padding-left:10px"` : "";
-    const desc   = section.description ? `<div class="sec-desc">${escHtml(section.description)}</div>` : "";
+    const desc   = descTx ? `<div class="sec-desc">${escHtml(descTx)}</div>` : "";
     return `<div class="${cls}"${indent}>${label}${desc}</div>`;
   }
 
@@ -1497,7 +1538,10 @@ function buildHtml(report, sections, opts, assets = {}) {
     const rows = sections.map(s => {
       const depth  = s.depth || 0;
       const num    = sectionNumbers.get(s.id);
-      const label  = opts.include_numbering && num ? `${num}&nbsp;&nbsp;${escHtml(s.title)}` : escHtml(s.title);
+      const sTitle = (isHindi && opts.hiStrings)
+        ? (opts.hiStrings.sectionTitles.get(s.id) || s.title)
+        : s.title;
+      const label  = opts.include_numbering && num ? `${num}&nbsp;&nbsp;${escHtml(sTitle)}` : escHtml(sTitle);
       const pgNum  = tocMap.get(s.id) || "";
       const indent = depth * 22;
       const fw     = depth === 0 ? "700" : "400";
@@ -1541,6 +1585,7 @@ function buildHtml(report, sections, opts, assets = {}) {
     : "";
 
   /* ── Title page ── */
+  const htmlDocTitle = isHindi && opts.hiStrings ? opts.hiStrings.reportTitle : report.title;
   const logoSrc = logoDataUrl || (report.logo_url ? escHtml(report.logo_url) : null);
   const titleHtml = `
     <div class="title-page">
@@ -1549,7 +1594,7 @@ function buildHtml(report, sections, opts, assets = {}) {
       <div style="font-family:'Calibri','Segoe UI',Arial,sans-serif;font-size:13pt;font-weight:700;color:#1F3864;text-align:center;margin-bottom:8px">
         ${escHtml(report.institution_name || "")}
       </div>
-      <div class="title-main">${escHtml(report.title)}</div>
+      <div class="title-main">${escHtml(htmlDocTitle)}</div>
       ${(report.report_type || report.academic_year)
         ? `<div class="title-sub">${escHtml([report.report_type, report.academic_year].filter(Boolean).join("   ·   "))}</div>`
         : ""}
@@ -1559,7 +1604,7 @@ function buildHtml(report, sections, opts, assets = {}) {
 <html lang="${hlang}">
 <head>
 <meta charset="UTF-8">
-<title>${escHtml(report.title)}</title>
+<title>${escHtml(htmlDocTitle)}</title>
 <style>
 ${isHindi ? `@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;700&display=swap');` : ""}
 /* ── Base ── */
@@ -1646,7 +1691,7 @@ hr.divider { border: none; border-top: 1px solid #9ca3af; margin: 10px 0 12px; }
   /* Table: repeat header row on every page, avoid mid-row breaks */
   .data-tbl thead { display: table-header-group; }
   .data-tbl tfoot { display: table-footer-group; }
-  .data-tbl tr { page-break-inside: avoid; }
+  .data-tbl tr { page-break-inside: avoid; break-inside: avoid; }
   /* Keep images with their captions */
   .img-wrap, .kpi-block { page-break-inside: avoid; }
   /* Avoid orphaned section headings */

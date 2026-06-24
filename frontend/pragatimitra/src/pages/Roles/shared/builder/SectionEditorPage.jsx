@@ -542,7 +542,7 @@ const CON_H = A4_H  - MARG * 2;   // 979 px content height (page body)
 const TITLE_H = 110;               // approximate height taken by title block on page 1
 
 /* ── render one block in Word style ── */
-function WordBlock({ block, lang = "en" }) {
+function WordBlock({ block, lang = "en", measureIdx = null }) {
   const c    = block.content || {};
   const isHi = lang === "hi";
   // Block translations live in block.translations[language] (block_translations table),
@@ -629,9 +629,6 @@ function WordBlock({ block, lang = "en" }) {
 
     case "TABLE": {
       const isFormImport = c.source === "form_import";
-      // Form-import blocks store columns as [{key,label}] and rows as objects keyed by col.key;
-      // manually-built tables store headers as a string[] and rows as arrays of cell values.
-      // Both kinds read their Hindi version from block.translations.hi (block_translations table).
       const dataLanguage = c.language === "hi" ? "hi" : "en";
       const useTranslation = isHi && lang !== dataLanguage && t;
       const fmtColumns = (isFormImport && useTranslation && t.columns) || c.columns || [];
@@ -639,33 +636,51 @@ function WordBlock({ block, lang = "en" }) {
       const headers = isFormImport
         ? fmtColumns.map(col => col.label || col.key)
         : (pick(t?.headers, c.headers) || []);
-      const rows = isFormImport ? fmtRows : (pick(t?.rows, c.rows) || []);
+      const allRows = isFormImport ? fmtRows : (pick(t?.rows, c.rows) || []);
+
+      // Virtual split block props — set by distribution algorithm for row-level page splitting
+      const rowStart    = block._rowStart ?? 0;
+      const rowEnd      = block._rowEnd   != null ? block._rowEnd : allRows.length;
+      const displayRows = allRows.slice(rowStart, rowEnd);
+      const isCont      = !!block._isContinuation;
+      const noBottomMg  = !!block._noBottomMargin;
+
       const cell = { border: "1px solid #9ca3af", padding: "4px 7px", fontFamily: DOC_FONT, fontSize: 10, color: "#111827", verticalAlign: "top" };
+      const theadProps = measureIdx != null ? { "data-table-header": measureIdx } : {};
       return (
-        <div style={{ margin: "8px 0 12px", overflowX: "auto" }}>
+        <div style={{ margin: `8px 0 ${noBottomMg ? 2 : 12}px`, overflowX: "auto" }}>
           <table style={{ borderCollapse: "collapse", width: "100%" }}>
             {headers.length > 0 && (
-              <thead>
+              <thead {...theadProps}>
                 <tr>
-                  {headers.map((h, i) => (
-                    <th key={i} style={{ ...cell, background: "#D0CECE", fontWeight: 700, textAlign: "left" }}>{h || `Col ${i + 1}`}</th>
+                  {headers.map((h, hi) => (
+                    <th key={hi} style={{ ...cell, background: "#D0CECE", fontWeight: 700, textAlign: "left" }}>
+                      {h || `Col ${hi + 1}`}
+                      {isCont && hi === 0 && (
+                        <span style={{ fontSize: 8, color: "#9ca3af", fontStyle: "italic", marginLeft: 6 }}>(contd.)</span>
+                      )}
+                    </th>
                   ))}
                 </tr>
               </thead>
             )}
             <tbody>
-              {rows.map((row, ri) => (
-                <tr key={ri} style={{ background: ri % 2 === 0 ? "#fff" : "#f9fafb" }}>
-                  {isFormImport
-                    ? fmtColumns.map((col, ci) => (
-                        <td key={ci} style={cell}>{row?.[col.key] != null ? String(row[col.key]) : ""}</td>
-                      ))
-                    : (Array.isArray(row) ? row : []).map((cell_val, ci) => (
-                        <td key={ci} style={cell}>{cell_val}</td>
-                      ))
-                  }
-                </tr>
-              ))}
+              {displayRows.map((row, ri) => {
+                const absRi   = rowStart + ri;
+                const rowProps = measureIdx != null ? { "data-table-row": `${measureIdx}-${ri}` } : {};
+                return (
+                  <tr key={ri} style={{ background: absRi % 2 === 0 ? "#fff" : "#f9fafb" }} {...rowProps}>
+                    {isFormImport
+                      ? fmtColumns.map((col, ci) => (
+                          <td key={ci} style={cell}>{row?.[col.key] != null ? String(row[col.key]) : ""}</td>
+                        ))
+                      : (Array.isArray(row) ? row : []).map((cell_val, ci) => (
+                          <td key={ci} style={cell}>{cell_val}</td>
+                        ))
+                    }
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -855,35 +870,102 @@ function WordDocumentPreview({ reportMeta, section, blocks, reportSections, curr
     return () => ro.disconnect();
   }, []);
 
-  /* Distribute blocks across pages using hidden measurement */
+  /* Distribute blocks across pages with per-row table splitting */
   useEffect(() => {
     if (!measureRef.current || !blocks.length) {
       setPageGroups([blocks]);
       return;
     }
 
-    const els = Array.from(measureRef.current.querySelectorAll("[data-block-idx]"));
-    if (!els.length) { setPageGroups([blocks]); return; }
+    requestAnimationFrame(() => {
+      const root = measureRef.current;
+      if (!root) return;
+      const els = Array.from(root.querySelectorAll("[data-block-idx]"));
+      if (!els.length) { setPageGroups([blocks]); return; }
 
-    const groups  = [];
-    let current   = [];
-    let usedH     = TITLE_H; // page 1 has title header above section
+      const SUBSEQ_INIT    = 40;  // subsequent pages: repeated section sub-heading
+      const INTER_BLOCK    = 12;  // inter-block margin
+      const TBL_HDR_REPEAT = 28;  // approx height of table header when repeated on continuation page
 
-    els.forEach((el) => {
-      const idx = Number(el.getAttribute("data-block-idx"));
-      const h   = el.offsetHeight + 12; // 12 = inter-block margin
-      if (usedH + h > CON_H && current.length > 0) {
-        groups.push(current);
-        current = [blocks[idx]];
-        usedH   = 40; // subsequent pages: section heading only
-      } else {
-        current.push(blocks[idx]);
-        usedH += h;
+      const groups = [];
+      let current  = [];
+      let usedH    = TITLE_H; // page 1 starts with section heading
+
+      function flushPage() {
+        if (current.length) groups.push(current);
+        current = [];
+        usedH   = SUBSEQ_INIT;
       }
+
+      for (const el of els) {
+        const idx   = Number(el.getAttribute("data-block-idx"));
+        const block = blocks[idx];
+
+        if (block.block_type === "TABLE") {
+          // Measure thead and each body row individually
+          const theadEl  = root.querySelector(`thead[data-table-header="${idx}"]`);
+          const theadH   = theadEl ? theadEl.offsetHeight : 28;
+          const trEls    = Array.from(root.querySelectorAll(`tr[data-table-row^="${idx}-"]`));
+          const rowHts   = trEls.map(tr => tr.offsetHeight || 20);
+
+          // Fast path: entire table fits on current page
+          const totalH = theadH + rowHts.reduce((s, h) => s + h, 0) + INTER_BLOCK;
+          if (usedH + totalH <= CON_H) {
+            current.push(block);
+            usedH += totalH;
+            continue;
+          }
+
+          // Slow path: split table row by row across pages
+          let rowStart = 0;
+          while (rowStart < rowHts.length) {
+            const hdrH  = rowStart === 0 ? theadH : TBL_HDR_REPEAT;
+            const avail = CON_H - usedH;
+
+            // Flush current page if header + at least 1 row won't fit
+            if (current.length > 0 && avail < hdrH + (rowHts[rowStart] || 20)) {
+              flushPage();
+              continue;  // retry with full page headroom
+            }
+
+            // Pack as many rows as fit in remaining space
+            const avail2 = CON_H - usedH;
+            let chunkH   = hdrH;
+            let rowEnd   = rowStart;
+            while (rowEnd < rowHts.length) {
+              const rh = rowHts[rowEnd] || 20;
+              if (chunkH + rh > avail2 && rowEnd > rowStart) break;
+              chunkH += rh;
+              rowEnd++;
+            }
+            if (rowEnd === rowStart) rowEnd = Math.min(rowStart + 1, rowHts.length); // force ≥1 row
+
+            const isLastChunk = rowEnd >= rowHts.length;
+            current.push({
+              ...block,
+              _rowStart:       rowStart,
+              _rowEnd:         rowEnd,
+              _isContinuation: rowStart > 0,
+              _noBottomMargin: !isLastChunk,
+            });
+            usedH  += chunkH + (isLastChunk ? INTER_BLOCK : 0);
+            rowStart = rowEnd;
+
+            if (!isLastChunk) flushPage();
+          }
+        } else {
+          // Non-table block: measure as a whole unit
+          const h = el.offsetHeight + INTER_BLOCK;
+          if (usedH + h > CON_H && current.length > 0) flushPage();
+          current.push(block);
+          usedH += h;
+        }
+      }
+
+      if (current.length) groups.push(current);
+      setPageGroups(groups.length ? groups : [blocks]);
     });
-    if (current.length) groups.push(current);
-    setPageGroups(groups.length ? groups : [blocks]);
-  }, [blocks]);
+  }, [blocks, lang]);
 
   /* Status colours for nav strip */
   const navSectionList = reportSections;
@@ -916,7 +998,7 @@ function WordDocumentPreview({ reportMeta, section, blocks, reportSections, curr
         >
           {blocks.map((b, i) => (
             <div key={b.id} data-block-idx={i}>
-              <WordBlock block={b} lang={lang} />
+              <WordBlock block={b} lang={lang} measureIdx={i} />
             </div>
           ))}
         </div>
