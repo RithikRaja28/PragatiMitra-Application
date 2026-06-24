@@ -286,7 +286,9 @@ export default function ReportAuditLogsPage() {
       {/* ── Empty ── */}
       {!loading && !err && logs.length === 0 && (
         <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, padding: "60px 40px", textAlign: "center" }}>
-          <div style={{ fontSize: 40, marginBottom: 12 }}>📋</div>
+          <div style={{ width: 52, height: 52, background: "#f1f5f9", borderRadius: 13, margin: "0 auto 12px", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="1.5"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="13" y2="16"/></svg>
+          </div>
           <div style={{ fontSize: 16, fontWeight: 700, color: "#1e293b", marginBottom: 6 }}>No logs found</div>
           <div style={{ fontSize: 13, color: "#94a3b8" }}>No report module activity matches your current filters.</div>
         </div>

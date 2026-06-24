@@ -1175,19 +1175,19 @@ export default function CreateReportWizardPage({ onCreated, onCancel, initialRep
             <div style={{ marginTop: 28, border: `1px solid ${C.border}`, borderRadius: 12, overflow: "hidden" }}>
               <div style={{ padding: "12px 18px", background: C.bg, borderBottom: `1px solid ${C.border}`,
                 display: "flex", alignItems: "center", gap: 10 }}>
-                <span style={{ fontSize: 16 }}>🖼</span>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={C.primary} strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
                 <span style={{ fontSize: 13, fontWeight: 700, color: C.text }}>Branding Assets</span>
                 <span style={{ fontSize: 11, color: C.textMuted, marginLeft: 4 }}>(optional — uploaded to S3 on save)</span>
               </div>
               <div style={{ padding: "16px 18px", display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14 }}>
                 {[
-                  { key: "COVER_IMAGE", label: "Cover Image", icon: "🖼" },
-                  { key: "LOGO",        label: "Logo",        icon: "🏷" },
-                  { key: "BG_IMAGE",    label: "Background",  icon: "🎨" },
+                  { key: "COVER_IMAGE", label: "Cover Image" },
+                  { key: "LOGO",        label: "Logo" },
+                  { key: "BG_IMAGE",    label: "Background" },
                 ].map(asset => (
                   <div key={asset.key}>
                     <div style={{ fontSize: 11, fontWeight: 700, color: C.textSub, textTransform: "uppercase",
-                      letterSpacing: "0.07em", marginBottom: 6 }}>{asset.icon} {asset.label}</div>
+                      letterSpacing: "0.07em", marginBottom: 6 }}>{asset.label}</div>
                     <label style={{ display: "block", cursor: "pointer" }}>
                       <div style={{
                         border: `1.5px dashed ${brandingFiles[asset.key] ? C.primary : C.border}`,

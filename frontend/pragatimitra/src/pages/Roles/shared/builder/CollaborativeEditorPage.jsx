@@ -231,9 +231,9 @@ function AssignFormPage({ sectionId, sectionTitle, reportTitle, apiFetch, onBack
       <div>
         <label style={S.label}>Assign Type</label>
         <div style={{ display: "flex", gap: 6 }}>
-          {typeBtn("USER", "👤 User")}
-          {typeBtn("ROLE", "🏷 Role")}
-          {typeBtn("DEPT", "🏢 Department")}
+          {typeBtn("USER", "User")}
+          {typeBtn("ROLE", "Role")}
+          {typeBtn("DEPT", "Department")}
         </div>
       </div>
 
@@ -351,7 +351,7 @@ function AssignFormPage({ sectionId, sectionTitle, reportTitle, apiFetch, onBack
         </div>
         {totalCount === 0 ? (
           <div style={{ padding: "24px", textAlign: "center", background: "#f8fafc", borderRadius: 10, border: "1px dashed #e2e8f0" }}>
-            <div style={{ fontSize: 24, marginBottom: 6 }}>👥</div>
+            <div style={{ marginBottom: 8 }}><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="1.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>
             <div style={{ fontSize: 13, color: "#94a3b8" }}>No assignments yet</div>
           </div>
         ) : (
@@ -377,7 +377,7 @@ function AssignFormPage({ sectionId, sectionTitle, reportTitle, apiFetch, onBack
             })}
             {roleAssigns.map((a) => (
               <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 10, border: "1px solid #f1f5f9", background: "#fafafa" }}>
-                <div style={{ width: 32, height: 32, borderRadius: "50%", background: "#dbeafe", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, flexShrink: 0 }}>🏷</div>
+                <div style={{ width: 32, height: 32, borderRadius: "50%", background: "#dbeafe", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1d4ed8" strokeWidth="2"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg></div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 13, fontWeight: 600, color: "#1e293b" }}>{a.role_name}</div>
                   <div style={{ fontSize: 11, color: "#94a3b8" }}>Role assignment</div>
@@ -391,7 +391,7 @@ function AssignFormPage({ sectionId, sectionTitle, reportTitle, apiFetch, onBack
             ))}
             {deptAssigns.map((a) => (
               <div key={a.department_id || a.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 10, border: "1px solid #f1f5f9", background: "#fafafa" }}>
-                <div style={{ width: 32, height: 32, borderRadius: "50%", background: "#d1fae5", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, flexShrink: 0 }}>🏢</div>
+                <div style={{ width: 32, height: 32, borderRadius: "50%", background: "#d1fae5", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#15803d" strokeWidth="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg></div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 13, fontWeight: 600, color: "#1e293b" }}>{a.department_name || a.name}</div>
                   <div style={{ fontSize: 11, color: "#94a3b8" }}>Department assignment</div>
@@ -518,7 +518,7 @@ function VersionHistoryPage({ sectionId, sectionTitle, reportTitle, apiFetch, is
         </button>
         <div style={{ background: "#fff", borderRadius: 18, border: "1px solid rgba(0,0,0,0.07)", boxShadow: "0 2px 16px rgba(0,0,0,0.06)", overflow: "hidden" }}>
           <div style={{ padding: "20px 28px 16px", borderBottom: "1px solid #f1f5f9", display: "flex", alignItems: "center", gap: 14 }}>
-            <div style={{ width: 40, height: 40, borderRadius: 10, background: "#fef3c7", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, flexShrink: 0 }}>📄</div>
+            <div style={{ width: 40, height: 40, borderRadius: 10, background: "#fef3c7", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div>
             <div>
               <div style={{ fontSize: 16, fontWeight: 700, color: "#1e293b" }}>Version {viewSnap.vNum} Preview</div>
               {viewSnap.section?.title && <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 2 }}>Section: {viewSnap.section.title}</div>}
@@ -545,7 +545,7 @@ function VersionHistoryPage({ sectionId, sectionTitle, reportTitle, apiFetch, is
       </button>
       <div style={{ background: "#fff", borderRadius: 18, border: "1px solid rgba(0,0,0,0.07)", boxShadow: "0 2px 16px rgba(0,0,0,0.06)", overflow: "hidden" }}>
         <div style={{ padding: "24px 28px 20px", borderBottom: "1px solid #f1f5f9", display: "flex", alignItems: "center", gap: 14 }}>
-          <div style={{ width: 44, height: 44, borderRadius: 12, background: "#fef3c7", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, flexShrink: 0 }}>🕐</div>
+          <div style={{ width: 44, height: 44, borderRadius: 12, background: "#fef3c7", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="1.8"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
           <div>
             <div style={{ fontSize: 17, fontWeight: 700, color: "#1e293b" }}>Version History</div>
             {sectionTitle && <div style={{ fontSize: 13, color: "#94a3b8", marginTop: 3 }}>Section: {sectionTitle}</div>}
@@ -556,7 +556,7 @@ function VersionHistoryPage({ sectionId, sectionTitle, reportTitle, apiFetch, is
           {loading && <div style={{ textAlign: "center", padding: "40px 0", color: "#94a3b8", fontSize: 13 }}>Loading history…</div>}
           {!loading && versions.length === 0 && (
             <div style={{ textAlign: "center", padding: "48px 24px", background: "#f8fafc", borderRadius: 12, border: "1px dashed #e2e8f0" }}>
-              <div style={{ fontSize: 32, marginBottom: 10 }}>📋</div>
+              <div style={{ marginBottom: 10, display: "flex", justifyContent: "center" }}><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="1.4"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg></div>
               <div style={{ fontSize: 14, fontWeight: 600, color: "#1e293b", marginBottom: 6 }}>No versions yet</div>
               <div style={{ fontSize: 13, color: "#94a3b8" }}>Submit the section for review to create the first snapshot.</div>
             </div>
@@ -1161,7 +1161,7 @@ export default function CollaborativeEditorPage({ reportId, reportTitle, onBack 
             <div style={{ textAlign: "center", padding: "60px 40px", maxWidth: 400 }}>
               {sections.length === 0 ? (
                 <>
-                  <div style={{ fontSize: 48, marginBottom: 16 }}>📋</div>
+                  <div style={{ width: 56, height: 56, background: "#f1f5f9", borderRadius: 14, margin: "0 auto 16px", display: "flex", alignItems: "center", justifyContent: "center" }}><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="1.5"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="13" y2="16"/></svg></div>
                   <div style={{ fontSize: 16, fontWeight: 700, color: "#1e293b", marginBottom: 8 }}>Start building your report</div>
                   <p style={{ fontSize: 13, color: "#94a3b8", marginBottom: 24, lineHeight: 1.6 }}>
                     Add sections to organise your report. Each section can be assigned to team members who will fill in the content.

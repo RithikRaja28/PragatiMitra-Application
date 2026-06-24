@@ -243,7 +243,7 @@ function UserForm({
       pageTitle={t("User Management", lang)}
       formTitle={isEdit ? t("Edit User", lang) : t("New User", lang)}
       formSubtitle={isEdit ? entity.full_name : t("Add a new user to your department", lang)}
-      icon="👤"
+      icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#059669" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>}
       iconBg="#d1fae5"
       onBack={onBack}
       onSubmit={handleSubmit}

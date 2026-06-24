@@ -630,7 +630,7 @@ function EmptyState() {
       background:"linear-gradient(135deg, #f8fafc, #eff6ff)",
       borderRadius:16, border:"2px dashed #bfdbfe",
     }}>
-      <div style={{ fontSize:48, marginBottom:16, lineHeight:1 }}>📊</div>
+      <div style={{ display:"flex", justifyContent:"center", marginBottom:16, color:"#93c5fd" }}><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></div>
       <div style={{ fontSize:16, fontWeight:700, color:"#1e293b", marginBottom:8 }}>
         {t("No KPI charts on dashboard yet", lang)}
       </div>

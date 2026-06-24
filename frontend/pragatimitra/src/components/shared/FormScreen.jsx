@@ -101,7 +101,6 @@ export default function FormScreen({
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                fontSize: 22,
                 flexShrink: 0,
               }}
             >

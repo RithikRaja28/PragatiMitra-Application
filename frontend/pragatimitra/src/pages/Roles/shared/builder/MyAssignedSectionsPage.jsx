@@ -5,13 +5,13 @@ import PageHeader from "../../../../components/shared/PageHeader";
 import SectionEditorPage from "./SectionEditorPage";
 
 const STATUS_CFG = {
-  NOT_STARTED:  { bg: "#f1f5f9", color: "#64748b",  label: "Not Started",  icon: "📋" },
-  IN_PROGRESS:  { bg: "#dbeafe", color: "#1d4ed8",  label: "In Progress",  icon: "✏️" },
-  SUBMITTED:    { bg: "#fef3c7", color: "#d97706",  label: "Submitted",    icon: "📤" },
-  UNDER_REVIEW: { bg: "#dbeafe", color: "#1e40af",  label: "Under Review", icon: "🔍" },
-  APPROVED:     { bg: "#dcfce7", color: "#15803d",  label: "Approved",     icon: "✅" },
-  SENT_BACK:    { bg: "#fee2e2", color: "#b91c1c",  label: "Sent Back",    icon: "🔄" },
-  LOCKED:       { bg: "#e2e8f0", color: "#475569",  label: "Locked",       icon: "🔒" },
+  NOT_STARTED:  { bg: "#f1f5f9", color: "#64748b",  label: "Not Started"  },
+  IN_PROGRESS:  { bg: "#dbeafe", color: "#1d4ed8",  label: "In Progress"  },
+  SUBMITTED:    { bg: "#fef3c7", color: "#d97706",  label: "Submitted"    },
+  UNDER_REVIEW: { bg: "#dbeafe", color: "#1e40af",  label: "Under Review" },
+  APPROVED:     { bg: "#dcfce7", color: "#15803d",  label: "Approved"     },
+  SENT_BACK:    { bg: "#fee2e2", color: "#b91c1c",  label: "Sent Back"    },
+  LOCKED:       { bg: "#e2e8f0", color: "#475569",  label: "Locked"       },
 };
 
 const ROLE_CFG = {
@@ -24,11 +24,12 @@ function StatusBadge({ status }) {
   const s = STATUS_CFG[status] || STATUS_CFG.NOT_STARTED;
   return (
     <span style={{
-      display: "inline-flex", alignItems: "center", gap: 4,
+      display: "inline-flex", alignItems: "center", gap: 5,
       padding: "2px 10px", borderRadius: 20, fontSize: 11, fontWeight: 600,
       background: s.bg, color: s.color,
     }}>
-      {s.icon} {s.label}
+      <span style={{ width: 6, height: 6, borderRadius: "50%", background: s.color, display: "inline-block", flexShrink: 0 }} />
+      {s.label}
     </span>
   );
 }
@@ -90,7 +91,7 @@ function SectionCard({ section, onEdit }) {
         </div>
         {section.status === "SENT_BACK" && (
           <div style={{ marginTop: 5, fontSize: 11, color: "#b91c1c", fontWeight: 600 }}>
-            🔄 Sent back — please update and resubmit
+            Sent back — please update and resubmit
           </div>
         )}
       </div>
@@ -238,7 +239,9 @@ export default function MyAssignedSectionsPage() {
           background: "#fff", border: "1px solid rgba(0,0,0,0.07)",
           borderRadius: 14, padding: "60px 40px", textAlign: "center",
         }}>
-          <div style={{ fontSize: 48, marginBottom: 12 }}>📋</div>
+          <div style={{ width: 56, height: 56, background: "#f1f5f9", borderRadius: 14, margin: "0 auto 16px", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="1.5"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="13" y2="16"/></svg>
+          </div>
           <div style={{ fontSize: 16, fontWeight: 700, color: "#1e293b", marginBottom: 8 }}>
             No sections assigned yet
           </div>
@@ -251,7 +254,7 @@ export default function MyAssignedSectionsPage() {
       {!loading && !err && groups.map(group => (
         <div key={group.report_title} style={{ marginBottom: 28 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12, paddingBottom: 10, borderBottom: "1px solid #f1f5f9" }}>
-            <span style={{ fontSize: 17 }}>📄</span>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
             <div>
               <div style={{ fontSize: 14, fontWeight: 700, color: "#1e293b" }}>{group.report_title}</div>
               <div style={{ fontSize: 11, color: "#94a3b8" }}>

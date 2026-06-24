@@ -100,8 +100,8 @@ function TemplateList({ onCreateNew, onEdit }) {
             <div style={{
               width: 44, height: 44, borderRadius: 12,
               background: C.primaryLt, border: `1.5px solid ${C.primaryMid}55`,
-              display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20,
-            }}>📋</div>
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="1.8"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="13" y2="16"/></svg></div>
             <div>
               <h1 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: C.text, letterSpacing: "-0.02em" }}>
                 Report Templates
@@ -132,10 +132,10 @@ function TemplateList({ onCreateNew, onEdit }) {
         {/* ── Stat cards ───────────────────────────────────────────────── */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, marginBottom: 24 }}>
           {[
-            { label: "Total",    value: counts.ALL,      color: C.primary,  bg: C.primaryLt, icon: "📁" },
-            { label: "Active",   value: counts.ACTIVE,   color: C.success,  bg: C.successLt, icon: "✅" },
-            { label: "Drafts",   value: counts.DRAFT,    color: C.warning,  bg: C.warningLt, icon: "✏️" },
-            { label: "Archived", value: counts.ARCHIVED, color: C.slate,    bg: C.slateLt,   icon: "📦" },
+            { label: "Total",    value: counts.ALL,      color: C.primary,  bg: C.primaryLt, icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg> },
+            { label: "Active",   value: counts.ACTIVE,   color: C.success,  bg: C.successLt, icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="8 12 11 15 16 9"/></svg> },
+            { label: "Drafts",   value: counts.DRAFT,    color: C.warning,  bg: C.warningLt, icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg> },
+            { label: "Archived", value: counts.ARCHIVED, color: C.slate,    bg: C.slateLt,   icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg> },
           ].map(s => (
             <div key={s.label} style={{
               background: C.surface, borderRadius: 14, padding: "16px 18px",
@@ -146,7 +146,7 @@ function TemplateList({ onCreateNew, onEdit }) {
               <div style={{
                 width: 42, height: 42, borderRadius: 10,
                 background: s.bg, display: "flex", alignItems: "center",
-                justifyContent: "center", fontSize: 18, flexShrink: 0,
+                justifyContent: "center", color: s.color, flexShrink: 0,
               }}>{s.icon}</div>
               <div>
                 <div style={{ fontSize: 22, fontWeight: 800, color: s.color, lineHeight: 1 }}>{s.value}</div>
@@ -165,7 +165,7 @@ function TemplateList({ onCreateNew, onEdit }) {
           border: "1px solid #bfdbfe", borderRadius: 10,
           fontSize: 12, color: "#1e40af",
         }}>
-          <span style={{ fontSize: 16, flexShrink: 0 }}>💡</span>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#1e40af" strokeWidth="2" style={{ flexShrink: 0 }}><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
           <span>
             Only <strong>Active</strong> templates appear when institute admins create reports.
             Draft templates are invisible until published.
@@ -245,8 +245,8 @@ function TemplateList({ onCreateNew, onEdit }) {
             <div style={{
               width: 72, height: 72, borderRadius: "50%",
               background: C.primaryLt, margin: "0 auto 20px",
-              display: "flex", alignItems: "center", justifyContent: "center", fontSize: 32,
-            }}>📄</div>
+              display: "flex", alignItems: "center", justifyContent: "center", color: C.primary,
+            }}><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div>
             <div style={{ fontSize: 16, fontWeight: 800, color: C.text, marginBottom: 8 }}>
               {filter === "ALL" ? "No templates yet" : `No ${filter.toLowerCase()} templates`}
             </div>

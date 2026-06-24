@@ -2394,7 +2394,10 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
               borderBottom: `1px solid ${statusLock ? "#fde68a" : "#e8edf3"}`,
               fontSize: 12,
             }}>
-              <span style={{ fontSize: 14 }}>{statusLock ? "🔒" : "👁"}</span>
+              <span style={{ display: "flex" }}>{statusLock
+                ? <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#b45309" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                : <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              }</span>
               {statusLock && (
                 <>
                   <span style={{ fontWeight: 700, color: "#92400e" }}>{section?.status?.replace(/_/g, " ")}</span>
@@ -2959,7 +2962,7 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
                   onMouseEnter={e => { e.currentTarget.style.borderColor = "#818cf8"; e.currentTarget.style.background = "#fafafe"; }}
                   onMouseLeave={e => { e.currentTarget.style.borderColor = "#e2e8f0"; e.currentTarget.style.background = "#fff"; }}
                 >
-                  <div style={{ fontSize: 24, marginBottom: 10 }}>📋</div>
+                  <div style={{ display: "flex", justifyContent: "center", marginBottom: 10, color: "#818cf8" }}><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/></svg></div>
                   <div style={{ fontSize: 13, fontWeight: 700, color: "#1e293b", marginBottom: 4 }}>Manual Table</div>
                   <div style={{ fontSize: 11, color: "#64748b", lineHeight: 1.5 }}>
                     Blank table — type in each cell yourself.
@@ -3039,7 +3042,7 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
                   onMouseEnter={e => { e.currentTarget.style.borderColor = "#818cf8"; e.currentTarget.style.background = "#fafafe"; }}
                   onMouseLeave={e => { e.currentTarget.style.borderColor = "#e2e8f0"; e.currentTarget.style.background = "#fff"; }}
                 >
-                  <div style={{ fontSize: 24, marginBottom: 10 }}>📊</div>
+                  <div style={{ display: "flex", justifyContent: "center", marginBottom: 10, color: "#818cf8" }}><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></div>
                   <div style={{ fontSize: 13, fontWeight: 700, color: "#1e293b", marginBottom: 4 }}>Manual KPI</div>
                   <div style={{ fontSize: 11, color: "#64748b", lineHeight: 1.5 }}>
                     Blank KPI block — enter values yourself.
