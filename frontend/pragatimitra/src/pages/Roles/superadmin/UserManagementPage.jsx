@@ -9,7 +9,7 @@ import { S, Toast } from "../../../components/shared/formUtils";
 import FormScreen from "../../../components/shared/FormScreen";
 import { Select } from "../../../components/shared/ui";
 import PageHeader from "../../../components/shared/PageHeader";
-import { Button, Badge, EmptyState, DataTable, Dropdown, MenuItem, MenuLabel } from "../../../ui";
+import { PageContainer, Button, Badge, EmptyState, DataTable, Dropdown, MenuItem, MenuLabel } from "../../../ui";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { t } from "../../../i18n/translations";
 import ImportWizard from "../../../components/shared/ImportWizard";
@@ -857,12 +857,7 @@ export default function UserManagementPage() {
   }
 
   return (
-    <div
-      style={{
-        padding: "32px 36px",
-        fontFamily: "'Plus Jakarta Sans', sans-serif",
-      }}
-    >
+    <PageContainer>
       {toast && <Toast message={toast.message} type={toast.type} />}
 
       {/* Header */}
@@ -888,7 +883,7 @@ export default function UserManagementPage() {
         apiFetch={apiFetch}
         onEdit={(u) => navigate(`${listPath}/edit`, { state: { entity: u } })}
       />
-    </div>
+    </PageContainer>
   );
 }
 

@@ -4,7 +4,7 @@ import {
   CheckCircle2, Lock, Archive, Server, ArrowRight, Clock,
 } from "lucide-react";
 import { useApi } from "../../../hooks/useApi";
-import PageHeader from "../../../components/shared/PageHeader";
+import { PageContainer, PageHeader } from "../../../ui";
 import { isAuthError } from "../../../components/shared/formUtils";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { t } from "../../../i18n/translations";
@@ -100,7 +100,7 @@ export default function SuperAdminOverviewPage() {
     .slice(0, 5);
 
   return (
-    <div style={{ padding: "24px 28px", fontFamily: "'Plus Jakarta Sans', sans-serif", background: "transparent", minHeight: "100%", display: "flex", flexDirection: "column", gap: 16 }}>
+    <PageContainer style={{ gap: 16 }}>
       <PageHeader
         breadcrumb={[t("Home", lang), t("Super Admin", lang), t("Overview", lang)]}
         title={t("System Overview", lang)}
@@ -228,7 +228,7 @@ export default function SuperAdminOverviewPage() {
           </div>
         </div>
       </div>
-    </div>
+    </PageContainer>
   );
 }
 
