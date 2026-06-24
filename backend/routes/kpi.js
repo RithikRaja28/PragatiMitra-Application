@@ -113,6 +113,113 @@ function isNumericType(dt) {
   return NUMERIC_TYPES.some(nt => (dt || "").toLowerCase().includes(nt));
 }
 
+// ─── Custom-field helpers ─────────────────────────────────────────────────────
+
+// "2026-2027" → 2026, "2027" → 2027, null/undefined → null
+function parseYearStart(academicYear) {
+  if (!academicYear) return null;
+  const m = String(academicYear).match(/^(\d{4})/);
+  return m ? parseInt(m[1], 10) : null;
+}
+
+// Schema field types that count as numeric for aggregation compatibility.
+const NUMERIC_SCHEMA_TYPES = new Set([
+  "number", "integer", "float", "decimal", "numeric",
+  "currency", "percent", "int",
+]);
+function isNumericSchemaType(schemaType) {
+  return NUMERIC_SCHEMA_TYPES.has((schemaType || "text").toLowerCase());
+}
+
+// Column names in custom_field_schemas are generated from user-supplied labels and
+// must be alphanumeric+underscore.  Validate before interpolating into SQL JSONB keys.
+function isValidColName(name) {
+  return typeof name === "string" && /^[A-Za-z_][A-Za-z0-9_]{0,62}$/.test(name);
+}
+
+// SQL expression that extracts a custom field value from the `custom_fields` JSONB
+// column.  Always returns text; callers must append ::numeric when needed.
+function customFieldExpr(col) {
+  if (!isValidColName(col))
+    throw new Error(`Invalid custom field name: "${col}"`);
+  return `(custom_fields->>'${col}')`;
+}
+
+/**
+ * Resolve which columns of `tableName` are physical DB columns vs. custom fields
+ * stored inside the `custom_fields` JSONB column.
+ *
+ * Lookup order (most specific first):
+ *   1. institution_id + exact start-year of academicYear
+ *   2. institution_id only (latest year)
+ *   3. Any active schema for formName (global / shared form fallback)
+ *
+ * Returns { physical: Set<string>, custom: Set<string>, customSchemaTypes: Map<string,string> }
+ */
+async function resolveColumnSources(pool, tableName, institutionId, academicYear) {
+  const formName = tableName.endsWith("_records")
+    ? tableName.slice(0, -"_records".length)
+    : tableName;
+
+  // All physical columns currently in the table
+  const { rows: physRows } = await pool.query(
+    `SELECT column_name
+     FROM   information_schema.columns
+     WHERE  table_schema = 'public' AND table_name = $1`,
+    [tableName]
+  );
+  const physical = new Set(physRows.map(r => r.column_name));
+
+  const yearNum = parseYearStart(academicYear);
+
+  // Base query – returns one row per unique column_name, latest year wins
+  const fieldQ = (extra = "") => `
+    SELECT DISTINCT ON (elem->>'column_name')
+           elem->>'column_name' AS col,
+           elem->>'type'        AS schema_type
+    FROM   custom_field_schemas,
+           jsonb_array_elements(schema->'fields') AS elem
+    WHERE  form_name = $1
+      AND  is_active = true
+      AND  elem->>'column_name' IS NOT NULL
+      ${extra}
+    ORDER  BY elem->>'column_name', year DESC NULLS LAST`;
+
+  let schemaRows = [];
+
+  if (institutionId && yearNum) {
+    const { rows } = await pool.query(
+      fieldQ("AND institution_id = $2 AND year = $3"),
+      [formName, institutionId, yearNum]
+    );
+    schemaRows = rows;
+  }
+
+  if (!schemaRows.length && institutionId) {
+    const { rows } = await pool.query(
+      fieldQ("AND institution_id = $2"),
+      [formName, institutionId]
+    );
+    schemaRows = rows;
+  }
+
+  if (!schemaRows.length) {
+    const { rows } = await pool.query(fieldQ(), [formName]);
+    schemaRows = rows;
+  }
+
+  const custom = new Set();
+  const customSchemaTypes = new Map();
+  for (const r of schemaRows) {
+    const col = r.col?.trim().toLowerCase();
+    if (!col || physical.has(col)) continue;   // skip physical columns
+    custom.add(col);
+    customSchemaTypes.set(col, r.schema_type || "text");
+  }
+
+  return { physical, custom, customSchemaTypes };
+}
+
 function niceNumber(val) {
   if (!val || val <= 0) return 100;
   const mag = Math.pow(10, Math.floor(Math.log10(val)));
@@ -156,40 +263,50 @@ function buildAggExpr(aggType, col) {
   }
 }
 
-function buildDisplaySql(cfg) {
+/**
+ * Build the human-readable display SQL stored in kpi_config.query.
+ * Accepts an optional `customFields` Set so that columns stored in the
+ * custom_fields JSONB column are referenced correctly via ->> extraction
+ * rather than as bare identifiers.
+ */
+function buildDisplaySql(cfg, customFields = new Set()) {
   const agg      = cfg.aggregation_type || "none";
   const groupCol = cfg.group_by_column  || cfg.x_col;
   const yCols    = cfg.y_cols || [];
 
+  // Physical column → quoted identifier; custom field → JSONB ->> extraction
+  const colRef = col =>
+    customFields.has(col) ? customFieldExpr(col) : quoteIdent(col);
+
   // Every _records table has a `language` column ('en' | 'hi' | NULL).
-  // When Hindi translation is enabled, each submission has two rows — one per language.
-  // Without this filter the query returns double records and mixes English/Hindi x-axis values.
-  // NULL covers legacy rows created before the language column existed.
+  // Without this filter the query returns double records when Hindi rows exist.
   const langFilter = `(language = 'en' OR language IS NULL)`;
+
+  const groupRef = colRef(groupCol);
 
   if (agg === "none") {
     return (
-      `SELECT ${groupCol}, ${yCols.join(", ")}\n` +
+      `SELECT ${groupRef}, ${yCols.map(colRef).join(", ")}\n` +
       `FROM   ${cfg.table_name}\n` +
-      `WHERE  ${groupCol} IS NOT NULL\n` +
+      `WHERE  ${groupRef} IS NOT NULL\n` +
       `  AND  ${langFilter}\n` +
-      `ORDER  BY ${groupCol}`
+      `ORDER  BY ${groupRef}`
     );
   }
 
   const yExprs = yCols.map(col => {
-    const expr = buildAggExpr(agg, col);
+    const expr = buildAggExpr(agg, colRef(col));
     return `${expr} AS "${col}_${agg}"`;
   });
 
   return (
-    `SELECT ${groupCol},\n` +
+    `SELECT ${groupRef},\n` +
     `       ${yExprs.join(",\n       ")}\n` +
     `FROM   ${cfg.table_name}\n` +
-    `WHERE  ${groupCol} IS NOT NULL\n` +
+    `WHERE  ${groupRef} IS NOT NULL\n` +
     `  AND  ${langFilter}\n` +
-    `GROUP  BY ${groupCol}\n` +
-    `ORDER  BY ${groupCol}`
+    `GROUP  BY ${groupRef}\n` +
+    `ORDER  BY ${groupRef}`
   );
 }
 
@@ -230,13 +347,18 @@ async function validateTableWhitelist(pool, tableName) {
 
 /**
  * Load all column names+types for a table and validate that:
- *  1. x_col exists
+ *  1. x_col exists (physical OR custom field)
  *  2. group_by_column (if given) exists
  *  3. all y_cols exist
- *  4. aggregation is compatible with each y_col's data type
- * Returns a Map<colName, dataType> for callers that need it.
+ *  4. aggregation is compatible with each y_col's data type / schema type
+ *
+ * Accepts two extra optional params so it can also approve columns that live
+ * inside the custom_fields JSONB column rather than as physical table columns.
+ *
+ * Returns { colMap, custom, customSchemaTypes } — callers may use the custom
+ * field sets to build JSONB-aware SQL expressions.
  */
-async function validateColumns(pool, tableName, xCol, yCols, groupByCol, aggType) {
+async function validateColumns(pool, tableName, xCol, yCols, groupByCol, aggType, institutionId, academicYear) {
   const { rows } = await pool.query(
     `SELECT column_name, data_type
      FROM   information_schema.columns
@@ -247,7 +369,20 @@ async function validateColumns(pool, tableName, xCol, yCols, groupByCol, aggType
     throw Object.assign(new Error(`Table "${tableName}" was not found or has no columns.`), { statusCode: 400 });
 
   const colMap = new Map(rows.map(r => [r.column_name, r.data_type]));
-  const exist  = col => colMap.has(col);
+
+  // Resolve custom fields (stored in custom_fields JSONB, not physical columns)
+  const { custom, customSchemaTypes } = await resolveColumnSources(
+    pool, tableName, institutionId || null, academicYear || null
+  );
+
+  // A column is valid if it exists as a physical column OR as a custom field
+  const exist      = col => colMap.has(col) || custom.has(col);
+  // Numeric check: physical → data_type; custom → schema type from custom_field_schemas
+  const isNumericCol = col => {
+    if (colMap.has(col)) return isNumericType(colMap.get(col));
+    if (custom.has(col)) return isNumericSchemaType(customSchemaTypes.get(col));
+    return false;
+  };
 
   if (!exist(xCol))
     throw Object.assign(new Error(`X-axis column "${xCol}" does not exist in table "${tableName}".`), { statusCode: 400 });
@@ -258,14 +393,14 @@ async function validateColumns(pool, tableName, xCol, yCols, groupByCol, aggType
   for (const col of yCols) {
     if (!exist(col))
       throw Object.assign(new Error(`Y-axis column "${col}" does not exist in table "${tableName}".`), { statusCode: 400 });
-    if (NUMERIC_ONLY_AGGS.has(agg) && !isNumericType(colMap.get(col)))
+    if (NUMERIC_ONLY_AGGS.has(agg) && !isNumericCol(col))
       throw Object.assign(new Error(
-        `Aggregation "${agg.toUpperCase()}" requires a numeric column, but "${col}" is type "${colMap.get(col)}". ` +
+        `Aggregation "${agg.toUpperCase()}" requires a numeric column, but "${col}" is not numeric. ` +
         `Use COUNT or COUNT DISTINCT for text/date columns.`
       ), { statusCode: 400 });
   }
 
-  return colMap;
+  return { colMap, custom, customSchemaTypes };
 }
 
 // ─── Role context from JWT ─────────────────────────────────────────────────────
@@ -493,41 +628,56 @@ async function runConfigQuery(pool, cfg, lang = "en") {
 
   const agg            = cfg.aggregation_type || "none";
   const groupCol       = cfg.group_by_column  || cfg.x_col;
-  const groupColQ      = quoteIdent(groupCol);
   const normalizedLang = lang === "hi" ? "hi" : "en";
+
+  // Determine which columns are custom fields (stored in custom_fields JSONB).
+  // This runs one lightweight schema lookup, not the full data query.
+  const { custom } = await resolveColumnSources(
+    pool, cfg.table_name, cfg.institute_id || null, cfg.academic_year || null
+  );
+
+  // SQL reference for a column:
+  //   physical column → "col_name" (quoted identifier)
+  //   custom field    → (custom_fields->>'col_name') (JSONB text extraction)
+  const colRef        = col => custom.has(col) ? customFieldExpr(col) : quoteIdent(col);
+  // Numeric variant — appends ::numeric cast (used for aggregations and raw y-axis)
+  const colRefNumeric = col => `${colRef(col)}::numeric`;
+
+  const groupColRef = colRef(groupCol);
 
   let selectParts;
 
   if (agg === "none") {
     selectParts = [
-      `${quoteIdent(cfg.x_col)} AS __x__`,
-      ...yArr.map((col, i) => `COALESCE(${quoteIdent(col)}::numeric, 0) AS __y${i}__`),
+      `${colRef(cfg.x_col)} AS __x__`,
+      ...yArr.map((col, i) => `COALESCE(${colRefNumeric(col)}, 0) AS __y${i}__`),
     ];
   } else {
-    selectParts = [`${groupColQ} AS __x__`];
+    selectParts = [`${groupColRef} AS __x__`];
     yArr.forEach((col, i) => {
-      const colQ = quoteIdent(col);
+      const cRef = colRef(col);
+      const cNum = colRefNumeric(col);
       let expr;
       switch (agg) {
-        case "sum":            expr = `COALESCE(SUM(${colQ}::numeric), 0)`; break;
+        case "sum":            expr = `COALESCE(SUM(${cNum}), 0)`; break;
         case "count":          expr = `COUNT(*)`; break;
-        case "avg":            expr = `COALESCE(AVG(${colQ}::numeric), 0)`; break;
-        case "min":            expr = `COALESCE(MIN(${colQ}::numeric), 0)`; break;
-        case "max":            expr = `COALESCE(MAX(${colQ}::numeric), 0)`; break;
-        case "count_distinct": expr = `COUNT(DISTINCT ${colQ})`; break;
-        default:               expr = `COALESCE(${colQ}::numeric, 0)`;
+        case "avg":            expr = `COALESCE(AVG(${cNum}), 0)`; break;
+        case "min":            expr = `COALESCE(MIN(${cNum}), 0)`; break;
+        case "max":            expr = `COALESCE(MAX(${cNum}), 0)`; break;
+        case "count_distinct": expr = `COUNT(DISTINCT ${cRef})`; break;
+        default:               expr = `COALESCE(${cNum}, 0)`;
       }
       selectParts.push(`${expr} AS __y${i}__`);
     });
   }
 
-  const whereColQ     = agg === "none" ? quoteIdent(cfg.x_col) : groupColQ;
-  const groupByClause = agg !== "none" ? `GROUP BY ${groupColQ}` : "";
+  const whereColRef   = agg === "none" ? colRef(cfg.x_col) : groupColRef;
+  const groupByClause = agg !== "none" ? `GROUP BY ${groupColRef}` : "";
   // Only cap raw (non-aggregated) queries; aggregation naturally reduces cardinality
   const limitClause   = agg === "none" ? `LIMIT ${RAW_ROW_LIMIT}` : "";
 
   // ── Parameterized WHERE conditions ────────────────────────────────────────
-  const wConds  = [`${whereColQ} IS NOT NULL`];
+  const wConds  = [`${whereColRef} IS NOT NULL`];
   const wParams = [];
 
   // Language filter — prevents double-counting when Hindi translation rows exist.
@@ -550,7 +700,7 @@ async function runConfigQuery(pool, cfg, lang = "en") {
     `FROM   ${quoteIdent(cfg.table_name)}`,
     `WHERE  ${wConds.join(" AND ")}`,
     groupByClause,
-    `ORDER  BY ${agg === "none" ? quoteIdent(cfg.x_col) : groupColQ}`,
+    `ORDER  BY ${agg === "none" ? colRef(cfg.x_col) : groupColRef}`,
     limitClause,
   ].filter(Boolean);
 
@@ -638,7 +788,7 @@ async function runConfigQuery(pool, cfg, lang = "en") {
     truncated:  agg === "none" && rows.length === RAW_ROW_LIMIT,
     y_range:    { min: 0, max: nm, interval: niceInterval(nm) },
     y_stats:    { min: allVals.length ? Math.min(...allVals) : 0, max: dataMax },
-    sql:        buildDisplaySql(cfg),
+    sql:        buildDisplaySql(cfg, custom),   // custom set makes display SQL reflect JSONB extractions
     aggregation: agg,
     fetched_at: new Date().toISOString(),
   };
@@ -694,6 +844,9 @@ router.get("/tables", async (req, res) => {
 
 router.get("/tables/:tableName/columns", async (req, res) => {
   const { tableName } = req.params;
+  // Optional: ?year=2026-2027 scopes custom fields to a specific academic year.
+  // When omitted, the latest schema for the institution is used (safe default).
+  const { year } = req.query;
   const ctx = getRoleContext(req);
 
   // All KPI-selectable tables are dynamic-form tables named <form_name>_records
@@ -703,15 +856,16 @@ router.get("/tables/:tableName/columns", async (req, res) => {
   const formName = tableName.slice(0, -"_records".length);
 
   try {
-    // Source of truth for which columns the form designer created: custom_field_schemas.
-    // DISTINCT ON (col) + ORDER BY year DESC → most recent label wins when a column's
-    // display label was renamed across schema versions.
-    // Institution-scoped first; falls back to any active schema (shared / super-admin forms).
+    // Build label + schema-type maps from custom_field_schemas.
+    // DISTINCT ON (col) + ORDER BY year DESC → most recent label wins when a column
+    // label was renamed across schema versions.
+    // Institution-scoped first; falls back to global (shared / super-admin forms).
     const SCOPED_SCHEMA_Q = `
       SELECT DISTINCT ON (elem->>'column_name')
         elem->>'column_name'        AS col,
         elem->'label'->>'en'        AS label_en,
-        elem->'label'->>'hi'        AS label_hi
+        elem->'label'->>'hi'        AS label_hi,
+        elem->>'type'               AS schema_type
       FROM   custom_field_schemas cfs,
              jsonb_array_elements(cfs.schema->'fields') AS elem
       WHERE  cfs.form_name = $1 AND cfs.institution_id = $2 AND cfs.is_active = true
@@ -722,7 +876,8 @@ router.get("/tables/:tableName/columns", async (req, res) => {
       SELECT DISTINCT ON (elem->>'column_name')
         elem->>'column_name'        AS col,
         elem->'label'->>'en'        AS label_en,
-        elem->'label'->>'hi'        AS label_hi
+        elem->'label'->>'hi'        AS label_hi,
+        elem->>'type'               AS schema_type
       FROM   custom_field_schemas cfs,
              jsonb_array_elements(cfs.schema->'fields') AS elem
       WHERE  cfs.form_name = $1 AND cfs.is_active = true
@@ -742,14 +897,16 @@ router.get("/tables/:tableName/columns", async (req, res) => {
       schemaRows = rows;
     }
 
-    // Build a label map (column_name → { label_en, label_hi }) from the schema rows.
-    // When the same column appears across multiple schema versions, keep the latest
-    // label (schemaRows already comes from a subquery ordered by year DESC).
+    // Build a map: column_name → { label_en, label_hi, schema_type }
     const labelMap = {};
     schemaRows.forEach(r => {
       const col = r.col?.trim().toLowerCase().replace(/\s+/g, "_");
       if (col && !labelMap[col]) {
-        labelMap[col] = { label_en: r.label_en || null, label_hi: r.label_hi || null };
+        labelMap[col] = {
+          label_en:    r.label_en    || null,
+          label_hi:    r.label_hi    || null,
+          schema_type: r.schema_type || "text",
+        };
       }
     });
 
@@ -759,10 +916,9 @@ router.get("/tables/:tableName/columns", async (req, res) => {
       return res.json({ ok: true, data: [] });
     }
 
-    // Resolve actual PostgreSQL data types from the physical table.
-    // ANY($2::text[]) ensures we only return columns that both the schema declares
-    // AND physically exist in the table (guards against schema/table drift).
-    const { rows } = await req.pool.query(
+    // ── Physical columns ───────────────────────────────────────────────────
+    // Columns that exist BOTH in the schema AND as real PostgreSQL columns.
+    const { rows: physRows } = await req.pool.query(
       `SELECT column_name, data_type, is_nullable, ordinal_position
        FROM   information_schema.columns
        WHERE  table_schema = 'public' AND table_name = $1
@@ -770,20 +926,53 @@ router.get("/tables/:tableName/columns", async (req, res) => {
        ORDER  BY ordinal_position`,
       [tableName, schemaColumns]
     );
+    const physColNames = new Set(physRows.map(r => r.column_name));
 
-    if (!rows.length) {
+    // ── Custom fields ──────────────────────────────────────────────────────
+    // Columns declared in custom_field_schemas but NOT present as physical columns —
+    // their values are stored inside the custom_fields JSONB column per record.
+    // If ?year= is supplied, resolve only columns active for that academic year
+    // (enforces institution-A vs institution-B and year-2026 vs year-2027 isolation).
+    let customColNames = schemaColumns.filter(col => !physColNames.has(col));
+
+    if (customColNames.length && (year || ctx.institute_id)) {
+      // resolveColumnSources applies institution + year scoping with graceful fallback
+      const sources = await resolveColumnSources(
+        req.pool, tableName, ctx.institute_id || null, year || null
+      );
+      // Only expose custom fields that belong to this institution's (and year's) schema
+      customColNames = customColNames.filter(col => sources.custom.has(col));
+    }
+
+    // ── Merge result ───────────────────────────────────────────────────────
+    const physResult = physRows.map(r => ({
+      ...r,
+      is_numeric:      isNumericType(r.data_type),
+      is_custom_field: false,
+      schema_type:     labelMap[r.column_name]?.schema_type || null,
+      label_en:        labelMap[r.column_name]?.label_en    || null,
+      label_hi:        labelMap[r.column_name]?.label_hi    || null,
+    }));
+
+    const customResult = customColNames.map(col => ({
+      column_name:      col,
+      data_type:        "text",     // JSONB ->> always returns text
+      is_nullable:      "YES",
+      ordinal_position: null,
+      is_numeric:       isNumericSchemaType(labelMap[col]?.schema_type || "text"),
+      is_custom_field:  true,
+      schema_type:      labelMap[col]?.schema_type || "text",
+      label_en:         labelMap[col]?.label_en    || null,
+      label_hi:         labelMap[col]?.label_hi    || null,
+    }));
+
+    const result = [...physResult, ...customResult];
+
+    if (!result.length) {
       return res.status(404).json({ ok: false, error: `Table "${tableName}" not found or has no schema-defined columns` });
     }
 
-    res.json({
-      ok: true,
-      data: rows.map(r => ({
-        ...r,
-        is_numeric: isNumericType(r.data_type),
-        label_en:   labelMap[r.column_name]?.label_en || null,
-        label_hi:   labelMap[r.column_name]?.label_hi || null,
-      })),
-    });
+    res.json({ ok: true, data: result });
   } catch (err) {
     logger.error("GET /api/kpi/tables/:tableName/columns", { ...getLogContext(req), stack: err.stack });
     res.status(500).json({ ok: false, error: err.message });
@@ -869,7 +1058,10 @@ router.post("/configs", async (req, res) => {
           error: `Table "${table_name}" does not belong to the ${ctx.role_domain} domain.`,
         });
     }
-    await validateColumns(req.pool, table_name, x_col, y_cols, group_by_column, aggregation_type);
+    const { custom: customFields } = await validateColumns(
+      req.pool, table_name, x_col, y_cols, group_by_column, aggregation_type,
+      ctx.institute_id, academic_year
+    );
 
     // ── Duplicate detection ────────────────────────────────────────────────────
     // Warn (not block) if an identical KPI config already exists for this scope.
@@ -910,7 +1102,7 @@ router.post("/configs", async (req, res) => {
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
        RETURNING *`,
       [title, title_hi, description, description_hi,
-       table_name, x_col, y_cols, chart_type, buildDisplaySql(cfgDraft),
+       table_name, x_col, y_cols, chart_type, buildDisplaySql(cfgDraft, customFields),
        scope, institute_id || null, department_id || null,
        show_on_dashboard, dashboard_display_type, dashboard_group_name || null,
        academic_year || null, aggregation_type || "none", group_by_column || null,
@@ -1027,7 +1219,10 @@ router.put("/configs/:id", async (req, res) => {
     validateAggType(aggregation_type);
     validateChartType(chart_type);
     await validateTableWhitelist(req.pool, table_name);
-    await validateColumns(req.pool, table_name, x_col, y_cols, group_by_column, aggregation_type);
+    const { custom: customFields } = await validateColumns(
+      req.pool, table_name, x_col, y_cols, group_by_column, aggregation_type,
+      ctx.institute_id, academic_year
+    );
 
     // Auto-translate metadata to Hindi
     const { title_hi, description_hi, export_title_hi } =
@@ -1052,7 +1247,7 @@ router.put("/configs/:id", async (req, res) => {
        WHERE id=$19 RETURNING *`,
       [title, title_hi, description, description_hi,
        table_name, x_col, y_cols, chart_type,
-       buildDisplaySql(cfgDraft), show_on_dashboard ?? false,
+       buildDisplaySql(cfgDraft, customFields), show_on_dashboard ?? false,
        dashboard_display_type || "single", dashboard_group_name || null,
        academic_year || null, aggregation_type || "none", group_by_column || null,
        export_title || null, export_title_hi, ctx.user_id, req.params.id]

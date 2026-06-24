@@ -1,37 +1,48 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useLocation, Navigate } from "react-router-dom";
+import {
+  User, UsersRound, MoreHorizontal, Power, PowerOff, Pencil, Plus,
+} from "lucide-react";
 import { useApi } from "../../../hooks/useApi";
 import { useAuth } from "../../../store/AuthContext";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { t } from "../../../i18n/translations";
-import PageHeader from "../../../ui/PageHeader";
 import { S, Toast } from "../../../components/shared/formUtils";
 import FormScreen from "../../../components/shared/FormScreen";
-import { PageContainer, Button, Toolbar, SearchInput, Card } from "../../../ui";
-import { Plus } from "lucide-react";
+import { Select } from "../../../components/shared/ui";
+import PageHeader from "../../../components/shared/PageHeader";
+import { PageContainer, Button, Badge, EmptyState, DataTable, Dropdown, MenuItem } from "../../../ui";
 
 const SLUG = "user-management";
-import { Select } from "../../../components/shared/ui";
 
-/* ── Constants & pure helpers ──────────────────────────────────── */
+/* ── Constants ─────────────────────────────────────────────────── */
 const STATUS_OPTIONS = ["ACTIVE", "INACTIVE", "SUSPENDED"];
 
-const STATUS_STYLE = {
-  ACTIVE:    { dot: "#10b981", label: "#059669" },
-  INACTIVE:  { dot: "#cbd5e1", label: "#94a3b8" },
-  SUSPENDED: { dot: "#f87171", label: "#dc2626" },
+const ROLE_COLORS = {
+  super_admin:      { bg: "#dbeafe", color: "#1d4ed8" },
+  institute_admin:  { bg: "#ede9fe", color: "#6d28d9" },
+  publication_cell: { bg: "#fce7f3", color: "#9d174d" },
+  department_admin: { bg: "#d1fae5", color: "#065f46" },
+  nodal_officer:    { bg: "#fee2e2", color: "#991b1b" },
+  contributor:      { bg: "#dcfce7", color: "#166534" },
+  reviewer:         { bg: "#eff6ff", color: "#1e40af" },
+  directors_office: { bg: "#fdf4ff", color: "#7e22ce" },
+  finance_admin:    { bg: "#fef9c3", color: "#854d0e" },
+  hospital_admin:   { bg: "#fde8e8", color: "#b91c1c" },
 };
 
-const ROLE_COLORS = {
-  super_admin:        { bg: "#dbeafe", color: "#1d4ed8" },
-  institute_admin:    { bg: "#ede9fe", color: "#6d28d9" },
-  publication_cell:   { bg: "#fce7f3", color: "#9d174d" },
-  department_admin:   { bg: "#d1fae5", color: "#065f46" },
-  nodal_officer:      { bg: "#fee2e2", color: "#991b1b" },
-  contributor:        { bg: "#dcfce7", color: "#166534" },
-  reviewer:           { bg: "#eff6ff", color: "#1e40af" },
-  directors_office:   { bg: "#fdf4ff", color: "#7e22ce" },
-};
+/* Roles an institute admin may assign — super_admin and institute_admin
+   are intentionally absent; backend enforces this independently. */
+const INST_ADMIN_ALLOWED_ROLES = new Set([
+  "department_admin", "contributor", "finance_admin", "hospital_admin",
+  "nodal_officer", "reviewer", "publication_cell", "directors_office",
+]);
+
+const ROLE_DOMAINS = [
+  { value: "academic", label: "Academic" },
+  { value: "hospital", label: "Hospital" },
+  { value: "finance",  label: "Finance"  },
+];
 
 function formatDate(ts) {
   if (!ts) return "Never";
@@ -44,7 +55,7 @@ function initials(name = "") {
   return name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase();
 }
 
-/* ── Shared UI atoms ─────────────────────────────────────────────── */
+/* ── Shared atoms ──────────────────────────────────────────────── */
 function RoleBadge({ name, display_name }) {
   const s = ROLE_COLORS[name] || { bg: "#f1f5f9", color: "#475569" };
   return (
@@ -58,13 +69,8 @@ function RoleBadge({ name, display_name }) {
 }
 
 function StatusDot({ status }) {
-  const s = STATUS_STYLE[status] || STATUS_STYLE.INACTIVE;
-  return (
-    <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 500, color: s.label }}>
-      <span style={{ width: 7, height: 7, borderRadius: "50%", background: s.dot, display: "inline-block" }} />
-      {status.charAt(0) + status.slice(1).toLowerCase()}
-    </span>
-  );
+  const tone = status === "ACTIVE" ? "success" : status === "SUSPENDED" ? "danger" : "neutral";
+  return <Badge tone={tone}>{status.charAt(0) + status.slice(1).toLowerCase()}</Badge>;
 }
 
 function Spinner() {
@@ -72,7 +78,7 @@ function Spinner() {
     <div style={{ display: "flex", justifyContent: "center", padding: 60 }}>
       <div style={{
         width: 32, height: 32, border: "3px solid #e2e8f0",
-        borderTopColor: "#2563eb", borderRadius: "50%",
+        borderTopColor: "#0891b2", borderRadius: "50%",
         animation: "spin 0.7s linear infinite",
       }} />
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
@@ -107,30 +113,80 @@ function PasswordInput({ value, onChange, hasError }) {
   );
 }
 
+function LockedField({ label, value }) {
+  return (
+    <div>
+      <label style={S.label}>{label}</label>
+      <div style={{
+        ...S.input(false), display: "flex", alignItems: "center", gap: 8,
+        background: "#f8fafc", color: "#475569", cursor: "not-allowed", userSelect: "none",
+      }}>
+        <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#0891b2", flexShrink: 0 }} />
+        {value || "—"}
+        <span style={{
+          marginLeft: "auto", fontSize: 10, fontWeight: 600,
+          color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.5,
+        }}>
+          Auto-assigned
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/* ── Pagination ─────────────────────────────────────────────────── */
+function Pagination({ page, pageSize, total, onPageChange, onPageSizeChange }) {
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const from = total === 0 ? 0 : (page - 1) * pageSize + 1;
+  const to   = Math.min(page * pageSize, total);
+  const btn  = (disabled) => ({
+    padding: "5px 13px", borderRadius: 7, border: "1.5px solid #e2e8f0",
+    background: disabled ? "#f8fafc" : "#fff", fontSize: 13, fontWeight: 600,
+    color: disabled ? "#cbd5e1" : "#1e293b", cursor: disabled ? "not-allowed" : "pointer",
+  });
+  return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 14, flexWrap: "wrap", gap: 10 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#64748b" }}>
+        <span>Rows per page:</span>
+        <select
+          value={pageSize}
+          onChange={(e) => { onPageSizeChange(Number(e.target.value)); onPageChange(1); }}
+          style={{ padding: "4px 8px", border: "1.5px solid #e2e8f0", borderRadius: 7, fontSize: 13, color: "#1e293b", background: "#fff", cursor: "pointer" }}
+        >
+          {[10, 25, 100, 500].map((s) => <option key={s} value={s}>{s}</option>)}
+        </select>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <span style={{ fontSize: 13, color: "#64748b" }}>{from}–{to} of {total}</span>
+        <button onClick={() => onPageChange(page - 1)} disabled={page <= 1} style={btn(page <= 1)}>← Prev</button>
+        <span style={{ fontSize: 13, color: "#475569" }}>{page} / {totalPages}</span>
+        <button onClick={() => onPageChange(page + 1)} disabled={page >= totalPages} style={btn(page >= totalPages)}>Next →</button>
+      </div>
+    </div>
+  );
+}
+
 /* ── UserForm ────────────────────────────────────────────────────── */
 const EMPTY_FORM = {
   full_name: "", email: "", password: "",
-  department_id: "", role_name: "",
-  role_domain: "academic",
+  department_id: "", role_name: "", role_domain: "academic",
 };
 
-/* User domain — academic keeps all current behavior; hospital/finance are isolated. */
-const ROLE_DOMAINS = [
-  { value: "academic", label: "Academic" },
-  { value: "hospital", label: "Hospital" },
-  { value: "finance",  label: "Finance"  },
-];
-
-function validateForm(form, isEdit) {
+function validateForm(form, isEdit, institutionDomain) {
   const errs = {};
-  if (!form.full_name.trim())          errs.full_name  = "Full name is required.";
-  if (!form.email.trim())              errs.email      = "Email is required.";
+  if (!form.full_name.trim())          errs.full_name = "Full name is required.";
+  if (!form.email.trim())              errs.email     = "Email is required.";
   else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim()))
-                                       errs.email      = "Enter a valid email address.";
+                                       errs.email     = "Enter a valid email address.";
+  else if (!isEdit && institutionDomain) {
+    const emailDomain = form.email.trim().split("@")[1]?.toLowerCase() || "";
+    if (emailDomain !== institutionDomain)
+      errs.email = `Invalid email domain. Please use your institution domain (@${institutionDomain}).`;
+  }
   if (!isEdit) {
-    if (!form.password)                errs.password   = "Password is required.";
-    else if (form.password.length < 8) errs.password   = "Password must be at least 8 characters.";
-    if (!form.role_name)               errs.role_name  = "Please select a role.";
+    if (!form.password)                errs.password  = "Password is required.";
+    else if (form.password.length < 8) errs.password  = "Password must be at least 8 characters.";
+    if (!form.role_name)               errs.role_name = "Please select a role.";
   }
   return errs;
 }
@@ -149,46 +205,60 @@ function UserForm({ mode, entity, onCreated, onSaved, onBack, apiFetch, institut
         }
       : { ...EMPTY_FORM }
   );
-  const [fieldErrs,    setFieldErrs]    = useState({});
-  const [departments,  setDepartments]  = useState([]);
-  const [roles,        setRoles]        = useState([]);
-  const [loadingDepts, setLoadingDepts] = useState(false);
-  const [saving,       setSaving]       = useState(false);
-  const [serverError,  setServerError]  = useState("");
+  const [fieldErrs,         setFieldErrs]         = useState({});
+  const [roles,             setRoles]             = useState([]);
+  const [departments,       setDepartments]       = useState([]);
+  const [institutionDomain, setInstitutionDomain] = useState("");
+  const [loadingDepts,      setLoadingDepts]      = useState(false);
+  const [saving,            setSaving]            = useState(false);
+  const [serverError,       setServerError]       = useState("");
 
   useEffect(() => {
     if (!isEdit) {
       apiFetch("/api/lookup/roles")
         .then((r) => r.json())
-        .then((d) => { if (d.success) setRoles(d.roles.filter((r) => r.name !== "nodal_officer")); })
+        .then((d) => { if (d.success) setRoles(d.roles.filter((r) => INST_ADMIN_ALLOWED_ROLES.has(r.name))); })
         .catch(() => {});
     }
-  }, [apiFetch, isEdit]);
 
-  useEffect(() => {
     if (!institutionId) return;
+
     setLoadingDepts(true);
     apiFetch(`/api/lookup/departments?institution_id=${institutionId}`)
       .then((r) => r.json())
       .then((d) => { if (d.success) setDepartments(d.departments); })
       .catch(() => {})
       .finally(() => setLoadingDepts(false));
-  }, [institutionId, apiFetch]);
+
+    apiFetch(`/api/lookup/institution-domain?institution_id=${institutionId}`)
+      .then((r) => r.json())
+      .then((d) => { setInstitutionDomain(d.success && d.email_domain ? d.email_domain : ""); })
+      .catch(() => {});
+  }, [apiFetch, isEdit, institutionId]);
 
   const set = (key, value) => {
     setForm((f) => ({ ...f, [key]: value }));
-    setFieldErrs((e) => ({ ...e, [key]: undefined }));
     setServerError("");
+    if (key === "email" && !isEdit && institutionDomain && value.includes("@")) {
+      const typed = value.split("@")[1]?.toLowerCase() || "";
+      setFieldErrs((e) => ({
+        ...e,
+        email: typed && typed !== institutionDomain
+          ? `Invalid email domain. Please use your institution domain (@${institutionDomain}).`
+          : undefined,
+      }));
+    } else {
+      setFieldErrs((e) => ({ ...e, [key]: undefined }));
+    }
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const errs = validateForm(form, isEdit);
+    const errs = validateForm(form, isEdit, institutionDomain);
     if (Object.keys(errs).length) { setFieldErrs(errs); return; }
 
     setSaving(true);
     setServerError("");
-
     try {
       if (isEdit) {
         const res = await apiFetch(`/api/users/${entity.id}`, {
@@ -232,9 +302,9 @@ function UserForm({ mode, entity, onCreated, onSaved, onBack, apiFetch, institut
     <FormScreen
       pageTitle="Users"
       formTitle={isEdit ? "Edit User" : "New User"}
-      formSubtitle={isEdit ? entity.full_name : "Add a new user to your institution"}
-      icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>}
-      iconBg="#ede9fe"
+      formSubtitle={isEdit ? entity.full_name : "Add a new institution-level user"}
+      icon={<User size={20} color="#0891b2" strokeWidth={2} />}
+      iconBg="#e0f2fe"
       onBack={onBack}
       onSubmit={handleSubmit}
       submitting={saving}
@@ -260,11 +330,18 @@ function UserForm({ mode, entity, onCreated, onSaved, onBack, apiFetch, institut
           style={S.input(!!fieldErrs.email)}
           type="email"
           autoComplete="off"
-          placeholder="e.g. arun@aiia.edu.in"
+          placeholder={institutionDomain ? `e.g. arun@${institutionDomain}` : "e.g. arun@college.edu.in"}
           value={form.email}
           onChange={(e) => set("email", e.target.value)}
         />
-        {fieldErrs.email && <span style={S.errorText}>{fieldErrs.email}</span>}
+        {fieldErrs.email
+          ? <span style={S.errorText}>{fieldErrs.email}</span>
+          : (!isEdit && institutionDomain && (
+              <span style={{ fontSize: 11, color: "#0891b2", marginTop: 4, display: "block" }}>
+                Must use @{institutionDomain}
+              </span>
+            ))
+        }
       </div>
 
       {/* Password — create only */}
@@ -285,29 +362,10 @@ function UserForm({ mode, entity, onCreated, onSaved, onBack, apiFetch, institut
         </div>
       )}
 
-      {/* Institution — read-only, locked to admin's institution */}
-      <div>
-        <label style={S.label}>Institution</label>
-        <div style={{
-          ...S.input(false),
-          display: "flex", alignItems: "center", gap: 8,
-          background: "#f8fafc", color: "#475569", cursor: "not-allowed",
-          userSelect: "none",
-        }}>
-          <span style={{
-            width: 8, height: 8, borderRadius: "50%", background: "#0891b2", flexShrink: 0,
-          }} />
-          {institutionName || "—"}
-          <span style={{
-            marginLeft: "auto", fontSize: 10, fontWeight: 600,
-            color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.5,
-          }}>
-            Your institution
-          </span>
-        </div>
-      </div>
+      {/* Institution — locked */}
+      <LockedField label="Institution" value={institutionName} />
 
-      {/* Department + Role/Status grid */}
+      {/* Department + Role/Status */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
         <div>
           <label style={S.label}>
@@ -319,9 +377,7 @@ function UserForm({ mode, entity, onCreated, onSaved, onBack, apiFetch, institut
             onChange={(e) => set("department_id", e.target.value)}
             disabled={loadingDepts}
           >
-            <option value="">
-              {loadingDepts ? "Loading…" : "— Select Department —"}
-            </option>
+            <option value="">{loadingDepts ? "Loading…" : "— No Department —"}</option>
             {departments.map((d) => (
               <option key={d.department_id} value={d.department_id}>{d.name}</option>
             ))}
@@ -349,20 +405,14 @@ function UserForm({ mode, entity, onCreated, onSaved, onBack, apiFetch, institut
               onChange={(e) => set("role_name", e.target.value)}
             >
               <option value="">— Select Role —</option>
-              {roles
-                .filter((r) => r.name !== "super_admin")
-                .map((r) => (
-                  <option key={r.id} value={r.name}>
-                    {r.display_name}
-                  </option>
-                ))}
+              {roles.map((r) => (
+                <option key={r.id} value={r.name}>{r.display_name}</option>
+              ))}
             </Select>
             {fieldErrs.role_name && <span style={S.errorText}>{fieldErrs.role_name}</span>}
           </div>
         )}
 
-        {/* Role Domain — single select. Academic (default) keeps current behavior;
-            Hospital/Finance route the user to an isolated dashboard + forms. */}
         <div>
           <label style={S.label}>Role Domain</label>
           <Select
@@ -379,24 +429,27 @@ function UserForm({ mode, entity, onCreated, onSaved, onBack, apiFetch, institut
   );
 }
 
-/* ── User List ───────────────────────────────────────────────────── */
-function UserList({ apiFetch, onEdit, institutionId }) {
-  const [users,           setUsers]           = useState([]);
-  const [loading,         setLoading]         = useState(true);
-  const [error,           setError]           = useState("");
-  const [search,          setSearch]          = useState("");
-  const [filterStatus,    setFilterStatus]    = useState("all");
-  const [filterRole,      setFilterRole]      = useState("");
-  const [filterDepartment,setFilterDepartment]= useState("");
-  const [toggling,        setToggling]        = useState(null);
-  const [roles,           setRoles]           = useState([]);
-  const [deptOptions,     setDeptOptions]     = useState([]);
+/* ── UserList ─────────────────────────────────────────────────────── */
+function UserList({ apiFetch, onEdit, institutionId, onToast }) {
+  const { lang } = useLanguage();
 
-  /* load lookup data once on mount */
+  const [users,            setUsers]            = useState([]);
+  const [loading,          setLoading]          = useState(true);
+  const [error,            setError]            = useState("");
+  const [search,           setSearch]           = useState("");
+  const [filterStatus,     setFilterStatus]     = useState("all");
+  const [filterRole,       setFilterRole]       = useState("");
+  const [filterDepartment, setFilterDepartment] = useState("");
+  const [toggling,         setToggling]         = useState(null);
+  const [roles,            setRoles]            = useState([]);
+  const [deptOptions,      setDeptOptions]      = useState([]);
+  const [page,             setPage]             = useState(1);
+  const [pageSize,         setPageSize]         = useState(25);
+
   useEffect(() => {
     apiFetch("/api/lookup/roles")
       .then((r) => r.json())
-      .then((d) => { if (d.success) setRoles(d.roles); })
+      .then((d) => { if (d.success) setRoles(d.roles.filter((r) => INST_ADMIN_ALLOWED_ROLES.has(r.name))); })
       .catch(() => {});
 
     if (institutionId) {
@@ -407,7 +460,6 @@ function UserList({ apiFetch, onEdit, institutionId }) {
     }
   }, [apiFetch, institutionId]);
 
-  /* fetch users whenever server-side filters change */
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
@@ -431,6 +483,8 @@ function UserList({ apiFetch, onEdit, institutionId }) {
     return () => { cancelled = true; };
   }, [apiFetch, filterRole, filterDepartment]);
 
+  useEffect(() => { setPage(1); }, [search, filterStatus, filterRole, filterDepartment]);
+
   const hasActiveFilters = !!(filterRole || filterDepartment);
   const clearFilters = () => { setFilterRole(""); setFilterDepartment(""); };
 
@@ -451,32 +505,23 @@ function UserList({ apiFetch, onEdit, institutionId }) {
       const data = await res.json();
       if (data.success) {
         setUsers((us) => us.map((u) => u.id === user.id ? { ...u, account_status: next } : u));
+        onToast(`${user.full_name} ${next === "ACTIVE" ? "activated" : "deactivated"}.`);
       }
     } catch {}
     setToggling(null);
   };
 
-  // const filtered = users.filter((u) => {
-  //   const matchSearch =
-  //     u.full_name.toLowerCase().includes(search.toLowerCase()) ||
-  //     u.email.toLowerCase().includes(search.toLowerCase());
-  //   const matchStatus = filterStatus === "all" || u.account_status === filterStatus;
-  //   return matchSearch && matchStatus;
-  // });
   const filtered = users.filter((u) => {
     const q = search.toLowerCase();
-
     const matchSearch =
       (u.full_name || "").toLowerCase().includes(q) ||
       (u.email || "").toLowerCase().includes(q);
-
-    const status = (u.account_status || "").toUpperCase();
-
     const matchStatus =
-      filterStatus === "all" || status === filterStatus;
-
+      filterStatus === "all" || (u.account_status || "").toUpperCase() === filterStatus;
     return matchSearch && matchStatus;
   });
+
+  const paginated = filtered.slice((page - 1) * pageSize, page * pageSize);
 
   if (loading) return <Spinner />;
   if (error) return (
@@ -487,21 +532,17 @@ function UserList({ apiFetch, onEdit, institutionId }) {
 
   return (
     <>
-      {/* ── Server-side filter row ── */}
-      <Toolbar style={{ marginBottom: 12 }}>
+      {/* Server-side filter row */}
+      <div style={{ display: "flex", gap: 10, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
         <Select
           fullWidth={false}
           value={filterRole}
           onChange={(e) => setFilterRole(e.target.value)}
           style={{ minWidth: 160 }}
         >
-        <option value="">All Roles</option>
-        {roles
-          .filter((r) => r.name !== "super_admin")
-          .map((r) => (
-            <option key={r.id} value={r.name}>
-              {r.display_name}
-            </option>
+          <option value="">All Roles</option>
+          {roles.map((r) => (
+            <option key={r.id} value={r.name}>{r.display_name}</option>
           ))}
         </Select>
 
@@ -518,14 +559,23 @@ function UserList({ apiFetch, onEdit, institutionId }) {
         </Select>
 
         {hasActiveFilters && (
-          <Button variant="secondary" onClick={clearFilters}>Clear Filters</Button>
+          <button
+            onClick={clearFilters}
+            style={{
+              padding: "8px 14px", borderRadius: 8, border: "1.5px solid #e2e8f0",
+              background: "#fff", fontSize: 12, fontWeight: 600, color: "#64748b",
+              cursor: "pointer", whiteSpace: "nowrap",
+            }}
+          >
+            Clear Filters
+          </button>
         )}
-      </Toolbar>
+      </div>
 
-      {/* ── Search + status filter row ── */}
-      <Toolbar>
-        <SearchInput
-          placeholder="Search by name or email…"
+      {/* Search + status row */}
+      <div style={{ display: "flex", gap: 10, marginBottom: 20, flexWrap: "wrap" }}>
+        <input
+          placeholder={t("Search name or email…", lang)}
           value={search}
           onChange={setSearch}
           style={{ flex: 1, width: "auto" }}
@@ -541,125 +591,133 @@ function UserList({ apiFetch, onEdit, institutionId }) {
             <option key={s} value={s}>{s.charAt(0) + s.slice(1).toLowerCase()}</option>
           ))}
         </Select>
-      </Toolbar>
+      </div>
 
-      {/* Table */}
-      <Card padding={0} style={{ overflow: "hidden" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
-          <thead>
-            <tr style={{ background: "#f8fafc", borderBottom: "1px solid rgba(0,0,0,0.06)" }}>
-              {["User", "Department", "Role(s)", "Status", "Last Login", "Actions"].map((h) => (
-                <th key={h} style={{
-                  padding: "12px 16px", textAlign: "left", fontSize: 11,
-                  fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.8,
+      <DataTable
+        minWidth={920}
+        rows={paginated}
+        rowKey="id"
+        columns={[
+          {
+            key: "user", header: t("User", lang),
+            render: (u) => (
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{
+                  width: 36, height: 36, borderRadius: 10,
+                  background: `hsl(${u.full_name.charCodeAt(0) * 37 % 360}, 55%, 85%)`,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 12, fontWeight: 700,
+                  color: `hsl(${u.full_name.charCodeAt(0) * 37 % 360}, 55%, 30%)`,
+                  flexShrink: 0,
                 }}>
-                  {h}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map((u, i) => (
-              <tr key={u.id} style={{
-                borderBottom: i < filtered.length - 1 ? "1px solid rgba(0,0,0,0.04)" : "none",
-              }}>
-                {/* User */}
-                <td style={{ padding: "14px 16px" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <div style={{
-                      width: 36, height: 36, borderRadius: 10,
-                      background: `hsl(${u.full_name.charCodeAt(0) * 37 % 360}, 55%, 85%)`,
-                      display: "flex", alignItems: "center", justifyContent: "center",
-                      fontSize: 12, fontWeight: 700,
-                      color: `hsl(${u.full_name.charCodeAt(0) * 37 % 360}, 55%, 30%)`,
-                      flexShrink: 0,
-                    }}>
-                      {initials(u.full_name)}
-                    </div>
-                    <div>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: "#1e293b" }}>{u.full_name}</div>
-                      <div style={{ fontSize: 11, color: "#94a3b8" }}>{u.email}</div>
-                    </div>
-                  </div>
-                </td>
-                {/* Department */}
-                <td style={{ padding: "14px 16px", fontSize: 13, color: "#475569" }}>
-                  {u.department_name || "—"}
-                </td>
-                {/* Roles */}
-                <td style={{ padding: "14px 16px" }}>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-                    {(u.roles || []).length > 0
-                      ? u.roles.map((r) => <RoleBadge key={r.name} {...r} />)
-                      : <span style={{ fontSize: 12, color: "#cbd5e1" }}>No role</span>
-                    }
-                  </div>
-                </td>
-                {/* Status */}
-                <td style={{ padding: "14px 16px" }}>
-                  <StatusDot status={u.account_status} />
-                </td>
-                {/* Last Login */}
-                <td style={{ padding: "14px 16px", fontSize: 12, color: "#94a3b8" }}>
-                  {formatDate(u.last_login_at)}
-                </td>
-                {/* Actions */}
-                <td style={{ padding: "14px 16px" }}>
-                  <div style={{ display: "flex", gap: 6 }}>
-                    <button onClick={() => onEdit(u)} style={{
-                      padding: "5px 12px", borderRadius: 7, border: "1.5px solid #e2e8f0",
-                      background: "#fff", fontSize: 12, fontWeight: 600,
-                      color: "#2563eb", cursor: "pointer",
-                    }}>
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => toggleStatus(u)}
-                      disabled={toggling === u.id}
-                      style={{
-                        padding: "5px 12px", borderRadius: 7, border: "1.5px solid #e2e8f0",
-                        background: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer",
-                        color: u.account_status === "ACTIVE" ? "#dc2626" : "#059669",
-                        opacity: toggling === u.id ? 0.6 : 1,
-                      }}
-                    >
-                      {toggling === u.id ? "…" : u.account_status === "ACTIVE" ? "Deactivate" : "Activate"}
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-            {filtered.length === 0 && (
-              <tr>
-                <td colSpan={6} style={{ padding: 40, textAlign: "center", color: "#94a3b8", fontSize: 13 }}>
-                  No users match your filters.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </Card>
+                  {initials(u.full_name)}
+                </div>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: "#1e293b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.full_name}</div>
+                  <div style={{ fontSize: 11, color: "#94a3b8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.email}</div>
+                </div>
+              </div>
+            ),
+          },
+          {
+            key: "institution_name", header: t("Institution", lang), width: 180, ellipsis: true,
+            render: (u) => <span style={{ fontSize: 13, color: "#475569" }}>{u.institution_name || "—"}</span>,
+          },
+          {
+            key: "department_name", header: t("Department", lang), width: 160, ellipsis: true,
+            render: (u) => <span style={{ fontSize: 13, color: "#475569" }}>{u.department_name || "—"}</span>,
+          },
+          {
+            key: "roles", header: t("Role(s)", lang), width: 200,
+            render: (u) => (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                {(u.roles || []).length > 0
+                  ? u.roles.map((r) => <RoleBadge key={r.name} {...r} />)
+                  : <span style={{ fontSize: 12, color: "#cbd5e1" }}>No role</span>}
+              </div>
+            ),
+          },
+          {
+            key: "status", header: t("Status", lang), width: 120,
+            render: (u) => <StatusDot status={u.account_status} />,
+          },
+          {
+            key: "last_login_at", header: t("Last Login", lang), width: 130,
+            render: (u) => <span style={{ fontSize: 12, color: "#94a3b8" }}>{formatDate(u.last_login_at)}</span>,
+          },
+          {
+            key: "actions", header: t("Actions", lang), align: "right", width: 80,
+            render: (u) => {
+              const busy     = toggling === u.id;
+              const isActive = u.account_status === "ACTIVE";
+              return (
+                <Dropdown
+                  align="right"
+                  width={170}
+                  button={({ toggle }) => (
+                    <Button variant="ghost" iconOnly icon={<MoreHorizontal size={18} strokeWidth={2} />} onClick={toggle} aria-label="Row actions" />
+                  )}
+                >
+                  <MenuItem icon={<Pencil size={16} strokeWidth={1.9} />} onClick={() => onEdit(u)}>
+                    {t("Edit", lang)}
+                  </MenuItem>
+                  {isActive ? (
+                    <MenuItem icon={<PowerOff size={16} strokeWidth={1.9} />} danger disabled={busy} onClick={() => toggleStatus(u)}>
+                      {busy ? "…" : t("Deactivate", lang)}
+                    </MenuItem>
+                  ) : (
+                    <MenuItem icon={<Power size={16} strokeWidth={1.9} />} disabled={busy} onClick={() => toggleStatus(u)}>
+                      {busy ? "…" : t("Activate", lang)}
+                    </MenuItem>
+                  )}
+                </Dropdown>
+              );
+            },
+          },
+        ]}
+        empty={
+          <EmptyState
+            icon={<UsersRound size={26} strokeWidth={1.6} />}
+            title="No users match your filters."
+            description="Adjust the filters or search to see more users."
+          />
+        }
+      />
+
+      <Pagination
+        page={page}
+        pageSize={pageSize}
+        total={filtered.length}
+        onPageChange={setPage}
+        onPageSizeChange={setPageSize}
+      />
     </>
   );
 }
 
 /* ── Main Export ─────────────────────────────────────────────────── */
 export default function InstituteAdminUserManagementPage() {
-  const { apiFetch }  = useApi();
-  const { user }      = useAuth();
-  const navigate      = useNavigate();
-  const { lang }      = useLanguage();
-  const location      = useLocation();
+  const { apiFetch } = useApi();
+  const { user }     = useAuth();
+  const { lang }     = useLanguage();
+  const navigate     = useNavigate();
+  const location     = useLocation();
+
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [toast,      setToast]      = useState(null);
 
   const isCreate = location.pathname.endsWith("/create");
   const isEdit   = location.pathname.endsWith("/edit");
   const listPath = `/${SLUG}`;
   const entity   = isEdit ? (location.state?.entity ?? null) : null;
 
-  const [toast, setToast] = useState(location.state?.toast ?? null);
-
   const institutionId   = user?.institutionId   || "";
   const institutionName = user?.institutionName || "Your Institution";
+
+  const showToast = (message, type = "success") => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3500);
+  };
 
   if (isEdit && !entity) return <Navigate to={listPath} replace />;
 
@@ -668,13 +726,14 @@ export default function InstituteAdminUserManagementPage() {
       <>
         {toast && <Toast message={toast.message} type={toast.type} />}
         <UserForm
+          key={isEdit ? "edit" : "create"}
           mode={isEdit ? "edit" : "create"}
           entity={entity}
           apiFetch={apiFetch}
           institutionId={institutionId}
           institutionName={institutionName}
-          onCreated={(msg) => navigate(listPath, { state: { toast: { message: msg, type: "success" } } })}
-          onSaved={(msg)   => navigate(listPath, { state: { toast: { message: msg, type: "success" } } })}
+          onCreated={(msg) => { navigate(listPath); showToast(msg); setRefreshKey((k) => k + 1); }}
+          onSaved={(msg)   => { navigate(listPath); showToast(msg); setRefreshKey((k) => k + 1); }}
           onBack={() => navigate(listPath)}
         />
       </>
@@ -686,20 +745,32 @@ export default function InstituteAdminUserManagementPage() {
       {toast && <Toast message={toast.message} type={toast.type} />}
 
       <PageHeader
-        breadcrumb={[t("Home", lang), t("Institute", lang), t("User Management", lang)]}
-        title={t("User Management", lang)}
-        description={<>Manage users belonging to <span style={{ color: "#0891b2", fontWeight: 600 }}>{institutionName}</span>.</>}
+        breadcrumb={[t("Home", lang), t("Institute", lang), t("Users", lang)]}
+        title={t("Institution Users", lang)}
+        description={
+          <>
+            Manage users belonging to{" "}
+            <strong style={{ color: "#0891b2" }}>{institutionName}</strong>
+            {" — "}Super Admin and Institute Admin accounts are not shown here.
+          </>
+        }
         actions={
-          <Button variant="primary" icon={<Plus size={18} strokeWidth={2.2} />} onClick={() => navigate(`${listPath}/create`)}>
+          <Button
+            variant="primary"
+            icon={<Plus size={17} strokeWidth={2} />}
+            onClick={() => navigate(`${listPath}/create`)}
+          >
             {t("New User", lang)}
           </Button>
         }
       />
 
       <UserList
+        key={refreshKey}
         apiFetch={apiFetch}
         institutionId={institutionId}
         onEdit={(u) => navigate(`${listPath}/edit`, { state: { entity: u } })}
+        onToast={showToast}
       />
     </PageContainer>
   );

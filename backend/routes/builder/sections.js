@@ -85,7 +85,8 @@ router.get("/assigned", async (req, res) => {
   const pool = req.app.locals.pool;
   try {
     const { rows } = await pool.query(
-      `SELECT
+      `-- Direct user assignments
+       SELECT
          s.id, s.title, s.description, s.status, s.report_id, s.order_index,
          r.title          AS report_title,
          r.report_type,
@@ -96,27 +97,52 @@ router.get("/assigned", async (req, res) => {
          a.due_at,
          a.assigned_at,
          a.completed_at,
-         -- latest version description (most recent manual save)
-         (SELECT sv.description
-          FROM public.section_versions sv
-          WHERE sv.section_id = s.id
-          ORDER BY sv.version_num DESC LIMIT 1) AS latest_version_description,
-         (SELECT sv.version_num
-          FROM public.section_versions sv
-          WHERE sv.section_id = s.id
-          ORDER BY sv.version_num DESC LIMIT 1) AS latest_version_num,
-         -- unresolved block comment count
-         (SELECT COUNT(*)
-          FROM public.block_comments bc
-          WHERE bc.section_id = s.id
-            AND bc.is_resolved = FALSE
-            AND bc.deleted_at IS NULL
-            AND bc.parent_id IS NULL) AS unresolved_comment_count
+         (SELECT sv.description FROM public.section_versions sv
+          WHERE sv.section_id = s.id ORDER BY sv.version_num DESC LIMIT 1) AS latest_version_description,
+         (SELECT sv.version_num FROM public.section_versions sv
+          WHERE sv.section_id = s.id ORDER BY sv.version_num DESC LIMIT 1) AS latest_version_num,
+         (SELECT COUNT(*) FROM public.block_comments bc
+          WHERE bc.section_id = s.id AND bc.is_resolved = FALSE
+            AND bc.deleted_at IS NULL AND bc.parent_id IS NULL) AS unresolved_comment_count
        FROM public.section_assignments a
        JOIN public.report_sections s ON s.id = a.section_id AND s.deleted_at IS NULL
        JOIN public.reports r         ON r.id = s.report_id  AND r.deleted_at IS NULL
        WHERE a.user_id = $1
-       ORDER BY a.due_at ASC NULLS LAST, r.title, s.order_index`,
+
+       UNION
+
+       -- Role-based assignments: sections assigned to a role the current user holds
+       SELECT
+         s.id, s.title, s.description, s.status, s.report_id, s.order_index,
+         r.title          AS report_title,
+         r.report_type,
+         r.academic_year,
+         r.institution_id,
+         swa.id           AS assignment_id,
+         'OWNER'          AS assignment_role,
+         swa.due_at,
+         swa.assigned_at,
+         NULL::timestamptz AS completed_at,
+         (SELECT sv.description FROM public.section_versions sv
+          WHERE sv.section_id = s.id ORDER BY sv.version_num DESC LIMIT 1) AS latest_version_description,
+         (SELECT sv.version_num FROM public.section_versions sv
+          WHERE sv.section_id = s.id ORDER BY sv.version_num DESC LIMIT 1) AS latest_version_num,
+         (SELECT COUNT(*) FROM public.block_comments bc
+          WHERE bc.section_id = s.id AND bc.is_resolved = FALSE
+            AND bc.deleted_at IS NULL AND bc.parent_id IS NULL) AS unresolved_comment_count
+       FROM public.section_workflow_assignments swa
+       JOIN public.report_sections s ON s.id = swa.section_id AND s.deleted_at IS NULL
+       JOIN public.reports r         ON r.id = s.report_id    AND r.deleted_at IS NULL
+       JOIN public.user_roles ur     ON ur.user_id = $1 AND ur.revoked_at IS NULL
+       JOIN public.roles ro          ON ro.id = ur.role_id AND ro.name = swa.role_name
+       WHERE swa.assignee_type = 'ROLE'
+         AND swa.workflow_step_id IS NULL
+         AND NOT EXISTS (
+           SELECT 1 FROM public.section_assignments sa2
+           WHERE sa2.section_id = swa.section_id AND sa2.user_id = $1
+         )
+
+       ORDER BY due_at ASC NULLS LAST, report_title, order_index`,
       [req.user.userId]
     );
     return res.json({ success: true, data: rows });

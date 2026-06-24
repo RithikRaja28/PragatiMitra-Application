@@ -35,7 +35,7 @@ const EMPTY = {
   city: "", state: "", country: "India", pincode: "",
 };
 
-function InstitutionForm({ mode, entity, onCreated, onSaved, onBack }) {
+function InstitutionForm({ mode, entity, onCreated, onSaved, onBack, onError }) {
   const { lang } = useLanguage();
   const { apiFetch } = useApi();
   const isEdit = mode === "edit";
@@ -144,11 +144,25 @@ function InstitutionForm({ mode, entity, onCreated, onSaved, onBack }) {
         else onCreated(data.message);
       } else if (data.errors) {
         setFieldErrors(data.errors);
+        // Navigate back to the wizard step that contains the first errored field.
+        if (!isEdit) {
+          const errKeys = Object.keys(data.errors);
+          const bad = STEP_FIELDS.findIndex((fields) => fields.some((f) => errKeys.includes(f)));
+          if (bad >= 0) setStep(bad);
+        }
+        const firstMsg = Object.values(data.errors)[0] || "Validation error.";
+        onError(firstMsg);
       } else {
-        setSubmitError(data.message || `Failed to ${isEdit ? "update" : "create"} institution.`);
+        const msg = data.message || `Failed to ${isEdit ? "update" : "create"} institution.`;
+        setSubmitError(msg);
+        onError(msg);
       }
     } catch (err) {
-      if (!isAuthError(err)) setSubmitError("Network error. Please try again.");
+      if (!isAuthError(err)) {
+        const msg = "Network error. Please try again.";
+        setSubmitError(msg);
+        onError(msg);
+      }
     } finally {
       setSubmitting(false);
     }
@@ -334,7 +348,7 @@ function InstitutionForm({ mode, entity, onCreated, onSaved, onBack }) {
             lineHeight: 1.5,
           }}
         >
-          Deactivating will fail unless every user of this institution is already inactive.
+          Deactivating this institution suspends access for all its users until it is reactivated.
         </div>
       )}
     </div>
@@ -634,6 +648,7 @@ export default function InstitutionManagementPage() {
           onCreated={handleCreated}
           onSaved={handleSaved}
           onBack={() => navigate(listPath)}
+          onError={(msg) => showToast(msg, "error")}
         />
       </>
     );

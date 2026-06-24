@@ -414,7 +414,6 @@ app.use("/api/lookup",       lookupRoutes);
 app.use("/api/roles",        require("./routes/roles"));
 app.use("/api/departments",  departmentRoutes);
 app.use("/api/institutions", institutionRoutes);
-app.use("/api/committees",   require("./routes/committees"));
 app.use("/api/audit-logs",   auditLogRoutes);
 app.use("/api/upload",       uploadRoutes);
 app.use("/api/notification-templates", notificationTemplatesRouter);

@@ -562,7 +562,7 @@ function AcademicYearPicker() {
   const locked   = !!ay?.selectedYearLocked;
   const currentLabel =
     options.find((o) => o.value === selected)?.label ??
-    (selected != null ? `${selected}-${selected + 1}` : "—");
+    (selected != null ? `${selected}-${selected + 1}` : options.length === 0 ? "Not Configured" : "—");
 
   // Show a contextual warning when the user (in NOA mode) picks an unassigned year.
   // RootLayout will revert the year automatically; the warning stays for 4 s.
@@ -640,7 +640,9 @@ function AcademicYearPicker() {
           )}
           <div className="sh-ay-list">
             {filtered.length === 0 ? (
-              <div className="sh-ay-empty">No matching year</div>
+              <div className="sh-ay-empty">
+                {options.length === 0 ? "No Academic Year Configured." : "No matching year"}
+              </div>
             ) : filtered.map((o) => (
               <button
                 key={o.value}

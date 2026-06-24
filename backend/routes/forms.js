@@ -14,9 +14,11 @@ const { ensureRecordsIndexes } = require("../services/recordsIndexService");
 const { getAssignedFormIds, isContributorOnly } = require("./formAssignments");
 
 /* Academic-year lock guard for form-management writes. Checks the SELECTED year
-   (X-Academic-Year header), falling back to the request's year / current year. */
+   (X-Academic-Year header), falling back to the institution's active/latest year
+   from the DB — never the calendar year. */
 async function ayLockGuard(pool, req, institutionId) {
-  const fallback = Number(req.body?.year) || new Date().getFullYear();
+  const bodyYear = Number(req.body?.year);
+  const fallback = bodyYear > 0 ? bodyYear : await resolveOperatingYear(pool, institutionId);
   return getAcademicYearLockBlockForReq(pool, req, institutionId, fallback);
 }
 
@@ -163,7 +165,8 @@ router.get("/institution-forms", async (req, res) => {
       }
       const headerYear = Number(req.get("X-Academic-Year"));
       const y = req.query.year != null ? Number(req.query.year)
-              : (Number.isInteger(headerYear) && headerYear > 0 ? headerYear : new Date().getFullYear());
+              : (Number.isInteger(headerYear) && headerYear > 0 ? headerYear
+                : await resolveOperatingYear(pool, institutionId));
       const assignedIds = new Set(await getAssignedFormIds(pool, req.user.userId, y));
       rows = rows.filter((f) => assignedIds.has(String(f.id)));
     }
@@ -592,13 +595,16 @@ router.post(
     if (!/^[a-z][a-z0-9_]*$/.test(normalizedName)) {
       return res.status(400).json({ success: false, message: "form_name must start with a letter and contain only letters, digits, and underscores." });
     }
-    const formYear = Number(year) || new Date().getFullYear();
     const recordsTable = `${normalizedName}_records`;
 
     try {
       const institutionId = await resolveInstitutionId(pool, req);
       if (!institutionId) {
         return res.status(400).json({ success: false, message: "Institution ID is required." });
+      }
+      const formYear = Number(year) > 0 ? Number(year) : await resolveOperatingYear(pool, institutionId);
+      if (!formYear) {
+        return res.status(400).json({ success: false, message: "No academic year is configured for this institution. Please configure one before creating forms." });
       }
 
       // Domain ownership: a scoped user (institution / hospital / finance admin)
@@ -897,12 +903,14 @@ router.post(
     if (!form_name) return res.status(400).json({ success: false, message: "form_name is required." });
     if (!schema)    return res.status(400).json({ success: false, message: "schema is required." });
 
-    const formYear = Number(year) || new Date().getFullYear();
-
     try {
       const institutionId = await resolveInstitutionId(pool, req);
       if (!institutionId) {
         return res.status(400).json({ success: false, message: "Institution ID required." });
+      }
+      const formYear = Number(year) > 0 ? Number(year) : await resolveOperatingYear(pool, institutionId);
+      if (!formYear) {
+        return res.status(400).json({ success: false, message: "No academic year is configured for this institution. Please configure one before adopting templates." });
       }
 
       // Academic-year lock — block adopting templates when the year is locked.
@@ -1016,13 +1024,16 @@ router.put(
       return res.status(400).json({ success: false, message: "Invalid form name." });
     }
 
-    const formYear = Number(year) || new Date().getFullYear();
     const recordsTable = `${formName}_records`;
 
     try {
       const institutionId = await resolveInstitutionId(pool, req);
       if (!institutionId) {
         return res.status(400).json({ success: false, message: "Institution ID required." });
+      }
+      const formYear = Number(year) > 0 ? Number(year) : await resolveOperatingYear(pool, institutionId);
+      if (!formYear) {
+        return res.status(400).json({ success: false, message: "No academic year is configured for this institution. Please configure one before editing form schemas." });
       }
 
       // Academic-year lock — block schema edits when the selected year is locked.

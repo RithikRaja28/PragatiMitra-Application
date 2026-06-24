@@ -37,7 +37,6 @@ import UserManagementPage        from "../../pages/Roles/superadmin/UserManageme
 import AuditLogsPage             from "../../pages/Roles/superadmin/AuditLogsPage";
 import DepartmentManagementPage  from "../../pages/Roles/superadmin/DepartmentManagementPage";
 import InstitutionManagementPage from "../../pages/Roles/superadmin/InstitutionManagementPage";
-import CommitteeManagementPage   from "../../pages/Roles/superadmin/CommitteesManagementPage";
 import RoleAccessPage            from "../../pages/Roles/superadmin/RoleAccessPage";
 
 /* ── Institute Admin page imports ───────────────────────────── */
@@ -227,17 +226,6 @@ export const ROLE_CONFIG = {
         ],
       },
       {
-        group: "Committee Management",
-        items: [{
-          id: "committees", label: "Committees", icon: "Users2", slug: "committee-management",
-          subRoutes: [
-            { path: "committee-management/create", element: <CommitteeManagementPage /> },
-            { path: "committee-management/edit",   element: <CommitteeManagementPage /> },
-          ],
-        }],
-      },
-
-      {
         group: "Access & Data",
         items: [
           {
@@ -279,7 +267,6 @@ export const ROLE_CONFIG = {
       users: <UserManagementPage initialTab="list" />,
       departments: <DepartmentManagementPage />,
       institutions: <InstitutionManagementPage />,
-      committees: <CommitteeManagementPage />,
       "role-access": <RoleAccessPage />,
       "audit-logs":       <AuditLogsPage />,
       "report-builder":   <ReportBuilderListPage />,
@@ -309,10 +296,7 @@ export const ROLE_CONFIG = {
       {
         group: "User Management",
         items: [
-          // Gated on the real permission key. Institute Admin has
-          // manage_dept_users=false in the DB, so this stays hidden —
-          // it must NOT leak the Super-Admin-style "User Management" menu.
-          { id: "ia-users", label: "Users", icon: "Users", permission: "manage_dept_users", slug: "user-management",
+          { id: "ia-users", label: "Users", icon: "Users", permission: null, slug: "user-management",
             subRoutes: [
               { path: "user-management/create", element: <InstituteAdminUserManagementPage /> },
               { path: "user-management/edit",   element: <InstituteAdminUserManagementPage /> },

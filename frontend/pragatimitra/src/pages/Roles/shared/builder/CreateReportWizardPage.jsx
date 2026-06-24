@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { Check, Languages } from "lucide-react";
 import { useApi }  from "../../../../hooks/useApi";
 import { useAuth } from "../../../../store/AuthContext";
+import { useAcademicYear } from "../../../../store/AcademicYearContext";
 import { Button } from "../../../../ui";
 import { useShell } from "../../../../components/Dashboard/shellContext";
 import Toast from "../../../../components/shared/Toast";
@@ -55,6 +56,7 @@ export default function CreateReportWizardPage({ onCreated, onCancel, initialRep
   const { apiFetch } = useApi();
   const { user }     = useAuth();
   const shell        = useShell();
+  const { selectedYear } = useAcademicYear() || {};
 
   const [step,     setStep]    = useState(1);
   const [toast,    setToast]   = useState(null);
@@ -74,7 +76,7 @@ export default function CreateReportWizardPage({ onCreated, onCancel, initialRep
   const [title,       setTitle]       = useState("");
   const [desc,        setDesc]        = useState("");
   const [repType,     setRepType]     = useState("Annual");
-  const [acYear,      setAcYear]      = useState(fmtAcYear(new Date().getFullYear()));
+  const [acYear,      setAcYear]      = useState(() => selectedYear != null ? fmtAcYear(selectedYear) : "");
   const [lang,        setLang]        = useState("en");
   const [cycleId,     setCycleId]     = useState("");
   const [tmplId,      setTmplId]      = useState("");
@@ -105,6 +107,11 @@ export default function CreateReportWizardPage({ onCreated, onCancel, initialRep
   const [brandingFiles, setBrandingFiles] = useState({ COVER_IMAGE: null, LOGO: null, BG_IMAGE: null });
   const [brandingUrls,  setBrandingUrls]  = useState({ COVER_IMAGE: "", LOGO: "", BG_IMAGE: "" });
   /* assigns: {sectionId: {auth:{type,userId,deptId,roleName,dueAt}, steps:{stepId:{...}}}} */
+
+  /* Sync academic year field with the top-bar selector. */
+  useEffect(() => {
+    setAcYear(selectedYear != null ? fmtAcYear(selectedYear) : "");
+  }, [selectedYear]);
 
   /* ── mount: prefetch ────────────────────────────────────────── */
   useEffect(() => {
