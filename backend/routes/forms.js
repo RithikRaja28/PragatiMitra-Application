@@ -745,6 +745,18 @@ router.post(
             );
             const institutionName = instRows[0]?.institution_name || "Your Institution";
 
+            // Admin role to notify depends on the form's domain:
+            //   academic → institute_admin
+            //   hospital → hospital_admin (+ institute_admin as fallback)
+            //   finance  → finance_admin  (+ institute_admin as fallback)
+            const domainAdminRole =
+              effectiveFormDomain === "hospital" ? "hospital_admin"
+              : effectiveFormDomain === "finance" ? "finance_admin"
+              : "institute_admin";
+            const adminRoles = domainAdminRole === "institute_admin"
+              ? ["institute_admin"]
+              : [domainAdminRole, "institute_admin"];
+
             const { rows: admins } = await pool.query(
               `SELECT DISTINCT u.id, u.full_name, u.email
                FROM users u
@@ -752,10 +764,10 @@ router.post(
                JOIN roles r ON r.id = ur.role_id
                WHERE u.institution_id = $1
                  AND u.account_status = 'ACTIVE'
-                 AND r.name = 'institute_admin'
+                 AND r.name = ANY($2::text[])
                  AND ur.revoked_at IS NULL
                  AND (ur.expires_at IS NULL OR ur.expires_at > now())`,
-              [institutionId]
+              [institutionId, adminRoles]
             );
 
             const academicYear = formatAcademicYear(formYear);
@@ -1553,6 +1565,53 @@ router.post(
         entityId: rows[0].id,
         newValue: { form_name: formName, institution_id: institutionId, is_locked: true },
         message: `Form Locked - "${formName}"`,
+      });
+
+      // Notify contributors assigned to this form that it is now locked (fire-and-forget).
+      setImmediate(async () => {
+        try {
+          const { rows: lockerRows } = await pool.query(
+            `SELECT full_name FROM users WHERE id = $1`, [req.user.userId]
+          );
+          const lockedByName = lockerRows[0]?.full_name || "Administrator";
+
+          const { rows: instRows } = await pool.query(
+            `SELECT institution_name FROM institutions WHERE institution_id = $1`, [institutionId]
+          );
+          const institutionName = instRows[0]?.institution_name || "";
+
+          // All contributors with an active assignment for this form in any year.
+          const { rows: assignees } = await pool.query(
+            `SELECT DISTINCT u.id, u.full_name, u.email
+             FROM form_assignments fa
+             JOIN table_list tl ON tl.id = fa.form_id
+             JOIN users u ON u.id = fa.assigned_to
+             WHERE tl.form_name = $1
+               AND fa.institution_id = $2
+               AND fa.is_active = true
+               AND u.account_status = 'ACTIVE'`,
+            [formName, institutionId]
+          );
+
+          const loginUrl = process.env.APP_LOGIN_URL || "http://localhost:5173/login";
+          await Promise.all(assignees.map((a) =>
+            enqueueEmail(pool, {
+              eventId:         "form_locked",
+              recipientEmail:  a.email,
+              recipientUserId: a.id,
+              payload: {
+                full_name:        a.full_name,
+                form_name:        formName,
+                institution_name: institutionName,
+                locked_by_name:   lockedByName,
+                login_url:        loginUrl,
+              },
+            })
+          ));
+          logger.info(`Enqueued form_locked for ${assignees.length} contributor(s) — form "${formName}"`);
+        } catch (err) {
+          logger.error("Failed to enqueue form_locked email", { stack: err.stack });
+        }
       });
 
       return res.json({ success: true, message: `Form "${formName}" locked.`, lock: rows[0] });

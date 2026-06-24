@@ -883,6 +883,216 @@ async function sendAcademicYearActivatedEmail(pool, { full_name, email, institut
   }
 }
 
+/* ── Form assigned — notifies the contributor who was assigned a form ── */
+async function sendFormAssignedEmail(pool, { full_name, email, form_name, academic_year, assigned_by_name, deadline, login_url, userId }) {
+  const EVENT = "form_assigned";
+  let tmpl;
+  try { tmpl = await getTemplateFromDB(pool, EVENT); }
+  catch (err) { logger.error(`sendFormAssignedEmail: template not found: ${err.message}`); return null; }
+  const tokens = baseTokens({
+    UserName:        full_name,       FULL_NAME:       full_name,
+    Email:           email,           EMAIL:           email,
+    FORM_NAME:       form_name,
+    ACADEMIC_YEAR:   academic_year,
+    ASSIGNED_BY:     assigned_by_name || "Your Department Admin",
+    DEADLINE:        deadline || "Not set",
+    LoginURL:        login_url || process.env.APP_LOGIN_URL || "http://localhost:5173/login",
+    LOGIN_URL:       login_url || process.env.APP_LOGIN_URL || "http://localhost:5173/login",
+  });
+  if (tmpl.email_enabled) {
+    const subject   = resolveTokens(tmpl.email_subject, tokens);
+    const introText = resolveTokens(tmpl.email_body, tokens);
+    await sendMail({ to: email, subject, html: loadNotificationLayout({
+      ...tokens,
+      HEADER_BADGE:    "Form Assigned",
+      HEADER_TITLE:    "A Form Has Been Assigned to You",
+      HEADER_SUBTITLE: `Please complete "${form_name}" before the deadline`,
+      INTRO_TEXT:      introText,
+      DETAILS_HTML:    _detailsTable([
+        ["Form Name",     form_name],
+        ["Academic Year", academic_year],
+        ["Assigned By",   assigned_by_name || "Your Department Admin"],
+        ["Deadline",      deadline || "Not set"],
+      ]),
+      CTA_HTML: _ctaButton(tokens.LOGIN_URL, "Open Your Forms →"),
+    }) });
+  }
+  if (tmpl.app_enabled) {
+    const uid = await resolveUserId(pool, userId, email);
+    await insertNotification(pool, {
+      userId: uid, eventId: EVENT,
+      title:   resolveTokens(tmpl.email_subject, tokens),
+      message: resolveTokens(tmpl.app_message,   tokens),
+    });
+  }
+}
+
+/* ── Form locked — notifies contributors that a form is now locked ── */
+async function sendFormLockedEmail(pool, { full_name, email, form_name, institution_name, locked_by_name, login_url, userId }) {
+  const EVENT = "form_locked";
+  let tmpl;
+  try { tmpl = await getTemplateFromDB(pool, EVENT); }
+  catch (err) { logger.error(`sendFormLockedEmail: template not found: ${err.message}`); return null; }
+  const tokens = baseTokens({
+    UserName:         full_name,       FULL_NAME:        full_name,
+    Email:            email,           EMAIL:            email,
+    FORM_NAME:        form_name,
+    INSTITUTION_NAME: institution_name || "",
+    LOCKED_BY:        locked_by_name || "Administrator",
+    LoginURL:         login_url || process.env.APP_LOGIN_URL || "http://localhost:5173/login",
+    LOGIN_URL:        login_url || process.env.APP_LOGIN_URL || "http://localhost:5173/login",
+  });
+  if (tmpl.email_enabled) {
+    const subject   = resolveTokens(tmpl.email_subject, tokens);
+    const introText = resolveTokens(tmpl.email_body, tokens);
+    await sendMail({ to: email, subject, html: loadNotificationLayout({
+      ...tokens,
+      HEADER_BADGE:    "Form Locked",
+      HEADER_TITLE:    "Form Is Now Locked",
+      HEADER_SUBTITLE: `"${form_name}" — no further submissions accepted`,
+      INTRO_TEXT:      introText,
+      DETAILS_HTML:    _detailsTable([
+        ["Form Name",   form_name],
+        ["Locked By",   locked_by_name || "Administrator"],
+        ["Institution", institution_name || ""],
+      ]),
+      CTA_HTML: _ctaButton(tokens.LOGIN_URL),
+    }) });
+  }
+  if (tmpl.app_enabled) {
+    const uid = await resolveUserId(pool, userId, email);
+    await insertNotification(pool, {
+      userId: uid, eventId: EVENT,
+      title:   resolveTokens(tmpl.email_subject, tokens),
+      message: resolveTokens(tmpl.app_message,   tokens),
+    });
+  }
+}
+
+/* ── Section submitted for review — notifies the step-1 approver ── */
+async function sendFormSubmittedEmail(pool, { full_name, email, section_name, step_name, submitted_by_name, login_url, userId }) {
+  const EVENT = "form_submitted";
+  let tmpl;
+  try { tmpl = await getTemplateFromDB(pool, EVENT); }
+  catch (err) { logger.error(`sendFormSubmittedEmail: template not found: ${err.message}`); return null; }
+  const tokens = baseTokens({
+    UserName:       full_name,          FULL_NAME:      full_name,
+    Email:          email,              EMAIL:          email,
+    SECTION_NAME:   section_name,
+    STEP_NAME:      step_name || "Step 1",
+    SUBMITTED_BY:   submitted_by_name || "A contributor",
+    LoginURL:       login_url || process.env.APP_LOGIN_URL || "http://localhost:5173/login",
+    LOGIN_URL:      login_url || process.env.APP_LOGIN_URL || "http://localhost:5173/login",
+  });
+  if (tmpl.email_enabled) {
+    const subject   = resolveTokens(tmpl.email_subject, tokens);
+    const introText = resolveTokens(tmpl.email_body, tokens);
+    await sendMail({ to: email, subject, html: loadNotificationLayout({
+      ...tokens,
+      HEADER_BADGE:    "Review Requested",
+      HEADER_TITLE:    "Section Awaiting Your Review",
+      HEADER_SUBTITLE: `${section_name} has been submitted for approval`,
+      INTRO_TEXT:      introText,
+      DETAILS_HTML:    _detailsTable([
+        ["Section",      section_name],
+        ["Submitted By", submitted_by_name || "A contributor"],
+        ["Step",         step_name || "Step 1"],
+      ]),
+      CTA_HTML: _ctaButton(tokens.LOGIN_URL, "Review Now →"),
+    }) });
+  }
+  if (tmpl.app_enabled) {
+    const uid = await resolveUserId(pool, userId, email);
+    await insertNotification(pool, {
+      userId: uid, eventId: EVENT,
+      title:   resolveTokens(tmpl.email_subject, tokens),
+      message: resolveTokens(tmpl.app_message,   tokens),
+    });
+  }
+}
+
+/* ── Section approved — notifies the section owner ── */
+async function sendFormApprovedEmail(pool, { full_name, email, section_name, approved_by_name, login_url, userId }) {
+  const EVENT = "form_approved";
+  let tmpl;
+  try { tmpl = await getTemplateFromDB(pool, EVENT); }
+  catch (err) { logger.error(`sendFormApprovedEmail: template not found: ${err.message}`); return null; }
+  const tokens = baseTokens({
+    UserName:        full_name,          FULL_NAME:       full_name,
+    Email:           email,              EMAIL:           email,
+    SECTION_NAME:    section_name,
+    APPROVED_BY:     approved_by_name || "An approver",
+    LoginURL:        login_url || process.env.APP_LOGIN_URL || "http://localhost:5173/login",
+    LOGIN_URL:       login_url || process.env.APP_LOGIN_URL || "http://localhost:5173/login",
+  });
+  if (tmpl.email_enabled) {
+    const subject   = resolveTokens(tmpl.email_subject, tokens);
+    const introText = resolveTokens(tmpl.email_body, tokens);
+    await sendMail({ to: email, subject, html: loadNotificationLayout({
+      ...tokens,
+      HEADER_BADGE:    "Approved",
+      HEADER_TITLE:    "Your Section Has Been Approved",
+      HEADER_SUBTITLE: `"${section_name}" has been approved`,
+      INTRO_TEXT:      introText,
+      DETAILS_HTML:    _detailsTable([
+        ["Section",     section_name],
+        ["Approved By", approved_by_name || "An approver"],
+      ]),
+      CTA_HTML: _ctaButton(tokens.LOGIN_URL),
+    }) });
+  }
+  if (tmpl.app_enabled) {
+    const uid = await resolveUserId(pool, userId, email);
+    await insertNotification(pool, {
+      userId: uid, eventId: EVENT,
+      title:   resolveTokens(tmpl.email_subject, tokens),
+      message: resolveTokens(tmpl.app_message,   tokens),
+    });
+  }
+}
+
+/* ── Section sent back — notifies the section owner to revise ── */
+async function sendFormRejectedEmail(pool, { full_name, email, section_name, reviewer_name, comment, login_url, userId }) {
+  const EVENT = "form_rejected";
+  let tmpl;
+  try { tmpl = await getTemplateFromDB(pool, EVENT); }
+  catch (err) { logger.error(`sendFormRejectedEmail: template not found: ${err.message}`); return null; }
+  const tokens = baseTokens({
+    UserName:       full_name,         FULL_NAME:      full_name,
+    Email:          email,             EMAIL:          email,
+    SECTION_NAME:   section_name,
+    REVIEWER_NAME:  reviewer_name || "An approver",
+    COMMENT:        comment || "Please review and resubmit.",
+    LoginURL:       login_url || process.env.APP_LOGIN_URL || "http://localhost:5173/login",
+    LOGIN_URL:      login_url || process.env.APP_LOGIN_URL || "http://localhost:5173/login",
+  });
+  if (tmpl.email_enabled) {
+    const subject   = resolveTokens(tmpl.email_subject, tokens);
+    const introText = resolveTokens(tmpl.email_body, tokens);
+    await sendMail({ to: email, subject, html: loadNotificationLayout({
+      ...tokens,
+      HEADER_BADGE:    "Sent Back",
+      HEADER_TITLE:    "Your Section Requires Revision",
+      HEADER_SUBTITLE: `"${section_name}" has been sent back for changes`,
+      INTRO_TEXT:      introText,
+      DETAILS_HTML:    _detailsTable([
+        ["Section",     section_name],
+        ["Reviewed By", reviewer_name || "An approver"],
+        ["Feedback",    comment || "Please review and resubmit."],
+      ]),
+      CTA_HTML: _ctaButton(tokens.LOGIN_URL, "Revise & Resubmit →"),
+    }) });
+  }
+  if (tmpl.app_enabled) {
+    const uid = await resolveUserId(pool, userId, email);
+    await insertNotification(pool, {
+      userId: uid, eventId: EVENT,
+      title:   resolveTokens(tmpl.email_subject, tokens),
+      message: resolveTokens(tmpl.app_message,   tokens),
+    });
+  }
+}
+
 /* ── Bulk import completed — notifies the admin who triggered the import ── */
 async function sendImportCompletedEmail(pool, { full_name, email, imported, skipped, failed, total, login_url, userId }) {
   const tmpl   = await getTemplateFromDB(pool, "import_completed");
@@ -1146,6 +1356,51 @@ async function _dispatchJob(pool, job) {
         login_url:  payload.login_url,
         userId,
       });
+    case "form_assigned":
+      return sendFormAssignedEmail(pool, {
+        full_name:        payload.full_name,  email,
+        form_name:        payload.form_name,
+        academic_year:    payload.academic_year,
+        assigned_by_name: payload.assigned_by_name,
+        deadline:         payload.deadline,
+        login_url:        payload.login_url,
+        userId,
+      });
+    case "form_locked":
+      return sendFormLockedEmail(pool, {
+        full_name:        payload.full_name,  email,
+        form_name:        payload.form_name,
+        institution_name: payload.institution_name,
+        locked_by_name:   payload.locked_by_name,
+        login_url:        payload.login_url,
+        userId,
+      });
+    case "form_submitted":
+      return sendFormSubmittedEmail(pool, {
+        full_name:         payload.full_name,  email,
+        section_name:      payload.section_name,
+        step_name:         payload.step_name,
+        submitted_by_name: payload.submitted_by_name,
+        login_url:         payload.login_url,
+        userId,
+      });
+    case "form_approved":
+      return sendFormApprovedEmail(pool, {
+        full_name:        payload.full_name,  email,
+        section_name:     payload.section_name,
+        approved_by_name: payload.approved_by_name,
+        login_url:        payload.login_url,
+        userId,
+      });
+    case "form_rejected":
+      return sendFormRejectedEmail(pool, {
+        full_name:      payload.full_name,  email,
+        section_name:   payload.section_name,
+        reviewer_name:  payload.reviewer_name,
+        comment:        payload.comment,
+        login_url:      payload.login_url,
+        userId,
+      });
     default:
       throw new Error(`emailWorker: unknown event_id "${event_id}"`);
   }
@@ -1302,6 +1557,11 @@ module.exports = {
   sendDepartmentFormCreatedEmail,
   sendDeadlineReminderEmail,
   sendImportCompletedEmail,
+  sendFormAssignedEmail,
+  sendFormLockedEmail,
+  sendFormSubmittedEmail,
+  sendFormApprovedEmail,
+  sendFormRejectedEmail,
   /* Queue interface */
   enqueueEmail,
   startEmailWorker,

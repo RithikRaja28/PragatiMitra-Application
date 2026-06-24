@@ -372,66 +372,6 @@ export const ROLE_CONFIG = {
     user: { name: "Institute Admin", initials: "IA", org: "PragatiMitra" },
   },
 
-  /* ── FINANCE OFFICER ──────────────────────────────────────── */
-  // ✅ key = "finance_officer" — matches backend exactly
-  finance_officer: {
-    navItems: [
-      {
-        group: "",
-        items: [
-          {
-            id: "fo-overview",
-            label: "Dashboard",
-            icon: "LayoutDashboard",
-            permission: null,
-            slug: "overview",
-          },
-        ],
-      },
-      {
-        group: "Finance",
-        items: [
-          {
-            id: "fo-estimates",
-            label: "Estimates",
-            icon: "FileSpreadsheet",
-            permission: null,
-            slug: "estimates",
-            subRoutes: [
-              { path: "estimates/new",  element: <EstimatesPage /> },
-              { path: "estimates/edit", element: <EstimatesPage /> },
-            ],
-          },
-          {
-            id: "fo-balance-sheet",
-            label: "Balance Sheet",
-            icon: "Scale",
-            permission: null,
-            slug: "balance-sheet",
-            subRoutes: [
-              { path: "balance-sheet/new",    element: <BalanceSheetPage /> },
-              { path: "balance-sheet/detail", element: <BalanceSheetPage /> },
-            ],
-          },
-        ],
-      },
-      {
-        group: "Report Sections",
-        items: [
-          { id: "fo-my-sections", label: "My Sections", icon: "FileEdit", permission: null, slug: "my-sections", subRoutes: MY_SECTIONS_SUB },
-        ],
-      },
-    ],
-    pages: {
-      "fo-overview":      <FinanceOverviewPage />,
-      "fo-estimates":     <EstimatesPage />,
-      "fo-balance-sheet": <BalanceSheetPage />,
-      "fo-my-sections":   <MyAssignedSectionsPage />,
-    },
-    defaultPage: "fo-overview",
-    user: { name: "Finance Officer", initials: "FO", org: "PragatiMitra" },
-  },
-
   /* ── DIRECTOR'S OFFICE ───────────────────────────────────────── */
   // ✅ key = "directors_office" — matches backend exactly
   directors_office: {
@@ -697,25 +637,6 @@ export const ROLE_CONFIG = {
     },
     defaultPage: "rv-sections",
     user: { name: "Reviewer", initials: "RV", org: "PragatiMitra" },
-  },
-
-  /* ── HEAD OF DEPARTMENT ──────────────────────────────────────── */
-  head_of_department: {
-    navItems: [
-      {
-        group: "My Work",
-        items: [
-          { id: "hod-sections",     label: "My Sections",  icon: "FileEdit",      permission: null, slug: "my-sections",  subRoutes: MY_SECTIONS_SUB },
-          { id: "hod-review-queue", label: "Review Queue", icon: "ClipboardList", permission: null, slug: "review-queue", subRoutes: REVIEW_QUEUE_SUB },
-        ],
-      },
-    ],
-    pages: {
-      "hod-sections":     <MyAssignedSectionsPage />,
-      "hod-review-queue": <ReviewQueuePage />,
-    },
-    defaultPage: "hod-sections",
-    user: { name: "Head of Department", initials: "HD", org: "PragatiMitra" },
   },
 
   /* ── PUBLICATION CELL ────────────────────────────────────────── */

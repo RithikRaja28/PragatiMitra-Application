@@ -19,6 +19,7 @@ const { writeAuditLog } = require("../utils/audit");
 const { getFormLifecycleStatus, resolveOperatingYear } = require("../services/academicYearService");
 const { assertFormDomainAccess } = require("../services/domainService");
 const { resolveEffectiveDepartment, getDepartmentWriteBlock } = require("../services/departmentContext");
+const { enqueueEmail } = require("../services/mailService");
 const logger = require("../utils/logger");
 
 /* Assigner's EFFECTIVE (institution, department) context. Delegates to the single
@@ -323,6 +324,57 @@ router.post("/", requireRole(ASSIGN_ROLES), async (req, res) => {
       entityId: form_id,
       newValue: { form_id, form_name: fname, academic_year: year, department_id: departmentId, count: created },
       message: `Form assigned to ${created} contributor(s) — "${fname}"`,
+    });
+
+    // Notify each assigned contributor via email + in-app (fire-and-forget).
+    setImmediate(async () => {
+      try {
+        const { rows: assignerRows } = await pool.query(
+          `SELECT full_name FROM users WHERE id = $1`, [req.user.userId]
+        );
+        const assignedByName = assignerRows[0]?.full_name || "Your Department Admin";
+
+        const { rows: contribRows } = await pool.query(
+          `SELECT id, full_name, email FROM users WHERE id = ANY($1::uuid[])`,
+          [validIds]
+        );
+
+        // Fetch effective deadline for this form+institution (per-year first, then fallback).
+        const { rows: dlRows } = await pool.query(
+          `SELECT deadline_at FROM form_year_deadlines
+           WHERE form_name = $1 AND institution_id = $2 AND academic_year = $3
+           UNION ALL
+           SELECT deadline_at FROM form_lock_config
+           WHERE form_name = $1 AND institution_id = $2
+           LIMIT 1`,
+          [fname, institutionId, year]
+        );
+        const deadline = dlRows[0]?.deadline_at
+          ? new Date(dlRows[0].deadline_at).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })
+          : null;
+
+        const academicYear = `${year}-${year + 1}`;
+        const loginUrl = process.env.APP_LOGIN_URL || "http://localhost:5173/login";
+
+        await Promise.all(contribRows.map((c) =>
+          enqueueEmail(pool, {
+            eventId:         "form_assigned",
+            recipientEmail:  c.email,
+            recipientUserId: c.id,
+            payload: {
+              full_name:        c.full_name,
+              form_name:        fname,
+              academic_year:    academicYear,
+              assigned_by_name: assignedByName,
+              deadline:         deadline,
+              login_url:        loginUrl,
+            },
+          })
+        ));
+        logger.info(`Enqueued form_assigned for ${contribRows.length} contributor(s) — form "${fname}"`);
+      } catch (err) {
+        logger.error("Failed to enqueue form_assigned email", { stack: err.stack });
+      }
     });
 
     return res.json({ success: true, message: `Assigned to ${created} contributor(s).`, assigned: created });

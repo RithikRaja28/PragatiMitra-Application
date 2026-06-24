@@ -20,6 +20,7 @@ const express           = require("express");
 const { verifyToken }   = require("../../middleware/auth");
 const { writeAuditLog } = require("../../utils/audit");
 const { createSectionSnapshot } = require("../../utils/snapshotHelper");
+const { enqueueEmail }  = require("../../services/mailService");
 const logger            = require("../../utils/logger");
 const { getLogContext } = logger;
 
@@ -212,10 +213,11 @@ router.post("/section/:sectionId/submit", async (req, res) => {
       [firstStepId, req.user.userId, sectionId]
     );
 
-    // Notify approver at first step
+    // Notify approver at first step (in-app + email)
     if (firstStepId) {
       const { rows: notifRows } = await pool.query(
-        `SELECT ws.*, u.id AS uid FROM public.workflow_steps ws
+        `SELECT ws.*, u.id AS uid, u.full_name AS approver_name, u.email AS approver_email
+         FROM public.workflow_steps ws
          LEFT JOIN public.users u ON u.id = ws.approver_user_id
          WHERE ws.id = $1`, [firstStepId]
       );
@@ -226,6 +228,26 @@ router.post("/section/:sectionId/submit", async (req, res) => {
                    $2, 'SECTION', $3)`,
           [notifRows[0].uid, `A section has been submitted for review at step: ${notifRows[0].step_name}`, sectionId]
         ).catch(() => {});
+
+        // Email the approver
+        if (notifRows[0].approver_email) {
+          const { rows: submitterRows } = await pool.query(
+            `SELECT full_name FROM public.users WHERE id = $1`, [req.user.userId]
+          );
+          const submittedByName = submitterRows[0]?.full_name || "A contributor";
+          enqueueEmail(pool, {
+            eventId:         "form_submitted",
+            recipientEmail:  notifRows[0].approver_email,
+            recipientUserId: notifRows[0].uid,
+            payload: {
+              full_name:         notifRows[0].approver_name,
+              section_name:      `Section ${sectionId.slice(0, 8)}`,
+              step_name:         notifRows[0].step_name || "Step 1",
+              submitted_by_name: submittedByName,
+              login_url:         process.env.APP_LOGIN_URL || "http://localhost:5173/login",
+            },
+          }).catch((e) => logger.error("Failed to enqueue form_submitted email", { err: e.message }));
+        }
       }
     }
 
@@ -322,7 +344,13 @@ router.post("/section/:sectionId/review", async (req, res) => {
 
       if (dec === "APPROVED") {
         newStatus = "APPROVED";
-        // Notify section owner of final approval
+        // Notify section owner of final approval (in-app + email)
+        const { rows: ownerNotifRows } = await pool.query(
+          `SELECT sa.user_id, u.full_name, u.email FROM public.section_assignments sa
+           JOIN public.users u ON u.id = sa.user_id
+           WHERE sa.section_id = $1 AND sa.role = 'OWNER' AND sa.completed_at IS NULL`,
+          [sectionId]
+        ).catch(() => ({ rows: [] }));
         await pool.query(
           `INSERT INTO public.notifications (user_id, type, title, body, entity_type, entity_id)
            SELECT sa.user_id, 'SECTION_APPROVED', 'Your section has been finally approved',
@@ -331,9 +359,32 @@ router.post("/section/:sectionId/review", async (req, res) => {
            WHERE sa.section_id = $1 AND sa.role = 'OWNER' AND sa.completed_at IS NULL`,
           [sectionId]
         ).catch(() => {});
+        const { rows: reviewerNameRows } = await pool.query(
+          `SELECT full_name FROM public.users WHERE id = $1`, [req.user.userId]
+        ).catch(() => ({ rows: [] }));
+        const reviewerName = reviewerNameRows[0]?.full_name || "Director's Office";
+        for (const owner of (ownerNotifRows || [])) {
+          enqueueEmail(pool, {
+            eventId:         "form_approved",
+            recipientEmail:  owner.email,
+            recipientUserId: owner.user_id,
+            payload: {
+              full_name:        owner.full_name,
+              section_name:     `Section ${sectionId.slice(0, 8)}`,
+              approved_by_name: reviewerName,
+              login_url:        process.env.APP_LOGIN_URL || "http://localhost:5173/login",
+            },
+          }).catch((e) => logger.error("Failed to enqueue form_approved email", { err: e.message }));
+        }
       } else {
         // SENT_BACK by director → owner must revise and resubmit
         newStatus = "SENT_BACK";
+        const { rows: ownerSentBackRows } = await pool.query(
+          `SELECT sa.user_id, u.full_name, u.email FROM public.section_assignments sa
+           JOIN public.users u ON u.id = sa.user_id
+           WHERE sa.section_id = $1 AND sa.role = 'OWNER' AND sa.completed_at IS NULL`,
+          [sectionId]
+        ).catch(() => ({ rows: [] }));
         await pool.query(
           `INSERT INTO public.notifications (user_id, type, title, body, entity_type, entity_id)
            SELECT sa.user_id, 'SECTION_SENT_BACK', 'Your section was sent back by Director''s Office',
@@ -342,6 +393,24 @@ router.post("/section/:sectionId/review", async (req, res) => {
            WHERE sa.section_id = $2 AND sa.role = 'OWNER' AND sa.completed_at IS NULL`,
           [comment || "Director's Office has sent the section back. Please revise and resubmit.", sectionId]
         ).catch(() => {});
+        const { rows: dirRevNameRows } = await pool.query(
+          `SELECT full_name FROM public.users WHERE id = $1`, [req.user.userId]
+        ).catch(() => ({ rows: [] }));
+        const dirRevName = dirRevNameRows[0]?.full_name || "Director's Office";
+        for (const owner of (ownerSentBackRows || [])) {
+          enqueueEmail(pool, {
+            eventId:         "form_rejected",
+            recipientEmail:  owner.email,
+            recipientUserId: owner.user_id,
+            payload: {
+              full_name:     owner.full_name,
+              section_name:  `Section ${sectionId.slice(0, 8)}`,
+              reviewer_name: dirRevName,
+              comment:       comment || "Director's Office has sent the section back. Please revise and resubmit.",
+              login_url:     process.env.APP_LOGIN_URL || "http://localhost:5173/login",
+            },
+          }).catch((e) => logger.error("Failed to enqueue form_rejected email", { err: e.message }));
+        }
       }
     } else if (dec === "APPROVED") {
       // ── Normal workflow step approval ──────────────────────────────────────
@@ -392,7 +461,13 @@ router.post("/section/:sectionId/review", async (req, res) => {
       newStatus  = "SENT_BACK";
       nextStepId = null;
 
-      // Notify owner
+      // Notify owner (in-app + email)
+      const { rows: sbOwnerRows } = await pool.query(
+        `SELECT sa.user_id, u.full_name, u.email FROM public.section_assignments sa
+         JOIN public.users u ON u.id = sa.user_id
+         WHERE sa.section_id = $1 AND sa.role = 'OWNER' AND sa.completed_at IS NULL`,
+        [sectionId]
+      ).catch(() => ({ rows: [] }));
       await pool.query(
         `INSERT INTO public.notifications (user_id, type, title, body, entity_type, entity_id)
          SELECT sa.user_id, 'SECTION_SENT_BACK', 'Your section was sent back',
@@ -401,6 +476,24 @@ router.post("/section/:sectionId/review", async (req, res) => {
          WHERE sa.section_id = $2 AND sa.role = 'OWNER' AND sa.completed_at IS NULL`,
         [comment || "Please review the feedback and resubmit.", sectionId]
       ).catch(() => {});
+      const { rows: sbRevNameRows } = await pool.query(
+        `SELECT full_name FROM public.users WHERE id = $1`, [req.user.userId]
+      ).catch(() => ({ rows: [] }));
+      const sbRevName = sbRevNameRows[0]?.full_name || "An approver";
+      for (const owner of (sbOwnerRows || [])) {
+        enqueueEmail(pool, {
+          eventId:         "form_rejected",
+          recipientEmail:  owner.email,
+          recipientUserId: owner.user_id,
+          payload: {
+            full_name:     owner.full_name,
+            section_name:  `Section ${sectionId.slice(0, 8)}`,
+            reviewer_name: sbRevName,
+            comment:       comment || "Please review the feedback and resubmit.",
+            login_url:     process.env.APP_LOGIN_URL || "http://localhost:5173/login",
+          },
+        }).catch((e) => logger.error("Failed to enqueue form_rejected email", { err: e.message }));
+      }
     }
 
     // Update section status and step

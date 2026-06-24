@@ -358,7 +358,7 @@ router.post("/", requireRole(MANAGE_ROLES), async (req, res) => {
            WHERE u.institution_id = $1
              AND u.account_status = 'ACTIVE'
              AND u.email IS NOT NULL
-             AND r.name IN ('head_of_department', 'nodal_officer', 'department_admin')`,
+             AND r.name IN ('nodal_officer', 'department_admin')`,
           [institutionId]
         );
 

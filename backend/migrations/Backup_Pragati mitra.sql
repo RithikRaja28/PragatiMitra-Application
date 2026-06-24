@@ -2,12 +2,12 @@
 -- PostgreSQL database dump
 --
 
-\restrict AaLYqcN7PcyAhyn9oWiFCFNRg6AZzmEWz15iG7C7KfFhFuEYoB48Jxar2EfHQEe
+\restrict RXXZsfMMeACazKVAvdJ2wEAh89bjlSLaT0uWilpYi7hMruEUjXjR94iW9Gz87KM
 
 -- Dumped from database version 17.9
 -- Dumped by pg_dump version 17.9
 
--- Started on 2026-06-24 17:17:57
+-- Started on 2026-06-24 20:31:03
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -30,7 +30,7 @@ CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA public;
 
 
 --
--- TOC entry 6270 (class 0 OID 0)
+-- TOC entry 5945 (class 0 OID 0)
 -- Dependencies: 2
 -- Name: EXTENSION pg_trgm; Type: COMMENT; Schema: -; Owner: 
 --
@@ -47,7 +47,7 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA public;
 
 
 --
--- TOC entry 6271 (class 0 OID 0)
+-- TOC entry 5946 (class 0 OID 0)
 -- Dependencies: 3
 -- Name: EXTENSION pgcrypto; Type: COMMENT; Schema: -; Owner: 
 --
@@ -56,7 +56,7 @@ COMMENT ON EXTENSION pgcrypto IS 'cryptographic functions';
 
 
 --
--- TOC entry 1007 (class 1247 OID 92945)
+-- TOC entry 984 (class 1247 OID 92945)
 -- Name: committee_type_enum; Type: TYPE; Schema: public; Owner: postgres
 --
 
@@ -72,7 +72,7 @@ CREATE TYPE public.committee_type_enum AS ENUM (
 ALTER TYPE public.committee_type_enum OWNER TO postgres;
 
 --
--- TOC entry 1010 (class 1247 OID 92956)
+-- TOC entry 987 (class 1247 OID 92956)
 -- Name: department_status; Type: TYPE; Schema: public; Owner: postgres
 --
 
@@ -85,7 +85,7 @@ CREATE TYPE public.department_status AS ENUM (
 ALTER TYPE public.department_status OWNER TO postgres;
 
 --
--- TOC entry 1013 (class 1247 OID 92962)
+-- TOC entry 990 (class 1247 OID 92962)
 -- Name: institution_status; Type: TYPE; Schema: public; Owner: postgres
 --
 
@@ -100,7 +100,7 @@ CREATE TYPE public.institution_status AS ENUM (
 ALTER TYPE public.institution_status OWNER TO postgres;
 
 --
--- TOC entry 1016 (class 1247 OID 92972)
+-- TOC entry 993 (class 1247 OID 92972)
 -- Name: position_enum; Type: TYPE; Schema: public; Owner: postgres
 --
 
@@ -117,7 +117,7 @@ CREATE TYPE public.position_enum AS ENUM (
 ALTER TYPE public.position_enum OWNER TO postgres;
 
 --
--- TOC entry 1019 (class 1247 OID 92986)
+-- TOC entry 996 (class 1247 OID 92986)
 -- Name: user_status; Type: TYPE; Schema: public; Owner: postgres
 --
 
@@ -132,7 +132,7 @@ CREATE TYPE public.user_status AS ENUM (
 ALTER TYPE public.user_status OWNER TO postgres;
 
 --
--- TOC entry 320 (class 1255 OID 92995)
+-- TOC entry 297 (class 1255 OID 92995)
 -- Name: set_updated_at(); Type: FUNCTION; Schema: public; Owner: postgres
 --
 
@@ -149,7 +149,7 @@ $$;
 ALTER FUNCTION public.set_updated_at() OWNER TO postgres;
 
 --
--- TOC entry 334 (class 1255 OID 92996)
+-- TOC entry 311 (class 1255 OID 92996)
 -- Name: trim_user_notifications(); Type: FUNCTION; Schema: public; Owner: postgres
 --
 
@@ -176,33 +176,7 @@ SET default_tablespace = '';
 SET default_table_access_method = heap;
 
 --
--- TOC entry 219 (class 1259 OID 92997)
--- Name: abcdef_records; Type: TABLE; Schema: public; Owner: postgres
---
-
-CREATE TABLE public.abcdef_records (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    form_name text,
-    institution_id uuid,
-    year integer,
-    schema_id uuid,
-    status text,
-    order_index integer,
-    custom_fields jsonb,
-    language text,
-    created_at timestamp with time zone DEFAULT now(),
-    updated_at timestamp with time zone DEFAULT now(),
-    abcdef text,
-    doc text,
-    vv text,
-    source_row_id uuid
-);
-
-
-ALTER TABLE public.abcdef_records OWNER TO postgres;
-
---
--- TOC entry 220 (class 1259 OID 93005)
+-- TOC entry 219 (class 1259 OID 93005)
 -- Name: academic_year_form_config; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -223,7 +197,7 @@ CREATE TABLE public.academic_year_form_config (
 ALTER TABLE public.academic_year_form_config OWNER TO postgres;
 
 --
--- TOC entry 221 (class 1259 OID 93017)
+-- TOC entry 220 (class 1259 OID 93017)
 -- Name: academic_year_master; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -247,7 +221,7 @@ CREATE TABLE public.academic_year_master (
 ALTER TABLE public.academic_year_master OWNER TO postgres;
 
 --
--- TOC entry 222 (class 1259 OID 93027)
+-- TOC entry 221 (class 1259 OID 93027)
 -- Name: academic_year_notification_logs; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -266,36 +240,7 @@ CREATE TABLE public.academic_year_notification_logs (
 ALTER TABLE public.academic_year_notification_logs OWNER TO postgres;
 
 --
--- TOC entry 223 (class 1259 OID 93034)
--- Name: attendance_records; Type: TABLE; Schema: public; Owner: postgres
---
-
-CREATE TABLE public.attendance_records (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    form_name text,
-    institution_id uuid,
-    department_id uuid,
-    year integer,
-    schema_id uuid,
-    status text,
-    order_index integer,
-    custom_fields jsonb,
-    language text,
-    source_row_id uuid,
-    created_by uuid,
-    updated_by uuid,
-    created_at timestamp with time zone DEFAULT now(),
-    updated_at timestamp with time zone DEFAULT now(),
-    name text,
-    date date,
-    reason text
-);
-
-
-ALTER TABLE public.attendance_records OWNER TO postgres;
-
---
--- TOC entry 224 (class 1259 OID 93042)
+-- TOC entry 222 (class 1259 OID 93042)
 -- Name: audit_logs; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -323,7 +268,7 @@ CREATE TABLE public.audit_logs (
 ALTER TABLE public.audit_logs OWNER TO postgres;
 
 --
--- TOC entry 225 (class 1259 OID 93050)
+-- TOC entry 223 (class 1259 OID 93050)
 -- Name: block_comments; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -347,7 +292,7 @@ CREATE TABLE public.block_comments (
 ALTER TABLE public.block_comments OWNER TO postgres;
 
 --
--- TOC entry 226 (class 1259 OID 93059)
+-- TOC entry 224 (class 1259 OID 93059)
 -- Name: block_translations; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -368,7 +313,7 @@ CREATE TABLE public.block_translations (
 ALTER TABLE public.block_translations OWNER TO postgres;
 
 --
--- TOC entry 227 (class 1259 OID 93070)
+-- TOC entry 225 (class 1259 OID 93070)
 -- Name: branding_assignments; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -387,7 +332,7 @@ CREATE TABLE public.branding_assignments (
 ALTER TABLE public.branding_assignments OWNER TO postgres;
 
 --
--- TOC entry 228 (class 1259 OID 93078)
+-- TOC entry 226 (class 1259 OID 93078)
 -- Name: builder_approvals; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -406,7 +351,7 @@ CREATE TABLE public.builder_approvals (
 ALTER TABLE public.builder_approvals OWNER TO postgres;
 
 --
--- TOC entry 229 (class 1259 OID 93086)
+-- TOC entry 227 (class 1259 OID 93086)
 -- Name: builder_attachments; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -428,91 +373,7 @@ CREATE TABLE public.builder_attachments (
 ALTER TABLE public.builder_attachments OWNER TO postgres;
 
 --
--- TOC entry 230 (class 1259 OID 93093)
--- Name: check_doc_records; Type: TABLE; Schema: public; Owner: postgres
---
-
-CREATE TABLE public.check_doc_records (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    form_name text,
-    institution_id uuid,
-    department_id uuid,
-    year integer,
-    schema_id uuid,
-    status text,
-    order_index integer,
-    custom_fields jsonb,
-    language text,
-    source_row_id uuid,
-    created_by uuid,
-    updated_by uuid,
-    created_at timestamp with time zone DEFAULT now(),
-    updated_at timestamp with time zone DEFAULT now(),
-    name text,
-    phone_no text,
-    aim text,
-    document text
-);
-
-
-ALTER TABLE public.check_doc_records OWNER TO postgres;
-
---
--- TOC entry 231 (class 1259 OID 93101)
--- Name: check_private_records; Type: TABLE; Schema: public; Owner: postgres
---
-
-CREATE TABLE public.check_private_records (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    form_name text,
-    institution_id uuid,
-    department_id uuid,
-    year integer,
-    schema_id uuid,
-    status text,
-    order_index integer,
-    custom_fields jsonb,
-    language text,
-    source_row_id uuid,
-    created_by uuid,
-    updated_by uuid,
-    created_at timestamp with time zone DEFAULT now(),
-    updated_at timestamp with time zone DEFAULT now(),
-    name text
-);
-
-
-ALTER TABLE public.check_private_records OWNER TO postgres;
-
---
--- TOC entry 232 (class 1259 OID 93109)
--- Name: check_shared_records; Type: TABLE; Schema: public; Owner: postgres
---
-
-CREATE TABLE public.check_shared_records (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    form_name text,
-    institution_id uuid,
-    department_id uuid,
-    year integer,
-    schema_id uuid,
-    status text,
-    order_index integer,
-    custom_fields jsonb,
-    language text,
-    source_row_id uuid,
-    created_by uuid,
-    updated_by uuid,
-    created_at timestamp with time zone DEFAULT now(),
-    updated_at timestamp with time zone DEFAULT now(),
-    name text
-);
-
-
-ALTER TABLE public.check_shared_records OWNER TO postgres;
-
---
--- TOC entry 233 (class 1259 OID 93117)
+-- TOC entry 228 (class 1259 OID 93117)
 -- Name: compiled_reports; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -535,36 +396,7 @@ CREATE TABLE public.compiled_reports (
 ALTER TABLE public.compiled_reports OWNER TO postgres;
 
 --
--- TOC entry 234 (class 1259 OID 93129)
--- Name: cpga_records; Type: TABLE; Schema: public; Owner: postgres
---
-
-CREATE TABLE public.cpga_records (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    form_name text,
-    institution_id uuid,
-    department_id uuid,
-    year integer,
-    schema_id uuid,
-    status text,
-    order_index integer,
-    custom_fields jsonb,
-    language text,
-    source_row_id uuid,
-    created_by uuid,
-    updated_by uuid,
-    created_at timestamp with time zone DEFAULT now(),
-    updated_at timestamp with time zone DEFAULT now(),
-    name text,
-    gpa text,
-    blacklog text
-);
-
-
-ALTER TABLE public.cpga_records OWNER TO postgres;
-
---
--- TOC entry 235 (class 1259 OID 93137)
+-- TOC entry 229 (class 1259 OID 93137)
 -- Name: custom_field_schemas; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -589,7 +421,7 @@ CREATE TABLE public.custom_field_schemas (
 ALTER TABLE public.custom_field_schemas OWNER TO postgres;
 
 --
--- TOC entry 236 (class 1259 OID 93146)
+-- TOC entry 230 (class 1259 OID 93146)
 -- Name: cycle_department_deadlines; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -608,7 +440,7 @@ CREATE TABLE public.cycle_department_deadlines (
 ALTER TABLE public.cycle_department_deadlines OWNER TO postgres;
 
 --
--- TOC entry 237 (class 1259 OID 93152)
+-- TOC entry 231 (class 1259 OID 93152)
 -- Name: dashboard_kpi; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -625,7 +457,7 @@ CREATE TABLE public.dashboard_kpi (
 ALTER TABLE public.dashboard_kpi OWNER TO postgres;
 
 --
--- TOC entry 238 (class 1259 OID 93159)
+-- TOC entry 232 (class 1259 OID 93159)
 -- Name: dashboard_kpi_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
 
@@ -641,8 +473,8 @@ CREATE SEQUENCE public.dashboard_kpi_id_seq
 ALTER SEQUENCE public.dashboard_kpi_id_seq OWNER TO postgres;
 
 --
--- TOC entry 6272 (class 0 OID 0)
--- Dependencies: 238
+-- TOC entry 5947 (class 0 OID 0)
+-- Dependencies: 232
 -- Name: dashboard_kpi_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
 
@@ -650,7 +482,7 @@ ALTER SEQUENCE public.dashboard_kpi_id_seq OWNED BY public.dashboard_kpi.id;
 
 
 --
--- TOC entry 239 (class 1259 OID 93160)
+-- TOC entry 233 (class 1259 OID 93160)
 -- Name: data_sources; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -675,35 +507,7 @@ CREATE TABLE public.data_sources (
 ALTER TABLE public.data_sources OWNER TO postgres;
 
 --
--- TOC entry 240 (class 1259 OID 93172)
--- Name: date_records; Type: TABLE; Schema: public; Owner: postgres
---
-
-CREATE TABLE public.date_records (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    form_name text,
-    institution_id uuid,
-    department_id uuid,
-    year integer,
-    schema_id uuid,
-    status text,
-    order_index integer,
-    custom_fields jsonb,
-    language text,
-    source_row_id uuid,
-    created_by uuid,
-    updated_by uuid,
-    created_at timestamp with time zone DEFAULT now(),
-    updated_at timestamp with time zone DEFAULT now(),
-    date date,
-    yesno boolean
-);
-
-
-ALTER TABLE public.date_records OWNER TO postgres;
-
---
--- TOC entry 241 (class 1259 OID 93180)
+-- TOC entry 234 (class 1259 OID 93180)
 -- Name: department_form_deadline_config; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -727,7 +531,7 @@ CREATE TABLE public.department_form_deadline_config (
 ALTER TABLE public.department_form_deadline_config OWNER TO postgres;
 
 --
--- TOC entry 242 (class 1259 OID 93188)
+-- TOC entry 235 (class 1259 OID 93188)
 -- Name: department_form_lock_config; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -748,7 +552,7 @@ CREATE TABLE public.department_form_lock_config (
 ALTER TABLE public.department_form_lock_config OWNER TO postgres;
 
 --
--- TOC entry 243 (class 1259 OID 93196)
+-- TOC entry 236 (class 1259 OID 93196)
 -- Name: department_form_roles; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -767,7 +571,7 @@ CREATE TABLE public.department_form_roles (
 ALTER TABLE public.department_form_roles OWNER TO postgres;
 
 --
--- TOC entry 244 (class 1259 OID 93203)
+-- TOC entry 237 (class 1259 OID 93203)
 -- Name: department_form_year_mapping; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -786,7 +590,7 @@ CREATE TABLE public.department_form_year_mapping (
 ALTER TABLE public.department_form_year_mapping OWNER TO postgres;
 
 --
--- TOC entry 245 (class 1259 OID 93214)
+-- TOC entry 238 (class 1259 OID 93214)
 -- Name: department_table_list; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -814,7 +618,7 @@ CREATE TABLE public.department_table_list (
 ALTER TABLE public.department_table_list OWNER TO postgres;
 
 --
--- TOC entry 246 (class 1259 OID 93227)
+-- TOC entry 239 (class 1259 OID 93227)
 -- Name: departments; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -835,63 +639,7 @@ CREATE TABLE public.departments (
 ALTER TABLE public.departments OWNER TO postgres;
 
 --
--- TOC entry 247 (class 1259 OID 93236)
--- Name: dept_form_bbbbbbbb0000_student; Type: TABLE; Schema: public; Owner: postgres
---
-
-CREATE TABLE public.dept_form_bbbbbbbb0000_student (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    form_name text,
-    department_id uuid,
-    institution_id uuid,
-    academic_year integer,
-    role_name text,
-    schema_id uuid,
-    status text,
-    order_index integer,
-    custom_fields jsonb,
-    language text,
-    source_row_id uuid,
-    created_by uuid,
-    updated_by uuid,
-    created_at timestamp with time zone DEFAULT now(),
-    updated_at timestamp with time zone DEFAULT now(),
-    name text
-);
-
-
-ALTER TABLE public.dept_form_bbbbbbbb0000_student OWNER TO postgres;
-
---
--- TOC entry 248 (class 1259 OID 93244)
--- Name: document_records; Type: TABLE; Schema: public; Owner: postgres
---
-
-CREATE TABLE public.document_records (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    form_name text,
-    institution_id uuid,
-    department_id uuid,
-    year integer,
-    schema_id uuid,
-    status text,
-    order_index integer,
-    custom_fields jsonb,
-    language text,
-    source_row_id uuid,
-    created_by uuid,
-    updated_by uuid,
-    created_at timestamp with time zone DEFAULT now(),
-    updated_at timestamp with time zone DEFAULT now(),
-    name text,
-    document text
-);
-
-
-ALTER TABLE public.document_records OWNER TO postgres;
-
---
--- TOC entry 249 (class 1259 OID 93252)
+-- TOC entry 240 (class 1259 OID 93252)
 -- Name: email_queue; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -916,68 +664,7 @@ CREATE TABLE public.email_queue (
 ALTER TABLE public.email_queue OWNER TO postgres;
 
 --
--- TOC entry 250 (class 1259 OID 93265)
--- Name: facultyrec_records; Type: TABLE; Schema: public; Owner: postgres
---
-
-CREATE TABLE public.facultyrec_records (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    form_name text,
-    institution_id uuid,
-    department_id uuid,
-    year integer,
-    schema_id uuid,
-    status text,
-    order_index integer,
-    custom_fields jsonb,
-    language text,
-    created_by uuid,
-    updated_by uuid,
-    created_at timestamp with time zone DEFAULT now(),
-    updated_at timestamp with time zone DEFAULT now(),
-    numebr numeric,
-    name text,
-    name_hi text,
-    namee text,
-    namee_hi text,
-    numm numeric,
-    hello text,
-    hello_hi text,
-    source_row_id uuid
-);
-
-
-ALTER TABLE public.facultyrec_records OWNER TO postgres;
-
---
--- TOC entry 251 (class 1259 OID 93273)
--- Name: finance_records; Type: TABLE; Schema: public; Owner: postgres
---
-
-CREATE TABLE public.finance_records (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    form_name text,
-    institution_id uuid,
-    department_id uuid,
-    year integer,
-    schema_id uuid,
-    status text,
-    order_index integer,
-    custom_fields jsonb,
-    language text,
-    source_row_id uuid,
-    created_by uuid,
-    updated_by uuid,
-    created_at timestamp with time zone DEFAULT now(),
-    updated_at timestamp with time zone DEFAULT now(),
-    budget text
-);
-
-
-ALTER TABLE public.finance_records OWNER TO postgres;
-
---
--- TOC entry 252 (class 1259 OID 93281)
+-- TOC entry 241 (class 1259 OID 93281)
 -- Name: form_assignments; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -1001,7 +688,7 @@ CREATE TABLE public.form_assignments (
 ALTER TABLE public.form_assignments OWNER TO postgres;
 
 --
--- TOC entry 253 (class 1259 OID 93292)
+-- TOC entry 242 (class 1259 OID 93292)
 -- Name: form_deadline_reminder_log; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -1017,7 +704,7 @@ CREATE TABLE public.form_deadline_reminder_log (
 ALTER TABLE public.form_deadline_reminder_log OWNER TO postgres;
 
 --
--- TOC entry 254 (class 1259 OID 93299)
+-- TOC entry 243 (class 1259 OID 93299)
 -- Name: form_lock_config; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -1038,7 +725,7 @@ CREATE TABLE public.form_lock_config (
 ALTER TABLE public.form_lock_config OWNER TO postgres;
 
 --
--- TOC entry 255 (class 1259 OID 93309)
+-- TOC entry 244 (class 1259 OID 93309)
 -- Name: form_year_deadlines; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -1060,105 +747,7 @@ CREATE TABLE public.form_year_deadlines (
 ALTER TABLE public.form_year_deadlines OWNER TO postgres;
 
 --
--- TOC entry 256 (class 1259 OID 93319)
--- Name: health_sessions; Type: TABLE; Schema: public; Owner: postgres
---
-
-CREATE TABLE public.health_sessions (
-    month character varying(20) NOT NULL,
-    pec_lecture integer DEFAULT 0 NOT NULL,
-    yoga_session integer DEFAULT 0 NOT NULL,
-    tb_awareness_lecture integer DEFAULT 0 NOT NULL,
-    total integer GENERATED ALWAYS AS (((pec_lecture + yoga_session) + tb_awareness_lecture)) STORED
-);
-
-
-ALTER TABLE public.health_sessions OWNER TO postgres;
-
---
--- TOC entry 257 (class 1259 OID 93326)
--- Name: hello_records; Type: TABLE; Schema: public; Owner: postgres
---
-
-CREATE TABLE public.hello_records (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    form_name text,
-    institution_id uuid,
-    department_id uuid,
-    year integer,
-    schema_id uuid,
-    status text,
-    order_index integer,
-    custom_fields jsonb,
-    language text,
-    source_row_id uuid,
-    created_by uuid,
-    updated_by uuid,
-    created_at timestamp with time zone DEFAULT now(),
-    updated_at timestamp with time zone DEFAULT now(),
-    name text
-);
-
-
-ALTER TABLE public.hello_records OWNER TO postgres;
-
---
--- TOC entry 258 (class 1259 OID 93334)
--- Name: hindi_records; Type: TABLE; Schema: public; Owner: postgres
---
-
-CREATE TABLE public.hindi_records (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    form_name text,
-    institution_id uuid,
-    department_id uuid,
-    year integer,
-    schema_id uuid,
-    status text,
-    order_index integer,
-    custom_fields jsonb,
-    language text,
-    source_row_id uuid,
-    created_by uuid,
-    updated_by uuid,
-    created_at timestamp with time zone DEFAULT now(),
-    updated_at timestamp with time zone DEFAULT now(),
-    hin text,
-    eng text
-);
-
-
-ALTER TABLE public.hindi_records OWNER TO postgres;
-
---
--- TOC entry 259 (class 1259 OID 93342)
--- Name: hospital_records; Type: TABLE; Schema: public; Owner: postgres
---
-
-CREATE TABLE public.hospital_records (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    form_name text,
-    institution_id uuid,
-    department_id uuid,
-    year integer,
-    schema_id uuid,
-    status text,
-    order_index integer,
-    custom_fields jsonb,
-    language text,
-    source_row_id uuid,
-    created_by uuid,
-    updated_by uuid,
-    created_at timestamp with time zone DEFAULT now(),
-    updated_at timestamp with time zone DEFAULT now(),
-    hosp_name text
-);
-
-
-ALTER TABLE public.hospital_records OWNER TO postgres;
-
---
--- TOC entry 260 (class 1259 OID 93350)
+-- TOC entry 245 (class 1259 OID 93350)
 -- Name: institutions; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -1185,7 +774,7 @@ CREATE TABLE public.institutions (
 ALTER TABLE public.institutions OWNER TO postgres;
 
 --
--- TOC entry 261 (class 1259 OID 93360)
+-- TOC entry 246 (class 1259 OID 93360)
 -- Name: kpi_config; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -1223,7 +812,7 @@ CREATE TABLE public.kpi_config (
 ALTER TABLE public.kpi_config OWNER TO postgres;
 
 --
--- TOC entry 262 (class 1259 OID 93373)
+-- TOC entry 247 (class 1259 OID 93373)
 -- Name: kpi_config_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
 
@@ -1239,8 +828,8 @@ CREATE SEQUENCE public.kpi_config_id_seq
 ALTER SEQUENCE public.kpi_config_id_seq OWNER TO postgres;
 
 --
--- TOC entry 6273 (class 0 OID 0)
--- Dependencies: 262
+-- TOC entry 5948 (class 0 OID 0)
+-- Dependencies: 247
 -- Name: kpi_config_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
 
@@ -1248,39 +837,7 @@ ALTER SEQUENCE public.kpi_config_id_seq OWNED BY public.kpi_config.id;
 
 
 --
--- TOC entry 263 (class 1259 OID 93374)
--- Name: kpi_data_records; Type: TABLE; Schema: public; Owner: postgres
---
-
-CREATE TABLE public.kpi_data_records (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    form_name text,
-    institution_id uuid,
-    department_id uuid,
-    year integer,
-    schema_id uuid,
-    status text,
-    order_index integer,
-    custom_fields jsonb,
-    language text,
-    source_row_id uuid,
-    created_by uuid,
-    updated_by uuid,
-    created_at timestamp with time zone DEFAULT now(),
-    updated_at timestamp with time zone DEFAULT now(),
-    hospital text,
-    admitted numeric,
-    recovered numeric,
-    death numeric,
-    district text,
-    sucide_case numeric
-);
-
-
-ALTER TABLE public.kpi_data_records OWNER TO postgres;
-
---
--- TOC entry 264 (class 1259 OID 93382)
+-- TOC entry 248 (class 1259 OID 93382)
 -- Name: kpi_svg_reports; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -1300,7 +857,7 @@ CREATE TABLE public.kpi_svg_reports (
 ALTER TABLE public.kpi_svg_reports OWNER TO postgres;
 
 --
--- TOC entry 265 (class 1259 OID 93390)
+-- TOC entry 249 (class 1259 OID 93390)
 -- Name: kpi_svg_reports_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
 
@@ -1316,8 +873,8 @@ CREATE SEQUENCE public.kpi_svg_reports_id_seq
 ALTER SEQUENCE public.kpi_svg_reports_id_seq OWNER TO postgres;
 
 --
--- TOC entry 6274 (class 0 OID 0)
--- Dependencies: 265
+-- TOC entry 5949 (class 0 OID 0)
+-- Dependencies: 249
 -- Name: kpi_svg_reports_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
 
@@ -1325,7 +882,7 @@ ALTER SEQUENCE public.kpi_svg_reports_id_seq OWNED BY public.kpi_svg_reports.id;
 
 
 --
--- TOC entry 266 (class 1259 OID 93391)
+-- TOC entry 250 (class 1259 OID 93391)
 -- Name: management_committees; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -1349,7 +906,7 @@ CREATE TABLE public.management_committees (
 ALTER TABLE public.management_committees OWNER TO postgres;
 
 --
--- TOC entry 267 (class 1259 OID 93401)
+-- TOC entry 251 (class 1259 OID 93401)
 -- Name: management_committees_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
 
@@ -1364,7 +921,7 @@ CREATE SEQUENCE public.management_committees_id_seq
 ALTER SEQUENCE public.management_committees_id_seq OWNER TO postgres;
 
 --
--- TOC entry 268 (class 1259 OID 93402)
+-- TOC entry 252 (class 1259 OID 93402)
 -- Name: management_committees_id_seq1; Type: SEQUENCE; Schema: public; Owner: postgres
 --
 
@@ -1379,8 +936,8 @@ CREATE SEQUENCE public.management_committees_id_seq1
 ALTER SEQUENCE public.management_committees_id_seq1 OWNER TO postgres;
 
 --
--- TOC entry 6275 (class 0 OID 0)
--- Dependencies: 268
+-- TOC entry 5950 (class 0 OID 0)
+-- Dependencies: 252
 -- Name: management_committees_id_seq1; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
 
@@ -1388,7 +945,7 @@ ALTER SEQUENCE public.management_committees_id_seq1 OWNED BY public.management_c
 
 
 --
--- TOC entry 269 (class 1259 OID 93403)
+-- TOC entry 253 (class 1259 OID 93403)
 -- Name: new_share_records; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -1415,7 +972,7 @@ CREATE TABLE public.new_share_records (
 ALTER TABLE public.new_share_records OWNER TO postgres;
 
 --
--- TOC entry 270 (class 1259 OID 93411)
+-- TOC entry 254 (class 1259 OID 93411)
 -- Name: nodal_officer_assignments; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -1435,7 +992,7 @@ CREATE TABLE public.nodal_officer_assignments (
 ALTER TABLE public.nodal_officer_assignments OWNER TO postgres;
 
 --
--- TOC entry 271 (class 1259 OID 93420)
+-- TOC entry 255 (class 1259 OID 93420)
 -- Name: notification_templates; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -1459,7 +1016,7 @@ CREATE TABLE public.notification_templates (
 ALTER TABLE public.notification_templates OWNER TO postgres;
 
 --
--- TOC entry 272 (class 1259 OID 93433)
+-- TOC entry 256 (class 1259 OID 93433)
 -- Name: notifications; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -1482,7 +1039,7 @@ CREATE TABLE public.notifications (
 ALTER TABLE public.notifications OWNER TO postgres;
 
 --
--- TOC entry 273 (class 1259 OID 93440)
+-- TOC entry 257 (class 1259 OID 93440)
 -- Name: notifications_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
 --
 
@@ -1497,8 +1054,8 @@ CREATE SEQUENCE public.notifications_id_seq
 ALTER SEQUENCE public.notifications_id_seq OWNER TO postgres;
 
 --
--- TOC entry 6276 (class 0 OID 0)
--- Dependencies: 273
+-- TOC entry 5951 (class 0 OID 0)
+-- Dependencies: 257
 -- Name: notifications_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
 --
 
@@ -1506,7 +1063,7 @@ ALTER SEQUENCE public.notifications_id_seq OWNED BY public.notifications.id;
 
 
 --
--- TOC entry 274 (class 1259 OID 93441)
+-- TOC entry 258 (class 1259 OID 93441)
 -- Name: password_reset_tokens; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -1523,62 +1080,7 @@ CREATE TABLE public.password_reset_tokens (
 ALTER TABLE public.password_reset_tokens OWNER TO postgres;
 
 --
--- TOC entry 275 (class 1259 OID 93448)
--- Name: record_records; Type: TABLE; Schema: public; Owner: postgres
---
-
-CREATE TABLE public.record_records (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    form_name text,
-    institution_id uuid,
-    department_id uuid,
-    year integer,
-    schema_id uuid,
-    status text,
-    order_index integer,
-    custom_fields jsonb,
-    language text,
-    source_row_id uuid,
-    created_by uuid,
-    updated_by uuid,
-    created_at timestamp with time zone DEFAULT now(),
-    updated_at timestamp with time zone DEFAULT now(),
-    name text
-);
-
-
-ALTER TABLE public.record_records OWNER TO postgres;
-
---
--- TOC entry 276 (class 1259 OID 93456)
--- Name: records_records; Type: TABLE; Schema: public; Owner: postgres
---
-
-CREATE TABLE public.records_records (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    form_name text,
-    institution_id uuid,
-    department_id uuid,
-    year integer,
-    schema_id uuid,
-    status text,
-    order_index integer,
-    custom_fields jsonb,
-    language text,
-    created_by uuid,
-    updated_by uuid,
-    created_at timestamp with time zone DEFAULT now(),
-    updated_at timestamp with time zone DEFAULT now(),
-    studentname text,
-    reg text,
-    source_row_id uuid
-);
-
-
-ALTER TABLE public.records_records OWNER TO postgres;
-
---
--- TOC entry 277 (class 1259 OID 93464)
+-- TOC entry 259 (class 1259 OID 93464)
 -- Name: report_access; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -1595,7 +1097,7 @@ CREATE TABLE public.report_access (
 ALTER TABLE public.report_access OWNER TO postgres;
 
 --
--- TOC entry 278 (class 1259 OID 93469)
+-- TOC entry 260 (class 1259 OID 93469)
 -- Name: report_audit_log; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -1619,7 +1121,7 @@ CREATE TABLE public.report_audit_log (
 ALTER TABLE public.report_audit_log OWNER TO postgres;
 
 --
--- TOC entry 279 (class 1259 OID 93476)
+-- TOC entry 261 (class 1259 OID 93476)
 -- Name: report_department_deadlines; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -1642,7 +1144,7 @@ CREATE TABLE public.report_department_deadlines (
 ALTER TABLE public.report_department_deadlines OWNER TO postgres;
 
 --
--- TOC entry 280 (class 1259 OID 93485)
+-- TOC entry 262 (class 1259 OID 93485)
 -- Name: report_sections; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -1676,7 +1178,7 @@ CREATE TABLE public.report_sections (
 ALTER TABLE public.report_sections OWNER TO postgres;
 
 --
--- TOC entry 281 (class 1259 OID 93497)
+-- TOC entry 263 (class 1259 OID 93497)
 -- Name: report_templates; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -1700,37 +1202,7 @@ CREATE TABLE public.report_templates (
 ALTER TABLE public.report_templates OWNER TO postgres;
 
 --
--- TOC entry 282 (class 1259 OID 93508)
--- Name: report_tester_records; Type: TABLE; Schema: public; Owner: postgres
---
-
-CREATE TABLE public.report_tester_records (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    form_name text,
-    institution_id uuid,
-    department_id uuid,
-    year integer,
-    schema_id uuid,
-    status text,
-    order_index integer,
-    custom_fields jsonb,
-    language text,
-    source_row_id uuid,
-    created_by uuid,
-    updated_by uuid,
-    created_at timestamp with time zone DEFAULT now(),
-    updated_at timestamp with time zone DEFAULT now(),
-    sno numeric,
-    department text,
-    count numeric,
-    label_department text
-);
-
-
-ALTER TABLE public.report_tester_records OWNER TO postgres;
-
---
--- TOC entry 283 (class 1259 OID 93516)
+-- TOC entry 264 (class 1259 OID 93516)
 -- Name: reporting_cycles; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -1764,7 +1236,7 @@ CREATE TABLE public.reporting_cycles (
 ALTER TABLE public.reporting_cycles OWNER TO postgres;
 
 --
--- TOC entry 284 (class 1259 OID 93529)
+-- TOC entry 265 (class 1259 OID 93529)
 -- Name: reports; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -1801,7 +1273,7 @@ CREATE TABLE public.reports (
 ALTER TABLE public.reports OWNER TO postgres;
 
 --
--- TOC entry 285 (class 1259 OID 93541)
+-- TOC entry 266 (class 1259 OID 93541)
 -- Name: roles; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -1820,7 +1292,7 @@ CREATE TABLE public.roles (
 ALTER TABLE public.roles OWNER TO postgres;
 
 --
--- TOC entry 286 (class 1259 OID 93551)
+-- TOC entry 267 (class 1259 OID 93551)
 -- Name: schema_propagation_log; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -1837,7 +1309,7 @@ CREATE TABLE public.schema_propagation_log (
 ALTER TABLE public.schema_propagation_log OWNER TO postgres;
 
 --
--- TOC entry 287 (class 1259 OID 93558)
+-- TOC entry 268 (class 1259 OID 93558)
 -- Name: section_access; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -1859,7 +1331,7 @@ CREATE TABLE public.section_access (
 ALTER TABLE public.section_access OWNER TO postgres;
 
 --
--- TOC entry 288 (class 1259 OID 93566)
+-- TOC entry 269 (class 1259 OID 93566)
 -- Name: section_assignments; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -1880,7 +1352,7 @@ CREATE TABLE public.section_assignments (
 ALTER TABLE public.section_assignments OWNER TO postgres;
 
 --
--- TOC entry 289 (class 1259 OID 93573)
+-- TOC entry 270 (class 1259 OID 93573)
 -- Name: section_blocks; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -1905,7 +1377,7 @@ CREATE TABLE public.section_blocks (
 ALTER TABLE public.section_blocks OWNER TO postgres;
 
 --
--- TOC entry 290 (class 1259 OID 93585)
+-- TOC entry 271 (class 1259 OID 93585)
 -- Name: section_department_assignments; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -1922,7 +1394,7 @@ CREATE TABLE public.section_department_assignments (
 ALTER TABLE public.section_department_assignments OWNER TO postgres;
 
 --
--- TOC entry 291 (class 1259 OID 93590)
+-- TOC entry 272 (class 1259 OID 93590)
 -- Name: section_signoffs; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -1942,7 +1414,7 @@ CREATE TABLE public.section_signoffs (
 ALTER TABLE public.section_signoffs OWNER TO postgres;
 
 --
--- TOC entry 292 (class 1259 OID 93598)
+-- TOC entry 273 (class 1259 OID 93598)
 -- Name: section_translations; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -1964,7 +1436,7 @@ CREATE TABLE public.section_translations (
 ALTER TABLE public.section_translations OWNER TO postgres;
 
 --
--- TOC entry 293 (class 1259 OID 93608)
+-- TOC entry 274 (class 1259 OID 93608)
 -- Name: section_versions; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -1994,7 +1466,7 @@ CREATE TABLE public.section_versions (
 ALTER TABLE public.section_versions OWNER TO postgres;
 
 --
--- TOC entry 294 (class 1259 OID 93618)
+-- TOC entry 275 (class 1259 OID 93618)
 -- Name: section_workflow_assignments; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -2020,37 +1492,7 @@ CREATE TABLE public.section_workflow_assignments (
 ALTER TABLE public.section_workflow_assignments OWNER TO postgres;
 
 --
--- TOC entry 295 (class 1259 OID 93625)
--- Name: semester_records; Type: TABLE; Schema: public; Owner: postgres
---
-
-CREATE TABLE public.semester_records (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    form_name text,
-    institution_id uuid,
-    department_id uuid,
-    year integer,
-    schema_id uuid,
-    status text,
-    order_index integer,
-    custom_fields jsonb,
-    language text,
-    created_by uuid,
-    updated_by uuid,
-    created_at timestamp with time zone DEFAULT now(),
-    updated_at timestamp with time zone DEFAULT now(),
-    student_name text,
-    reg_no numeric,
-    cgpa numeric,
-    black_log text,
-    source_row_id uuid
-);
-
-
-ALTER TABLE public.semester_records OWNER TO postgres;
-
---
--- TOC entry 296 (class 1259 OID 93633)
+-- TOC entry 276 (class 1259 OID 93633)
 -- Name: sessions; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -2068,34 +1510,7 @@ CREATE TABLE public.sessions (
 ALTER TABLE public.sessions OWNER TO postgres;
 
 --
--- TOC entry 297 (class 1259 OID 93641)
--- Name: shared_form_records; Type: TABLE; Schema: public; Owner: postgres
---
-
-CREATE TABLE public.shared_form_records (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    form_name text,
-    institution_id uuid,
-    department_id uuid,
-    year integer,
-    schema_id uuid,
-    status text,
-    order_index integer,
-    custom_fields jsonb,
-    language text,
-    source_row_id uuid,
-    created_by uuid,
-    updated_by uuid,
-    created_at timestamp with time zone DEFAULT now(),
-    updated_at timestamp with time zone DEFAULT now(),
-    name text
-);
-
-
-ALTER TABLE public.shared_form_records OWNER TO postgres;
-
---
--- TOC entry 298 (class 1259 OID 93649)
+-- TOC entry 277 (class 1259 OID 93649)
 -- Name: shared_form_snapshots; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -2114,35 +1529,7 @@ CREATE TABLE public.shared_form_snapshots (
 ALTER TABLE public.shared_form_snapshots OWNER TO postgres;
 
 --
--- TOC entry 299 (class 1259 OID 93657)
--- Name: student_records; Type: TABLE; Schema: public; Owner: postgres
---
-
-CREATE TABLE public.student_records (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    form_name text,
-    institution_id uuid,
-    department_id uuid,
-    year integer,
-    schema_id uuid,
-    status text,
-    order_index integer,
-    custom_fields jsonb,
-    language text,
-    created_by uuid,
-    updated_by uuid,
-    created_at timestamp with time zone DEFAULT now(),
-    updated_at timestamp with time zone DEFAULT now(),
-    name text,
-    roll_no text,
-    source_row_id uuid
-);
-
-
-ALTER TABLE public.student_records OWNER TO postgres;
-
---
--- TOC entry 300 (class 1259 OID 93665)
+-- TOC entry 278 (class 1259 OID 93665)
 -- Name: table_list; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -2163,7 +1550,7 @@ CREATE TABLE public.table_list (
 ALTER TABLE public.table_list OWNER TO postgres;
 
 --
--- TOC entry 301 (class 1259 OID 93675)
+-- TOC entry 279 (class 1259 OID 93675)
 -- Name: template_blocks; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -2185,7 +1572,7 @@ CREATE TABLE public.template_blocks (
 ALTER TABLE public.template_blocks OWNER TO postgres;
 
 --
--- TOC entry 302 (class 1259 OID 93687)
+-- TOC entry 280 (class 1259 OID 93687)
 -- Name: template_sections; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -2207,34 +1594,7 @@ CREATE TABLE public.template_sections (
 ALTER TABLE public.template_sections OWNER TO postgres;
 
 --
--- TOC entry 303 (class 1259 OID 93696)
--- Name: testing_trans_records; Type: TABLE; Schema: public; Owner: postgres
---
-
-CREATE TABLE public.testing_trans_records (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    form_name text,
-    institution_id uuid,
-    department_id uuid,
-    year integer,
-    schema_id uuid,
-    status text,
-    order_index integer,
-    custom_fields jsonb,
-    language text,
-    source_row_id uuid,
-    created_by uuid,
-    updated_by uuid,
-    created_at timestamp with time zone DEFAULT now(),
-    updated_at timestamp with time zone DEFAULT now(),
-    name text
-);
-
-
-ALTER TABLE public.testing_trans_records OWNER TO postgres;
-
---
--- TOC entry 304 (class 1259 OID 93704)
+-- TOC entry 281 (class 1259 OID 93704)
 -- Name: user_roles; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -2252,7 +1612,7 @@ CREATE TABLE public.user_roles (
 ALTER TABLE public.user_roles OWNER TO postgres;
 
 --
--- TOC entry 305 (class 1259 OID 93709)
+-- TOC entry 282 (class 1259 OID 93709)
 -- Name: users; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -2279,7 +1639,7 @@ CREATE TABLE public.users (
 ALTER TABLE public.users OWNER TO postgres;
 
 --
--- TOC entry 306 (class 1259 OID 93721)
+-- TOC entry 283 (class 1259 OID 93721)
 -- Name: workflow_steps; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -2298,7 +1658,7 @@ CREATE TABLE public.workflow_steps (
 ALTER TABLE public.workflow_steps OWNER TO postgres;
 
 --
--- TOC entry 307 (class 1259 OID 93728)
+-- TOC entry 284 (class 1259 OID 93728)
 -- Name: workflow_templates; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -2317,7 +1677,7 @@ CREATE TABLE public.workflow_templates (
 ALTER TABLE public.workflow_templates OWNER TO postgres;
 
 --
--- TOC entry 5239 (class 2604 OID 93737)
+-- TOC entry 5129 (class 2604 OID 93737)
 -- Name: dashboard_kpi id; Type: DEFAULT; Schema: public; Owner: postgres
 --
 
@@ -2325,7 +1685,7 @@ ALTER TABLE ONLY public.dashboard_kpi ALTER COLUMN id SET DEFAULT nextval('publi
 
 
 --
--- TOC entry 5336 (class 2604 OID 93738)
+-- TOC entry 5198 (class 2604 OID 93738)
 -- Name: kpi_config id; Type: DEFAULT; Schema: public; Owner: postgres
 --
 
@@ -2333,7 +1693,7 @@ ALTER TABLE ONLY public.kpi_config ALTER COLUMN id SET DEFAULT nextval('public.k
 
 
 --
--- TOC entry 5348 (class 2604 OID 93739)
+-- TOC entry 5207 (class 2604 OID 93739)
 -- Name: kpi_svg_reports id; Type: DEFAULT; Schema: public; Owner: postgres
 --
 
@@ -2341,7 +1701,7 @@ ALTER TABLE ONLY public.kpi_svg_reports ALTER COLUMN id SET DEFAULT nextval('pub
 
 
 --
--- TOC entry 5352 (class 2604 OID 93740)
+-- TOC entry 5211 (class 2604 OID 93740)
 -- Name: management_committees id; Type: DEFAULT; Schema: public; Owner: postgres
 --
 
@@ -2349,7 +1709,7 @@ ALTER TABLE ONLY public.management_committees ALTER COLUMN id SET DEFAULT nextva
 
 
 --
--- TOC entry 5372 (class 2604 OID 93741)
+-- TOC entry 5231 (class 2604 OID 93741)
 -- Name: notifications id; Type: DEFAULT; Schema: public; Owner: postgres
 --
 
@@ -2357,18 +1717,8 @@ ALTER TABLE ONLY public.notifications ALTER COLUMN id SET DEFAULT nextval('publi
 
 
 --
--- TOC entry 6176 (class 0 OID 92997)
+-- TOC entry 5874 (class 0 OID 93005)
 -- Dependencies: 219
--- Data for Name: abcdef_records; Type: TABLE DATA; Schema: public; Owner: postgres
---
-
-COPY public.abcdef_records (id, form_name, institution_id, year, schema_id, status, order_index, custom_fields, language, created_at, updated_at, abcdef, doc, vv, source_row_id) FROM stdin;
-\.
-
-
---
--- TOC entry 6177 (class 0 OID 93005)
--- Dependencies: 220
 -- Data for Name: academic_year_form_config; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -2377,8 +1727,8 @@ COPY public.academic_year_form_config (id, institution_id, academic_year, active
 
 
 --
--- TOC entry 6178 (class 0 OID 93017)
--- Dependencies: 221
+-- TOC entry 5875 (class 0 OID 93017)
+-- Dependencies: 220
 -- Data for Name: academic_year_master; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -2387,8 +1737,8 @@ COPY public.academic_year_master (id, institution_id, academic_year, start_year,
 
 
 --
--- TOC entry 6179 (class 0 OID 93027)
--- Dependencies: 222
+-- TOC entry 5876 (class 0 OID 93027)
+-- Dependencies: 221
 -- Data for Name: academic_year_notification_logs; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -2397,18 +1747,8 @@ COPY public.academic_year_notification_logs (id, institution_id, academic_year, 
 
 
 --
--- TOC entry 6180 (class 0 OID 93034)
--- Dependencies: 223
--- Data for Name: attendance_records; Type: TABLE DATA; Schema: public; Owner: postgres
---
-
-COPY public.attendance_records (id, form_name, institution_id, department_id, year, schema_id, status, order_index, custom_fields, language, source_row_id, created_by, updated_by, created_at, updated_at, name, date, reason) FROM stdin;
-\.
-
-
---
--- TOC entry 6181 (class 0 OID 93042)
--- Dependencies: 224
+-- TOC entry 5877 (class 0 OID 93042)
+-- Dependencies: 222
 -- Data for Name: audit_logs; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -2417,8 +1757,8 @@ COPY public.audit_logs (id, user_id, action_type, entity_type, entity_id, old_va
 
 
 --
--- TOC entry 6182 (class 0 OID 93050)
--- Dependencies: 225
+-- TOC entry 5878 (class 0 OID 93050)
+-- Dependencies: 223
 -- Data for Name: block_comments; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -2427,8 +1767,8 @@ COPY public.block_comments (id, block_id, section_id, parent_id, body, is_resolv
 
 
 --
--- TOC entry 6183 (class 0 OID 93059)
--- Dependencies: 226
+-- TOC entry 5879 (class 0 OID 93059)
+-- Dependencies: 224
 -- Data for Name: block_translations; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -2437,8 +1777,8 @@ COPY public.block_translations (id, block_id, language, content, status, created
 
 
 --
--- TOC entry 6184 (class 0 OID 93070)
--- Dependencies: 227
+-- TOC entry 5880 (class 0 OID 93070)
+-- Dependencies: 225
 -- Data for Name: branding_assignments; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -2447,8 +1787,8 @@ COPY public.branding_assignments (id, report_id, asset_type, user_id, asset_url,
 
 
 --
--- TOC entry 6185 (class 0 OID 93078)
--- Dependencies: 228
+-- TOC entry 5881 (class 0 OID 93078)
+-- Dependencies: 226
 -- Data for Name: builder_approvals; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -2457,8 +1797,8 @@ COPY public.builder_approvals (id, section_id, reviewer_id, decision, comments, 
 
 
 --
--- TOC entry 6186 (class 0 OID 93086)
--- Dependencies: 229
+-- TOC entry 5882 (class 0 OID 93086)
+-- Dependencies: 227
 -- Data for Name: builder_attachments; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -2467,38 +1807,8 @@ COPY public.builder_attachments (id, report_id, section_id, block_id, file_name,
 
 
 --
--- TOC entry 6187 (class 0 OID 93093)
--- Dependencies: 230
--- Data for Name: check_doc_records; Type: TABLE DATA; Schema: public; Owner: postgres
---
-
-COPY public.check_doc_records (id, form_name, institution_id, department_id, year, schema_id, status, order_index, custom_fields, language, source_row_id, created_by, updated_by, created_at, updated_at, name, phone_no, aim, document) FROM stdin;
-\.
-
-
---
--- TOC entry 6188 (class 0 OID 93101)
--- Dependencies: 231
--- Data for Name: check_private_records; Type: TABLE DATA; Schema: public; Owner: postgres
---
-
-COPY public.check_private_records (id, form_name, institution_id, department_id, year, schema_id, status, order_index, custom_fields, language, source_row_id, created_by, updated_by, created_at, updated_at, name) FROM stdin;
-\.
-
-
---
--- TOC entry 6189 (class 0 OID 93109)
--- Dependencies: 232
--- Data for Name: check_shared_records; Type: TABLE DATA; Schema: public; Owner: postgres
---
-
-COPY public.check_shared_records (id, form_name, institution_id, department_id, year, schema_id, status, order_index, custom_fields, language, source_row_id, created_by, updated_by, created_at, updated_at, name) FROM stdin;
-\.
-
-
---
--- TOC entry 6190 (class 0 OID 93117)
--- Dependencies: 233
+-- TOC entry 5883 (class 0 OID 93117)
+-- Dependencies: 228
 -- Data for Name: compiled_reports; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -2507,18 +1817,8 @@ COPY public.compiled_reports (id, report_id, language, format, storage_path, fil
 
 
 --
--- TOC entry 6191 (class 0 OID 93129)
--- Dependencies: 234
--- Data for Name: cpga_records; Type: TABLE DATA; Schema: public; Owner: postgres
---
-
-COPY public.cpga_records (id, form_name, institution_id, department_id, year, schema_id, status, order_index, custom_fields, language, source_row_id, created_by, updated_by, created_at, updated_at, name, gpa, blacklog) FROM stdin;
-\.
-
-
---
--- TOC entry 6192 (class 0 OID 93137)
--- Dependencies: 235
+-- TOC entry 5884 (class 0 OID 93137)
+-- Dependencies: 229
 -- Data for Name: custom_field_schemas; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -2527,8 +1827,8 @@ COPY public.custom_field_schemas (id, form_name, institution_id, year, schema, i
 
 
 --
--- TOC entry 6193 (class 0 OID 93146)
--- Dependencies: 236
+-- TOC entry 5885 (class 0 OID 93146)
+-- Dependencies: 230
 -- Data for Name: cycle_department_deadlines; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -2537,8 +1837,8 @@ COPY public.cycle_department_deadlines (id, cycle_id, department_id, submission_
 
 
 --
--- TOC entry 6194 (class 0 OID 93152)
--- Dependencies: 237
+-- TOC entry 5886 (class 0 OID 93152)
+-- Dependencies: 231
 -- Data for Name: dashboard_kpi; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -2547,8 +1847,8 @@ COPY public.dashboard_kpi (id, kpi_config_id, created_by, updated_by, created_at
 
 
 --
--- TOC entry 6196 (class 0 OID 93160)
--- Dependencies: 239
+-- TOC entry 5888 (class 0 OID 93160)
+-- Dependencies: 233
 -- Data for Name: data_sources; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -2557,18 +1857,8 @@ COPY public.data_sources (id, institution_id, name, description, source_type, qu
 
 
 --
--- TOC entry 6197 (class 0 OID 93172)
--- Dependencies: 240
--- Data for Name: date_records; Type: TABLE DATA; Schema: public; Owner: postgres
---
-
-COPY public.date_records (id, form_name, institution_id, department_id, year, schema_id, status, order_index, custom_fields, language, source_row_id, created_by, updated_by, created_at, updated_at, date, yesno) FROM stdin;
-\.
-
-
---
--- TOC entry 6198 (class 0 OID 93180)
--- Dependencies: 241
+-- TOC entry 5889 (class 0 OID 93180)
+-- Dependencies: 234
 -- Data for Name: department_form_deadline_config; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -2577,8 +1867,8 @@ COPY public.department_form_deadline_config (id, department_form_id, institution
 
 
 --
--- TOC entry 6199 (class 0 OID 93188)
--- Dependencies: 242
+-- TOC entry 5890 (class 0 OID 93188)
+-- Dependencies: 235
 -- Data for Name: department_form_lock_config; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -2587,8 +1877,8 @@ COPY public.department_form_lock_config (id, department_form_id, department_id, 
 
 
 --
--- TOC entry 6200 (class 0 OID 93196)
--- Dependencies: 243
+-- TOC entry 5891 (class 0 OID 93196)
+-- Dependencies: 236
 -- Data for Name: department_form_roles; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -2597,8 +1887,8 @@ COPY public.department_form_roles (id, department_form_id, role_name, created_at
 
 
 --
--- TOC entry 6201 (class 0 OID 93203)
--- Dependencies: 244
+-- TOC entry 5892 (class 0 OID 93203)
+-- Dependencies: 237
 -- Data for Name: department_form_year_mapping; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -2607,8 +1897,8 @@ COPY public.department_form_year_mapping (id, department_form_id, academic_year,
 
 
 --
--- TOC entry 6202 (class 0 OID 93214)
--- Dependencies: 245
+-- TOC entry 5893 (class 0 OID 93214)
+-- Dependencies: 238
 -- Data for Name: department_table_list; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -2617,8 +1907,8 @@ COPY public.department_table_list (id, form_name, form_description, department_i
 
 
 --
--- TOC entry 6203 (class 0 OID 93227)
--- Dependencies: 246
+-- TOC entry 5894 (class 0 OID 93227)
+-- Dependencies: 239
 -- Data for Name: departments; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -2627,28 +1917,8 @@ COPY public.departments (department_id, institution_id, name, code, status, crea
 
 
 --
--- TOC entry 6204 (class 0 OID 93236)
--- Dependencies: 247
--- Data for Name: dept_form_bbbbbbbb0000_student; Type: TABLE DATA; Schema: public; Owner: postgres
---
-
-COPY public.dept_form_bbbbbbbb0000_student (id, form_name, department_id, institution_id, academic_year, role_name, schema_id, status, order_index, custom_fields, language, source_row_id, created_by, updated_by, created_at, updated_at, name) FROM stdin;
-\.
-
-
---
--- TOC entry 6205 (class 0 OID 93244)
--- Dependencies: 248
--- Data for Name: document_records; Type: TABLE DATA; Schema: public; Owner: postgres
---
-
-COPY public.document_records (id, form_name, institution_id, department_id, year, schema_id, status, order_index, custom_fields, language, source_row_id, created_by, updated_by, created_at, updated_at, name, document) FROM stdin;
-\.
-
-
---
--- TOC entry 6206 (class 0 OID 93252)
--- Dependencies: 249
+-- TOC entry 5895 (class 0 OID 93252)
+-- Dependencies: 240
 -- Data for Name: email_queue; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -2657,28 +1927,8 @@ COPY public.email_queue (id, event_id, recipient_email, recipient_user_id, paylo
 
 
 --
--- TOC entry 6207 (class 0 OID 93265)
--- Dependencies: 250
--- Data for Name: facultyrec_records; Type: TABLE DATA; Schema: public; Owner: postgres
---
-
-COPY public.facultyrec_records (id, form_name, institution_id, department_id, year, schema_id, status, order_index, custom_fields, language, created_by, updated_by, created_at, updated_at, numebr, name, name_hi, namee, namee_hi, numm, hello, hello_hi, source_row_id) FROM stdin;
-\.
-
-
---
--- TOC entry 6208 (class 0 OID 93273)
--- Dependencies: 251
--- Data for Name: finance_records; Type: TABLE DATA; Schema: public; Owner: postgres
---
-
-COPY public.finance_records (id, form_name, institution_id, department_id, year, schema_id, status, order_index, custom_fields, language, source_row_id, created_by, updated_by, created_at, updated_at, budget) FROM stdin;
-\.
-
-
---
--- TOC entry 6209 (class 0 OID 93281)
--- Dependencies: 252
+-- TOC entry 5896 (class 0 OID 93281)
+-- Dependencies: 241
 -- Data for Name: form_assignments; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -2687,8 +1937,8 @@ COPY public.form_assignments (id, form_id, form_name, institution_id, department
 
 
 --
--- TOC entry 6210 (class 0 OID 93292)
--- Dependencies: 253
+-- TOC entry 5897 (class 0 OID 93292)
+-- Dependencies: 242
 -- Data for Name: form_deadline_reminder_log; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -2697,8 +1947,8 @@ COPY public.form_deadline_reminder_log (id, form_key, reminder_type, recipient_e
 
 
 --
--- TOC entry 6211 (class 0 OID 93299)
--- Dependencies: 254
+-- TOC entry 5898 (class 0 OID 93299)
+-- Dependencies: 243
 -- Data for Name: form_lock_config; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -2707,8 +1957,8 @@ COPY public.form_lock_config (id, form_name, institution_id, is_locked, locked_b
 
 
 --
--- TOC entry 6212 (class 0 OID 93309)
--- Dependencies: 255
+-- TOC entry 5899 (class 0 OID 93309)
+-- Dependencies: 244
 -- Data for Name: form_year_deadlines; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -2717,48 +1967,8 @@ COPY public.form_year_deadlines (id, form_name, institution_id, academic_year, d
 
 
 --
--- TOC entry 6213 (class 0 OID 93319)
--- Dependencies: 256
--- Data for Name: health_sessions; Type: TABLE DATA; Schema: public; Owner: postgres
---
-
-COPY public.health_sessions (month, pec_lecture, yoga_session, tb_awareness_lecture) FROM stdin;
-\.
-
-
---
--- TOC entry 6214 (class 0 OID 93326)
--- Dependencies: 257
--- Data for Name: hello_records; Type: TABLE DATA; Schema: public; Owner: postgres
---
-
-COPY public.hello_records (id, form_name, institution_id, department_id, year, schema_id, status, order_index, custom_fields, language, source_row_id, created_by, updated_by, created_at, updated_at, name) FROM stdin;
-\.
-
-
---
--- TOC entry 6215 (class 0 OID 93334)
--- Dependencies: 258
--- Data for Name: hindi_records; Type: TABLE DATA; Schema: public; Owner: postgres
---
-
-COPY public.hindi_records (id, form_name, institution_id, department_id, year, schema_id, status, order_index, custom_fields, language, source_row_id, created_by, updated_by, created_at, updated_at, hin, eng) FROM stdin;
-\.
-
-
---
--- TOC entry 6216 (class 0 OID 93342)
--- Dependencies: 259
--- Data for Name: hospital_records; Type: TABLE DATA; Schema: public; Owner: postgres
---
-
-COPY public.hospital_records (id, form_name, institution_id, department_id, year, schema_id, status, order_index, custom_fields, language, source_row_id, created_by, updated_by, created_at, updated_at, hosp_name) FROM stdin;
-\.
-
-
---
--- TOC entry 6217 (class 0 OID 93350)
--- Dependencies: 260
+-- TOC entry 5900 (class 0 OID 93350)
+-- Dependencies: 245
 -- Data for Name: institutions; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -2767,8 +1977,8 @@ COPY public.institutions (institution_id, institution_name, code, email_domain, 
 
 
 --
--- TOC entry 6218 (class 0 OID 93360)
--- Dependencies: 261
+-- TOC entry 5901 (class 0 OID 93360)
+-- Dependencies: 246
 -- Data for Name: kpi_config; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -2777,18 +1987,8 @@ COPY public.kpi_config (id, title, description, table_name, x_col, y_cols, chart
 
 
 --
--- TOC entry 6220 (class 0 OID 93374)
--- Dependencies: 263
--- Data for Name: kpi_data_records; Type: TABLE DATA; Schema: public; Owner: postgres
---
-
-COPY public.kpi_data_records (id, form_name, institution_id, department_id, year, schema_id, status, order_index, custom_fields, language, source_row_id, created_by, updated_by, created_at, updated_at, hospital, admitted, recovered, death, district, sucide_case) FROM stdin;
-\.
-
-
---
--- TOC entry 6221 (class 0 OID 93382)
--- Dependencies: 264
+-- TOC entry 5903 (class 0 OID 93382)
+-- Dependencies: 248
 -- Data for Name: kpi_svg_reports; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -2797,8 +1997,8 @@ COPY public.kpi_svg_reports (id, config_id, title, svg_data, report_data, create
 
 
 --
--- TOC entry 6223 (class 0 OID 93391)
--- Dependencies: 266
+-- TOC entry 5905 (class 0 OID 93391)
+-- Dependencies: 250
 -- Data for Name: management_committees; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -2807,8 +2007,8 @@ COPY public.management_committees (id, institute_id, finance_year, committee_typ
 
 
 --
--- TOC entry 6226 (class 0 OID 93403)
--- Dependencies: 269
+-- TOC entry 5908 (class 0 OID 93403)
+-- Dependencies: 253
 -- Data for Name: new_share_records; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -2817,8 +2017,8 @@ COPY public.new_share_records (id, form_name, institution_id, department_id, yea
 
 
 --
--- TOC entry 6227 (class 0 OID 93411)
--- Dependencies: 270
+-- TOC entry 5909 (class 0 OID 93411)
+-- Dependencies: 254
 -- Data for Name: nodal_officer_assignments; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -2827,8 +2027,8 @@ COPY public.nodal_officer_assignments (id, institution_id, department_id, user_i
 
 
 --
--- TOC entry 6228 (class 0 OID 93420)
--- Dependencies: 271
+-- TOC entry 5910 (class 0 OID 93420)
+-- Dependencies: 255
 -- Data for Name: notification_templates; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -2856,12 +2056,17 @@ ada3ecd1-cb77-4e72-a0b1-430046ba3b72	committee_activated	Committee Activated	t	t
 9b7d07f6-0d87-4a6c-8841-e318a9a9da63	committee_deactivated	Committee Deactivated	t	t	Committee Deactivated — {COMMITTEE_TYPE} ({FINANCE_YEAR})	Hi {FULL_NAME},\n\nThe {COMMITTEE_TYPE} committee for {FINANCE_YEAR} at {INSTITUTION_NAME} on {APP_NAME} has been deactivated.\n\nCommittee Type: {COMMITTEE_TYPE}\nFinance Year: {FINANCE_YEAR}\n\n— {APP_NAME} Team	Committee "{COMMITTEE_TYPE}" for {FINANCE_YEAR} has been deactivated.	2026-06-18 21:06:37.347717	\N	institute_admin	Administration	t
 f34d77df-b457-437a-88cd-054cef03b27c	form_deadline_reminder	Form Deadline Reminder	t	t	Deadline Reminder: {FORM_NAME} — {DAYS_REMAINING} day(s) left	Hi {FULL_NAME},\n\nThis is a reminder that the submission deadline for "{FORM_NAME}" is approaching on {APP_NAME}.\n\nForm: {FORM_NAME}\nDeadline: {DEADLINE}\nTime Remaining: {DAYS_REMAINING} day(s)\n\nPlease ensure all required submissions are completed before the deadline.\n\n— {APP_NAME} Team	Deadline reminder: "{FORM_NAME}" is due on {DEADLINE}.	2026-06-18 23:29:20.703162	\N	system	Forms	t
 ea9863ec-a642-489c-a97b-1a9085ebc161	role_created	Role Created	t	t	New Role Created — {ROLE_DISPLAY_NAME}	Hi {FULL_NAME},\n\nA new custom role has been created on {APP_NAME}.\n\nRole: {ROLE_DISPLAY_NAME}\nIdentifier: {ROLE_NAME}\nDescription: {ROLE_DESCRIPTION}\n\n— {APP_NAME} Team	New role "{ROLE_DISPLAY_NAME}" has been created.	2026-06-18 21:06:37.347717	\N	super_admin	Administration	t
+17c9797a-46fe-4396-bbf3-27498b95bde0	form_assigned	Form Assigned to Contributor	t	t	You Have Been Assigned a Form — {FORM_NAME}	Hi {FULL_NAME},\n\nA form has been assigned to you on {APP_NAME}.\n\nForm: {FORM_NAME}\nAcademic Year: {ACADEMIC_YEAR}\nAssigned By: {ASSIGNED_BY}\nDeadline: {DEADLINE}\n\nPlease log in and complete the form before the deadline.\n\n{LOGIN_URL}\n\n— {APP_NAME} Team	Form "{FORM_NAME}" has been assigned to you for {ACADEMIC_YEAR}. Deadline: {DEADLINE}.	2026-06-24 18:41:51.025929	\N	contributor	Forms	t
+d3b0d70b-ac36-4835-a5ca-7ed741893adf	form_locked	Form Locked	t	t	Form Locked — {FORM_NAME}	Hi {FULL_NAME},\n\nThe form "{FORM_NAME}" has been locked on {APP_NAME}. No further edits or submissions are possible.\n\nLocked By: {LOCKED_BY}\nInstitution: {INSTITUTION_NAME}\n\nIf you have any questions, please contact your administrator.\n\n— {APP_NAME} Team	Form "{FORM_NAME}" has been locked. No further submissions are accepted.	2026-06-24 18:41:51.025929	\N	contributor	Forms	t
+3e59b899-bb80-4165-a922-bdf30e0dcaf1	form_submitted	Section Submitted for Review	t	t	Section Awaiting Review — {SECTION_NAME}	Hi {FULL_NAME},\n\nA section has been submitted for your review on {APP_NAME}.\n\nSection: {SECTION_NAME}\nSubmitted By: {SUBMITTED_BY}\nStep: {STEP_NAME}\n\nPlease log in to review and approve the section.\n\n{LOGIN_URL}\n\n— {APP_NAME} Team	Section "{SECTION_NAME}" has been submitted and is awaiting your review at {STEP_NAME}.	2026-06-24 18:41:51.025929	\N	department_admin	Approvals	t
+9934b28f-eb1d-40c1-a7e9-853b3b0f6435	form_approved	Section Approved	t	t	Your Section Has Been Approved — {SECTION_NAME}	Hi {FULL_NAME},\n\nGreat news! Your section "{SECTION_NAME}" has been approved on {APP_NAME}.\n\nApproved By: {APPROVED_BY}\n\nLog in to view the approval details.\n\n{LOGIN_URL}\n\n— {APP_NAME} Team	Your section "{SECTION_NAME}" has been approved.	2026-06-24 18:41:51.025929	\N	contributor	Approvals	t
+9e3a6695-2727-400b-a854-bca8e13ad5ec	form_rejected	Section Sent Back for Revision	t	t	Section Sent Back — {SECTION_NAME}	Hi {FULL_NAME},\n\nYour section "{SECTION_NAME}" has been sent back for revision on {APP_NAME}.\n\nReviewed By: {REVIEWER_NAME}\nFeedback: {COMMENT}\n\nPlease log in to make the required changes and resubmit.\n\n{LOGIN_URL}\n\n— {APP_NAME} Team	Section "{SECTION_NAME}" was sent back. Please revise and resubmit.	2026-06-24 18:41:51.025929	\N	contributor	Approvals	t
 \.
 
 
 --
--- TOC entry 6229 (class 0 OID 93433)
--- Dependencies: 272
+-- TOC entry 5911 (class 0 OID 93433)
+-- Dependencies: 256
 -- Data for Name: notifications; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -2870,8 +2075,8 @@ COPY public.notifications (id, user_id, event_id, title, message, is_read, creat
 
 
 --
--- TOC entry 6231 (class 0 OID 93441)
--- Dependencies: 274
+-- TOC entry 5913 (class 0 OID 93441)
+-- Dependencies: 258
 -- Data for Name: password_reset_tokens; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -2880,28 +2085,8 @@ COPY public.password_reset_tokens (id, user_id, token_hash, expires_at, used_at,
 
 
 --
--- TOC entry 6232 (class 0 OID 93448)
--- Dependencies: 275
--- Data for Name: record_records; Type: TABLE DATA; Schema: public; Owner: postgres
---
-
-COPY public.record_records (id, form_name, institution_id, department_id, year, schema_id, status, order_index, custom_fields, language, source_row_id, created_by, updated_by, created_at, updated_at, name) FROM stdin;
-\.
-
-
---
--- TOC entry 6233 (class 0 OID 93456)
--- Dependencies: 276
--- Data for Name: records_records; Type: TABLE DATA; Schema: public; Owner: postgres
---
-
-COPY public.records_records (id, form_name, institution_id, department_id, year, schema_id, status, order_index, custom_fields, language, created_by, updated_by, created_at, updated_at, studentname, reg, source_row_id) FROM stdin;
-\.
-
-
---
--- TOC entry 6234 (class 0 OID 93464)
--- Dependencies: 277
+-- TOC entry 5914 (class 0 OID 93464)
+-- Dependencies: 259
 -- Data for Name: report_access; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -2910,8 +2095,8 @@ COPY public.report_access (id, report_id, role_name, granted_by, granted_at, rev
 
 
 --
--- TOC entry 6235 (class 0 OID 93469)
--- Dependencies: 278
+-- TOC entry 5915 (class 0 OID 93469)
+-- Dependencies: 260
 -- Data for Name: report_audit_log; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -2920,8 +2105,8 @@ COPY public.report_audit_log (id, institution_id, entity_type, entity_id, action
 
 
 --
--- TOC entry 6236 (class 0 OID 93476)
--- Dependencies: 279
+-- TOC entry 5916 (class 0 OID 93476)
+-- Dependencies: 261
 -- Data for Name: report_department_deadlines; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -2930,8 +2115,8 @@ COPY public.report_department_deadlines (id, report_id, department_id, submissio
 
 
 --
--- TOC entry 6237 (class 0 OID 93485)
--- Dependencies: 280
+-- TOC entry 5917 (class 0 OID 93485)
+-- Dependencies: 262
 -- Data for Name: report_sections; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -2940,8 +2125,8 @@ COPY public.report_sections (id, report_id, parent_id, title, description, order
 
 
 --
--- TOC entry 6238 (class 0 OID 93497)
--- Dependencies: 281
+-- TOC entry 5918 (class 0 OID 93497)
+-- Dependencies: 263
 -- Data for Name: report_templates; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -2950,18 +2135,8 @@ COPY public.report_templates (id, institution_id, name, description, report_type
 
 
 --
--- TOC entry 6239 (class 0 OID 93508)
--- Dependencies: 282
--- Data for Name: report_tester_records; Type: TABLE DATA; Schema: public; Owner: postgres
---
-
-COPY public.report_tester_records (id, form_name, institution_id, department_id, year, schema_id, status, order_index, custom_fields, language, source_row_id, created_by, updated_by, created_at, updated_at, sno, department, count, label_department) FROM stdin;
-\.
-
-
---
--- TOC entry 6240 (class 0 OID 93516)
--- Dependencies: 283
+-- TOC entry 5919 (class 0 OID 93516)
+-- Dependencies: 264
 -- Data for Name: reporting_cycles; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -2970,8 +2145,8 @@ COPY public.reporting_cycles (id, institution_id, name, description, start_date,
 
 
 --
--- TOC entry 6241 (class 0 OID 93529)
--- Dependencies: 284
+-- TOC entry 5920 (class 0 OID 93529)
+-- Dependencies: 265
 -- Data for Name: reports; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -2980,8 +2155,8 @@ COPY public.reports (id, institution_id, title, report_type, academic_year, stat
 
 
 --
--- TOC entry 6242 (class 0 OID 93541)
--- Dependencies: 285
+-- TOC entry 5921 (class 0 OID 93541)
+-- Dependencies: 266
 -- Data for Name: roles; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -2992,9 +2167,7 @@ d631d5fd-0366-4358-82fb-2cc8535d7193	department_admin	Department Admin	Manages d
 c29dcf81-6d8f-4f7f-a2ac-85bd7b7b012b	nodal_officer	Department Nodal Officer	Nodal officer access	{"reports": ["read", "write"]}	t	2026-04-25 21:26:07.007605+05:30	2026-04-27 23:43:19.196268+05:30
 2aebfd43-49c6-4026-8869-ee20fbf5aa50	reviewer	Reviewer	Can review submissions	{"publications": ["review"]}	t	2026-04-25 21:26:07.007605+05:30	2026-04-27 23:43:19.196268+05:30
 ae958c00-cf08-47b6-b802-faefbebf2c53	directors_office	Director's Office	Director-level read access	{"all": ["read"]}	t	2026-04-25 21:26:07.007605+05:30	2026-04-27 23:43:19.196268+05:30
-ca2aee76-a1ee-487f-a8df-de0690a34e01	finance_officer	Finance Officer/s	Finance and budget access	{"audit_logs": false, "master_data": false, "final_signoff": false, "manage_cycles": false, "compile_report": false, "delegate_nodal": false, "review_content": false, "fill_dept_forms": false, "write_narrative": false, "manage_dept_users": false, "submit_for_review": false, "upload_statements": true, "fill_finance_forms": true, "manage_departments": false, "configure_templates": false, "manage_institutions": false, "fill_institute_forms": false, "assign_roles_institute": false}	t	2026-04-25 21:26:07.007605+05:30	2026-04-27 23:43:19.196268+05:30
 eb21df23-350b-449d-bec8-37395c85107e	institute_admin	Institute Admin	Manages institution-level settings	{"audit_logs": false, "master_data": false, "final_signoff": false, "manage_cycles": false, "compile_report": false, "delegate_nodal": true, "review_content": false, "fill_dept_forms": false, "write_narrative": false, "manage_dept_users": false, "submit_for_review": false, "upload_statements": false, "fill_finance_forms": false, "manage_departments": true, "configure_templates": false, "manage_institutions": false, "fill_institute_forms": true, "assign_roles_institute": false}	t	2026-04-25 21:26:07.007605+05:30	2026-04-27 23:43:19.196268+05:30
-bd86bc4f-e04e-456a-9370-683e34521671	head_of_department	Head of Department	HOD read access	{"audit_logs": false, "master_data": false, "final_signoff": false, "manage_cycles": false, "compile_report": false, "delegate_nodal": false, "review_content": false, "fill_dept_forms": false, "write_narrative": false, "manage_dept_users": false, "submit_for_review": false, "upload_statements": false, "fill_finance_forms": false, "manage_departments": true, "configure_templates": false, "manage_institutions": false, "fill_institute_forms": false, "assign_roles_institute": false}	t	2026-04-25 21:26:07.007605+05:30	2026-04-27 23:43:19.196268+05:30
 cfb457bb-d6e9-487f-8c87-05e81666a87e	finance_admin	Finance Admin	Manages Finance-domain forms and data	{}	t	2026-06-14 16:03:11.195514+05:30	2026-06-14 16:03:11.195514+05:30
 075d34f9-4964-4fd8-8447-a1bb03fb313a	hospital_admin	Hospital Admin	Manages Hospital-domain forms and data	{}	t	2026-06-14 16:03:11.195514+05:30	2026-06-14 16:03:11.195514+05:30
 c3dbd707-7286-4863-870b-f55195f9c70f	contributor	Contributor	Can submit publications	{"audit_logs": false, "master_data": false, "final_signoff": false, "manage_cycles": false, "compile_report": false, "delegate_nodal": false, "review_content": false, "fill_dept_forms": false, "write_narrative": false, "manage_dept_users": false, "submit_for_review": false, "upload_statements": false, "fill_finance_forms": false, "manage_departments": true, "configure_templates": false, "manage_institutions": false, "fill_institute_forms": false, "assign_roles_institute": true}	t	2026-04-25 21:26:07.007605+05:30	2026-04-27 23:43:19.196268+05:30
@@ -3002,8 +2175,8 @@ c3dbd707-7286-4863-870b-f55195f9c70f	contributor	Contributor	Can submit publicat
 
 
 --
--- TOC entry 6243 (class 0 OID 93551)
--- Dependencies: 286
+-- TOC entry 5922 (class 0 OID 93551)
+-- Dependencies: 267
 -- Data for Name: schema_propagation_log; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -3012,8 +2185,8 @@ COPY public.schema_propagation_log (id, form_name, institution_id, academic_year
 
 
 --
--- TOC entry 6244 (class 0 OID 93558)
--- Dependencies: 287
+-- TOC entry 5923 (class 0 OID 93558)
+-- Dependencies: 268
 -- Data for Name: section_access; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -3022,8 +2195,8 @@ COPY public.section_access (id, section_id, user_id, role_name, permission, gran
 
 
 --
--- TOC entry 6245 (class 0 OID 93566)
--- Dependencies: 288
+-- TOC entry 5924 (class 0 OID 93566)
+-- Dependencies: 269
 -- Data for Name: section_assignments; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -3032,8 +2205,8 @@ COPY public.section_assignments (id, section_id, user_id, role, assigned_by, ass
 
 
 --
--- TOC entry 6246 (class 0 OID 93573)
--- Dependencies: 289
+-- TOC entry 5925 (class 0 OID 93573)
+-- Dependencies: 270
 -- Data for Name: section_blocks; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -3042,8 +2215,8 @@ COPY public.section_blocks (id, section_id, block_type, order_index, content, cr
 
 
 --
--- TOC entry 6247 (class 0 OID 93585)
--- Dependencies: 290
+-- TOC entry 5926 (class 0 OID 93585)
+-- Dependencies: 271
 -- Data for Name: section_department_assignments; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -3052,8 +2225,8 @@ COPY public.section_department_assignments (id, section_id, department_id, assig
 
 
 --
--- TOC entry 6248 (class 0 OID 93590)
--- Dependencies: 291
+-- TOC entry 5927 (class 0 OID 93590)
+-- Dependencies: 272
 -- Data for Name: section_signoffs; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -3062,8 +2235,8 @@ COPY public.section_signoffs (id, section_id, workflow_step_id, reviewer_id, dec
 
 
 --
--- TOC entry 6249 (class 0 OID 93598)
--- Dependencies: 292
+-- TOC entry 5928 (class 0 OID 93598)
+-- Dependencies: 273
 -- Data for Name: section_translations; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -3072,8 +2245,8 @@ COPY public.section_translations (id, section_id, language, title, description, 
 
 
 --
--- TOC entry 6250 (class 0 OID 93608)
--- Dependencies: 293
+-- TOC entry 5929 (class 0 OID 93608)
+-- Dependencies: 274
 -- Data for Name: section_versions; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -3082,8 +2255,8 @@ COPY public.section_versions (id, section_id, version_num, event, snapshot, crea
 
 
 --
--- TOC entry 6251 (class 0 OID 93618)
--- Dependencies: 294
+-- TOC entry 5930 (class 0 OID 93618)
+-- Dependencies: 275
 -- Data for Name: section_workflow_assignments; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -3092,18 +2265,8 @@ COPY public.section_workflow_assignments (id, report_id, section_id, workflow_st
 
 
 --
--- TOC entry 6252 (class 0 OID 93625)
--- Dependencies: 295
--- Data for Name: semester_records; Type: TABLE DATA; Schema: public; Owner: postgres
---
-
-COPY public.semester_records (id, form_name, institution_id, department_id, year, schema_id, status, order_index, custom_fields, language, created_by, updated_by, created_at, updated_at, student_name, reg_no, cgpa, black_log, source_row_id) FROM stdin;
-\.
-
-
---
--- TOC entry 6253 (class 0 OID 93633)
--- Dependencies: 296
+-- TOC entry 5931 (class 0 OID 93633)
+-- Dependencies: 276
 -- Data for Name: sessions; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -3112,18 +2275,8 @@ COPY public.sessions (id, user_id, token_hash, previous_token_hash, expires_at, 
 
 
 --
--- TOC entry 6254 (class 0 OID 93641)
--- Dependencies: 297
--- Data for Name: shared_form_records; Type: TABLE DATA; Schema: public; Owner: postgres
---
-
-COPY public.shared_form_records (id, form_name, institution_id, department_id, year, schema_id, status, order_index, custom_fields, language, source_row_id, created_by, updated_by, created_at, updated_at, name) FROM stdin;
-\.
-
-
---
--- TOC entry 6255 (class 0 OID 93649)
--- Dependencies: 298
+-- TOC entry 5932 (class 0 OID 93649)
+-- Dependencies: 277
 -- Data for Name: shared_form_snapshots; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -3132,18 +2285,8 @@ COPY public.shared_form_snapshots (id, source_form_id, version, form_name, schem
 
 
 --
--- TOC entry 6256 (class 0 OID 93657)
--- Dependencies: 299
--- Data for Name: student_records; Type: TABLE DATA; Schema: public; Owner: postgres
---
-
-COPY public.student_records (id, form_name, institution_id, department_id, year, schema_id, status, order_index, custom_fields, language, created_by, updated_by, created_at, updated_at, name, roll_no, source_row_id) FROM stdin;
-\.
-
-
---
--- TOC entry 6257 (class 0 OID 93665)
--- Dependencies: 300
+-- TOC entry 5933 (class 0 OID 93665)
+-- Dependencies: 278
 -- Data for Name: table_list; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -3152,8 +2295,8 @@ COPY public.table_list (id, form_name, institute_access, share_table, created_by
 
 
 --
--- TOC entry 6258 (class 0 OID 93675)
--- Dependencies: 301
+-- TOC entry 5934 (class 0 OID 93675)
+-- Dependencies: 279
 -- Data for Name: template_blocks; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -3162,8 +2305,8 @@ COPY public.template_blocks (id, template_section_id, block_type, order_index, d
 
 
 --
--- TOC entry 6259 (class 0 OID 93687)
--- Dependencies: 302
+-- TOC entry 5935 (class 0 OID 93687)
+-- Dependencies: 280
 -- Data for Name: template_sections; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -3172,18 +2315,8 @@ COPY public.template_sections (id, template_id, parent_id, title, description, o
 
 
 --
--- TOC entry 6260 (class 0 OID 93696)
--- Dependencies: 303
--- Data for Name: testing_trans_records; Type: TABLE DATA; Schema: public; Owner: postgres
---
-
-COPY public.testing_trans_records (id, form_name, institution_id, department_id, year, schema_id, status, order_index, custom_fields, language, source_row_id, created_by, updated_by, created_at, updated_at, name) FROM stdin;
-\.
-
-
---
--- TOC entry 6261 (class 0 OID 93704)
--- Dependencies: 304
+-- TOC entry 5936 (class 0 OID 93704)
+-- Dependencies: 281
 -- Data for Name: user_roles; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -3192,8 +2325,8 @@ COPY public.user_roles (id, user_id, role_id, assigned_by, assigned_at, expires_
 
 
 --
--- TOC entry 6262 (class 0 OID 93709)
--- Dependencies: 305
+-- TOC entry 5937 (class 0 OID 93709)
+-- Dependencies: 282
 -- Data for Name: users; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -3202,8 +2335,8 @@ COPY public.users (id, institution_id, department_id, full_name, email, password
 
 
 --
--- TOC entry 6263 (class 0 OID 93721)
--- Dependencies: 306
+-- TOC entry 5938 (class 0 OID 93721)
+-- Dependencies: 283
 -- Data for Name: workflow_steps; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -3212,8 +2345,8 @@ COPY public.workflow_steps (id, template_id, step_order, step_name, approver_rol
 
 
 --
--- TOC entry 6264 (class 0 OID 93728)
--- Dependencies: 307
+-- TOC entry 5939 (class 0 OID 93728)
+-- Dependencies: 284
 -- Data for Name: workflow_templates; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
@@ -3222,8 +2355,8 @@ COPY public.workflow_templates (id, institution_id, name, description, is_defaul
 
 
 --
--- TOC entry 6277 (class 0 OID 0)
--- Dependencies: 238
+-- TOC entry 5952 (class 0 OID 0)
+-- Dependencies: 232
 -- Name: dashboard_kpi_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
@@ -3231,26 +2364,26 @@ SELECT pg_catalog.setval('public.dashboard_kpi_id_seq', 1, false);
 
 
 --
--- TOC entry 6278 (class 0 OID 0)
--- Dependencies: 262
+-- TOC entry 5953 (class 0 OID 0)
+-- Dependencies: 247
 -- Name: kpi_config_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.kpi_config_id_seq', 24, true);
+SELECT pg_catalog.setval('public.kpi_config_id_seq', 1, false);
 
 
 --
--- TOC entry 6279 (class 0 OID 0)
--- Dependencies: 265
+-- TOC entry 5954 (class 0 OID 0)
+-- Dependencies: 249
 -- Name: kpi_svg_reports_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.kpi_svg_reports_id_seq', 8, true);
+SELECT pg_catalog.setval('public.kpi_svg_reports_id_seq', 1, false);
 
 
 --
--- TOC entry 6280 (class 0 OID 0)
--- Dependencies: 267
+-- TOC entry 5955 (class 0 OID 0)
+-- Dependencies: 251
 -- Name: management_committees_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
@@ -3258,8 +2391,8 @@ SELECT pg_catalog.setval('public.management_committees_id_seq', 1, false);
 
 
 --
--- TOC entry 6281 (class 0 OID 0)
--- Dependencies: 268
+-- TOC entry 5956 (class 0 OID 0)
+-- Dependencies: 252
 -- Name: management_committees_id_seq1; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
@@ -3267,25 +2400,16 @@ SELECT pg_catalog.setval('public.management_committees_id_seq1', 1, false);
 
 
 --
--- TOC entry 6282 (class 0 OID 0)
--- Dependencies: 273
+-- TOC entry 5957 (class 0 OID 0)
+-- Dependencies: 257
 -- Name: notifications_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.notifications_id_seq', 56, true);
+SELECT pg_catalog.setval('public.notifications_id_seq', 1, false);
 
 
 --
--- TOC entry 5522 (class 2606 OID 93743)
--- Name: abcdef_records abcdef_records_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
---
-
-ALTER TABLE ONLY public.abcdef_records
-    ADD CONSTRAINT abcdef_records_pkey PRIMARY KEY (id);
-
-
---
--- TOC entry 5529 (class 2606 OID 93745)
+-- TOC entry 5360 (class 2606 OID 93745)
 -- Name: academic_year_form_config academic_year_form_config_institution_id_academic_year_key; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -3294,7 +2418,7 @@ ALTER TABLE ONLY public.academic_year_form_config
 
 
 --
--- TOC entry 5531 (class 2606 OID 93747)
+-- TOC entry 5362 (class 2606 OID 93747)
 -- Name: academic_year_form_config academic_year_form_config_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -3303,7 +2427,7 @@ ALTER TABLE ONLY public.academic_year_form_config
 
 
 --
--- TOC entry 5534 (class 2606 OID 93749)
+-- TOC entry 5365 (class 2606 OID 93749)
 -- Name: academic_year_master academic_year_master_institution_id_academic_year_key; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -3312,7 +2436,7 @@ ALTER TABLE ONLY public.academic_year_master
 
 
 --
--- TOC entry 5536 (class 2606 OID 93751)
+-- TOC entry 5367 (class 2606 OID 93751)
 -- Name: academic_year_master academic_year_master_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -3321,7 +2445,7 @@ ALTER TABLE ONLY public.academic_year_master
 
 
 --
--- TOC entry 5539 (class 2606 OID 93753)
+-- TOC entry 5370 (class 2606 OID 93753)
 -- Name: academic_year_notification_logs academic_year_notification_logs_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -3330,16 +2454,7 @@ ALTER TABLE ONLY public.academic_year_notification_logs
 
 
 --
--- TOC entry 5542 (class 2606 OID 93755)
--- Name: attendance_records attendance_records_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
---
-
-ALTER TABLE ONLY public.attendance_records
-    ADD CONSTRAINT attendance_records_pkey PRIMARY KEY (id);
-
-
---
--- TOC entry 5550 (class 2606 OID 93757)
+-- TOC entry 5373 (class 2606 OID 93757)
 -- Name: audit_logs audit_logs_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -3348,7 +2463,7 @@ ALTER TABLE ONLY public.audit_logs
 
 
 --
--- TOC entry 5562 (class 2606 OID 93759)
+-- TOC entry 5385 (class 2606 OID 93759)
 -- Name: block_comments block_comments_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -3357,7 +2472,7 @@ ALTER TABLE ONLY public.block_comments
 
 
 --
--- TOC entry 5566 (class 2606 OID 93761)
+-- TOC entry 5389 (class 2606 OID 93761)
 -- Name: block_translations block_translations_block_id_language_key; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -3366,7 +2481,7 @@ ALTER TABLE ONLY public.block_translations
 
 
 --
--- TOC entry 5568 (class 2606 OID 93763)
+-- TOC entry 5391 (class 2606 OID 93763)
 -- Name: block_translations block_translations_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -3375,7 +2490,7 @@ ALTER TABLE ONLY public.block_translations
 
 
 --
--- TOC entry 5571 (class 2606 OID 93765)
+-- TOC entry 5394 (class 2606 OID 93765)
 -- Name: branding_assignments branding_assignments_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -3384,7 +2499,7 @@ ALTER TABLE ONLY public.branding_assignments
 
 
 --
--- TOC entry 5573 (class 2606 OID 93767)
+-- TOC entry 5396 (class 2606 OID 93767)
 -- Name: branding_assignments branding_assignments_report_id_asset_type_key; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -3393,7 +2508,7 @@ ALTER TABLE ONLY public.branding_assignments
 
 
 --
--- TOC entry 5576 (class 2606 OID 93769)
+-- TOC entry 5399 (class 2606 OID 93769)
 -- Name: builder_approvals builder_approvals_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -3402,7 +2517,7 @@ ALTER TABLE ONLY public.builder_approvals
 
 
 --
--- TOC entry 5579 (class 2606 OID 93771)
+-- TOC entry 5402 (class 2606 OID 93771)
 -- Name: builder_attachments builder_attachments_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -3411,34 +2526,7 @@ ALTER TABLE ONLY public.builder_attachments
 
 
 --
--- TOC entry 5582 (class 2606 OID 93773)
--- Name: check_doc_records check_doc_records_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
---
-
-ALTER TABLE ONLY public.check_doc_records
-    ADD CONSTRAINT check_doc_records_pkey PRIMARY KEY (id);
-
-
---
--- TOC entry 5592 (class 2606 OID 93775)
--- Name: check_private_records check_private_records_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
---
-
-ALTER TABLE ONLY public.check_private_records
-    ADD CONSTRAINT check_private_records_pkey PRIMARY KEY (id);
-
-
---
--- TOC entry 5597 (class 2606 OID 93777)
--- Name: check_shared_records check_shared_records_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
---
-
-ALTER TABLE ONLY public.check_shared_records
-    ADD CONSTRAINT check_shared_records_pkey PRIMARY KEY (id);
-
-
---
--- TOC entry 5602 (class 2606 OID 93779)
+-- TOC entry 5405 (class 2606 OID 93779)
 -- Name: compiled_reports compiled_reports_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -3447,16 +2535,7 @@ ALTER TABLE ONLY public.compiled_reports
 
 
 --
--- TOC entry 5605 (class 2606 OID 93781)
--- Name: cpga_records cpga_records_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
---
-
-ALTER TABLE ONLY public.cpga_records
-    ADD CONSTRAINT cpga_records_pkey PRIMARY KEY (id);
-
-
---
--- TOC entry 5612 (class 2606 OID 93783)
+-- TOC entry 5408 (class 2606 OID 93783)
 -- Name: custom_field_schemas custom_field_schemas_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -3465,7 +2544,7 @@ ALTER TABLE ONLY public.custom_field_schemas
 
 
 --
--- TOC entry 5614 (class 2606 OID 93785)
+-- TOC entry 5410 (class 2606 OID 93785)
 -- Name: cycle_department_deadlines cycle_department_deadlines_cycle_id_department_id_key; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -3474,7 +2553,7 @@ ALTER TABLE ONLY public.cycle_department_deadlines
 
 
 --
--- TOC entry 5616 (class 2606 OID 93787)
+-- TOC entry 5412 (class 2606 OID 93787)
 -- Name: cycle_department_deadlines cycle_department_deadlines_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -3483,7 +2562,7 @@ ALTER TABLE ONLY public.cycle_department_deadlines
 
 
 --
--- TOC entry 5619 (class 2606 OID 93789)
+-- TOC entry 5415 (class 2606 OID 93789)
 -- Name: dashboard_kpi dashboard_kpi_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -3492,7 +2571,7 @@ ALTER TABLE ONLY public.dashboard_kpi
 
 
 --
--- TOC entry 5621 (class 2606 OID 93791)
+-- TOC entry 5417 (class 2606 OID 93791)
 -- Name: data_sources data_sources_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -3501,16 +2580,7 @@ ALTER TABLE ONLY public.data_sources
 
 
 --
--- TOC entry 5624 (class 2606 OID 93793)
--- Name: date_records date_records_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
---
-
-ALTER TABLE ONLY public.date_records
-    ADD CONSTRAINT date_records_pkey PRIMARY KEY (id);
-
-
---
--- TOC entry 5630 (class 2606 OID 93795)
+-- TOC entry 5420 (class 2606 OID 93795)
 -- Name: department_form_deadline_config department_form_deadline_conf_department_form_id_academic_y_key; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -3519,7 +2589,7 @@ ALTER TABLE ONLY public.department_form_deadline_config
 
 
 --
--- TOC entry 5632 (class 2606 OID 93797)
+-- TOC entry 5422 (class 2606 OID 93797)
 -- Name: department_form_deadline_config department_form_deadline_config_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -3528,7 +2598,7 @@ ALTER TABLE ONLY public.department_form_deadline_config
 
 
 --
--- TOC entry 5635 (class 2606 OID 93799)
+-- TOC entry 5425 (class 2606 OID 93799)
 -- Name: department_form_lock_config department_form_lock_config_department_form_id_key; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -3537,7 +2607,7 @@ ALTER TABLE ONLY public.department_form_lock_config
 
 
 --
--- TOC entry 5637 (class 2606 OID 93801)
+-- TOC entry 5427 (class 2606 OID 93801)
 -- Name: department_form_lock_config department_form_lock_config_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -3546,7 +2616,7 @@ ALTER TABLE ONLY public.department_form_lock_config
 
 
 --
--- TOC entry 5639 (class 2606 OID 93803)
+-- TOC entry 5429 (class 2606 OID 93803)
 -- Name: department_form_roles department_form_roles_department_form_id_role_name_key; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -3555,7 +2625,7 @@ ALTER TABLE ONLY public.department_form_roles
 
 
 --
--- TOC entry 5641 (class 2606 OID 93805)
+-- TOC entry 5431 (class 2606 OID 93805)
 -- Name: department_form_roles department_form_roles_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -3564,7 +2634,7 @@ ALTER TABLE ONLY public.department_form_roles
 
 
 --
--- TOC entry 5643 (class 2606 OID 93807)
+-- TOC entry 5433 (class 2606 OID 93807)
 -- Name: department_form_year_mapping department_form_year_mapping_department_form_id_academic_ye_key; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -3573,7 +2643,7 @@ ALTER TABLE ONLY public.department_form_year_mapping
 
 
 --
--- TOC entry 5645 (class 2606 OID 93809)
+-- TOC entry 5435 (class 2606 OID 93809)
 -- Name: department_form_year_mapping department_form_year_mapping_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -3582,7 +2652,7 @@ ALTER TABLE ONLY public.department_form_year_mapping
 
 
 --
--- TOC entry 5647 (class 2606 OID 93811)
+-- TOC entry 5437 (class 2606 OID 93811)
 -- Name: department_table_list department_table_list_department_id_form_name_key; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -3591,7 +2661,7 @@ ALTER TABLE ONLY public.department_table_list
 
 
 --
--- TOC entry 5649 (class 2606 OID 93813)
+-- TOC entry 5439 (class 2606 OID 93813)
 -- Name: department_table_list department_table_list_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -3600,7 +2670,7 @@ ALTER TABLE ONLY public.department_table_list
 
 
 --
--- TOC entry 5651 (class 2606 OID 93815)
+-- TOC entry 5441 (class 2606 OID 93815)
 -- Name: departments departments_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -3609,25 +2679,7 @@ ALTER TABLE ONLY public.departments
 
 
 --
--- TOC entry 5655 (class 2606 OID 93817)
--- Name: dept_form_bbbbbbbb0000_student dept_form_bbbbbbbb0000_student_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
---
-
-ALTER TABLE ONLY public.dept_form_bbbbbbbb0000_student
-    ADD CONSTRAINT dept_form_bbbbbbbb0000_student_pkey PRIMARY KEY (id);
-
-
---
--- TOC entry 5660 (class 2606 OID 93819)
--- Name: document_records document_records_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
---
-
-ALTER TABLE ONLY public.document_records
-    ADD CONSTRAINT document_records_pkey PRIMARY KEY (id);
-
-
---
--- TOC entry 5668 (class 2606 OID 93821)
+-- TOC entry 5445 (class 2606 OID 93821)
 -- Name: email_queue email_queue_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -3636,25 +2688,7 @@ ALTER TABLE ONLY public.email_queue
 
 
 --
--- TOC entry 5671 (class 2606 OID 93823)
--- Name: facultyrec_records facultyrec_records_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
---
-
-ALTER TABLE ONLY public.facultyrec_records
-    ADD CONSTRAINT facultyrec_records_pkey PRIMARY KEY (id);
-
-
---
--- TOC entry 5681 (class 2606 OID 93825)
--- Name: finance_records finance_records_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
---
-
-ALTER TABLE ONLY public.finance_records
-    ADD CONSTRAINT finance_records_pkey PRIMARY KEY (id);
-
-
---
--- TOC entry 5686 (class 2606 OID 93827)
+-- TOC entry 5448 (class 2606 OID 93827)
 -- Name: form_assignments form_assignments_form_id_assigned_to_academic_year_key; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -3663,7 +2697,7 @@ ALTER TABLE ONLY public.form_assignments
 
 
 --
--- TOC entry 5688 (class 2606 OID 93829)
+-- TOC entry 5450 (class 2606 OID 93829)
 -- Name: form_assignments form_assignments_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -3672,7 +2706,7 @@ ALTER TABLE ONLY public.form_assignments
 
 
 --
--- TOC entry 5692 (class 2606 OID 93831)
+-- TOC entry 5454 (class 2606 OID 93831)
 -- Name: form_deadline_reminder_log form_deadline_reminder_log_form_key_reminder_type_recipient_key; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -3681,7 +2715,7 @@ ALTER TABLE ONLY public.form_deadline_reminder_log
 
 
 --
--- TOC entry 5694 (class 2606 OID 93833)
+-- TOC entry 5456 (class 2606 OID 93833)
 -- Name: form_deadline_reminder_log form_deadline_reminder_log_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -3690,7 +2724,7 @@ ALTER TABLE ONLY public.form_deadline_reminder_log
 
 
 --
--- TOC entry 5696 (class 2606 OID 93835)
+-- TOC entry 5458 (class 2606 OID 93835)
 -- Name: form_lock_config form_lock_config_form_name_institution_id_key; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -3699,7 +2733,7 @@ ALTER TABLE ONLY public.form_lock_config
 
 
 --
--- TOC entry 5698 (class 2606 OID 93837)
+-- TOC entry 5460 (class 2606 OID 93837)
 -- Name: form_lock_config form_lock_config_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -3708,7 +2742,7 @@ ALTER TABLE ONLY public.form_lock_config
 
 
 --
--- TOC entry 5700 (class 2606 OID 93839)
+-- TOC entry 5462 (class 2606 OID 93839)
 -- Name: form_year_deadlines form_year_deadlines_form_name_institution_id_academic_year_key; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -3717,7 +2751,7 @@ ALTER TABLE ONLY public.form_year_deadlines
 
 
 --
--- TOC entry 5702 (class 2606 OID 93841)
+-- TOC entry 5464 (class 2606 OID 93841)
 -- Name: form_year_deadlines form_year_deadlines_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -3726,34 +2760,7 @@ ALTER TABLE ONLY public.form_year_deadlines
 
 
 --
--- TOC entry 5705 (class 2606 OID 93843)
--- Name: hello_records hello_records_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
---
-
-ALTER TABLE ONLY public.hello_records
-    ADD CONSTRAINT hello_records_pkey PRIMARY KEY (id);
-
-
---
--- TOC entry 5710 (class 2606 OID 93845)
--- Name: hindi_records hindi_records_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
---
-
-ALTER TABLE ONLY public.hindi_records
-    ADD CONSTRAINT hindi_records_pkey PRIMARY KEY (id);
-
-
---
--- TOC entry 5716 (class 2606 OID 93847)
--- Name: hospital_records hospital_records_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
---
-
-ALTER TABLE ONLY public.hospital_records
-    ADD CONSTRAINT hospital_records_pkey PRIMARY KEY (id);
-
-
---
--- TOC entry 5721 (class 2606 OID 93849)
+-- TOC entry 5467 (class 2606 OID 93849)
 -- Name: institutions institutions_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -3762,7 +2769,7 @@ ALTER TABLE ONLY public.institutions
 
 
 --
--- TOC entry 5728 (class 2606 OID 93851)
+-- TOC entry 5474 (class 2606 OID 93851)
 -- Name: kpi_config kpi_config_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -3771,16 +2778,7 @@ ALTER TABLE ONLY public.kpi_config
 
 
 --
--- TOC entry 5734 (class 2606 OID 93853)
--- Name: kpi_data_records kpi_data_records_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
---
-
-ALTER TABLE ONLY public.kpi_data_records
-    ADD CONSTRAINT kpi_data_records_pkey PRIMARY KEY (id);
-
-
---
--- TOC entry 5737 (class 2606 OID 93855)
+-- TOC entry 5477 (class 2606 OID 93855)
 -- Name: kpi_svg_reports kpi_svg_reports_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -3789,7 +2787,7 @@ ALTER TABLE ONLY public.kpi_svg_reports
 
 
 --
--- TOC entry 5742 (class 2606 OID 93857)
+-- TOC entry 5482 (class 2606 OID 93857)
 -- Name: management_committees management_committees_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -3798,7 +2796,7 @@ ALTER TABLE ONLY public.management_committees
 
 
 --
--- TOC entry 5747 (class 2606 OID 93859)
+-- TOC entry 5487 (class 2606 OID 93859)
 -- Name: new_share_records new_share_records_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -3807,7 +2805,7 @@ ALTER TABLE ONLY public.new_share_records
 
 
 --
--- TOC entry 5749 (class 2606 OID 93861)
+-- TOC entry 5489 (class 2606 OID 93861)
 -- Name: nodal_officer_assignments nodal_officer_assignments_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -3816,7 +2814,7 @@ ALTER TABLE ONLY public.nodal_officer_assignments
 
 
 --
--- TOC entry 5751 (class 2606 OID 93863)
+-- TOC entry 5491 (class 2606 OID 93863)
 -- Name: notification_templates notification_templates_event_id_key; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -3825,7 +2823,7 @@ ALTER TABLE ONLY public.notification_templates
 
 
 --
--- TOC entry 5753 (class 2606 OID 93865)
+-- TOC entry 5493 (class 2606 OID 93865)
 -- Name: notification_templates notification_templates_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -3834,7 +2832,7 @@ ALTER TABLE ONLY public.notification_templates
 
 
 --
--- TOC entry 5756 (class 2606 OID 93867)
+-- TOC entry 5496 (class 2606 OID 93867)
 -- Name: notifications notifications_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -3843,7 +2841,7 @@ ALTER TABLE ONLY public.notifications
 
 
 --
--- TOC entry 5759 (class 2606 OID 93869)
+-- TOC entry 5499 (class 2606 OID 93869)
 -- Name: password_reset_tokens password_reset_tokens_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -3852,7 +2850,7 @@ ALTER TABLE ONLY public.password_reset_tokens
 
 
 --
--- TOC entry 5761 (class 2606 OID 93871)
+-- TOC entry 5501 (class 2606 OID 93871)
 -- Name: password_reset_tokens password_reset_tokens_token_hash_key; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -3861,25 +2859,7 @@ ALTER TABLE ONLY public.password_reset_tokens
 
 
 --
--- TOC entry 5766 (class 2606 OID 93873)
--- Name: record_records record_records_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
---
-
-ALTER TABLE ONLY public.record_records
-    ADD CONSTRAINT record_records_pkey PRIMARY KEY (id);
-
-
---
--- TOC entry 5773 (class 2606 OID 93875)
--- Name: records_records records_records_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
---
-
-ALTER TABLE ONLY public.records_records
-    ADD CONSTRAINT records_records_pkey PRIMARY KEY (id);
-
-
---
--- TOC entry 5776 (class 2606 OID 93877)
+-- TOC entry 5504 (class 2606 OID 93877)
 -- Name: report_access report_access_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -3888,7 +2868,7 @@ ALTER TABLE ONLY public.report_access
 
 
 --
--- TOC entry 5778 (class 2606 OID 93879)
+-- TOC entry 5506 (class 2606 OID 93879)
 -- Name: report_access report_access_report_id_role_name_key; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -3897,7 +2877,7 @@ ALTER TABLE ONLY public.report_access
 
 
 --
--- TOC entry 5783 (class 2606 OID 93881)
+-- TOC entry 5511 (class 2606 OID 93881)
 -- Name: report_audit_log report_audit_log_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -3906,7 +2886,7 @@ ALTER TABLE ONLY public.report_audit_log
 
 
 --
--- TOC entry 5787 (class 2606 OID 93883)
+-- TOC entry 5515 (class 2606 OID 93883)
 -- Name: report_department_deadlines report_department_deadlines_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -3915,7 +2895,7 @@ ALTER TABLE ONLY public.report_department_deadlines
 
 
 --
--- TOC entry 5789 (class 2606 OID 93885)
+-- TOC entry 5517 (class 2606 OID 93885)
 -- Name: report_department_deadlines report_department_deadlines_report_id_department_id_key; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -3924,7 +2904,7 @@ ALTER TABLE ONLY public.report_department_deadlines
 
 
 --
--- TOC entry 5794 (class 2606 OID 93887)
+-- TOC entry 5522 (class 2606 OID 93887)
 -- Name: report_sections report_sections_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -3933,7 +2913,7 @@ ALTER TABLE ONLY public.report_sections
 
 
 --
--- TOC entry 5798 (class 2606 OID 93889)
+-- TOC entry 5526 (class 2606 OID 93889)
 -- Name: report_templates report_templates_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -3942,16 +2922,7 @@ ALTER TABLE ONLY public.report_templates
 
 
 --
--- TOC entry 5804 (class 2606 OID 93891)
--- Name: report_tester_records report_tester_records_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
---
-
-ALTER TABLE ONLY public.report_tester_records
-    ADD CONSTRAINT report_tester_records_pkey PRIMARY KEY (id);
-
-
---
--- TOC entry 5807 (class 2606 OID 93893)
+-- TOC entry 5529 (class 2606 OID 93893)
 -- Name: reporting_cycles reporting_cycles_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -3960,7 +2931,7 @@ ALTER TABLE ONLY public.reporting_cycles
 
 
 --
--- TOC entry 5813 (class 2606 OID 93895)
+-- TOC entry 5535 (class 2606 OID 93895)
 -- Name: reports reports_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -3969,7 +2940,7 @@ ALTER TABLE ONLY public.reports
 
 
 --
--- TOC entry 5815 (class 2606 OID 93897)
+-- TOC entry 5537 (class 2606 OID 93897)
 -- Name: roles roles_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -3978,7 +2949,7 @@ ALTER TABLE ONLY public.roles
 
 
 --
--- TOC entry 5817 (class 2606 OID 93899)
+-- TOC entry 5539 (class 2606 OID 93899)
 -- Name: schema_propagation_log schema_propagation_log_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -3987,7 +2958,7 @@ ALTER TABLE ONLY public.schema_propagation_log
 
 
 --
--- TOC entry 5822 (class 2606 OID 93901)
+-- TOC entry 5544 (class 2606 OID 93901)
 -- Name: section_access section_access_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -3996,7 +2967,7 @@ ALTER TABLE ONLY public.section_access
 
 
 --
--- TOC entry 5825 (class 2606 OID 93903)
+-- TOC entry 5547 (class 2606 OID 93903)
 -- Name: section_assignments section_assignments_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -4005,7 +2976,7 @@ ALTER TABLE ONLY public.section_assignments
 
 
 --
--- TOC entry 5827 (class 2606 OID 93905)
+-- TOC entry 5549 (class 2606 OID 93905)
 -- Name: section_assignments section_assignments_section_id_user_id_key; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -4014,7 +2985,7 @@ ALTER TABLE ONLY public.section_assignments
 
 
 --
--- TOC entry 5832 (class 2606 OID 93907)
+-- TOC entry 5554 (class 2606 OID 93907)
 -- Name: section_blocks section_blocks_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -4023,7 +2994,7 @@ ALTER TABLE ONLY public.section_blocks
 
 
 --
--- TOC entry 5836 (class 2606 OID 93909)
+-- TOC entry 5558 (class 2606 OID 93909)
 -- Name: section_department_assignments section_department_assignments_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -4032,7 +3003,7 @@ ALTER TABLE ONLY public.section_department_assignments
 
 
 --
--- TOC entry 5838 (class 2606 OID 93911)
+-- TOC entry 5560 (class 2606 OID 93911)
 -- Name: section_department_assignments section_department_assignments_section_id_department_id_key; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -4041,7 +3012,7 @@ ALTER TABLE ONLY public.section_department_assignments
 
 
 --
--- TOC entry 5843 (class 2606 OID 93913)
+-- TOC entry 5565 (class 2606 OID 93913)
 -- Name: section_signoffs section_signoffs_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -4050,7 +3021,7 @@ ALTER TABLE ONLY public.section_signoffs
 
 
 --
--- TOC entry 5846 (class 2606 OID 93915)
+-- TOC entry 5568 (class 2606 OID 93915)
 -- Name: section_translations section_translations_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -4059,7 +3030,7 @@ ALTER TABLE ONLY public.section_translations
 
 
 --
--- TOC entry 5848 (class 2606 OID 93917)
+-- TOC entry 5570 (class 2606 OID 93917)
 -- Name: section_translations section_translations_section_id_language_key; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -4068,7 +3039,7 @@ ALTER TABLE ONLY public.section_translations
 
 
 --
--- TOC entry 5851 (class 2606 OID 93919)
+-- TOC entry 5573 (class 2606 OID 93919)
 -- Name: section_versions section_versions_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -4077,7 +3048,7 @@ ALTER TABLE ONLY public.section_versions
 
 
 --
--- TOC entry 5853 (class 2606 OID 93921)
+-- TOC entry 5575 (class 2606 OID 93921)
 -- Name: section_versions section_versions_section_id_version_num_key; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -4086,7 +3057,7 @@ ALTER TABLE ONLY public.section_versions
 
 
 --
--- TOC entry 5862 (class 2606 OID 93923)
+-- TOC entry 5584 (class 2606 OID 93923)
 -- Name: section_workflow_assignments section_workflow_assignments_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -4095,7 +3066,7 @@ ALTER TABLE ONLY public.section_workflow_assignments
 
 
 --
--- TOC entry 5864 (class 2606 OID 93925)
+-- TOC entry 5586 (class 2606 OID 93925)
 -- Name: section_workflow_assignments section_workflow_assignments_section_id_workflow_step_id_as_key; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -4104,16 +3075,7 @@ ALTER TABLE ONLY public.section_workflow_assignments
 
 
 --
--- TOC entry 5870 (class 2606 OID 93927)
--- Name: semester_records semester_records_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
---
-
-ALTER TABLE ONLY public.semester_records
-    ADD CONSTRAINT semester_records_pkey PRIMARY KEY (id);
-
-
---
--- TOC entry 5875 (class 2606 OID 93929)
+-- TOC entry 5591 (class 2606 OID 93929)
 -- Name: sessions sessions_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -4122,7 +3084,7 @@ ALTER TABLE ONLY public.sessions
 
 
 --
--- TOC entry 5877 (class 2606 OID 93931)
+-- TOC entry 5593 (class 2606 OID 93931)
 -- Name: sessions sessions_token_hash_key; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -4131,16 +3093,7 @@ ALTER TABLE ONLY public.sessions
 
 
 --
--- TOC entry 5882 (class 2606 OID 93933)
--- Name: shared_form_records shared_form_records_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
---
-
-ALTER TABLE ONLY public.shared_form_records
-    ADD CONSTRAINT shared_form_records_pkey PRIMARY KEY (id);
-
-
---
--- TOC entry 5884 (class 2606 OID 93935)
+-- TOC entry 5595 (class 2606 OID 93935)
 -- Name: shared_form_snapshots shared_form_snapshots_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -4149,7 +3102,7 @@ ALTER TABLE ONLY public.shared_form_snapshots
 
 
 --
--- TOC entry 5886 (class 2606 OID 93937)
+-- TOC entry 5597 (class 2606 OID 93937)
 -- Name: shared_form_snapshots shared_form_snapshots_source_form_id_version_key; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -4158,16 +3111,7 @@ ALTER TABLE ONLY public.shared_form_snapshots
 
 
 --
--- TOC entry 5894 (class 2606 OID 93939)
--- Name: student_records student_records_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
---
-
-ALTER TABLE ONLY public.student_records
-    ADD CONSTRAINT student_records_pkey PRIMARY KEY (id);
-
-
---
--- TOC entry 5896 (class 2606 OID 93941)
+-- TOC entry 5599 (class 2606 OID 93941)
 -- Name: table_list table_list_form_name_key; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -4176,7 +3120,7 @@ ALTER TABLE ONLY public.table_list
 
 
 --
--- TOC entry 5898 (class 2606 OID 93943)
+-- TOC entry 5601 (class 2606 OID 93943)
 -- Name: table_list table_list_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -4185,7 +3129,7 @@ ALTER TABLE ONLY public.table_list
 
 
 --
--- TOC entry 5901 (class 2606 OID 93945)
+-- TOC entry 5604 (class 2606 OID 93945)
 -- Name: template_blocks template_blocks_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -4194,7 +3138,7 @@ ALTER TABLE ONLY public.template_blocks
 
 
 --
--- TOC entry 5905 (class 2606 OID 93947)
+-- TOC entry 5608 (class 2606 OID 93947)
 -- Name: template_sections template_sections_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -4203,16 +3147,7 @@ ALTER TABLE ONLY public.template_sections
 
 
 --
--- TOC entry 5910 (class 2606 OID 93949)
--- Name: testing_trans_records testing_trans_records_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
---
-
-ALTER TABLE ONLY public.testing_trans_records
-    ADD CONSTRAINT testing_trans_records_pkey PRIMARY KEY (id);
-
-
---
--- TOC entry 5914 (class 2606 OID 93951)
+-- TOC entry 5612 (class 2606 OID 93951)
 -- Name: user_roles user_roles_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -4221,7 +3156,7 @@ ALTER TABLE ONLY public.user_roles
 
 
 --
--- TOC entry 5919 (class 2606 OID 93953)
+-- TOC entry 5617 (class 2606 OID 93953)
 -- Name: users users_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -4230,7 +3165,7 @@ ALTER TABLE ONLY public.users
 
 
 --
--- TOC entry 5923 (class 2606 OID 93955)
+-- TOC entry 5621 (class 2606 OID 93955)
 -- Name: workflow_steps workflow_steps_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -4239,7 +3174,7 @@ ALTER TABLE ONLY public.workflow_steps
 
 
 --
--- TOC entry 5925 (class 2606 OID 93957)
+-- TOC entry 5623 (class 2606 OID 93957)
 -- Name: workflow_steps workflow_steps_template_id_step_order_key; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -4248,7 +3183,7 @@ ALTER TABLE ONLY public.workflow_steps
 
 
 --
--- TOC entry 5928 (class 2606 OID 93959)
+-- TOC entry 5626 (class 2606 OID 93959)
 -- Name: workflow_templates workflow_templates_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -4257,7 +3192,7 @@ ALTER TABLE ONLY public.workflow_templates
 
 
 --
--- TOC entry 5577 (class 1259 OID 93960)
+-- TOC entry 5400 (class 1259 OID 93960)
 -- Name: idx_approvals_section; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4265,7 +3200,7 @@ CREATE INDEX idx_approvals_section ON public.builder_approvals USING btree (sect
 
 
 --
--- TOC entry 5823 (class 1259 OID 93961)
+-- TOC entry 5545 (class 1259 OID 93961)
 -- Name: idx_assignments_user; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4273,7 +3208,7 @@ CREATE INDEX idx_assignments_user ON public.section_assignments USING btree (use
 
 
 --
--- TOC entry 5580 (class 1259 OID 93962)
+-- TOC entry 5403 (class 1259 OID 93962)
 -- Name: idx_attachments_report; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4281,23 +3216,7 @@ CREATE INDEX idx_attachments_report ON public.builder_attachments USING btree (r
 
 
 --
--- TOC entry 5543 (class 1259 OID 93963)
--- Name: idx_attendance_records_inst_created; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX idx_attendance_records_inst_created ON public.attendance_records USING btree (institution_id, created_at DESC);
-
-
---
--- TOC entry 5544 (class 1259 OID 93964)
--- Name: idx_attendance_records_source_row; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX idx_attendance_records_source_row ON public.attendance_records USING btree (source_row_id) WHERE (source_row_id IS NOT NULL);
-
-
---
--- TOC entry 5551 (class 1259 OID 93965)
+-- TOC entry 5374 (class 1259 OID 93965)
 -- Name: idx_audit_action_type; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4305,7 +3224,7 @@ CREATE INDEX idx_audit_action_type ON public.audit_logs USING btree (action_type
 
 
 --
--- TOC entry 5552 (class 1259 OID 93966)
+-- TOC entry 5375 (class 1259 OID 93966)
 -- Name: idx_audit_created_at; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4313,7 +3232,7 @@ CREATE INDEX idx_audit_created_at ON public.audit_logs USING btree (created_at D
 
 
 --
--- TOC entry 5553 (class 1259 OID 93967)
+-- TOC entry 5376 (class 1259 OID 93967)
 -- Name: idx_audit_entity_id; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4321,7 +3240,7 @@ CREATE INDEX idx_audit_entity_id ON public.audit_logs USING btree (entity_id) WH
 
 
 --
--- TOC entry 5554 (class 1259 OID 93968)
+-- TOC entry 5377 (class 1259 OID 93968)
 -- Name: idx_audit_entity_type; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4329,7 +3248,7 @@ CREATE INDEX idx_audit_entity_type ON public.audit_logs USING btree (entity_type
 
 
 --
--- TOC entry 5555 (class 1259 OID 93969)
+-- TOC entry 5378 (class 1259 OID 93969)
 -- Name: idx_audit_entity_type_created_at; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4337,7 +3256,7 @@ CREATE INDEX idx_audit_entity_type_created_at ON public.audit_logs USING btree (
 
 
 --
--- TOC entry 5556 (class 1259 OID 93970)
+-- TOC entry 5379 (class 1259 OID 93970)
 -- Name: idx_audit_ip_address; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4345,7 +3264,7 @@ CREATE INDEX idx_audit_ip_address ON public.audit_logs USING btree (ip_address);
 
 
 --
--- TOC entry 5557 (class 1259 OID 93971)
+-- TOC entry 5380 (class 1259 OID 93971)
 -- Name: idx_audit_logs_entity_type; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4353,7 +3272,7 @@ CREATE INDEX idx_audit_logs_entity_type ON public.audit_logs USING btree (entity
 
 
 --
--- TOC entry 5558 (class 1259 OID 93972)
+-- TOC entry 5381 (class 1259 OID 93972)
 -- Name: idx_audit_logs_role_events; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4361,7 +3280,7 @@ CREATE INDEX idx_audit_logs_role_events ON public.audit_logs USING btree (entity
 
 
 --
--- TOC entry 5559 (class 1259 OID 93973)
+-- TOC entry 5382 (class 1259 OID 93973)
 -- Name: idx_audit_session_id; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4369,7 +3288,7 @@ CREATE INDEX idx_audit_session_id ON public.audit_logs USING btree (session_id);
 
 
 --
--- TOC entry 5560 (class 1259 OID 93974)
+-- TOC entry 5383 (class 1259 OID 93974)
 -- Name: idx_audit_user_id; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4377,7 +3296,7 @@ CREATE INDEX idx_audit_user_id ON public.audit_logs USING btree (user_id);
 
 
 --
--- TOC entry 5532 (class 1259 OID 93975)
+-- TOC entry 5363 (class 1259 OID 93975)
 -- Name: idx_ayfc_inst_year; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4385,7 +3304,7 @@ CREATE INDEX idx_ayfc_inst_year ON public.academic_year_form_config USING btree 
 
 
 --
--- TOC entry 5537 (class 1259 OID 93976)
+-- TOC entry 5368 (class 1259 OID 93976)
 -- Name: idx_aym_inst_active; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4393,7 +3312,7 @@ CREATE INDEX idx_aym_inst_active ON public.academic_year_master USING btree (ins
 
 
 --
--- TOC entry 5540 (class 1259 OID 93977)
+-- TOC entry 5371 (class 1259 OID 93977)
 -- Name: idx_aynl_inst_year; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4401,7 +3320,7 @@ CREATE INDEX idx_aynl_inst_year ON public.academic_year_notification_logs USING 
 
 
 --
--- TOC entry 5569 (class 1259 OID 93978)
+-- TOC entry 5392 (class 1259 OID 93978)
 -- Name: idx_blk_translations_block; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4409,7 +3328,7 @@ CREATE INDEX idx_blk_translations_block ON public.block_translations USING btree
 
 
 --
--- TOC entry 5829 (class 1259 OID 93979)
+-- TOC entry 5551 (class 1259 OID 93979)
 -- Name: idx_blocks_content_gin; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4417,7 +3336,7 @@ CREATE INDEX idx_blocks_content_gin ON public.section_blocks USING gin (content)
 
 
 --
--- TOC entry 5830 (class 1259 OID 93980)
+-- TOC entry 5552 (class 1259 OID 93980)
 -- Name: idx_blocks_section; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4425,7 +3344,7 @@ CREATE INDEX idx_blocks_section ON public.section_blocks USING btree (section_id
 
 
 --
--- TOC entry 5574 (class 1259 OID 93981)
+-- TOC entry 5397 (class 1259 OID 93981)
 -- Name: idx_branding_user; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4433,23 +3352,7 @@ CREATE INDEX idx_branding_user ON public.branding_assignments USING btree (user_
 
 
 --
--- TOC entry 5583 (class 1259 OID 93982)
--- Name: idx_check_doc_records_inst_created; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX idx_check_doc_records_inst_created ON public.check_doc_records USING btree (institution_id, created_at DESC);
-
-
---
--- TOC entry 5584 (class 1259 OID 93983)
--- Name: idx_check_doc_records_source_row; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX idx_check_doc_records_source_row ON public.check_doc_records USING btree (source_row_id) WHERE (source_row_id IS NOT NULL);
-
-
---
--- TOC entry 5563 (class 1259 OID 93984)
+-- TOC entry 5386 (class 1259 OID 93984)
 -- Name: idx_comments_block; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4457,7 +3360,7 @@ CREATE INDEX idx_comments_block ON public.block_comments USING btree (block_id) 
 
 
 --
--- TOC entry 5564 (class 1259 OID 93985)
+-- TOC entry 5387 (class 1259 OID 93985)
 -- Name: idx_comments_section; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4465,7 +3368,7 @@ CREATE INDEX idx_comments_section ON public.block_comments USING btree (section_
 
 
 --
--- TOC entry 5603 (class 1259 OID 93986)
+-- TOC entry 5406 (class 1259 OID 93986)
 -- Name: idx_compiled_report_report; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4473,7 +3376,7 @@ CREATE INDEX idx_compiled_report_report ON public.compiled_reports USING btree (
 
 
 --
--- TOC entry 5617 (class 1259 OID 93987)
+-- TOC entry 5413 (class 1259 OID 93987)
 -- Name: idx_cycle_dept_deadlines; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4481,7 +3384,7 @@ CREATE INDEX idx_cycle_dept_deadlines ON public.cycle_department_deadlines USING
 
 
 --
--- TOC entry 5805 (class 1259 OID 93988)
+-- TOC entry 5527 (class 1259 OID 93988)
 -- Name: idx_cycles_institution; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4489,7 +3392,7 @@ CREATE INDEX idx_cycles_institution ON public.reporting_cycles USING btree (inst
 
 
 --
--- TOC entry 5622 (class 1259 OID 93989)
+-- TOC entry 5418 (class 1259 OID 93989)
 -- Name: idx_data_sources_institution; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4497,23 +3400,7 @@ CREATE INDEX idx_data_sources_institution ON public.data_sources USING btree (in
 
 
 --
--- TOC entry 5625 (class 1259 OID 93990)
--- Name: idx_date_records_inst_created; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX idx_date_records_inst_created ON public.date_records USING btree (institution_id, created_at DESC);
-
-
---
--- TOC entry 5626 (class 1259 OID 93991)
--- Name: idx_date_records_source_row; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX idx_date_records_source_row ON public.date_records USING btree (source_row_id) WHERE (source_row_id IS NOT NULL);
-
-
---
--- TOC entry 5633 (class 1259 OID 93992)
+-- TOC entry 5423 (class 1259 OID 93992)
 -- Name: idx_dfdc_form_year; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4521,23 +3408,7 @@ CREATE INDEX idx_dfdc_form_year ON public.department_form_deadline_config USING 
 
 
 --
--- TOC entry 5661 (class 1259 OID 93993)
--- Name: idx_document_records_inst_created; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX idx_document_records_inst_created ON public.document_records USING btree (institution_id, created_at DESC);
-
-
---
--- TOC entry 5662 (class 1259 OID 93994)
--- Name: idx_document_records_source_row; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX idx_document_records_source_row ON public.document_records USING btree (source_row_id) WHERE (source_row_id IS NOT NULL);
-
-
---
--- TOC entry 5669 (class 1259 OID 93995)
+-- TOC entry 5446 (class 1259 OID 93995)
 -- Name: idx_email_queue_pending; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4545,7 +3416,7 @@ CREATE INDEX idx_email_queue_pending ON public.email_queue USING btree (schedule
 
 
 --
--- TOC entry 5689 (class 1259 OID 93996)
+-- TOC entry 5451 (class 1259 OID 93996)
 -- Name: idx_fa_assignee_year; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4553,7 +3424,7 @@ CREATE INDEX idx_fa_assignee_year ON public.form_assignments USING btree (assign
 
 
 --
--- TOC entry 5690 (class 1259 OID 93997)
+-- TOC entry 5452 (class 1259 OID 93997)
 -- Name: idx_fa_form_year; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4561,7 +3432,7 @@ CREATE INDEX idx_fa_form_year ON public.form_assignments USING btree (form_id, a
 
 
 --
--- TOC entry 5703 (class 1259 OID 93998)
+-- TOC entry 5465 (class 1259 OID 93998)
 -- Name: idx_fyd_form_inst_year; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4569,7 +3440,7 @@ CREATE INDEX idx_fyd_form_inst_year ON public.form_year_deadlines USING btree (f
 
 
 --
--- TOC entry 5724 (class 1259 OID 93999)
+-- TOC entry 5470 (class 1259 OID 93999)
 -- Name: idx_kpi_config_dashboard; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4577,7 +3448,7 @@ CREATE INDEX idx_kpi_config_dashboard ON public.kpi_config USING btree (show_on_
 
 
 --
--- TOC entry 5725 (class 1259 OID 94000)
+-- TOC entry 5471 (class 1259 OID 94000)
 -- Name: idx_kpi_config_scope_dept; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4585,7 +3456,7 @@ CREATE INDEX idx_kpi_config_scope_dept ON public.kpi_config USING btree (scope, 
 
 
 --
--- TOC entry 5726 (class 1259 OID 94001)
+-- TOC entry 5472 (class 1259 OID 94001)
 -- Name: idx_kpi_config_scope_inst; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4593,7 +3464,7 @@ CREATE INDEX idx_kpi_config_scope_inst ON public.kpi_config USING btree (scope, 
 
 
 --
--- TOC entry 5735 (class 1259 OID 94002)
+-- TOC entry 5475 (class 1259 OID 94002)
 -- Name: idx_kpi_svg_config_id; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4601,7 +3472,7 @@ CREATE INDEX idx_kpi_svg_config_id ON public.kpi_svg_reports USING btree (config
 
 
 --
--- TOC entry 5738 (class 1259 OID 94003)
+-- TOC entry 5478 (class 1259 OID 94003)
 -- Name: idx_mc_institute_year; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4609,7 +3480,7 @@ CREATE INDEX idx_mc_institute_year ON public.management_committees USING btree (
 
 
 --
--- TOC entry 5739 (class 1259 OID 94004)
+-- TOC entry 5479 (class 1259 OID 94004)
 -- Name: idx_mc_status; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4617,7 +3488,7 @@ CREATE INDEX idx_mc_status ON public.management_committees USING btree (status);
 
 
 --
--- TOC entry 5740 (class 1259 OID 94005)
+-- TOC entry 5480 (class 1259 OID 94005)
 -- Name: idx_mc_type; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4625,7 +3496,7 @@ CREATE INDEX idx_mc_type ON public.management_committees USING btree (committee_
 
 
 --
--- TOC entry 5754 (class 1259 OID 94006)
+-- TOC entry 5494 (class 1259 OID 94006)
 -- Name: idx_notifications_user_created; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4633,7 +3504,7 @@ CREATE INDEX idx_notifications_user_created ON public.notifications USING btree 
 
 
 --
--- TOC entry 5757 (class 1259 OID 94007)
+-- TOC entry 5497 (class 1259 OID 94007)
 -- Name: idx_prt_user; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4641,15 +3512,7 @@ CREATE INDEX idx_prt_user ON public.password_reset_tokens USING btree (user_id);
 
 
 --
--- TOC entry 5767 (class 1259 OID 94008)
--- Name: idx_records_records_inst_created; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX idx_records_records_inst_created ON public.records_records USING btree (institution_id, created_at DESC);
-
-
---
--- TOC entry 5774 (class 1259 OID 94009)
+-- TOC entry 5502 (class 1259 OID 94009)
 -- Name: idx_report_access_report; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4657,7 +3520,7 @@ CREATE INDEX idx_report_access_report ON public.report_access USING btree (repor
 
 
 --
--- TOC entry 5796 (class 1259 OID 94010)
+-- TOC entry 5524 (class 1259 OID 94010)
 -- Name: idx_report_templates_institution; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4665,7 +3528,7 @@ CREATE INDEX idx_report_templates_institution ON public.report_templates USING b
 
 
 --
--- TOC entry 5808 (class 1259 OID 94011)
+-- TOC entry 5530 (class 1259 OID 94011)
 -- Name: idx_reports_cycle; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4673,7 +3536,7 @@ CREATE INDEX idx_reports_cycle ON public.reports USING btree (cycle_id) WHERE (d
 
 
 --
--- TOC entry 5809 (class 1259 OID 94012)
+-- TOC entry 5531 (class 1259 OID 94012)
 -- Name: idx_reports_institution; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4681,7 +3544,7 @@ CREATE INDEX idx_reports_institution ON public.reports USING btree (institution_
 
 
 --
--- TOC entry 5810 (class 1259 OID 94013)
+-- TOC entry 5532 (class 1259 OID 94013)
 -- Name: idx_reports_status; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4689,7 +3552,7 @@ CREATE INDEX idx_reports_status ON public.reports USING btree (institution_id, s
 
 
 --
--- TOC entry 5811 (class 1259 OID 94014)
+-- TOC entry 5533 (class 1259 OID 94014)
 -- Name: idx_reports_template; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4697,7 +3560,7 @@ CREATE INDEX idx_reports_template ON public.reports USING btree (template_id) WH
 
 
 --
--- TOC entry 5779 (class 1259 OID 94015)
+-- TOC entry 5507 (class 1259 OID 94015)
 -- Name: idx_rpt_audit_entity; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4705,7 +3568,7 @@ CREATE INDEX idx_rpt_audit_entity ON public.report_audit_log USING btree (entity
 
 
 --
--- TOC entry 5780 (class 1259 OID 94016)
+-- TOC entry 5508 (class 1259 OID 94016)
 -- Name: idx_rpt_audit_institution; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4713,7 +3576,7 @@ CREATE INDEX idx_rpt_audit_institution ON public.report_audit_log USING btree (i
 
 
 --
--- TOC entry 5781 (class 1259 OID 94017)
+-- TOC entry 5509 (class 1259 OID 94017)
 -- Name: idx_rpt_audit_user; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4721,7 +3584,7 @@ CREATE INDEX idx_rpt_audit_user ON public.report_audit_log USING btree (user_id,
 
 
 --
--- TOC entry 5784 (class 1259 OID 94018)
+-- TOC entry 5512 (class 1259 OID 94018)
 -- Name: idx_rpt_dept_deadlines_dept; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4729,7 +3592,7 @@ CREATE INDEX idx_rpt_dept_deadlines_dept ON public.report_department_deadlines U
 
 
 --
--- TOC entry 5785 (class 1259 OID 94019)
+-- TOC entry 5513 (class 1259 OID 94019)
 -- Name: idx_rpt_dept_deadlines_report; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4737,7 +3600,7 @@ CREATE INDEX idx_rpt_dept_deadlines_report ON public.report_department_deadlines
 
 
 --
--- TOC entry 5844 (class 1259 OID 94020)
+-- TOC entry 5566 (class 1259 OID 94020)
 -- Name: idx_sec_translations_section; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4745,7 +3608,7 @@ CREATE INDEX idx_sec_translations_section ON public.section_translations USING b
 
 
 --
--- TOC entry 5833 (class 1259 OID 94021)
+-- TOC entry 5555 (class 1259 OID 94021)
 -- Name: idx_sect_dept_assign_dept; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4753,7 +3616,7 @@ CREATE INDEX idx_sect_dept_assign_dept ON public.section_department_assignments 
 
 
 --
--- TOC entry 5834 (class 1259 OID 94022)
+-- TOC entry 5556 (class 1259 OID 94022)
 -- Name: idx_sect_dept_assign_section; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4761,7 +3624,7 @@ CREATE INDEX idx_sect_dept_assign_section ON public.section_department_assignmen
 
 
 --
--- TOC entry 5818 (class 1259 OID 94023)
+-- TOC entry 5540 (class 1259 OID 94023)
 -- Name: idx_section_access_department; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4769,7 +3632,7 @@ CREATE INDEX idx_section_access_department ON public.section_access USING btree 
 
 
 --
--- TOC entry 5819 (class 1259 OID 94024)
+-- TOC entry 5541 (class 1259 OID 94024)
 -- Name: idx_section_access_section; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4777,7 +3640,7 @@ CREATE INDEX idx_section_access_section ON public.section_access USING btree (se
 
 
 --
--- TOC entry 5820 (class 1259 OID 94025)
+-- TOC entry 5542 (class 1259 OID 94025)
 -- Name: idx_section_access_user; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4785,7 +3648,7 @@ CREATE INDEX idx_section_access_user ON public.section_access USING btree (user_
 
 
 --
--- TOC entry 5790 (class 1259 OID 94026)
+-- TOC entry 5518 (class 1259 OID 94026)
 -- Name: idx_sections_parent; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4793,7 +3656,7 @@ CREATE INDEX idx_sections_parent ON public.report_sections USING btree (parent_i
 
 
 --
--- TOC entry 5791 (class 1259 OID 94027)
+-- TOC entry 5519 (class 1259 OID 94027)
 -- Name: idx_sections_report; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4801,7 +3664,7 @@ CREATE INDEX idx_sections_report ON public.report_sections USING btree (report_i
 
 
 --
--- TOC entry 5792 (class 1259 OID 94028)
+-- TOC entry 5520 (class 1259 OID 94028)
 -- Name: idx_sections_template_source; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4809,7 +3672,7 @@ CREATE INDEX idx_sections_template_source ON public.report_sections USING btree 
 
 
 --
--- TOC entry 5871 (class 1259 OID 94029)
+-- TOC entry 5587 (class 1259 OID 94029)
 -- Name: idx_sessions_prev_hash; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4817,7 +3680,7 @@ CREATE INDEX idx_sessions_prev_hash ON public.sessions USING btree (previous_tok
 
 
 --
--- TOC entry 5872 (class 1259 OID 94030)
+-- TOC entry 5588 (class 1259 OID 94030)
 -- Name: idx_sessions_token_hash; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4825,7 +3688,7 @@ CREATE INDEX idx_sessions_token_hash ON public.sessions USING btree (token_hash)
 
 
 --
--- TOC entry 5873 (class 1259 OID 94031)
+-- TOC entry 5589 (class 1259 OID 94031)
 -- Name: idx_sessions_user_id; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4833,7 +3696,7 @@ CREATE INDEX idx_sessions_user_id ON public.sessions USING btree (user_id);
 
 
 --
--- TOC entry 5839 (class 1259 OID 94032)
+-- TOC entry 5561 (class 1259 OID 94032)
 -- Name: idx_signoffs_reviewer; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4841,7 +3704,7 @@ CREATE INDEX idx_signoffs_reviewer ON public.section_signoffs USING btree (revie
 
 
 --
--- TOC entry 5840 (class 1259 OID 94033)
+-- TOC entry 5562 (class 1259 OID 94033)
 -- Name: idx_signoffs_section; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4849,7 +3712,7 @@ CREATE INDEX idx_signoffs_section ON public.section_signoffs USING btree (sectio
 
 
 --
--- TOC entry 5841 (class 1259 OID 94034)
+-- TOC entry 5563 (class 1259 OID 94034)
 -- Name: idx_signoffs_step; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4857,23 +3720,7 @@ CREATE INDEX idx_signoffs_step ON public.section_signoffs USING btree (workflow_
 
 
 --
--- TOC entry 5887 (class 1259 OID 94035)
--- Name: idx_student_records_inst_created; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX idx_student_records_inst_created ON public.student_records USING btree (institution_id, created_at DESC);
-
-
---
--- TOC entry 5888 (class 1259 OID 94036)
--- Name: idx_student_records_source_row; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX idx_student_records_source_row ON public.student_records USING btree (source_row_id) WHERE (source_row_id IS NOT NULL);
-
-
---
--- TOC entry 5854 (class 1259 OID 94037)
+-- TOC entry 5576 (class 1259 OID 94037)
 -- Name: idx_swa_authoring; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4881,7 +3728,7 @@ CREATE INDEX idx_swa_authoring ON public.section_workflow_assignments USING btre
 
 
 --
--- TOC entry 5855 (class 1259 OID 94038)
+-- TOC entry 5577 (class 1259 OID 94038)
 -- Name: idx_swa_department; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4889,7 +3736,7 @@ CREATE INDEX idx_swa_department ON public.section_workflow_assignments USING btr
 
 
 --
--- TOC entry 5856 (class 1259 OID 94039)
+-- TOC entry 5578 (class 1259 OID 94039)
 -- Name: idx_swa_report; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4897,7 +3744,7 @@ CREATE INDEX idx_swa_report ON public.section_workflow_assignments USING btree (
 
 
 --
--- TOC entry 5857 (class 1259 OID 94040)
+-- TOC entry 5579 (class 1259 OID 94040)
 -- Name: idx_swa_role; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4905,7 +3752,7 @@ CREATE INDEX idx_swa_role ON public.section_workflow_assignments USING btree (ro
 
 
 --
--- TOC entry 5858 (class 1259 OID 94041)
+-- TOC entry 5580 (class 1259 OID 94041)
 -- Name: idx_swa_section; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4913,7 +3760,7 @@ CREATE INDEX idx_swa_section ON public.section_workflow_assignments USING btree 
 
 
 --
--- TOC entry 5859 (class 1259 OID 94042)
+-- TOC entry 5581 (class 1259 OID 94042)
 -- Name: idx_swa_step; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4921,7 +3768,7 @@ CREATE INDEX idx_swa_step ON public.section_workflow_assignments USING btree (wo
 
 
 --
--- TOC entry 5860 (class 1259 OID 94043)
+-- TOC entry 5582 (class 1259 OID 94043)
 -- Name: idx_swa_user; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4929,7 +3776,7 @@ CREATE INDEX idx_swa_user ON public.section_workflow_assignments USING btree (us
 
 
 --
--- TOC entry 5899 (class 1259 OID 94044)
+-- TOC entry 5602 (class 1259 OID 94044)
 -- Name: idx_tmpl_blocks_section; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4937,7 +3784,7 @@ CREATE INDEX idx_tmpl_blocks_section ON public.template_blocks USING btree (temp
 
 
 --
--- TOC entry 5902 (class 1259 OID 94045)
+-- TOC entry 5605 (class 1259 OID 94045)
 -- Name: idx_tmpl_sections_parent; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4945,7 +3792,7 @@ CREATE INDEX idx_tmpl_sections_parent ON public.template_sections USING btree (p
 
 
 --
--- TOC entry 5903 (class 1259 OID 94046)
+-- TOC entry 5606 (class 1259 OID 94046)
 -- Name: idx_tmpl_sections_template; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4953,7 +3800,7 @@ CREATE INDEX idx_tmpl_sections_template ON public.template_sections USING btree 
 
 
 --
--- TOC entry 5911 (class 1259 OID 94047)
+-- TOC entry 5609 (class 1259 OID 94047)
 -- Name: idx_user_roles_user; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4961,7 +3808,7 @@ CREATE INDEX idx_user_roles_user ON public.user_roles USING btree (user_id) WHER
 
 
 --
--- TOC entry 5915 (class 1259 OID 94048)
+-- TOC entry 5613 (class 1259 OID 94048)
 -- Name: idx_users_department; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4969,7 +3816,7 @@ CREATE INDEX idx_users_department ON public.users USING btree (department_id);
 
 
 --
--- TOC entry 5916 (class 1259 OID 94049)
+-- TOC entry 5614 (class 1259 OID 94049)
 -- Name: idx_users_institution; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4977,7 +3824,7 @@ CREATE INDEX idx_users_institution ON public.users USING btree (institution_id);
 
 
 --
--- TOC entry 5849 (class 1259 OID 94050)
+-- TOC entry 5571 (class 1259 OID 94050)
 -- Name: idx_versions_section; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4985,7 +3832,7 @@ CREATE INDEX idx_versions_section ON public.section_versions USING btree (sectio
 
 
 --
--- TOC entry 5920 (class 1259 OID 94051)
+-- TOC entry 5618 (class 1259 OID 94051)
 -- Name: idx_wf_steps_dept; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -4993,7 +3840,7 @@ CREATE INDEX idx_wf_steps_dept ON public.workflow_steps USING btree (approver_de
 
 
 --
--- TOC entry 5926 (class 1259 OID 94052)
+-- TOC entry 5624 (class 1259 OID 94052)
 -- Name: idx_wf_templates_institution; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -5001,7 +3848,7 @@ CREATE INDEX idx_wf_templates_institution ON public.workflow_templates USING btr
 
 
 --
--- TOC entry 5921 (class 1259 OID 94053)
+-- TOC entry 5619 (class 1259 OID 94053)
 -- Name: idx_workflow_steps_template; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -5009,487 +3856,7 @@ CREATE INDEX idx_workflow_steps_template ON public.workflow_steps USING btree (t
 
 
 --
--- TOC entry 5523 (class 1259 OID 94054)
--- Name: ix_abcdef_records_abcdef_trgm; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_abcdef_records_abcdef_trgm ON public.abcdef_records USING gin (abcdef public.gin_trgm_ops);
-
-
---
--- TOC entry 5524 (class 1259 OID 94055)
--- Name: ix_abcdef_records_doc_trgm; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_abcdef_records_doc_trgm ON public.abcdef_records USING gin (doc public.gin_trgm_ops);
-
-
---
--- TOC entry 5525 (class 1259 OID 94056)
--- Name: ix_abcdef_records_ic; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_abcdef_records_ic ON public.abcdef_records USING btree (institution_id, created_at DESC);
-
-
---
--- TOC entry 5526 (class 1259 OID 94057)
--- Name: ix_abcdef_records_sr; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_abcdef_records_sr ON public.abcdef_records USING btree (source_row_id);
-
-
---
--- TOC entry 5527 (class 1259 OID 94058)
--- Name: ix_abcdef_records_vv_trgm; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_abcdef_records_vv_trgm ON public.abcdef_records USING gin (vv public.gin_trgm_ops);
-
-
---
--- TOC entry 5545 (class 1259 OID 94059)
--- Name: ix_attendance_records_ic; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_attendance_records_ic ON public.attendance_records USING btree (institution_id, created_at DESC);
-
-
---
--- TOC entry 5546 (class 1259 OID 94060)
--- Name: ix_attendance_records_name_trgm; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_attendance_records_name_trgm ON public.attendance_records USING gin (name public.gin_trgm_ops);
-
-
---
--- TOC entry 5547 (class 1259 OID 94061)
--- Name: ix_attendance_records_reason_trgm; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_attendance_records_reason_trgm ON public.attendance_records USING gin (reason public.gin_trgm_ops);
-
-
---
--- TOC entry 5548 (class 1259 OID 94062)
--- Name: ix_attendance_records_sr; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_attendance_records_sr ON public.attendance_records USING btree (source_row_id);
-
-
---
--- TOC entry 5585 (class 1259 OID 94063)
--- Name: ix_check_doc_records_aim_trgm; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_check_doc_records_aim_trgm ON public.check_doc_records USING gin (aim public.gin_trgm_ops);
-
-
---
--- TOC entry 5586 (class 1259 OID 94064)
--- Name: ix_check_doc_records_document_trgm; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_check_doc_records_document_trgm ON public.check_doc_records USING gin (document public.gin_trgm_ops);
-
-
---
--- TOC entry 5587 (class 1259 OID 94065)
--- Name: ix_check_doc_records_ic; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_check_doc_records_ic ON public.check_doc_records USING btree (institution_id, created_at DESC);
-
-
---
--- TOC entry 5588 (class 1259 OID 94066)
--- Name: ix_check_doc_records_name_trgm; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_check_doc_records_name_trgm ON public.check_doc_records USING gin (name public.gin_trgm_ops);
-
-
---
--- TOC entry 5589 (class 1259 OID 94067)
--- Name: ix_check_doc_records_phone_no_trgm; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_check_doc_records_phone_no_trgm ON public.check_doc_records USING gin (phone_no public.gin_trgm_ops);
-
-
---
--- TOC entry 5590 (class 1259 OID 94068)
--- Name: ix_check_doc_records_sr; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_check_doc_records_sr ON public.check_doc_records USING btree (source_row_id);
-
-
---
--- TOC entry 5593 (class 1259 OID 94069)
--- Name: ix_check_private_records_ic; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_check_private_records_ic ON public.check_private_records USING btree (institution_id, created_at DESC);
-
-
---
--- TOC entry 5594 (class 1259 OID 94070)
--- Name: ix_check_private_records_name_trgm; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_check_private_records_name_trgm ON public.check_private_records USING gin (name public.gin_trgm_ops);
-
-
---
--- TOC entry 5595 (class 1259 OID 94071)
--- Name: ix_check_private_records_sr; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_check_private_records_sr ON public.check_private_records USING btree (source_row_id);
-
-
---
--- TOC entry 5598 (class 1259 OID 94072)
--- Name: ix_check_shared_records_ic; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_check_shared_records_ic ON public.check_shared_records USING btree (institution_id, created_at DESC);
-
-
---
--- TOC entry 5599 (class 1259 OID 94073)
--- Name: ix_check_shared_records_name_trgm; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_check_shared_records_name_trgm ON public.check_shared_records USING gin (name public.gin_trgm_ops);
-
-
---
--- TOC entry 5600 (class 1259 OID 94074)
--- Name: ix_check_shared_records_sr; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_check_shared_records_sr ON public.check_shared_records USING btree (source_row_id);
-
-
---
--- TOC entry 5606 (class 1259 OID 94075)
--- Name: ix_cpga_records_blacklog_trgm; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_cpga_records_blacklog_trgm ON public.cpga_records USING gin (blacklog public.gin_trgm_ops);
-
-
---
--- TOC entry 5607 (class 1259 OID 94076)
--- Name: ix_cpga_records_gpa_trgm; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_cpga_records_gpa_trgm ON public.cpga_records USING gin (gpa public.gin_trgm_ops);
-
-
---
--- TOC entry 5608 (class 1259 OID 94077)
--- Name: ix_cpga_records_ic; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_cpga_records_ic ON public.cpga_records USING btree (institution_id, created_at DESC);
-
-
---
--- TOC entry 5609 (class 1259 OID 94078)
--- Name: ix_cpga_records_name_trgm; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_cpga_records_name_trgm ON public.cpga_records USING gin (name public.gin_trgm_ops);
-
-
---
--- TOC entry 5610 (class 1259 OID 94079)
--- Name: ix_cpga_records_sr; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_cpga_records_sr ON public.cpga_records USING btree (source_row_id);
-
-
---
--- TOC entry 5627 (class 1259 OID 94080)
--- Name: ix_date_records_ic; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_date_records_ic ON public.date_records USING btree (institution_id, created_at DESC);
-
-
---
--- TOC entry 5628 (class 1259 OID 94081)
--- Name: ix_date_records_sr; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_date_records_sr ON public.date_records USING btree (source_row_id);
-
-
---
--- TOC entry 5656 (class 1259 OID 94082)
--- Name: ix_dept_form_bbbbbbbb0000_student_dac; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_dept_form_bbbbbbbb0000_student_dac ON public.dept_form_bbbbbbbb0000_student USING btree (department_id, academic_year, created_at DESC);
-
-
---
--- TOC entry 5657 (class 1259 OID 94083)
--- Name: ix_dept_form_bbbbbbbb0000_student_name_trgm; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_dept_form_bbbbbbbb0000_student_name_trgm ON public.dept_form_bbbbbbbb0000_student USING gin (name public.gin_trgm_ops);
-
-
---
--- TOC entry 5658 (class 1259 OID 94084)
--- Name: ix_dept_form_bbbbbbbb0000_student_sr; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_dept_form_bbbbbbbb0000_student_sr ON public.dept_form_bbbbbbbb0000_student USING btree (source_row_id);
-
-
---
--- TOC entry 5663 (class 1259 OID 94085)
--- Name: ix_document_records_document_trgm; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_document_records_document_trgm ON public.document_records USING gin (document public.gin_trgm_ops);
-
-
---
--- TOC entry 5664 (class 1259 OID 94086)
--- Name: ix_document_records_ic; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_document_records_ic ON public.document_records USING btree (institution_id, created_at DESC);
-
-
---
--- TOC entry 5665 (class 1259 OID 94087)
--- Name: ix_document_records_name_trgm; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_document_records_name_trgm ON public.document_records USING gin (name public.gin_trgm_ops);
-
-
---
--- TOC entry 5666 (class 1259 OID 94088)
--- Name: ix_document_records_sr; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_document_records_sr ON public.document_records USING btree (source_row_id);
-
-
---
--- TOC entry 5672 (class 1259 OID 94089)
--- Name: ix_facultyrec_records_hello_hi_trgm; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_facultyrec_records_hello_hi_trgm ON public.facultyrec_records USING gin (hello_hi public.gin_trgm_ops);
-
-
---
--- TOC entry 5673 (class 1259 OID 94090)
--- Name: ix_facultyrec_records_hello_trgm; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_facultyrec_records_hello_trgm ON public.facultyrec_records USING gin (hello public.gin_trgm_ops);
-
-
---
--- TOC entry 5674 (class 1259 OID 94091)
--- Name: ix_facultyrec_records_ic; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_facultyrec_records_ic ON public.facultyrec_records USING btree (institution_id, created_at DESC);
-
-
---
--- TOC entry 5675 (class 1259 OID 94092)
--- Name: ix_facultyrec_records_name_hi_trgm; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_facultyrec_records_name_hi_trgm ON public.facultyrec_records USING gin (name_hi public.gin_trgm_ops);
-
-
---
--- TOC entry 5676 (class 1259 OID 94093)
--- Name: ix_facultyrec_records_name_trgm; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_facultyrec_records_name_trgm ON public.facultyrec_records USING gin (name public.gin_trgm_ops);
-
-
---
--- TOC entry 5677 (class 1259 OID 94094)
--- Name: ix_facultyrec_records_namee_hi_trgm; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_facultyrec_records_namee_hi_trgm ON public.facultyrec_records USING gin (namee_hi public.gin_trgm_ops);
-
-
---
--- TOC entry 5678 (class 1259 OID 94095)
--- Name: ix_facultyrec_records_namee_trgm; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_facultyrec_records_namee_trgm ON public.facultyrec_records USING gin (namee public.gin_trgm_ops);
-
-
---
--- TOC entry 5679 (class 1259 OID 94096)
--- Name: ix_facultyrec_records_sr; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_facultyrec_records_sr ON public.facultyrec_records USING btree (source_row_id);
-
-
---
--- TOC entry 5682 (class 1259 OID 94097)
--- Name: ix_finance_records_budget_trgm; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_finance_records_budget_trgm ON public.finance_records USING gin (budget public.gin_trgm_ops);
-
-
---
--- TOC entry 5683 (class 1259 OID 94098)
--- Name: ix_finance_records_ic; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_finance_records_ic ON public.finance_records USING btree (institution_id, created_at DESC);
-
-
---
--- TOC entry 5684 (class 1259 OID 94099)
--- Name: ix_finance_records_sr; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_finance_records_sr ON public.finance_records USING btree (source_row_id);
-
-
---
--- TOC entry 5706 (class 1259 OID 94100)
--- Name: ix_hello_records_ic; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_hello_records_ic ON public.hello_records USING btree (institution_id, created_at DESC);
-
-
---
--- TOC entry 5707 (class 1259 OID 94101)
--- Name: ix_hello_records_name_trgm; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_hello_records_name_trgm ON public.hello_records USING gin (name public.gin_trgm_ops);
-
-
---
--- TOC entry 5708 (class 1259 OID 94102)
--- Name: ix_hello_records_sr; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_hello_records_sr ON public.hello_records USING btree (source_row_id);
-
-
---
--- TOC entry 5711 (class 1259 OID 94103)
--- Name: ix_hindi_records_eng_trgm; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_hindi_records_eng_trgm ON public.hindi_records USING gin (eng public.gin_trgm_ops);
-
-
---
--- TOC entry 5712 (class 1259 OID 94104)
--- Name: ix_hindi_records_hin_trgm; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_hindi_records_hin_trgm ON public.hindi_records USING gin (hin public.gin_trgm_ops);
-
-
---
--- TOC entry 5713 (class 1259 OID 94105)
--- Name: ix_hindi_records_ic; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_hindi_records_ic ON public.hindi_records USING btree (institution_id, created_at DESC);
-
-
---
--- TOC entry 5714 (class 1259 OID 94106)
--- Name: ix_hindi_records_sr; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_hindi_records_sr ON public.hindi_records USING btree (source_row_id);
-
-
---
--- TOC entry 5717 (class 1259 OID 94107)
--- Name: ix_hospital_records_hosp_name_trgm; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_hospital_records_hosp_name_trgm ON public.hospital_records USING gin (hosp_name public.gin_trgm_ops);
-
-
---
--- TOC entry 5718 (class 1259 OID 94108)
--- Name: ix_hospital_records_ic; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_hospital_records_ic ON public.hospital_records USING btree (institution_id, created_at DESC);
-
-
---
--- TOC entry 5719 (class 1259 OID 94109)
--- Name: ix_hospital_records_sr; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_hospital_records_sr ON public.hospital_records USING btree (source_row_id);
-
-
---
--- TOC entry 5729 (class 1259 OID 94110)
--- Name: ix_kpi_data_records_district_trgm; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_kpi_data_records_district_trgm ON public.kpi_data_records USING gin (district public.gin_trgm_ops);
-
-
---
--- TOC entry 5730 (class 1259 OID 94111)
--- Name: ix_kpi_data_records_hospital_trgm; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_kpi_data_records_hospital_trgm ON public.kpi_data_records USING gin (hospital public.gin_trgm_ops);
-
-
---
--- TOC entry 5731 (class 1259 OID 94112)
--- Name: ix_kpi_data_records_ic; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_kpi_data_records_ic ON public.kpi_data_records USING btree (institution_id, created_at DESC);
-
-
---
--- TOC entry 5732 (class 1259 OID 94113)
--- Name: ix_kpi_data_records_sr; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_kpi_data_records_sr ON public.kpi_data_records USING btree (source_row_id);
-
-
---
--- TOC entry 5743 (class 1259 OID 94114)
+-- TOC entry 5483 (class 1259 OID 94114)
 -- Name: ix_new_share_records_ic; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -5497,7 +3864,7 @@ CREATE INDEX ix_new_share_records_ic ON public.new_share_records USING btree (in
 
 
 --
--- TOC entry 5744 (class 1259 OID 94115)
+-- TOC entry 5484 (class 1259 OID 94115)
 -- Name: ix_new_share_records_reg_no_trgm; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -5505,7 +3872,7 @@ CREATE INDEX ix_new_share_records_reg_no_trgm ON public.new_share_records USING 
 
 
 --
--- TOC entry 5745 (class 1259 OID 94116)
+-- TOC entry 5485 (class 1259 OID 94116)
 -- Name: ix_new_share_records_sr; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -5513,207 +3880,7 @@ CREATE INDEX ix_new_share_records_sr ON public.new_share_records USING btree (so
 
 
 --
--- TOC entry 5762 (class 1259 OID 94117)
--- Name: ix_record_records_ic; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_record_records_ic ON public.record_records USING btree (institution_id, created_at DESC);
-
-
---
--- TOC entry 5763 (class 1259 OID 94118)
--- Name: ix_record_records_name_trgm; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_record_records_name_trgm ON public.record_records USING gin (name public.gin_trgm_ops);
-
-
---
--- TOC entry 5764 (class 1259 OID 94119)
--- Name: ix_record_records_sr; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_record_records_sr ON public.record_records USING btree (source_row_id);
-
-
---
--- TOC entry 5768 (class 1259 OID 94120)
--- Name: ix_records_records_ic; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_records_records_ic ON public.records_records USING btree (institution_id, created_at DESC);
-
-
---
--- TOC entry 5769 (class 1259 OID 94121)
--- Name: ix_records_records_reg_trgm; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_records_records_reg_trgm ON public.records_records USING gin (reg public.gin_trgm_ops);
-
-
---
--- TOC entry 5770 (class 1259 OID 94122)
--- Name: ix_records_records_sr; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_records_records_sr ON public.records_records USING btree (source_row_id);
-
-
---
--- TOC entry 5771 (class 1259 OID 94123)
--- Name: ix_records_records_studentname_trgm; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_records_records_studentname_trgm ON public.records_records USING gin (studentname public.gin_trgm_ops);
-
-
---
--- TOC entry 5799 (class 1259 OID 94124)
--- Name: ix_report_tester_records_department_trgm; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_report_tester_records_department_trgm ON public.report_tester_records USING gin (department public.gin_trgm_ops);
-
-
---
--- TOC entry 5800 (class 1259 OID 94125)
--- Name: ix_report_tester_records_ic; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_report_tester_records_ic ON public.report_tester_records USING btree (institution_id, created_at DESC);
-
-
---
--- TOC entry 5801 (class 1259 OID 94126)
--- Name: ix_report_tester_records_label_department_trgm; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_report_tester_records_label_department_trgm ON public.report_tester_records USING gin (label_department public.gin_trgm_ops);
-
-
---
--- TOC entry 5802 (class 1259 OID 94127)
--- Name: ix_report_tester_records_sr; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_report_tester_records_sr ON public.report_tester_records USING btree (source_row_id);
-
-
---
--- TOC entry 5865 (class 1259 OID 94128)
--- Name: ix_semester_records_black_log_trgm; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_semester_records_black_log_trgm ON public.semester_records USING gin (black_log public.gin_trgm_ops);
-
-
---
--- TOC entry 5866 (class 1259 OID 94129)
--- Name: ix_semester_records_ic; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_semester_records_ic ON public.semester_records USING btree (institution_id, created_at DESC);
-
-
---
--- TOC entry 5867 (class 1259 OID 94130)
--- Name: ix_semester_records_sr; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_semester_records_sr ON public.semester_records USING btree (source_row_id);
-
-
---
--- TOC entry 5868 (class 1259 OID 94131)
--- Name: ix_semester_records_student_name_trgm; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_semester_records_student_name_trgm ON public.semester_records USING gin (student_name public.gin_trgm_ops);
-
-
---
--- TOC entry 5878 (class 1259 OID 94132)
--- Name: ix_shared_form_records_ic; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_shared_form_records_ic ON public.shared_form_records USING btree (institution_id, created_at DESC);
-
-
---
--- TOC entry 5879 (class 1259 OID 94133)
--- Name: ix_shared_form_records_name_trgm; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_shared_form_records_name_trgm ON public.shared_form_records USING gin (name public.gin_trgm_ops);
-
-
---
--- TOC entry 5880 (class 1259 OID 94134)
--- Name: ix_shared_form_records_sr; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_shared_form_records_sr ON public.shared_form_records USING btree (source_row_id);
-
-
---
--- TOC entry 5889 (class 1259 OID 94135)
--- Name: ix_student_records_ic; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_student_records_ic ON public.student_records USING btree (institution_id, created_at DESC);
-
-
---
--- TOC entry 5890 (class 1259 OID 94136)
--- Name: ix_student_records_name_trgm; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_student_records_name_trgm ON public.student_records USING gin (name public.gin_trgm_ops);
-
-
---
--- TOC entry 5891 (class 1259 OID 94137)
--- Name: ix_student_records_roll_no_trgm; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_student_records_roll_no_trgm ON public.student_records USING gin (roll_no public.gin_trgm_ops);
-
-
---
--- TOC entry 5892 (class 1259 OID 94138)
--- Name: ix_student_records_sr; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_student_records_sr ON public.student_records USING btree (source_row_id);
-
-
---
--- TOC entry 5906 (class 1259 OID 94139)
--- Name: ix_testing_trans_records_ic; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_testing_trans_records_ic ON public.testing_trans_records USING btree (institution_id, created_at DESC);
-
-
---
--- TOC entry 5907 (class 1259 OID 94140)
--- Name: ix_testing_trans_records_name_trgm; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_testing_trans_records_name_trgm ON public.testing_trans_records USING gin (name public.gin_trgm_ops);
-
-
---
--- TOC entry 5908 (class 1259 OID 94141)
--- Name: ix_testing_trans_records_sr; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX ix_testing_trans_records_sr ON public.testing_trans_records USING btree (source_row_id);
-
-
---
--- TOC entry 5652 (class 1259 OID 94142)
+-- TOC entry 5442 (class 1259 OID 94142)
 -- Name: uq_dept_code_per_institution; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -5721,7 +3888,7 @@ CREATE UNIQUE INDEX uq_dept_code_per_institution ON public.departments USING btr
 
 
 --
--- TOC entry 5653 (class 1259 OID 94143)
+-- TOC entry 5443 (class 1259 OID 94143)
 -- Name: uq_dept_name_per_institution; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -5729,7 +3896,7 @@ CREATE UNIQUE INDEX uq_dept_name_per_institution ON public.departments USING btr
 
 
 --
--- TOC entry 5722 (class 1259 OID 94144)
+-- TOC entry 5468 (class 1259 OID 94144)
 -- Name: uq_institution_code; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -5737,7 +3904,7 @@ CREATE UNIQUE INDEX uq_institution_code ON public.institutions USING btree (lowe
 
 
 --
--- TOC entry 5723 (class 1259 OID 94145)
+-- TOC entry 5469 (class 1259 OID 94145)
 -- Name: uq_institution_email_domain; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -5745,7 +3912,7 @@ CREATE UNIQUE INDEX uq_institution_email_domain ON public.institutions USING btr
 
 
 --
--- TOC entry 5795 (class 1259 OID 94146)
+-- TOC entry 5523 (class 1259 OID 94146)
 -- Name: uq_section_lock; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -5753,7 +3920,7 @@ CREATE UNIQUE INDEX uq_section_lock ON public.report_sections USING btree (id) W
 
 
 --
--- TOC entry 5828 (class 1259 OID 94147)
+-- TOC entry 5550 (class 1259 OID 94147)
 -- Name: uq_section_owner; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -5761,7 +3928,7 @@ CREATE UNIQUE INDEX uq_section_owner ON public.section_assignments USING btree (
 
 
 --
--- TOC entry 5912 (class 1259 OID 94148)
+-- TOC entry 5610 (class 1259 OID 94148)
 -- Name: uq_user_role; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -5769,7 +3936,7 @@ CREATE UNIQUE INDEX uq_user_role ON public.user_roles USING btree (user_id, role
 
 
 --
--- TOC entry 5917 (class 1259 OID 94149)
+-- TOC entry 5615 (class 1259 OID 94149)
 -- Name: uq_users_email; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -5777,7 +3944,7 @@ CREATE UNIQUE INDEX uq_users_email ON public.users USING btree (institution_id, 
 
 
 --
--- TOC entry 6029 (class 2620 OID 94150)
+-- TOC entry 5727 (class 2620 OID 94150)
 -- Name: data_sources trg_data_sources_upd; Type: TRIGGER; Schema: public; Owner: postgres
 --
 
@@ -5785,7 +3952,7 @@ CREATE TRIGGER trg_data_sources_upd BEFORE UPDATE ON public.data_sources FOR EAC
 
 
 --
--- TOC entry 6030 (class 2620 OID 94151)
+-- TOC entry 5728 (class 2620 OID 94151)
 -- Name: notifications trg_trim_notifications; Type: TRIGGER; Schema: public; Owner: postgres
 --
 
@@ -5793,7 +3960,7 @@ CREATE TRIGGER trg_trim_notifications AFTER INSERT ON public.notifications FOR E
 
 
 --
--- TOC entry 5929 (class 2606 OID 94152)
+-- TOC entry 5627 (class 2606 OID 94152)
 -- Name: audit_logs audit_logs_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -5802,7 +3969,7 @@ ALTER TABLE ONLY public.audit_logs
 
 
 --
--- TOC entry 5930 (class 2606 OID 94157)
+-- TOC entry 5628 (class 2606 OID 94157)
 -- Name: block_comments block_comments_block_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -5811,7 +3978,7 @@ ALTER TABLE ONLY public.block_comments
 
 
 --
--- TOC entry 5931 (class 2606 OID 94162)
+-- TOC entry 5629 (class 2606 OID 94162)
 -- Name: block_comments block_comments_parent_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -5820,7 +3987,7 @@ ALTER TABLE ONLY public.block_comments
 
 
 --
--- TOC entry 5932 (class 2606 OID 94167)
+-- TOC entry 5630 (class 2606 OID 94167)
 -- Name: block_comments block_comments_section_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -5829,7 +3996,7 @@ ALTER TABLE ONLY public.block_comments
 
 
 --
--- TOC entry 5933 (class 2606 OID 94172)
+-- TOC entry 5631 (class 2606 OID 94172)
 -- Name: block_comments block_comments_updated_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -5838,7 +4005,7 @@ ALTER TABLE ONLY public.block_comments
 
 
 --
--- TOC entry 5934 (class 2606 OID 94177)
+-- TOC entry 5632 (class 2606 OID 94177)
 -- Name: block_translations block_translations_block_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -5847,7 +4014,7 @@ ALTER TABLE ONLY public.block_translations
 
 
 --
--- TOC entry 5935 (class 2606 OID 94182)
+-- TOC entry 5633 (class 2606 OID 94182)
 -- Name: branding_assignments branding_assignments_assigned_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -5856,7 +4023,7 @@ ALTER TABLE ONLY public.branding_assignments
 
 
 --
--- TOC entry 5936 (class 2606 OID 94187)
+-- TOC entry 5634 (class 2606 OID 94187)
 -- Name: branding_assignments branding_assignments_report_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -5865,7 +4032,7 @@ ALTER TABLE ONLY public.branding_assignments
 
 
 --
--- TOC entry 5937 (class 2606 OID 94192)
+-- TOC entry 5635 (class 2606 OID 94192)
 -- Name: branding_assignments branding_assignments_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -5874,7 +4041,7 @@ ALTER TABLE ONLY public.branding_assignments
 
 
 --
--- TOC entry 5938 (class 2606 OID 94197)
+-- TOC entry 5636 (class 2606 OID 94197)
 -- Name: builder_approvals builder_approvals_section_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -5883,7 +4050,7 @@ ALTER TABLE ONLY public.builder_approvals
 
 
 --
--- TOC entry 5939 (class 2606 OID 94202)
+-- TOC entry 5637 (class 2606 OID 94202)
 -- Name: builder_attachments builder_attachments_block_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -5892,7 +4059,7 @@ ALTER TABLE ONLY public.builder_attachments
 
 
 --
--- TOC entry 5940 (class 2606 OID 94207)
+-- TOC entry 5638 (class 2606 OID 94207)
 -- Name: builder_attachments builder_attachments_report_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -5901,7 +4068,7 @@ ALTER TABLE ONLY public.builder_attachments
 
 
 --
--- TOC entry 5941 (class 2606 OID 94212)
+-- TOC entry 5639 (class 2606 OID 94212)
 -- Name: builder_attachments builder_attachments_section_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -5910,7 +4077,7 @@ ALTER TABLE ONLY public.builder_attachments
 
 
 --
--- TOC entry 5942 (class 2606 OID 94217)
+-- TOC entry 5640 (class 2606 OID 94217)
 -- Name: builder_attachments builder_attachments_uploaded_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -5919,7 +4086,7 @@ ALTER TABLE ONLY public.builder_attachments
 
 
 --
--- TOC entry 5943 (class 2606 OID 94222)
+-- TOC entry 5641 (class 2606 OID 94222)
 -- Name: compiled_reports compiled_reports_compiled_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -5928,7 +4095,7 @@ ALTER TABLE ONLY public.compiled_reports
 
 
 --
--- TOC entry 5944 (class 2606 OID 94227)
+-- TOC entry 5642 (class 2606 OID 94227)
 -- Name: compiled_reports compiled_reports_report_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -5937,7 +4104,7 @@ ALTER TABLE ONLY public.compiled_reports
 
 
 --
--- TOC entry 5945 (class 2606 OID 94232)
+-- TOC entry 5643 (class 2606 OID 94232)
 -- Name: cycle_department_deadlines cycle_department_deadlines_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -5946,7 +4113,7 @@ ALTER TABLE ONLY public.cycle_department_deadlines
 
 
 --
--- TOC entry 5946 (class 2606 OID 94237)
+-- TOC entry 5644 (class 2606 OID 94237)
 -- Name: cycle_department_deadlines cycle_department_deadlines_cycle_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -5955,7 +4122,7 @@ ALTER TABLE ONLY public.cycle_department_deadlines
 
 
 --
--- TOC entry 5947 (class 2606 OID 94242)
+-- TOC entry 5645 (class 2606 OID 94242)
 -- Name: cycle_department_deadlines cycle_department_deadlines_department_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -5964,7 +4131,7 @@ ALTER TABLE ONLY public.cycle_department_deadlines
 
 
 --
--- TOC entry 5948 (class 2606 OID 94247)
+-- TOC entry 5646 (class 2606 OID 94247)
 -- Name: dashboard_kpi dashboard_kpi_kpi_config_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -5973,7 +4140,7 @@ ALTER TABLE ONLY public.dashboard_kpi
 
 
 --
--- TOC entry 5949 (class 2606 OID 94252)
+-- TOC entry 5647 (class 2606 OID 94252)
 -- Name: data_sources data_sources_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -5982,7 +4149,7 @@ ALTER TABLE ONLY public.data_sources
 
 
 --
--- TOC entry 5950 (class 2606 OID 94257)
+-- TOC entry 5648 (class 2606 OID 94257)
 -- Name: data_sources data_sources_institution_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -5991,7 +4158,7 @@ ALTER TABLE ONLY public.data_sources
 
 
 --
--- TOC entry 5951 (class 2606 OID 94262)
+-- TOC entry 5649 (class 2606 OID 94262)
 -- Name: data_sources data_sources_updated_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -6000,7 +4167,7 @@ ALTER TABLE ONLY public.data_sources
 
 
 --
--- TOC entry 5952 (class 2606 OID 94267)
+-- TOC entry 5650 (class 2606 OID 94267)
 -- Name: department_form_deadline_config department_form_deadline_config_department_form_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -6009,7 +4176,7 @@ ALTER TABLE ONLY public.department_form_deadline_config
 
 
 --
--- TOC entry 5953 (class 2606 OID 94272)
+-- TOC entry 5651 (class 2606 OID 94272)
 -- Name: department_form_lock_config department_form_lock_config_department_form_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -6018,7 +4185,7 @@ ALTER TABLE ONLY public.department_form_lock_config
 
 
 --
--- TOC entry 5954 (class 2606 OID 94277)
+-- TOC entry 5652 (class 2606 OID 94277)
 -- Name: department_form_roles department_form_roles_department_form_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -6027,7 +4194,7 @@ ALTER TABLE ONLY public.department_form_roles
 
 
 --
--- TOC entry 5955 (class 2606 OID 94282)
+-- TOC entry 5653 (class 2606 OID 94282)
 -- Name: department_form_year_mapping department_form_year_mapping_department_form_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -6036,7 +4203,7 @@ ALTER TABLE ONLY public.department_form_year_mapping
 
 
 --
--- TOC entry 5956 (class 2606 OID 94287)
+-- TOC entry 5654 (class 2606 OID 94287)
 -- Name: departments departments_institution_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -6045,7 +4212,7 @@ ALTER TABLE ONLY public.departments
 
 
 --
--- TOC entry 5957 (class 2606 OID 94292)
+-- TOC entry 5655 (class 2606 OID 94292)
 -- Name: departments fk_departments_created_by; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -6054,7 +4221,7 @@ ALTER TABLE ONLY public.departments
 
 
 --
--- TOC entry 5958 (class 2606 OID 94297)
+-- TOC entry 5656 (class 2606 OID 94297)
 -- Name: departments fk_departments_updated_by; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -6063,7 +4230,7 @@ ALTER TABLE ONLY public.departments
 
 
 --
--- TOC entry 5960 (class 2606 OID 94302)
+-- TOC entry 5658 (class 2606 OID 94302)
 -- Name: institutions fk_institutions_created_by; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -6072,7 +4239,7 @@ ALTER TABLE ONLY public.institutions
 
 
 --
--- TOC entry 5961 (class 2606 OID 94307)
+-- TOC entry 5659 (class 2606 OID 94307)
 -- Name: institutions fk_institutions_updated_by; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -6081,7 +4248,7 @@ ALTER TABLE ONLY public.institutions
 
 
 --
--- TOC entry 6023 (class 2606 OID 94312)
+-- TOC entry 5721 (class 2606 OID 94312)
 -- Name: users fk_users_created_by; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -6090,7 +4257,7 @@ ALTER TABLE ONLY public.users
 
 
 --
--- TOC entry 6024 (class 2606 OID 94317)
+-- TOC entry 5722 (class 2606 OID 94317)
 -- Name: users fk_users_department; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -6099,7 +4266,7 @@ ALTER TABLE ONLY public.users
 
 
 --
--- TOC entry 6025 (class 2606 OID 94322)
+-- TOC entry 5723 (class 2606 OID 94322)
 -- Name: users fk_users_institution; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -6108,7 +4275,7 @@ ALTER TABLE ONLY public.users
 
 
 --
--- TOC entry 5959 (class 2606 OID 94327)
+-- TOC entry 5657 (class 2606 OID 94327)
 -- Name: form_lock_config form_lock_config_form_name_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -6117,7 +4284,7 @@ ALTER TABLE ONLY public.form_lock_config
 
 
 --
--- TOC entry 5962 (class 2606 OID 94332)
+-- TOC entry 5660 (class 2606 OID 94332)
 -- Name: kpi_svg_reports kpi_svg_reports_config_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -6126,7 +4293,7 @@ ALTER TABLE ONLY public.kpi_svg_reports
 
 
 --
--- TOC entry 5963 (class 2606 OID 94337)
+-- TOC entry 5661 (class 2606 OID 94337)
 -- Name: nodal_officer_assignments nodal_officer_assignments_assigned_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -6135,7 +4302,7 @@ ALTER TABLE ONLY public.nodal_officer_assignments
 
 
 --
--- TOC entry 5964 (class 2606 OID 94342)
+-- TOC entry 5662 (class 2606 OID 94342)
 -- Name: nodal_officer_assignments nodal_officer_assignments_department_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -6144,7 +4311,7 @@ ALTER TABLE ONLY public.nodal_officer_assignments
 
 
 --
--- TOC entry 5965 (class 2606 OID 94347)
+-- TOC entry 5663 (class 2606 OID 94347)
 -- Name: nodal_officer_assignments nodal_officer_assignments_institution_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -6153,7 +4320,7 @@ ALTER TABLE ONLY public.nodal_officer_assignments
 
 
 --
--- TOC entry 5966 (class 2606 OID 94352)
+-- TOC entry 5664 (class 2606 OID 94352)
 -- Name: nodal_officer_assignments nodal_officer_assignments_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -6162,7 +4329,7 @@ ALTER TABLE ONLY public.nodal_officer_assignments
 
 
 --
--- TOC entry 5967 (class 2606 OID 94357)
+-- TOC entry 5665 (class 2606 OID 94357)
 -- Name: notifications notifications_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -6171,7 +4338,7 @@ ALTER TABLE ONLY public.notifications
 
 
 --
--- TOC entry 5968 (class 2606 OID 94362)
+-- TOC entry 5666 (class 2606 OID 94362)
 -- Name: password_reset_tokens password_reset_tokens_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -6180,7 +4347,7 @@ ALTER TABLE ONLY public.password_reset_tokens
 
 
 --
--- TOC entry 5969 (class 2606 OID 94367)
+-- TOC entry 5667 (class 2606 OID 94367)
 -- Name: report_access report_access_report_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -6189,7 +4356,7 @@ ALTER TABLE ONLY public.report_access
 
 
 --
--- TOC entry 5970 (class 2606 OID 94372)
+-- TOC entry 5668 (class 2606 OID 94372)
 -- Name: report_audit_log report_audit_log_institution_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -6198,7 +4365,7 @@ ALTER TABLE ONLY public.report_audit_log
 
 
 --
--- TOC entry 5971 (class 2606 OID 94377)
+-- TOC entry 5669 (class 2606 OID 94377)
 -- Name: report_audit_log report_audit_log_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -6207,7 +4374,7 @@ ALTER TABLE ONLY public.report_audit_log
 
 
 --
--- TOC entry 5972 (class 2606 OID 94382)
+-- TOC entry 5670 (class 2606 OID 94382)
 -- Name: report_department_deadlines report_department_deadlines_department_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -6216,7 +4383,7 @@ ALTER TABLE ONLY public.report_department_deadlines
 
 
 --
--- TOC entry 5973 (class 2606 OID 94387)
+-- TOC entry 5671 (class 2606 OID 94387)
 -- Name: report_department_deadlines report_department_deadlines_report_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -6225,7 +4392,7 @@ ALTER TABLE ONLY public.report_department_deadlines
 
 
 --
--- TOC entry 5974 (class 2606 OID 94392)
+-- TOC entry 5672 (class 2606 OID 94392)
 -- Name: report_sections report_sections_current_step_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -6234,7 +4401,7 @@ ALTER TABLE ONLY public.report_sections
 
 
 --
--- TOC entry 5975 (class 2606 OID 94397)
+-- TOC entry 5673 (class 2606 OID 94397)
 -- Name: report_sections report_sections_data_source_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -6243,7 +4410,7 @@ ALTER TABLE ONLY public.report_sections
 
 
 --
--- TOC entry 5976 (class 2606 OID 94402)
+-- TOC entry 5674 (class 2606 OID 94402)
 -- Name: report_sections report_sections_parent_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -6252,7 +4419,7 @@ ALTER TABLE ONLY public.report_sections
 
 
 --
--- TOC entry 5977 (class 2606 OID 94407)
+-- TOC entry 5675 (class 2606 OID 94407)
 -- Name: report_sections report_sections_report_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -6261,7 +4428,7 @@ ALTER TABLE ONLY public.report_sections
 
 
 --
--- TOC entry 5978 (class 2606 OID 94412)
+-- TOC entry 5676 (class 2606 OID 94412)
 -- Name: report_sections report_sections_source_template_section_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -6270,7 +4437,7 @@ ALTER TABLE ONLY public.report_sections
 
 
 --
--- TOC entry 5979 (class 2606 OID 94417)
+-- TOC entry 5677 (class 2606 OID 94417)
 -- Name: report_sections report_sections_workflow_template_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -6279,7 +4446,7 @@ ALTER TABLE ONLY public.report_sections
 
 
 --
--- TOC entry 5980 (class 2606 OID 94422)
+-- TOC entry 5678 (class 2606 OID 94422)
 -- Name: report_templates report_templates_default_workflow_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -6288,7 +4455,7 @@ ALTER TABLE ONLY public.report_templates
 
 
 --
--- TOC entry 5981 (class 2606 OID 94427)
+-- TOC entry 5679 (class 2606 OID 94427)
 -- Name: report_templates report_templates_institution_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -6297,7 +4464,7 @@ ALTER TABLE ONLY public.report_templates
 
 
 --
--- TOC entry 5982 (class 2606 OID 94432)
+-- TOC entry 5680 (class 2606 OID 94432)
 -- Name: reporting_cycles reporting_cycles_institution_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -6306,7 +4473,7 @@ ALTER TABLE ONLY public.reporting_cycles
 
 
 --
--- TOC entry 5983 (class 2606 OID 94437)
+-- TOC entry 5681 (class 2606 OID 94437)
 -- Name: reports reports_cycle_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -6315,7 +4482,7 @@ ALTER TABLE ONLY public.reports
 
 
 --
--- TOC entry 5984 (class 2606 OID 94442)
+-- TOC entry 5682 (class 2606 OID 94442)
 -- Name: reports reports_default_workflow_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -6324,7 +4491,7 @@ ALTER TABLE ONLY public.reports
 
 
 --
--- TOC entry 5985 (class 2606 OID 94447)
+-- TOC entry 5683 (class 2606 OID 94447)
 -- Name: reports reports_institution_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -6333,7 +4500,7 @@ ALTER TABLE ONLY public.reports
 
 
 --
--- TOC entry 5986 (class 2606 OID 94452)
+-- TOC entry 5684 (class 2606 OID 94452)
 -- Name: reports reports_locked_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -6342,7 +4509,7 @@ ALTER TABLE ONLY public.reports
 
 
 --
--- TOC entry 5987 (class 2606 OID 94457)
+-- TOC entry 5685 (class 2606 OID 94457)
 -- Name: reports reports_template_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -6351,7 +4518,7 @@ ALTER TABLE ONLY public.reports
 
 
 --
--- TOC entry 5988 (class 2606 OID 94462)
+-- TOC entry 5686 (class 2606 OID 94462)
 -- Name: section_access section_access_department_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -6360,7 +4527,7 @@ ALTER TABLE ONLY public.section_access
 
 
 --
--- TOC entry 5989 (class 2606 OID 94467)
+-- TOC entry 5687 (class 2606 OID 94467)
 -- Name: section_access section_access_granted_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -6369,7 +4536,7 @@ ALTER TABLE ONLY public.section_access
 
 
 --
--- TOC entry 5990 (class 2606 OID 94472)
+-- TOC entry 5688 (class 2606 OID 94472)
 -- Name: section_access section_access_section_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -6378,7 +4545,7 @@ ALTER TABLE ONLY public.section_access
 
 
 --
--- TOC entry 5991 (class 2606 OID 94477)
+-- TOC entry 5689 (class 2606 OID 94477)
 -- Name: section_access section_access_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -6387,7 +4554,7 @@ ALTER TABLE ONLY public.section_access
 
 
 --
--- TOC entry 5992 (class 2606 OID 94482)
+-- TOC entry 5690 (class 2606 OID 94482)
 -- Name: section_assignments section_assignments_section_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -6396,7 +4563,7 @@ ALTER TABLE ONLY public.section_assignments
 
 
 --
--- TOC entry 5993 (class 2606 OID 94487)
+-- TOC entry 5691 (class 2606 OID 94487)
 -- Name: section_blocks section_blocks_data_source_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -6405,7 +4572,7 @@ ALTER TABLE ONLY public.section_blocks
 
 
 --
--- TOC entry 5994 (class 2606 OID 94492)
+-- TOC entry 5692 (class 2606 OID 94492)
 -- Name: section_blocks section_blocks_section_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -6414,7 +4581,7 @@ ALTER TABLE ONLY public.section_blocks
 
 
 --
--- TOC entry 5995 (class 2606 OID 94497)
+-- TOC entry 5693 (class 2606 OID 94497)
 -- Name: section_blocks section_blocks_source_template_block_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -6423,7 +4590,7 @@ ALTER TABLE ONLY public.section_blocks
 
 
 --
--- TOC entry 5996 (class 2606 OID 94502)
+-- TOC entry 5694 (class 2606 OID 94502)
 -- Name: section_department_assignments section_department_assignments_department_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -6432,7 +4599,7 @@ ALTER TABLE ONLY public.section_department_assignments
 
 
 --
--- TOC entry 5997 (class 2606 OID 94507)
+-- TOC entry 5695 (class 2606 OID 94507)
 -- Name: section_department_assignments section_department_assignments_section_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -6441,7 +4608,7 @@ ALTER TABLE ONLY public.section_department_assignments
 
 
 --
--- TOC entry 5998 (class 2606 OID 94512)
+-- TOC entry 5696 (class 2606 OID 94512)
 -- Name: section_signoffs section_signoffs_reviewer_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -6450,7 +4617,7 @@ ALTER TABLE ONLY public.section_signoffs
 
 
 --
--- TOC entry 5999 (class 2606 OID 94517)
+-- TOC entry 5697 (class 2606 OID 94517)
 -- Name: section_signoffs section_signoffs_section_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -6459,7 +4626,7 @@ ALTER TABLE ONLY public.section_signoffs
 
 
 --
--- TOC entry 6000 (class 2606 OID 94522)
+-- TOC entry 5698 (class 2606 OID 94522)
 -- Name: section_signoffs section_signoffs_workflow_step_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -6468,7 +4635,7 @@ ALTER TABLE ONLY public.section_signoffs
 
 
 --
--- TOC entry 6001 (class 2606 OID 94527)
+-- TOC entry 5699 (class 2606 OID 94527)
 -- Name: section_translations section_translations_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -6477,7 +4644,7 @@ ALTER TABLE ONLY public.section_translations
 
 
 --
--- TOC entry 6002 (class 2606 OID 94532)
+-- TOC entry 5700 (class 2606 OID 94532)
 -- Name: section_translations section_translations_section_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -6486,7 +4653,7 @@ ALTER TABLE ONLY public.section_translations
 
 
 --
--- TOC entry 6003 (class 2606 OID 94537)
+-- TOC entry 5701 (class 2606 OID 94537)
 -- Name: section_translations section_translations_updated_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -6495,7 +4662,7 @@ ALTER TABLE ONLY public.section_translations
 
 
 --
--- TOC entry 6004 (class 2606 OID 94542)
+-- TOC entry 5702 (class 2606 OID 94542)
 -- Name: section_versions section_versions_latest_decision_step_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -6504,7 +4671,7 @@ ALTER TABLE ONLY public.section_versions
 
 
 --
--- TOC entry 6005 (class 2606 OID 94547)
+-- TOC entry 5703 (class 2606 OID 94547)
 -- Name: section_versions section_versions_section_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -6513,7 +4680,7 @@ ALTER TABLE ONLY public.section_versions
 
 
 --
--- TOC entry 6006 (class 2606 OID 94552)
+-- TOC entry 5704 (class 2606 OID 94552)
 -- Name: section_versions section_versions_workflow_step_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -6522,7 +4689,7 @@ ALTER TABLE ONLY public.section_versions
 
 
 --
--- TOC entry 6007 (class 2606 OID 94557)
+-- TOC entry 5705 (class 2606 OID 94557)
 -- Name: section_workflow_assignments section_workflow_assignments_assigned_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -6531,7 +4698,7 @@ ALTER TABLE ONLY public.section_workflow_assignments
 
 
 --
--- TOC entry 6008 (class 2606 OID 94562)
+-- TOC entry 5706 (class 2606 OID 94562)
 -- Name: section_workflow_assignments section_workflow_assignments_department_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -6540,7 +4707,7 @@ ALTER TABLE ONLY public.section_workflow_assignments
 
 
 --
--- TOC entry 6009 (class 2606 OID 94567)
+-- TOC entry 5707 (class 2606 OID 94567)
 -- Name: section_workflow_assignments section_workflow_assignments_report_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -6549,7 +4716,7 @@ ALTER TABLE ONLY public.section_workflow_assignments
 
 
 --
--- TOC entry 6010 (class 2606 OID 94572)
+-- TOC entry 5708 (class 2606 OID 94572)
 -- Name: section_workflow_assignments section_workflow_assignments_section_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -6558,7 +4725,7 @@ ALTER TABLE ONLY public.section_workflow_assignments
 
 
 --
--- TOC entry 6011 (class 2606 OID 94577)
+-- TOC entry 5709 (class 2606 OID 94577)
 -- Name: section_workflow_assignments section_workflow_assignments_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -6567,7 +4734,7 @@ ALTER TABLE ONLY public.section_workflow_assignments
 
 
 --
--- TOC entry 6012 (class 2606 OID 94582)
+-- TOC entry 5710 (class 2606 OID 94582)
 -- Name: section_workflow_assignments section_workflow_assignments_workflow_step_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -6576,7 +4743,7 @@ ALTER TABLE ONLY public.section_workflow_assignments
 
 
 --
--- TOC entry 6013 (class 2606 OID 94587)
+-- TOC entry 5711 (class 2606 OID 94587)
 -- Name: sessions sessions_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -6585,7 +4752,7 @@ ALTER TABLE ONLY public.sessions
 
 
 --
--- TOC entry 6014 (class 2606 OID 94592)
+-- TOC entry 5712 (class 2606 OID 94592)
 -- Name: template_blocks template_blocks_data_source_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -6594,7 +4761,7 @@ ALTER TABLE ONLY public.template_blocks
 
 
 --
--- TOC entry 6015 (class 2606 OID 94597)
+-- TOC entry 5713 (class 2606 OID 94597)
 -- Name: template_blocks template_blocks_template_section_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -6603,7 +4770,7 @@ ALTER TABLE ONLY public.template_blocks
 
 
 --
--- TOC entry 6016 (class 2606 OID 94602)
+-- TOC entry 5714 (class 2606 OID 94602)
 -- Name: template_sections template_sections_data_source_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -6612,7 +4779,7 @@ ALTER TABLE ONLY public.template_sections
 
 
 --
--- TOC entry 6017 (class 2606 OID 94607)
+-- TOC entry 5715 (class 2606 OID 94607)
 -- Name: template_sections template_sections_parent_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -6621,7 +4788,7 @@ ALTER TABLE ONLY public.template_sections
 
 
 --
--- TOC entry 6018 (class 2606 OID 94612)
+-- TOC entry 5716 (class 2606 OID 94612)
 -- Name: template_sections template_sections_template_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -6630,7 +4797,7 @@ ALTER TABLE ONLY public.template_sections
 
 
 --
--- TOC entry 6019 (class 2606 OID 94617)
+-- TOC entry 5717 (class 2606 OID 94617)
 -- Name: template_sections template_sections_workflow_template_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -6639,7 +4806,7 @@ ALTER TABLE ONLY public.template_sections
 
 
 --
--- TOC entry 6020 (class 2606 OID 94622)
+-- TOC entry 5718 (class 2606 OID 94622)
 -- Name: user_roles user_roles_assigned_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -6648,7 +4815,7 @@ ALTER TABLE ONLY public.user_roles
 
 
 --
--- TOC entry 6021 (class 2606 OID 94627)
+-- TOC entry 5719 (class 2606 OID 94627)
 -- Name: user_roles user_roles_role_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -6657,7 +4824,7 @@ ALTER TABLE ONLY public.user_roles
 
 
 --
--- TOC entry 6022 (class 2606 OID 94632)
+-- TOC entry 5720 (class 2606 OID 94632)
 -- Name: user_roles user_roles_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -6666,7 +4833,7 @@ ALTER TABLE ONLY public.user_roles
 
 
 --
--- TOC entry 6026 (class 2606 OID 94637)
+-- TOC entry 5724 (class 2606 OID 94637)
 -- Name: workflow_steps workflow_steps_approver_department_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -6675,7 +4842,7 @@ ALTER TABLE ONLY public.workflow_steps
 
 
 --
--- TOC entry 6027 (class 2606 OID 94642)
+-- TOC entry 5725 (class 2606 OID 94642)
 -- Name: workflow_steps workflow_steps_template_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -6684,7 +4851,7 @@ ALTER TABLE ONLY public.workflow_steps
 
 
 --
--- TOC entry 6028 (class 2606 OID 94647)
+-- TOC entry 5726 (class 2606 OID 94647)
 -- Name: workflow_templates workflow_templates_institution_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -6692,11 +4859,11 @@ ALTER TABLE ONLY public.workflow_templates
     ADD CONSTRAINT workflow_templates_institution_id_fkey FOREIGN KEY (institution_id) REFERENCES public.institutions(institution_id) ON DELETE CASCADE;
 
 
--- Completed on 2026-06-24 17:17:57
+-- Completed on 2026-06-24 20:31:03
 
 --
 -- PostgreSQL database dump complete
 --
 
-\unrestrict AaLYqcN7PcyAhyn9oWiFCFNRg6AZzmEWz15iG7C7KfFhFuEYoB48Jxar2EfHQEe
+\unrestrict RXXZsfMMeACazKVAvdJ2wEAh89bjlSLaT0uWilpYi7hMruEUjXjR94iW9Gz87KM
 

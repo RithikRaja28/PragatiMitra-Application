@@ -4,7 +4,7 @@ import {
   UserPlus, KeyRound, ShieldAlert, RefreshCw,
   Building2, Landmark, Users2, Shield, UserCog,
   Calendar, UserCheck, UserMinus, FileText, Clock,
-  UploadCloud,
+  UploadCloud, ClipboardList, Lock, Send, ThumbsUp, ThumbsDown,
 } from "lucide-react";
 import { useApi } from "../../hooks/useApi";
 import { useLanguage } from "../../i18n/LanguageContext";
@@ -41,9 +41,15 @@ const EVENT_META = {
   nodal_officer_activated: { Icon: UserCheck,   color: "#059669", bg: "#f0fdf4" },
   nodal_officer_removed:   { Icon: UserMinus,   color: "#dc2626", bg: "#fef2f2" },
   // Forms
-  institute_form_created:  { Icon: FileText,    color: "#7c3aed", bg: "#f5f3ff" },
-  department_form_created: { Icon: FileText,    color: "#0891b2", bg: "#ecfeff" },
-  form_deadline_reminder:  { Icon: Clock,       color: "#f59e0b", bg: "#fffbeb" },
+  institute_form_created:  { Icon: FileText,       color: "#7c3aed", bg: "#f5f3ff" },
+  department_form_created: { Icon: FileText,       color: "#0891b2", bg: "#ecfeff" },
+  form_deadline_reminder:  { Icon: Clock,          color: "#f59e0b", bg: "#fffbeb" },
+  form_assigned:           { Icon: ClipboardList,  color: "#2563eb", bg: "#eff6ff" },
+  form_locked:             { Icon: Lock,           color: "#dc2626", bg: "#fef2f2" },
+  // Approvals
+  form_submitted:          { Icon: Send,           color: "#0891b2", bg: "#ecfeff" },
+  form_approved:           { Icon: ThumbsUp,       color: "#059669", bg: "#f0fdf4" },
+  form_rejected:           { Icon: ThumbsDown,     color: "#dc2626", bg: "#fef2f2" },
 };
 const DEFAULT_META = { Icon: Bell, color: "#64748b", bg: "#f8fafc" };
 

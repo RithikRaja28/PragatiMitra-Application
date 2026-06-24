@@ -13,8 +13,8 @@ const AuthContext = createContext(null);
 export const ROLE_ROUTES = Object.fromEntries(
   [
     "super_admin", "institute_admin", "publication_cell", "department_admin",
-    "head_of_department", "nodal_officer", "contributor", "reviewer",
-    "finance_officer", "directors_office", "hospital_admin", "finance_admin",
+    "nodal_officer", "contributor", "reviewer",
+    "directors_office", "hospital_admin", "finance_admin",
   ].map((role) => [role, `/${getRoleDefaultSlug(role)}`])
 );
 

@@ -18,11 +18,9 @@ const ROLE_COLORS = {
   institute_admin:    { bg: "#ede9fe", color: "#6d28d9" },
   publication_cell:   { bg: "#fce7f3", color: "#9d174d" },
   department_admin:   { bg: "#d1fae5", color: "#065f46" },
-  head_of_department: { bg: "#fef3c7", color: "#92400e" },
   nodal_officer:      { bg: "#fee2e2", color: "#991b1b" },
   contributor:        { bg: "#dcfce7", color: "#166534" },
   reviewer:           { bg: "#eff6ff", color: "#1e40af" },
-  finance_officer:    { bg: "#fff7ed", color: "#9a3412" },
   directors_office:   { bg: "#fdf4ff", color: "#7e22ce" },
 };
 
@@ -171,7 +169,7 @@ function UserForm({
     if (!isEdit) {
       apiFetch("/api/lookup/roles")
         .then((r) => r.json())
-        .then((d) => { if (d.success) setRoles(d.roles); })
+        .then((d) => { if (d.success) setRoles(d.roles.filter((r) => r.name !== "nodal_officer")); })
         .catch(() => {});
     }
   }, [apiFetch, isEdit]);

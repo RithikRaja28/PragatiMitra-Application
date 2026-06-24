@@ -526,7 +526,7 @@ router.post("/", requireRole(WRITE_ROLES), requireActiveDepartment, async (req, 
         newValue: { form_name: slug, table, department_id: departmentId, academic_year: year },
       });
 
-      // Notify users in this department who hold the configured form roles (fire-and-forget).
+      // Notify department admins and nodal officers in this department (fire-and-forget).
       setImmediate(async () => {
         try {
           const { rows: creatorRows } = await pool.query(
@@ -539,28 +539,25 @@ router.post("/", requireRole(WRITE_ROLES), requireActiveDepartment, async (req, 
           );
           const departmentName = deptRows[0]?.name || "Your Department";
 
+          // Notify department_admin and nodal_officer roles — not contributors (too many).
+          const notifyRoles = ["department_admin", "nodal_officer"];
           let recipients;
-          if (roles.length > 0) {
-            const { rows } = await pool.query(
-              `SELECT DISTINCT u.id, u.full_name, u.email
-               FROM users u
-               JOIN user_roles ur ON ur.user_id = u.id
-               JOIN roles r ON r.id = ur.role_id
-               WHERE u.department_id = $1
-                 AND u.institution_id = $2
-                 AND u.account_status = 'ACTIVE'
-                 AND r.name = ANY($3::text[])
-                 AND ur.revoked_at IS NULL
-                 AND (ur.expires_at IS NULL OR ur.expires_at > now())`,
-              [departmentId, institutionId, roles]
-            );
-            recipients = rows;
-          } else {
-            const { rows } = await pool.query(
-              `SELECT id, full_name, email FROM users WHERE id = $1`, [req.user.userId]
-            );
-            recipients = rows;
-          }
+          const { rows: roleRows } = await pool.query(
+            `SELECT DISTINCT u.id, u.full_name, u.email
+             FROM users u
+             JOIN user_roles ur ON ur.user_id = u.id
+             JOIN roles r ON r.id = ur.role_id
+             WHERE u.department_id = $1
+               AND u.institution_id = $2
+               AND u.account_status = 'ACTIVE'
+               AND r.name = ANY($3::text[])
+               AND ur.revoked_at IS NULL
+               AND (ur.expires_at IS NULL OR ur.expires_at > now())`,
+            [departmentId, institutionId, notifyRoles]
+          );
+          recipients = roleRows.length > 0 ? roleRows : await pool.query(
+            `SELECT id, full_name, email FROM users WHERE id = $1`, [req.user.userId]
+          ).then((r) => r.rows);
 
           const academicYear = `${year}-${year + 1}`;
           const loginUrl     = process.env.APP_LOGIN_URL || "http://localhost:5173/login";
