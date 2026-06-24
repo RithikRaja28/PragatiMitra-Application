@@ -119,10 +119,10 @@ router.param("formName", async (req, res, next, formName) => {
 
     // Contributor: may only touch forms ASSIGNED to them for the selected year.
     if (isContributorOnly(req)) {
-      // Bug 16 — fall back to the institution's ACTIVE year (not the calendar year).
+      // Fall back to the institution's active/latest DB year — never the calendar year.
       const year = Number(req.query.year) || Number(req.get("X-Academic-Year")) || Number(req.body?.year)
-        || (Number.isInteger(req.institutionAcademicYear) ? req.institutionAcademicYear : new Date().getFullYear());
-      const ok = await isFormAssigned(pool, req.user.userId, formName, year);
+        || (Number.isInteger(req.institutionAcademicYear) ? req.institutionAcademicYear : null);
+      const ok = year != null && await isFormAssigned(pool, req.user.userId, formName, year);
       if (!ok) return res.status(403).json({ success: false, message: "This form is not assigned to you." });
     }
     return next();

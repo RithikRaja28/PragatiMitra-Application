@@ -113,12 +113,17 @@ const ROLE_DOMAINS = [
   { value: "finance",  label: "Finance"  },
 ];
 
-function validateForm(form, isEdit) {
+function validateForm(form, isEdit, institutionDomain) {
   const errs = {};
   if (!form.full_name.trim())          errs.full_name      = "Full name is required.";
   if (!form.email.trim())              errs.email          = "Email is required.";
   else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim()))
                                        errs.email          = "Enter a valid email address.";
+  else if (!isEdit && institutionDomain) {
+    const emailDomain = form.email.trim().split("@")[1]?.toLowerCase() || "";
+    if (emailDomain !== institutionDomain)
+      errs.email = `Invalid email domain. Please use your institution domain (@${institutionDomain}).`;
+  }
   if (!isEdit) {
     if (!form.password)                errs.password       = "Password is required.";
     else if (form.password.length < 8) errs.password       = "Password must be at least 8 characters.";
@@ -144,13 +149,14 @@ function UserForm({ mode, entity, onCreated, onSaved, onBack, apiFetch }) {
         }
       : { ...EMPTY_FORM }
   );
-  const [fieldErrs,    setFieldErrs]    = useState({});
-  const [institutions, setInstitutions] = useState([]);
-  const [departments,  setDepartments]  = useState([]);
-  const [roles,        setRoles]        = useState([]);
-  const [loadingDepts, setLoadingDepts] = useState(false);
-  const [saving,       setSaving]       = useState(false);
-  const [serverError,  setServerError]  = useState("");
+  const [fieldErrs,         setFieldErrs]         = useState({});
+  const [institutions,      setInstitutions]      = useState([]);
+  const [departments,       setDepartments]       = useState([]);
+  const [roles,             setRoles]             = useState([]);
+  const [institutionDomain, setInstitutionDomain] = useState("");
+  const [loadingDepts,      setLoadingDepts]      = useState(false);
+  const [saving,            setSaving]            = useState(false);
+  const [serverError,       setServerError]       = useState("");
 
   useEffect(() => {
     apiFetch("/api/lookup/institutions")
@@ -167,24 +173,38 @@ function UserForm({ mode, entity, onCreated, onSaved, onBack, apiFetch }) {
   }, [apiFetch, isEdit]);
 
   useEffect(() => {
-    if (!form.institution_id) { setDepartments([]); return; }
+    if (!form.institution_id) { setDepartments([]); setInstitutionDomain(""); return; }
     setLoadingDepts(true);
     apiFetch(`/api/lookup/departments?institution_id=${form.institution_id}`)
       .then((r) => r.json())
       .then((d) => { if (d.success) setDepartments(d.departments); })
       .catch(() => {})
       .finally(() => setLoadingDepts(false));
+    apiFetch(`/api/lookup/institution-domain?institution_id=${form.institution_id}`)
+      .then((r) => r.json())
+      .then((d) => { setInstitutionDomain(d.success && d.email_domain ? d.email_domain : ""); })
+      .catch(() => {});
   }, [form.institution_id, apiFetch]);
 
   const set = (key, value) => {
     setForm((f) => ({ ...f, [key]: value }));
-    setFieldErrs((e) => ({ ...e, [key]: undefined }));
     setServerError("");
+    if (key === "email" && !isEdit && institutionDomain && value.includes("@")) {
+      const typed = value.split("@")[1]?.toLowerCase() || "";
+      setFieldErrs((e) => ({
+        ...e,
+        email: typed && typed !== institutionDomain
+          ? `Invalid email domain. Please use your institution domain (@${institutionDomain}).`
+          : undefined,
+      }));
+    } else {
+      setFieldErrs((e) => ({ ...e, [key]: undefined }));
+    }
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const errs = validateForm(form, isEdit);
+    const errs = validateForm(form, isEdit, institutionDomain);
     if (Object.keys(errs).length) { setFieldErrs(errs); return; }
 
     setSaving(true);
@@ -253,11 +273,18 @@ function UserForm({ mode, entity, onCreated, onSaved, onBack, apiFetch }) {
           style={S.input(!!fieldErrs.email)}
           type="email"
           autoComplete="off"
-          placeholder="e.g. arun@aiia.edu.in"
+          placeholder={institutionDomain ? `e.g. arun@${institutionDomain}` : "e.g. arun@aiia.edu.in"}
           value={form.email}
           onChange={(e) => set("email", e.target.value)}
         />
-        {fieldErrs.email && <span style={S.errorText}>{fieldErrs.email}</span>}
+        {fieldErrs.email
+          ? <span style={S.errorText}>{fieldErrs.email}</span>
+          : (!isEdit && institutionDomain && (
+              <span style={{ fontSize: 11, color: "#2563eb", marginTop: 4, display: "block" }}>
+                Must use @{institutionDomain}
+              </span>
+            ))
+        }
       </div>
 
       {/* Password — create only */}

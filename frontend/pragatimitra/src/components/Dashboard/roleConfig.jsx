@@ -308,10 +308,7 @@ export const ROLE_CONFIG = {
       {
         group: "User Management",
         items: [
-          // Gated on the real permission key. Institute Admin has
-          // manage_dept_users=false in the DB, so this stays hidden —
-          // it must NOT leak the Super-Admin-style "User Management" menu.
-          { id: "ia-users", label: "Users", icon: "Users", permission: "manage_dept_users", slug: "user-management",
+          { id: "ia-users", label: "Users", icon: "Users", permission: null, slug: "user-management",
             subRoutes: [
               { path: "user-management/create", element: <InstituteAdminUserManagementPage /> },
               { path: "user-management/edit",   element: <InstituteAdminUserManagementPage /> },

@@ -18,8 +18,7 @@ import PageHeader from "../../components/shared/PageHeader";
      onBack()    – called on cancel / back from step 1
 ════════════════════════════════════════════════════════════════════ */
 
-const ACCENT       = "#2563eb";
-const CURRENT_YEAR = new Date().getFullYear();
+const ACCENT = "#2563eb";
 
 /* field types shown to user; "boolean" renders as "Yes / No" in UI */
 const FIELD_TYPES = [
@@ -377,7 +376,7 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
     form_name:   isEdit || isAdapt ? (initialData?.form_name?.replace(/_/g, " ") || "") : "",
     description: "",
     share_table: false,
-    year:        CURRENT_YEAR,
+    year:        selectedYear ?? null,
     // Form-level Hindi translation toggle. Default ON (preserves behavior);
     // for edit/adapt seed from the form's current value when available.
     translate_to_hindi: (isEdit || isAdapt) ? (initialData?.translate_to_hindi ?? true) : true,
@@ -398,11 +397,12 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
      In edit mode this means the save targets the SELECTED year's schema row:
      if one exists for that year it is updated in-place; if not, a new year-
      specific schema row is created (backend UPSERT), giving each academic year
-     its own schema version (e.g. 2023: a,b,c  →  2024: a,b,c,d). */
+     its own schema version (e.g. 2023: a,b,c  →  2024: a,b,c,d).
+     When selectedYear is null (no academic year configured), year is set to null
+     so the backend receives null and rejects the request rather than silently
+     using the calendar year. */
   useEffect(() => {
-    if (selectedYear != null) {
-      setBasics((b) => (b.year === selectedYear ? b : { ...b, year: selectedYear }));
-    }
+    setBasics((b) => (b.year === (selectedYear ?? null) ? b : { ...b, year: selectedYear ?? null }));
   }, [selectedYear]);
 
   /* ── Languages ── */
@@ -509,7 +509,8 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
     } else if (!isEdit && !/^[a-z]/.test(identifier)) {
       errs.form_name = "Form name must start with a letter.";
     }
-    if (!basics.year || basics.year < 2020 || basics.year > 2100) errs.year = "Enter a valid year.";
+    if (basics.year == null) errs.year = "No academic year configured. Please configure one in Academic Year settings.";
+    else if (basics.year < 2020 || basics.year > 2100) errs.year = "Enter a valid year (2020–2100).";
     setBasicsErrors(errs);
     return Object.keys(errs).length === 0;
   }
@@ -772,13 +773,21 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
                   }}
                 >
                   <CalendarRange size={15} color="#94a3b8" />
-                  <strong style={{ color: "#1e293b" }}>{basics.year}–{basics.year + 1}</strong>
-                  <span style={{ fontSize: 11, color: "#94a3b8" }}>(year = {basics.year})</span>
+                  {basics.year != null ? (
+                    <>
+                      <strong style={{ color: "#1e293b" }}>{basics.year}–{basics.year + 1}</strong>
+                      <span style={{ fontSize: 11, color: "#94a3b8" }}>(year = {basics.year})</span>
+                    </>
+                  ) : (
+                    <span style={{ fontSize: 12, color: "#b45309" }}>No Academic Year Configured</span>
+                  )}
                 </div>
                 <div style={hintStyle}>
-                  {isEdit
-                    ? "This schema belongs to the academic year above."
-                    : "Set automatically from the academic year selected in the top bar. Change it there."}
+                  {basics.year == null
+                    ? "No academic year is configured. Go to Academic Year settings to create one."
+                    : isEdit
+                      ? "This schema belongs to the academic year above."
+                      : "Set automatically from the academic year selected in the top bar. Change it there."}
                 </div>
               </div>
 
@@ -1044,7 +1053,7 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
 
             <ReviewSection title="Form Metadata Review">
               <ReviewRow label="Form Name"       value={basics.form_name || initialData?.form_name} />
-              <ReviewRow label="Academic Year"   value={`${basics.year}-${basics.year + 1}`} />
+              <ReviewRow label="Academic Year"   value={basics.year != null ? `${basics.year}-${basics.year + 1}` : "Not Configured"} />
               {isCreate && <ReviewRow label="Domain" value={(isCrossDomainAdmin ? basics.form_domain : userDomain).charAt(0).toUpperCase() + (isCrossDomainAdmin ? basics.form_domain : userDomain).slice(1)} />}
               {basics.description && <ReviewRow label="Description" value={basics.description} />}
               {isSuperAdmin && isCreate && (

@@ -77,18 +77,23 @@ function isDeptAdmin(req) {
 }
 
 /* RBAC TIER GUARD (C-2) — which role NAMES a caller may grant via create/import.
-   Closes privilege escalation: a non-super-admin must never be able to mint a
-   super_admin, and only super/institute admins may mint an institute_admin.
-   All other (department-level) roles stay assignable by inst/dept admins so
-   existing user-management flows are unchanged. */
+   Rules:
+   - super_admin:     can grant anything
+   - institute_admin: can grant all roles EXCEPT super_admin and institute_admin;
+                      may also directly assign nodal_officer
+   - department_admin: cannot grant super_admin, institute_admin, or nodal_officer
+                       (nodal_officer is assigned exclusively via the NOA module) */
 function canAssignRole(req, roleName) {
   const roles = req.user.roles || [];
-  if (roles.includes("super_admin")) return true;            // god — anything
+  if (roles.includes("super_admin")) return true;
   const rn = String(roleName || "").trim().toLowerCase();
-  if (rn === "super_admin")    return false;                 // only super_admin may grant
-  if (rn === "nodal_officer")  return false;                 // assigned via NOA module only
-  if (rn === "institute_admin") return roles.includes("institute_admin");
-  return true;                                                // department-level roles
+  if (rn === "super_admin")     return false;   // only super_admin may grant
+  if (rn === "institute_admin") return false;   // only super_admin may grant
+  // institute_admin may grant all remaining roles, including nodal_officer
+  if (roles.includes("institute_admin")) return true;
+  // department_admin: nodal_officer is managed exclusively via the NOA module
+  if (rn === "nodal_officer") return false;
+  return true;
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -968,25 +973,22 @@ router.get("/", verifyToken, requireRole(["super_admin", "institute_admin", "dep
     let rows;
 
     if (isDeptAdmin(req)) {
-      const { role } = req.query;
+      /* Department admins only manage contributors in their own department.
+         All other roles (reviewer, dept_admin, etc.) are managed by inst/super admins. */
       const conditions = [
         "u.account_status != 'DELETED'",
         `u.institution_id = $1`,
         `u.department_id  = $2`,
+        `EXISTS (
+          SELECT 1 FROM user_roles ur_c
+          JOIN roles r_c ON r_c.id = ur_c.role_id
+          WHERE ur_c.user_id = u.id
+            AND r_c.name = 'contributor'
+            AND ur_c.revoked_at IS NULL
+            AND (ur_c.expires_at IS NULL OR ur_c.expires_at > now())
+        )`,
       ];
       const params = [req.user.institutionId, req.user.departmentId];
-
-      if (role) {
-        params.push(role);
-        conditions.push(`EXISTS (
-          SELECT 1 FROM user_roles ur2
-          JOIN roles r2 ON r2.id = ur2.role_id
-          WHERE ur2.user_id = u.id
-            AND r2.name = $${params.length}
-            AND ur2.revoked_at IS NULL
-            AND (ur2.expires_at IS NULL OR ur2.expires_at > now())
-        )`);
-      }
 
       ({ rows } = await pool.query(`
         SELECT
@@ -1013,6 +1015,16 @@ router.get("/", verifyToken, requireRole(["super_admin", "institute_admin", "dep
       const conditions = [
         "u.account_status != 'DELETED'",
         `u.institution_id = $1`,
+        /* Never surface super_admin or institute_admin users to an institute admin —
+           they must not appear in the Users list or be editable from this module. */
+        `NOT EXISTS (
+          SELECT 1 FROM user_roles ur_priv
+          JOIN roles r_priv ON r_priv.id = ur_priv.role_id
+          WHERE ur_priv.user_id = u.id
+            AND r_priv.name IN ('super_admin', 'institute_admin')
+            AND ur_priv.revoked_at IS NULL
+            AND (ur_priv.expires_at IS NULL OR ur_priv.expires_at > now())
+        )`,
       ];
       const params = [req.user.institutionId];
 
@@ -1125,6 +1137,15 @@ router.get("/:id", verifyToken, requireRole(["super_admin", "institute_admin", "
     } else if (isOnlyInstAdmin(req)) {
       params.push(req.user.institutionId);
       conditions.push(`u.institution_id = $${params.length}`);
+      // Block access to super_admin / institute_admin users even via direct URL
+      conditions.push(`NOT EXISTS (
+        SELECT 1 FROM user_roles ur_priv
+        JOIN roles r_priv ON r_priv.id = ur_priv.role_id
+        WHERE ur_priv.user_id = u.id
+          AND r_priv.name IN ('super_admin', 'institute_admin')
+          AND ur_priv.revoked_at IS NULL
+          AND (ur_priv.expires_at IS NULL OR ur_priv.expires_at > now())
+      )`);
     }
 
     const { rows } = await pool.query(`
@@ -1152,6 +1173,71 @@ router.get("/:id", verifyToken, requireRole(["super_admin", "institute_admin", "
     return res.json({ success: true, user: rows[0] });
   } catch (err) {
     logger.error("GET /api/users/:id failed", { ...getLogContext(req), stack: err.stack });
+    return res.status(500).json({ success: false, message: "Internal server error." });
+  }
+});
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   POST /api/users/:id/reset-password
+   Sets a new temporary password and forces a change on next login.
+   Available to super_admin and institute_admin (scoped to own institution).
+───────────────────────────────────────────────────────────────────────────── */
+router.post("/:id/reset-password", verifyToken, requireRole(["super_admin", "institute_admin"]), async (req, res) => {
+  const pool = req.app.locals.pool;
+  const { id } = req.params;
+  const { new_password } = req.body;
+
+  if (!new_password || new_password.length < 8)
+    return res.status(400).json({ success: false, message: "Password must be at least 8 characters." });
+
+  try {
+    const { rows: existingRows } = await pool.query(
+      `SELECT id, full_name, email, institution_id FROM users WHERE id = $1 AND account_status != 'DELETED'`,
+      [id]
+    );
+    if (!existingRows.length)
+      return res.status(404).json({ success: false, message: "User not found." });
+
+    const target = existingRows[0];
+
+    if (isOnlyInstAdmin(req)) {
+      if (target.institution_id !== req.user.institutionId)
+        return res.status(403).json({ success: false, message: "You can only manage users from your own institution." });
+
+      // Block resetting password for super_admin / institute_admin users
+      const { rows: privRows } = await pool.query(
+        `SELECT 1 FROM user_roles ur
+         JOIN roles r ON r.id = ur.role_id
+         WHERE ur.user_id = $1
+           AND r.name IN ('super_admin', 'institute_admin')
+           AND ur.revoked_at IS NULL
+           AND (ur.expires_at IS NULL OR ur.expires_at > now())
+         LIMIT 1`,
+        [id]
+      );
+      if (privRows.length)
+        return res.status(403).json({ success: false, message: "You cannot reset the password of this user." });
+    }
+
+    const passwordHash = await bcrypt.hash(new_password, 10);
+    await pool.query(
+      `UPDATE users SET password_hash=$1, must_change_password=true, is_temporary_password=true, updated_at=now() WHERE id=$2`,
+      [passwordHash, id]
+    );
+
+    await pool.query("DELETE FROM sessions WHERE user_id = $1", [id]).catch(() => {});
+
+    await writeAuditLog(req, {
+      actionType: "USER_PASSWORD_RESET",
+      entityType: "USER",
+      entityId:   id,
+      status:     "SUCCESS",
+      message:    `Password reset for user "${target.full_name}" (${target.email})`,
+    });
+
+    return res.json({ success: true, message: "Password reset successfully." });
+  } catch (err) {
+    logger.error("POST /api/users/:id/reset-password failed", { ...getLogContext(req), stack: err.stack });
     return res.status(500).json({ success: false, message: "Internal server error." });
   }
 });
@@ -1412,6 +1498,27 @@ router.post("/", verifyToken, requireRole(["super_admin", "institute_admin", "de
   try {
     // 1. Explicit email uniqueness check — runs before bcrypt so we fail fast
     const normalizedEmail = email.trim().toLowerCase();
+
+    // 1a. Email domain validation (all callers) — enforced server-side so it cannot be
+    //     bypassed by crafting a direct API request. Skipped when the institution has
+    //     no email_domain configured (empty string → allow any domain).
+    const { rows: instDomainRows } = await pool.query(
+      `SELECT LOWER(COALESCE(email_domain, '')) AS email_domain
+       FROM institutions WHERE institution_id = $1`,
+      [institution_id]
+    );
+    const instDomain = instDomainRows[0]?.email_domain?.trim() || "";
+    if (instDomain) {
+      const emailDomain = normalizedEmail.split("@")[1] || "";
+      if (emailDomain !== instDomain) {
+        return res.status(400).json({
+          success: false,
+          field:   "email",
+          message: `Invalid email domain. Please use your institution domain (@${instDomain}).`,
+        });
+      }
+    }
+
     const { rows: emailConflict } = await pool.query(
       `SELECT id FROM users
        WHERE email = $1

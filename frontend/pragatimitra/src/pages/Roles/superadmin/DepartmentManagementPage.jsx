@@ -27,6 +27,7 @@ function DepartmentForm({
   onCreated,
   onSaved,
   onBack,
+  onError,
 }) {
   const { lang } = useLanguage();
   const { apiFetch } = useApi();
@@ -134,11 +135,25 @@ function DepartmentForm({
         else onCreated(form.institution_id, data.message);
       } else if (data.errors) {
         setFieldErrors(data.errors);
+        // Navigate back to the wizard step that contains the first errored field.
+        if (!isEdit) {
+          const errKeys = Object.keys(data.errors);
+          const bad = STEP_FIELDS.findIndex((fields) => fields.some((f) => errKeys.includes(f)));
+          if (bad >= 0) setStep(bad);
+        }
+        const firstMsg = Object.values(data.errors)[0] || "Validation error.";
+        onError(firstMsg);
       } else {
-        setSubmitError(data.message || `Failed to ${isEdit ? "update" : "create"} department.`);
+        const msg = data.message || `Failed to ${isEdit ? "update" : "create"} department.`;
+        setSubmitError(msg);
+        onError(msg);
       }
     } catch (err) {
-      if (!isAuthError(err)) setSubmitError("Network error. Please try again.");
+      if (!isAuthError(err)) {
+        const msg = "Network error. Please try again.";
+        setSubmitError(msg);
+        onError(msg);
+      }
     } finally {
       setSubmitting(false);
     }
@@ -251,7 +266,7 @@ function DepartmentForm({
             lineHeight: 1.5,
           }}
         >
-          Deactivating will fail unless every member of this department is already inactive.
+          Deactivating this department suspends access for all its members until it is reactivated.
         </div>
       )}
     </div>
@@ -631,6 +646,7 @@ export default function DepartmentManagementPage() {
           onCreated={handleCreated}
           onSaved={handleSaved}
           onBack={() => navigate(listPath)}
+          onError={(msg) => showToast(msg, "error")}
         />
       </>
     );
