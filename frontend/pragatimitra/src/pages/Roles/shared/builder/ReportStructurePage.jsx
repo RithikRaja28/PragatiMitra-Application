@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useApi } from "../../../../hooks/useApi";
 import { Button } from "../../../../ui";
+import { Languages } from "lucide-react";
 import Toast from "../../../../components/shared/Toast";
 import BuilderHeader from "./BuilderHeader";
 
@@ -313,7 +314,7 @@ function AddSectionInline({ value, onChange, valueHi, onChangeHi, onAutoTranslat
               background: "#fef3c7", color: "#b45309", cursor: translating || !value.trim() ? "not-allowed" : "pointer",
               fontSize: 11, fontWeight: 700, fontFamily: "inherit", whiteSpace: "nowrap",
             }}
-          >{translating ? "…" : "⚡ Auto"}</button>
+          >{translating ? "…" : <><Languages size={12} style={{ verticalAlign: "-2px", marginRight: 4 }} />Auto</>}</button>
         </div>
       )}
     </div>

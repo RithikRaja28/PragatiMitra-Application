@@ -7,6 +7,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { useApi }  from "../../../../hooks/useApi";
 import { useAuth } from "../../../../store/AuthContext";
 import { Button } from "../../../../ui";
+import { Languages, Pencil, AlertTriangle } from "lucide-react";
 import { useShell } from "../../../../components/Dashboard/shellContext";
 import { BlockEditor, AddBlockMenu, DEFAULT_CONTENT, BLOCK_ICONS } from "./BlockEditors";
 
@@ -223,7 +224,7 @@ function Step1Details({ name, setName, desc, setDesc, reportType, setReportType,
           <F label="Default Workflow (optional)">
             <select style={inp} value={wfId} onChange={e => setWfId(e.target.value)}>
               <option value="">— None —</option>
-              {workflows.map(w => <option key={w.id} value={w.id}>{w.name}{w.is_default ? " ★" : ""}</option>)}
+              {workflows.map(w => <option key={w.id} value={w.id}>{w.name}{w.is_default ? " (Default)" : ""}</option>)}
             </select>
           </F>
         </div>
@@ -353,7 +354,7 @@ function SectionRow({ sec, depth, sectionIndex, subIndex, selectedId, onSelect, 
                 }}
                 onMouseEnter={e => { e.currentTarget.style.borderColor = C.primary; e.currentTarget.style.color = C.primary; }}
                 onMouseLeave={e => { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.color = C.textSub; }}
-              >✎</button>
+              ><Pencil size={12} /></button>
 
               {/* add subsection (root sections only) */}
               {isRoot && (
@@ -522,7 +523,7 @@ function HindiTitleEditor({ sec, onSave, apiFetch, immutable }) {
                 background: "#fef3c7", color: "#b45309", cursor: busy ? "not-allowed" : "pointer",
                 fontSize: 11, fontWeight: 700, fontFamily: "inherit", whiteSpace: "nowrap",
               }}
-            >{busy ? "…" : "⚡ Auto"}</button>
+            >{busy ? "…" : <><Languages size={12} style={{ verticalAlign: "-2px", marginRight: 4 }} />Auto</>}</button>
             <button
               onClick={save}
               disabled={busy || !val.trim()}
@@ -575,7 +576,7 @@ function Step2Structure({
         }}>
           {[
             { n: "1", t: "Add sections on the left" },
-            { n: "2", t: "Click ✎ to rename, ＋ Sub to nest" },
+            { n: "2", t: "Use the edit icon to rename, or + Sub to nest" },
             { n: "3", t: "Click a section to add blocks →" },
           ].map(h => (
             <div key={h.n} style={{
@@ -910,7 +911,7 @@ function Step3Review({ name, desc, reportType, version, sections, tmplStatus, pu
         {/* warnings */}
         {emptySections.length > 0 && (
           <div style={{ background: C.warningLt, border: "1px solid #fde68a", borderRadius: 10, padding: "12px 16px" }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: "#92400e", marginBottom: 6 }}>⚠ Sections with no blocks</div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#92400e", marginBottom: 6, display: "flex", alignItems: "center", gap: 6 }}><AlertTriangle size={13} /> Sections with no blocks</div>
             {emptySections.map(s => (
               <div key={s.id} style={{ fontSize: 12, color: "#b45309", marginLeft: 8, marginBottom: 2 }}>• {s.title}</div>
             ))}

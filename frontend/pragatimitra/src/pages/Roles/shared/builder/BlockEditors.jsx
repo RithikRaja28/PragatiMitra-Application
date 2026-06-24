@@ -2,6 +2,7 @@
  * BlockEditors.jsx -- shared block editor components
  */
 import React, { useRef, useEffect, useState } from "react";
+import { AlignLeft, AlignCenter, AlignRight, AlignJustify, Settings } from "lucide-react";
 import { useApi } from "../../../../hooks/useApi";
 import { useLanguage } from "../../../../i18n/LanguageContext";
 
@@ -354,10 +355,10 @@ export function RichTextBlock({ content, onChange, readOnly, lang = "en", apiFet
         <Sep />
 
         {/* ─ Alignment ─ */}
-        <TBtn onClick={() => exec("justifyLeft")}   title="Align left"   style={{ fontSize: 12 }}>⬛L</TBtn>
-        <TBtn onClick={() => exec("justifyCenter")} title="Center"       style={{ fontSize: 12 }}>⬛C</TBtn>
-        <TBtn onClick={() => exec("justifyRight")}  title="Align right"  style={{ fontSize: 12 }}>⬛R</TBtn>
-        <TBtn onClick={() => exec("justifyFull")}   title="Justify"      style={{ fontSize: 12 }}>⬛J</TBtn>
+        <TBtn onClick={() => exec("justifyLeft")}   title="Align left"   style={{ display: "inline-flex", alignItems: "center" }}><AlignLeft size={14} /></TBtn>
+        <TBtn onClick={() => exec("justifyCenter")} title="Center"       style={{ display: "inline-flex", alignItems: "center" }}><AlignCenter size={14} /></TBtn>
+        <TBtn onClick={() => exec("justifyRight")}  title="Align right"  style={{ display: "inline-flex", alignItems: "center" }}><AlignRight size={14} /></TBtn>
+        <TBtn onClick={() => exec("justifyFull")}   title="Justify"      style={{ display: "inline-flex", alignItems: "center" }}><AlignJustify size={14} /></TBtn>
         <Sep />
 
         {/* ─ Lists ─ */}
@@ -1373,7 +1374,7 @@ export function KpiImportBlock({ blockId, content, onChange, onRefetched, readOn
                 color: optionsOpen ? "#6d28d9" : "#7c3aed", fontSize: 11, fontWeight: 600,
                 cursor: "pointer", fontFamily: "inherit",
               }}
-            >⚙ Options</button>
+            ><Settings size={12} style={{ verticalAlign: "-2px", marginRight: 4 }} />Options</button>
             <button
               onClick={() => setConfirmOpen(true)}
               disabled={reimporting}

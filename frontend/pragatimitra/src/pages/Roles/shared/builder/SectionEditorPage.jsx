@@ -4,6 +4,7 @@
  * Preview is hidden when section is under review / submitted.
  */
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import { MessageSquare, Paperclip, Archive, TrendingUp, AlertTriangle } from "lucide-react";
 import { useAuth } from "../../../../store/AuthContext";
 import { useApi }  from "../../../../hooks/useApi";
 import { BLOCK_ICONS, BlockEditor, DEFAULT_CONTENT } from "./BlockEditors";
@@ -150,7 +151,7 @@ function BlockCommentsSidebar({
         fontFamily: "'Plus Jakarta Sans', sans-serif",
         alignItems: "center", justifyContent: "center", gap: 10,
       }}>
-        <div style={{ fontSize: 32 }}>💬</div>
+        <div style={{ marginBottom: 6 }}><MessageSquare size={30} color="#cbd5e1" /></div>
         <div style={{ fontSize: 13, color: BC.textSub, textAlign: "center", padding: "0 20px", lineHeight: 1.6 }}>
           Click the comment icon on any block to view its thread
         </div>
@@ -275,7 +276,7 @@ function BlockCommentsSidebar({
         )}
         {!loading && threads.length === 0 && (
           <div style={{ textAlign: "center", padding: "48px 16px" }}>
-            <div style={{ fontSize: 28, marginBottom: 10 }}>💬</div>
+            <div style={{ marginBottom: 10 }}><MessageSquare size={26} color="#cbd5e1" /></div>
             <div style={{ fontSize: 13, fontWeight: 600, color: BC.text, marginBottom: 4 }}>No comments yet</div>
             <div style={{ fontSize: 11, color: BC.muted }}>Add the first comment on this block below.</div>
           </div>
@@ -761,7 +762,7 @@ function WordBlock({ block, lang = "en", measureIdx = null }) {
     case "FILE":
       return (
         <div style={{ fontFamily: DOC_FONT, fontSize: 10, margin: "6px 0 10px", padding: "5px 10px", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 2, display: "flex", alignItems: "center", gap: 5 }}>
-          <span>📎</span>
+          <span style={{ display: "inline-flex" }}><Paperclip size={13} /></span>
           <a href={c.url || "#"} target="_blank" rel="noreferrer" style={{ color: "#1d4ed8", textDecoration: "underline" }}>
             {c.name || c.url || "Attachment"}
           </a>
@@ -1345,7 +1346,7 @@ function ExportMenu({ onWord, onPdf, exporting, disabled }) {
   return (
     <div ref={ref} style={{ position: "relative" }}>
       <ToolBtn onClick={() => setOpen(o => !o)} active={open} disabled={disabled} title="Export this section">
-        {exporting ? "⏳ Exporting…" : "Export"} <span style={{ fontSize: 9 }}>{open ? "▲" : "▼"}</span>
+        {exporting ? "Exporting…" : "Export"} <span style={{ fontSize: 9 }}>{open ? "▲" : "▼"}</span>
       </ToolBtn>
       {open && (
         <div style={{
@@ -2456,7 +2457,7 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
                       display: "flex", alignItems: "center", gap: 8,
                       padding: "10px 20px", cursor: "pointer", userSelect: "none",
                     }} onClick={() => setCommentsOpen(o => !o)}>
-                      <span style={{ fontSize: 14 }}>💬</span>
+                      <span style={{ display: "inline-flex" }}><MessageSquare size={14} /></span>
                       <span style={{ fontSize: 12, fontWeight: 700, color: "#92400e" }}>
                         Reviewer Feedback
                       </span>
@@ -2828,7 +2829,7 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
                   borderRadius: 8, marginBottom: 16, fontSize: 12, color: "#92400e",
                   display: "flex", gap: 8, alignItems: "flex-start",
                 }}>
-                  <span style={{ flexShrink: 0 }}>⚠</span>
+                  <span style={{ flexShrink: 0, display: "inline-flex" }}><AlertTriangle size={13} /></span>
                   <span>
                     There are <strong>{submitModal.unresolvedCount} unresolved comment{submitModal.unresolvedCount > 1 ? "s" : ""}</strong> on this section.
                     Consider addressing them before re-submitting.
@@ -2900,7 +2901,7 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
               background: "#fff", borderRadius: 16, padding: "28px 32px",
               width: 420, boxShadow: "0 20px 60px rgba(15,23,42,0.25)",
             }}>
-              <div style={{ fontSize: 32, marginBottom: 12, textAlign: "center" }}>⚠️</div>
+              <div style={{ marginBottom: 12, textAlign: "center" }}><AlertTriangle size={30} color="#d97706" /></div>
               <div style={{ fontSize: 16, fontWeight: 800, color: "#0f172a", marginBottom: 8, textAlign: "center" }}>Save Conflict</div>
               <div style={{ fontSize: 13, color: "#475569", marginBottom: 20, textAlign: "center", lineHeight: 1.6 }}>
                 This section was modified by someone else while you were editing.
@@ -2984,7 +2985,7 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
                   onMouseEnter={e => { e.currentTarget.style.borderColor = "#7c3aed"; e.currentTarget.style.background = "#fdf8ff"; }}
                   onMouseLeave={e => { e.currentTarget.style.borderColor = "#e2e8f0"; e.currentTarget.style.background = "#fff"; }}
                 >
-                  <div style={{ fontSize: 24, marginBottom: 10 }}>🗄️</div>
+                  <div style={{ fontSize: 24, marginBottom: 10 }}><Archive size={24} color="#cbd5e1" /></div>
                   <div style={{ fontSize: 13, fontWeight: 700, color: "#1e293b", marginBottom: 4 }}>Import from Form Data</div>
                   <div style={{ fontSize: 11, color: "#64748b", lineHeight: 1.5 }}>
                     Pull records from an existing form. Refresh anytime.
@@ -3064,7 +3065,7 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
                   onMouseEnter={e => { e.currentTarget.style.borderColor = "#7c3aed"; e.currentTarget.style.background = "#fdf8ff"; }}
                   onMouseLeave={e => { e.currentTarget.style.borderColor = "#e2e8f0"; e.currentTarget.style.background = "#fff"; }}
                 >
-                  <div style={{ fontSize: 24, marginBottom: 10 }}>📈</div>
+                  <div style={{ fontSize: 24, marginBottom: 10 }}><TrendingUp size={24} color="#cbd5e1" /></div>
                   <div style={{ fontSize: 13, fontWeight: 700, color: "#1e293b", marginBottom: 4 }}>Import from KPI Reports</div>
                   <div style={{ fontSize: 11, color: "#64748b", lineHeight: 1.5 }}>
                     Pull a saved KPI chart with its data. Re-import anytime.

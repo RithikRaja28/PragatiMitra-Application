@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useApi }  from "../../../hooks/useApi";
 import { useAuth } from "../../../store/AuthContext";
 import { PageContainer, PageHeader, Button, Card, EmptyState } from "../../../ui";
-import { Plus } from "lucide-react";
+import { Plus, Star, AlertTriangle } from "lucide-react";
 import { S, Toast, ConfirmDialog, isAuthError } from "../../../components/shared/formUtils";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { t as translate } from "../../../i18n/translations";
@@ -701,8 +701,9 @@ function TemplateCard({ template, onEdit, onView, onSetDefault, onDelete, settin
               <span style={{
                 padding: "2px 8px", borderRadius: 20, fontSize: 10, fontWeight: 700,
                 background: "#fef3c7", color: "#92400e", flexShrink: 0,
+                display: "inline-flex", alignItems: "center", gap: 4,
               }}>
-                ★ Default
+                <Star size={11} fill="currentColor" /> Default
               </span>
             )}
             <span style={{
@@ -789,7 +790,7 @@ function TemplateCard({ template, onEdit, onView, onSetDefault, onDelete, settin
           borderRadius: 10, padding: "10px 14px",
           fontSize: 12, color: "#92400e", marginBottom: 14,
         }}>
-          ⚠ No steps configured — add steps before assigning to a section.
+          <AlertTriangle size={12} style={{ verticalAlign: "-2px", marginRight: 6 }} />No steps configured — add steps before assigning to a section.
         </div>
       )}
 

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { useApi }  from "../../../../hooks/useApi";
 import { useAuth } from "../../../../store/AuthContext";
 import { PageContainer, PageHeader, Toolbar, FilterChip, Button, Card, EmptyState, ErrorState } from "../../../../ui";
+import { Layers, Tag, AlertTriangle } from "lucide-react";
 import TemplateCreationWizardPage from "./TemplateCreationWizardPage";
 
 /* ── design tokens ─────────────────────────────────────────────────────── */
@@ -227,7 +228,7 @@ function TemplateList({ onCreateNew, onEdit }) {
             fontSize: 12, color: "#92400e",
             display: "flex", alignItems: "center", gap: 10,
           }}>
-            <span style={{ fontSize: 16 }}>⚠️</span>
+            <AlertTriangle size={15} style={{ flexShrink: 0 }} />
             <span>
               <strong>{counts.DRAFT} draft{counts.DRAFT !== 1 ? "s" : ""}</strong> not yet visible
               in report creation. Publish {counts.DRAFT === 1 ? "it" : "them"} to make
@@ -307,10 +308,10 @@ function TemplateCard({ template: t, busy, onEdit, onChangeStatus }) {
 
         {/* meta row */}
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
-          <MetaPill icon="📑" value={`${t.section_count ?? 0} section${Number(t.section_count) !== 1 ? "s" : ""}`}
+          <MetaPill icon={<Layers size={12} />} value={`${t.section_count ?? 0} section${Number(t.section_count) !== 1 ? "s" : ""}`}
             color={Number(t.section_count) > 0 ? C.primary : C.textMuted}
             bg={Number(t.section_count) > 0 ? C.primaryLt : C.bg} />
-          <MetaPill icon="🔖" value={`v${t.version || "1.0"}`} color={C.textSub} bg={C.bg} />
+          <MetaPill icon={<Tag size={12} />} value={`v${t.version || "1.0"}`} color={C.textSub} bg={C.bg} />
         </div>
 
         {/* created by */}

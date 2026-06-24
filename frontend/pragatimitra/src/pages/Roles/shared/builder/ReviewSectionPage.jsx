@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useApi }  from "../../../../hooks/useApi";
 import { useAuth } from "../../../../store/AuthContext";
+import { MessageSquare } from "lucide-react";
 import Toast from "../../../../components/shared/Toast";
 import BuilderHeader from "./BuilderHeader";
 
@@ -548,7 +549,7 @@ export default function ReviewSectionPage({ sectionId, onBack }) {
                       transition: "all 0.15s",
                     }}
                   >
-                    <span>💬</span>
+                    <span style={{ display: "inline-flex" }}><MessageSquare size={14} /></span>
                     <span>
                       {unresCnt > 0
                         ? `${unresCnt} unresolved`
