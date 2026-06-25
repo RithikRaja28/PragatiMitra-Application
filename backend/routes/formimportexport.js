@@ -92,9 +92,9 @@ router.param("formName", async (req, res, next, formName) => {
     // → body → current year) so a contributor assigned only for 2025 cannot
     // export/import while the top bar is on 2027.
     if (isContributorOnly(req)) {
-      // Bug 16 — fall back to the institution's ACTIVE year (not the calendar year).
+      // Fall back to the institution's active/latest DB year — never the calendar year.
       const year = Number(req.query.year) || Number(req.get("X-Academic-Year")) || Number(req.body?.year)
-        || (Number.isInteger(req.institutionAcademicYear) ? req.institutionAcademicYear : new Date().getFullYear());
+        || await resolveOperatingYear(pool, req.user?.institutionId);
       const ok = await isFormAssigned(pool, req.user.userId, formName, year);
       if (!ok) return res.status(403).json({ success: false, message: "This form is not assigned to you for the selected academic year." });
     }
@@ -1178,8 +1178,7 @@ router.get("/:formName/export", async (req, res) => {
 
 
       const workbook  = new ExcelJS.stream.xlsx.WorkbookWriter({ stream: res, useStyles: true, useSharedStrings: true });
-      const worksheet = workbook.addWorksheet(formName);
-      worksheet.views   = [{ state: "frozen", ySplit: 1 }]; // freeze header row
+      const worksheet = workbook.addWorksheet(formName, { views: [{ state: "frozen", ySplit: 1 }] });
       worksheet.columns = headers.map((h) => ({ width: Math.max(String(h).length + 4, 12) }));
 
 

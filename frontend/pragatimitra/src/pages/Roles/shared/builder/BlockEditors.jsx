@@ -2,6 +2,7 @@
  * BlockEditors.jsx -- shared block editor components
  */
 import React, { useRef, useEffect, useState } from "react";
+import { AlignLeft, AlignCenter, AlignRight, AlignJustify, Settings } from "lucide-react";
 import { useApi } from "../../../../hooks/useApi";
 import { useLanguage } from "../../../../i18n/LanguageContext";
 
@@ -35,7 +36,7 @@ function TBtn({ onClick, title, children, style, active }) {
       style={{
         border: "none",
         background: active ? "#dde4ff" : "transparent",
-        color: active ? "#3730a3" : "#374151",
+        color: active ? "#1d4ed8" : "#374151",
         borderRadius: 4, padding: "3px 6px", fontSize: 13,
         cursor: "pointer", fontFamily: "inherit", fontWeight: 600, lineHeight: 1.3,
         transition: "background 0.1s",
@@ -62,8 +63,9 @@ const selectSt = {
 
 /* ── Translate-from-English button (bilingual text block editors) ─────────
    getSource() returns either a string or a string[] (batch). onTranslated
-   receives the matching shape back (string or string[]). */
-function TranslateButton({ apiFetch, getSource, onTranslated, label = "Translate from English" }) {
+   receives the matching shape back (string or string[]).
+   isHtml=true — sends { html } to backend so all tags/styles are preserved. */
+function TranslateButton({ apiFetch, getSource, onTranslated, label = "Translate from English", isHtml = false }) {
   const [busy, setBusy] = useState(false);
   const [err,  setErr]  = useState("");
 
@@ -74,7 +76,7 @@ function TranslateButton({ apiFetch, getSource, onTranslated, label = "Translate
     if (isBatch ? !source.some((s) => s && s.trim()) : !source || !source.trim()) return;
     setBusy(true);
     try {
-      const body = isBatch ? { texts: source } : { text: source };
+      const body = isBatch ? { texts: source } : isHtml ? { html: source } : { text: source };
       const res  = await apiFetch("/api/report-integration/translate", { method: "POST", body: JSON.stringify(body) });
       const data = await res.json();
       if (!res.ok || !data.success) throw new Error(data.message || "Translation failed");
@@ -354,10 +356,10 @@ export function RichTextBlock({ content, onChange, readOnly, lang = "en", apiFet
         <Sep />
 
         {/* ─ Alignment ─ */}
-        <TBtn onClick={() => exec("justifyLeft")}   title="Align left"   style={{ fontSize: 12 }}>⬛L</TBtn>
-        <TBtn onClick={() => exec("justifyCenter")} title="Center"       style={{ fontSize: 12 }}>⬛C</TBtn>
-        <TBtn onClick={() => exec("justifyRight")}  title="Align right"  style={{ fontSize: 12 }}>⬛R</TBtn>
-        <TBtn onClick={() => exec("justifyFull")}   title="Justify"      style={{ fontSize: 12 }}>⬛J</TBtn>
+        <TBtn onClick={() => exec("justifyLeft")}   title="Align left"   style={{ display: "inline-flex", alignItems: "center" }}><AlignLeft size={14} /></TBtn>
+        <TBtn onClick={() => exec("justifyCenter")} title="Center"       style={{ display: "inline-flex", alignItems: "center" }}><AlignCenter size={14} /></TBtn>
+        <TBtn onClick={() => exec("justifyRight")}  title="Align right"  style={{ display: "inline-flex", alignItems: "center" }}><AlignRight size={14} /></TBtn>
+        <TBtn onClick={() => exec("justifyFull")}   title="Justify"      style={{ display: "inline-flex", alignItems: "center" }}><AlignJustify size={14} /></TBtn>
         <Sep />
 
         {/* ─ Lists ─ */}
@@ -379,19 +381,17 @@ export function RichTextBlock({ content, onChange, readOnly, lang = "en", apiFet
         <TBtn onClick={() => exec("removeFormat")} title="Clear all formatting" style={{ fontSize: 10, color: "#9ca3af" }}>Clr</TBtn>
       </div>
 
-      {needsTranslation && (
+      {isHi && (content.html || content.text) && (
         <div style={{ padding: "6px 10px", background: isStale ? "#fffbeb" : "#faf5ff", border: `1px solid ${isStale ? "#fcd34d" : "#e9d5ff"}`, borderTop: "none", display: "flex", alignItems: "center", gap: 8 }}>
           <span style={{ fontSize: 11, color: isStale ? "#b45309" : "#7c3aed" }}>
-            {isStale ? "Hindi translation may be outdated (English changed) —" : "No Hindi content yet —"}
+            {isStale ? "Hindi may be outdated —" : hiHtml ? "Re-translate to fix formatting —" : "No Hindi content yet —"}
           </span>
           <TranslateButton
             apiFetch={apiFetch}
-            getSource={() => {
-              const tmp = document.createElement("div");
-              tmp.innerHTML = content.html || content.text || "";
-              return tmp.textContent || tmp.innerText || "";
-            }}
-            onTranslated={(hi) => onSaveTranslation?.("hi", { html: `<p>${hi}</p>`, _stale: false })}
+            isHtml
+            label={hiHtml ? "Re-translate from English" : "Translate from English"}
+            getSource={() => content.html || content.text || ""}
+            onTranslated={(hi) => onSaveTranslation?.("hi", { html: hi, _stale: false })}
           />
         </div>
       )}
@@ -1036,7 +1036,7 @@ export function ListBlock({ content, onChange, readOnly, lang = "en", apiFetch, 
               onClick={() => onChange({ ...content, ordered: isOrd })}
               style={{
                 padding: "4px 10px", border: "none", cursor: "pointer", fontSize: 11, fontFamily: "inherit",
-                background: ordered === isOrd ? "#4f46e5" : "#fff",
+                background: ordered === isOrd ? "#2563eb" : "#fff",
                 color: ordered === isOrd ? "#fff" : "#6b7280",
                 fontWeight: ordered === isOrd ? 700 : 400,
               }}>
@@ -1101,7 +1101,7 @@ export function ListBlock({ content, onChange, readOnly, lang = "en", apiFetch, 
               outline: "none", fontFamily: "inherit",
               background: "#fff",
             }}
-            onFocus={(e) => (e.target.style.borderColor = "#818cf8")}
+            onFocus={(e) => (e.target.style.borderColor = "#60a5fa")}
             onBlur={(e) => (e.target.style.borderColor = "#e2e8f0")}
           />
           <button
@@ -1373,7 +1373,7 @@ export function KpiImportBlock({ blockId, content, onChange, onRefetched, readOn
                 color: optionsOpen ? "#6d28d9" : "#7c3aed", fontSize: 11, fontWeight: 600,
                 cursor: "pointer", fontFamily: "inherit",
               }}
-            >⚙ Options</button>
+            ><Settings size={12} style={{ verticalAlign: "-2px", marginRight: 4 }} />Options</button>
             <button
               onClick={() => setConfirmOpen(true)}
               disabled={reimporting}

@@ -1,4 +1,5 @@
 import React from "react";
+import { Trash2, AlertTriangle, Info, CheckCircle2, XCircle } from "lucide-react";
 
 /* ─── Shared style tokens used across all management form screens ─── */
 export const S = {
@@ -91,10 +92,15 @@ export function Toast({ message, type }) {
         boxShadow: "0 8px 28px rgba(0,0,0,0.22)",
         maxWidth: 440,
         lineHeight: 1.55,
+        display: "flex",
+        alignItems: "center",
+        gap: 9,
       }}
     >
-      {type === "error" ? "✕  " : "✓  "}
-      {message}
+      {type === "error"
+        ? <XCircle size={16} strokeWidth={2.2} style={{ flexShrink: 0 }} />
+        : <CheckCircle2 size={16} strokeWidth={2.2} style={{ flexShrink: 0 }} />}
+      <span>{message}</span>
     </div>
   );
 }
@@ -148,12 +154,16 @@ export function ConfirmDialog({ title, message, variant = "default", confirmLabe
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
           <div style={{
             width: 38, height: 38, borderRadius: 10, flexShrink: 0,
-            display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18,
+            display: "flex", alignItems: "center", justifyContent: "center",
             background: variant === "danger"  ? "#fef2f2"
                       : variant === "warning" ? "#fef3c7"
                       : "#eff6ff",
           }}>
-            {variant === "danger" ? "🗑️" : variant === "warning" ? "⚠️" : "ℹ️"}
+            {variant === "danger"
+              ? <Trash2 size={19} strokeWidth={2} color="#ef4444" />
+              : variant === "warning"
+                ? <AlertTriangle size={19} strokeWidth={2} color="#d97706" />
+                : <Info size={19} strokeWidth={2} color="#2563eb" />}
           </div>
           <div style={{ fontSize: 15, fontWeight: 700, color: "#1e293b" }}>{title}</div>
         </div>

@@ -586,5 +586,74 @@ async function enrichSchemaLabels(schemaRow, language) {
 }
 
 
-module.exports = { isTranslatableText, translateRow, resolveTranslationMode, translateSentence, transliteratePhrase, enrichSchemaLabels, lookupLabel };
+/**
+ * Split an HTML string into translatable text segments between block-level
+ * tags, translate each segment with format:'html' (preserving inline bold,
+ * color, font-size, etc.), and reassemble. This keeps formatting intact even
+ * for large documents that would time-out if sent as one chunk.
+ *
+ * Segment-level translation means each API call is small and fast, and a
+ * single slow segment cannot kill the rest of the document.
+ */
+const htmlCache = new Map();
+
+// Block-level tag boundaries — we split at these so each chunk is one "line"
+const BLOCK_SPLIT_RE = /(<\/?(p|div|li|ul|ol|h[1-6]|blockquote|br)\b[^>]*\/?>)/gi;
+
+async function translateSegment(seg) {
+  if (!seg || !HAS_ALPHA_RE.test(seg)) return seg;
+
+  // Attempt format:'html' so inline tags (<b>, <span style="...">, etc.) survive
+  try {
+    const [result] = await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("timeout")), 12000);
+      translate.translate(seg, { to: "hi", format: "html" })
+        .then((r) => { clearTimeout(timer); resolve(r); })
+        .catch((e) => { clearTimeout(timer); reject(e); });
+    });
+    const out = Array.isArray(result) ? result[0] : result;
+    if (out && DEVANAGARI_RE.test(out)) return out;
+  } catch { /* fall through */ }
+
+  // Plain-text fallback for this segment only
+  const plain = seg.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+  if (!plain) return seg;
+  const hi = await translateSentence(plain).catch(() => "");
+  return (hi && DEVANAGARI_RE.test(hi)) ? hi : seg;
+}
+
+async function translateHtml(html) {
+  const trimmed = html.trim();
+  if (!trimmed) return trimmed;
+  if (htmlCache.has(trimmed)) return htmlCache.get(trimmed);
+
+  // Split at block-level boundaries; odd parts are the tags (pass through),
+  // even parts are text/inline-html content (translate).
+  const parts = trimmed.split(BLOCK_SPLIT_RE);
+
+  // split() with a capturing group gives: [text, fullTag, tagName, text, fullTag, tagName, ...]
+  // i%3===0 → translatable text/inline-html
+  // i%3===1 → full block tag e.g. "<div>" — keep as-is
+  // i%3===2 → tag name capture e.g. "div" — MUST drop (not part of the HTML output)
+  const translated = await Promise.all(
+    parts.map(async (part, i) => {
+      if (i % 3 === 2) return "";           // drop tag-name capture group
+      if (i % 3 === 1) return part;         // keep block tag unchanged
+      return translateSegment(part);         // translate text / inline-html segment
+    })
+  );
+
+  const result = translated.join("");
+  if (DEVANAGARI_RE.test(result)) {
+    htmlCache.set(trimmed, result);
+    return result;
+  }
+
+  // Last resort: strip all markup and translate as plain text
+  const plain = trimmed.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+  const fallback = plain ? await translateSentence(plain).catch(() => "") : "";
+  return fallback ? `<p>${fallback}</p>` : trimmed;
+}
+
+module.exports = { isTranslatableText, translateRow, resolveTranslationMode, translateSentence, transliteratePhrase, enrichSchemaLabels, lookupLabel, translateHtml };
 

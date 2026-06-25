@@ -1337,7 +1337,25 @@ async function generatePdf(report, sections, outPath, opts) {
     toDataUrl(report.cover_image_url),
   ]);
 
-  const html    = buildHtml(report, sections, opts, { logoDataUrl, bgDataUrl, coverDataUrl });
+  // Pre-convert all block image URLs to data URLs so Puppeteer can embed them
+  const blockImageUrls = new Set();
+  for (const s of sections) {
+    for (const b of (s.blocks || [])) {
+      let bc = b.content || {};
+      if (typeof bc === "string") { try { bc = JSON.parse(bc); } catch { bc = {}; } }
+      if (b.block_type === "IMAGE" && bc.url) blockImageUrls.add(bc.url);
+      if (b.block_type === "IMAGE_GRID") {
+        for (const col of (bc.cols || [])) { if (col.url) blockImageUrls.add(col.url); }
+      }
+    }
+  }
+  const blockImageMap = {};
+  await Promise.all(Array.from(blockImageUrls).map(async (url) => {
+    const dataUrl = await toDataUrl(url);
+    if (dataUrl) blockImageMap[url] = dataUrl;
+  }));
+
+  const html    = buildHtml(report, sections, opts, { logoDataUrl, bgDataUrl, coverDataUrl, blockImageMap });
   const pdfHiType   = opts.language === "hi" && opts.hiStrings ? opts.hiStrings.reportType : report.report_type;
   const hdrMeta     = [pdfHiType, report.academic_year].filter(Boolean).join("  ");
   const pdfDocTitle = opts.language === "hi" && opts.hiStrings ? opts.hiStrings.reportTitle : report.title;
@@ -1347,6 +1365,8 @@ async function generatePdf(report, sections, outPath, opts) {
   const browser = await puppeteer.launch({ args: ["--no-sandbox", "--disable-setuid-sandbox"] });
   try {
     const page = await browser.newPage();
+    // Set viewport to A4 dimensions (794×1123px at 96dpi) so fixed/vw/vh units match the page
+    await page.setViewport({ width: 794, height: 1123 });
     await page.setContent(html, { waitUntil: "networkidle0" });
     const pdfBuf = await page.pdf({
       format: "A4",
@@ -1386,7 +1406,7 @@ async function generatePdf(report, sections, outPath, opts) {
 /* CSS mirrors wordDocUtils.jsx + ReportPreviewPage.jsx exactly               */
 
 function buildHtml(report, sections, opts, assets = {}) {
-  const { logoDataUrl = null, bgDataUrl = null, coverDataUrl = null } = assets;
+  const { logoDataUrl = null, bgDataUrl = null, coverDataUrl = null, blockImageMap = {} } = assets;
   const hasBg  = !!(bgDataUrl || report.bg_image_url);
   const hlang  = opts.language === "hi" ? "hi" : "en";
   const isHindi = hlang === "hi";
@@ -1482,8 +1502,9 @@ function buildHtml(report, sections, opts, assets = {}) {
       case "IMAGE": {
         if (!c.url) return "";
         const htmlImgCap = isHindi ? (hi.caption || c.caption || "") : (c.caption || "");
+        const imgSrc = blockImageMap[c.url] || escHtml(c.url);
         return `<div class="img-wrap">
-          <img src="${escHtml(c.url)}" alt="${escHtml(htmlImgCap)}" style="width:${c.widthPct ?? 100}%;border-radius:3px;border:1px solid #e5e7eb">
+          <img src="${imgSrc}" alt="${escHtml(htmlImgCap)}" style="width:${c.widthPct ?? 100}%;max-height:500px;object-fit:contain;border-radius:3px;border:1px solid #e5e7eb">
           ${htmlImgCap ? `<div class="img-cap">${escHtml(htmlImgCap)}</div>` : ""}
         </div>`;
       }
@@ -1494,9 +1515,10 @@ function buildHtml(report, sections, opts, assets = {}) {
         const hiCols = isHindi ? (hi.cols || []) : [];
         const items = cols.map((col, gi) => {
           const gridCap = hiCols[gi]?.caption || col.caption || "";
+          const gridSrc = col.url ? (blockImageMap[col.url] || escHtml(col.url)) : null;
           return `
           <div>
-            ${col.url ? `<img src="${escHtml(col.url)}" style="width:100%;border-radius:3px;border:1px solid #e5e7eb">` : `<div class="img-placeholder">[Image]</div>`}
+            ${gridSrc ? `<img src="${gridSrc}" style="width:100%;border-radius:3px;border:1px solid #e5e7eb">` : `<div class="img-placeholder">[Image]</div>`}
             ${gridCap ? `<div class="img-cap">${escHtml(gridCap)}</div>` : ""}
           </div>`;
         }).join("");
@@ -1593,13 +1615,18 @@ function buildHtml(report, sections, opts, assets = {}) {
        </div>`
     : "";
 
-  /* ── Background image overlay — low opacity, all pages ── */
+  /* ── Background image overlay ── */
   const bgSrc = bgDataUrl || null; // only embed if data URL is available (PDF); HTML export skips
+  // Fixed background img: offset by the PDF margins (top:22mm, left:20mm) to reach paper edge.
+  // Without this, position:fixed left:0 starts at the content area edge (20mm from paper), not paper edge.
   const bgOverlayHtml = bgSrc
-    ? `<div style="position:fixed;top:0;left:0;right:0;bottom:0;
-                   background-image:url('${bgSrc}');background-size:cover;
-                   background-repeat:no-repeat;background-position:center;
-                   opacity:0.08;z-index:0;pointer-events:none;"></div>`
+    ? `<img src="${bgSrc}"
+            style="position:fixed;
+                   top:-22mm;left:-20mm;
+                   width:210mm;height:297mm;
+                   object-fit:fill;
+                   opacity:0.13;display:block;z-index:0;pointer-events:none;
+                   -webkit-print-color-adjust:exact;print-color-adjust:exact;">`
     : "";
 
   /* ── Title page ── */
@@ -1701,11 +1728,24 @@ hr.divider { border: none; border-top: 1px solid #9ca3af; margin: 10px 0 12px; }
 @page :first { margin: 0; size: A4 portrait; }
 @page { margin: 20mm 25mm; size: A4 portrait; }
 @media print {
-  body { background: white; padding: 0; }
+  body {
+    background: white !important;
+    padding: 0;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
   .cover-page { width: 100vw !important; height: 100vh !important; margin: 0 !important; }
-  .page-wrapper { box-shadow: none; margin: 0; padding: 0; }
+  .page-wrapper { background: ${bgSrc ? "transparent" : "#ffffff"} !important; box-shadow: none; margin: 0; padding: 0; }
   .section[style*="page-break-before"] { page-break-before: always; }
   .toc-page { page-break-after: always; }
+  /* Force all text visible — overrides any inline color:white from rich-text editor */
+  .para, .para * { color: #111827 !important; }
+  .blk-list, .blk-list li { color: #111827 !important; }
+  .data-tbl td, .data-tbl td * { color: #111827 !important; }
+  .data-tbl th, .data-tbl th * { color: #1F3864 !important; }
+  .sec-desc { color: #4B5563 !important; }
+  .toc-label, .toc-pg { color: #111827 !important; }
+  .kpi-simple { color: #111827 !important; }
   /* Table: repeat header row on every page, avoid mid-row breaks */
   .data-tbl thead { display: table-header-group; }
   .data-tbl tfoot { display: table-footer-group; }
@@ -1716,24 +1756,6 @@ hr.divider { border: none; border-top: 1px solid #9ca3af; margin: 10px 0 12px; }
   .sec-h1, .sec-h2, .sec-h3 { page-break-after: avoid; }
   .ch1, .ch2, .ch3 { page-break-after: avoid; }
 }
-${hasBg ? `
-/* ── Background image: white text so content is visible over the image ── */
-body, .page-wrapper,
-.para, .blk-list, .kpi-simple, .sec-desc, .img-cap, .kpi-cap, .file-blk,
-.data-tbl td, .data-tbl th, .title-main, .title-sub,
-.toc-label, .toc-pg {
-  color: #ffffff !important;
-}
-.sec-h1, .sec-h2, .sec-h3, .ch1, .ch2, .ch3 {
-  color: #ffffff !important;
-  border-color: rgba(255,255,255,0.4) !important;
-}
-.sec-h1 { border-bottom-color: rgba(255,255,255,0.5) !important; }
-.ch1    { border-bottom-color: rgba(255,255,255,0.4) !important; }
-.toc-dots { border-bottom-color: rgba(255,255,255,0.4) !important; }
-.data-tbl tr.alt td { background: rgba(255,255,255,0.07) !important; }
-.data-tbl th        { background: rgba(255,255,255,0.15) !important; }
-` : ""}
 </style>
 </head>
 <body style="position:relative;">

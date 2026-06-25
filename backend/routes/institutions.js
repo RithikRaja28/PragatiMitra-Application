@@ -692,6 +692,12 @@ router.post("/", async (req, res) => {
   if (Object.keys(errors).length) return res.status(400).json({ success: false, errors });
 
   try {
+    const { rows: dupName } = await pool.query(
+      `SELECT 1 FROM institutions WHERE LOWER(institution_name) = LOWER($1)`, [rawName]
+    );
+    if (dupName.length)
+      return res.status(409).json({ success: false, errors: { institution_name: `Institution name "${rawName}" already exists.` } });
+
     const { rows: dupCode } = await pool.query(
       `SELECT 1 FROM institutions WHERE LOWER(code) = LOWER($1)`, [rawCode]
     );
@@ -864,6 +870,12 @@ router.put("/:id", async (req, res) => {
     );
     if (!existingRows.length) return res.status(404).json({ success: false, message: "Institution not found." });
     const existing = existingRows[0];
+
+    const { rows: dupName } = await pool.query(
+      `SELECT 1 FROM institutions WHERE LOWER(institution_name) = LOWER($1) AND institution_id <> $2`, [rawName, institutionId]
+    );
+    if (dupName.length)
+      return res.status(409).json({ success: false, errors: { institution_name: `Institution name "${rawName}" already exists.` } });
 
     const { rows: dupCode } = await pool.query(
       `SELECT 1 FROM institutions WHERE LOWER(code) = LOWER($1) AND institution_id <> $2`, [rawCode, institutionId]

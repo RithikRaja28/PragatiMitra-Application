@@ -57,6 +57,31 @@ router.get("/roles", verifyToken, async (req, res) => {
   }
 });
 
+/* ── GET /api/lookup/institution-domain?institution_id=xxx ──
+   Returns the configured email domain for an institution.
+   Used by the Institute Admin user form to validate email addresses.
+── */
+router.get("/institution-domain", verifyToken, async (req, res) => {
+  const pool = req.app.locals.pool;
+  const { institution_id } = req.query;
+  if (!institution_id)
+    return res.status(400).json({ success: false, message: "institution_id is required." });
+  try {
+    const { rows } = await pool.query(
+      `SELECT LOWER(COALESCE(email_domain, '')) AS email_domain
+       FROM institutions
+       WHERE institution_id = $1 AND status = 'ACTIVE'`,
+      [institution_id]
+    );
+    if (!rows.length)
+      return res.status(404).json({ success: false, message: "Institution not found." });
+    return res.json({ success: true, email_domain: rows[0].email_domain.trim() });
+  } catch (err) {
+    logger.error("GET /api/lookup/institution-domain failed", { ...getLogContext(req), stack: err.stack });
+    return res.status(500).json({ success: false, message: "Internal server error." });
+  }
+});
+
 /* ── GET /api/lookup/users?institution_id=xxx&department_id=xxx&exclude_roles=super_admin ──
    Returns all active users matching the given scope, with their primary role
    display name and department name included.

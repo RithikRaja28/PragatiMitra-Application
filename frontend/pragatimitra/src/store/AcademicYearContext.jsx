@@ -67,7 +67,7 @@ export function AcademicYearProvider({ children }) {
         const savedValid = visible.some((y) => y.start_year === saved);
         const current    = cRes?.success ? cRes.current : null;
         const latest     = visible.reduce((m, y) => Math.max(m, y.start_year), -Infinity);
-        const fallback   = current?.start_year ?? (Number.isFinite(latest) ? latest : new Date().getFullYear());
+        const fallback   = current?.start_year ?? (Number.isFinite(latest) ? latest : null);
         const resolved   = savedValid ? saved : fallback;
         // Persist so every API request can carry the year (backend enforces locks).
         if (resolved != null) sessionStorage.setItem(sessionKey(institutionId), String(resolved));

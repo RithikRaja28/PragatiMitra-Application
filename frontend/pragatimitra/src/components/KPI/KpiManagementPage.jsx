@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef, useState, useCallback } from "react";
-import { Trash2, Eye, Edit2, Download, Search, RefreshCw, Plus } from "lucide-react";
+import { Trash2, Eye, Edit2, Download, Search, RefreshCw, Plus, AlertTriangle, Ban } from "lucide-react";
 import Modal from "../../ui/Modal";
 import Button from "../../ui/Button";
 import PageHeader from "../../ui/PageHeader";
@@ -204,7 +204,7 @@ function ReusePrompt({ existing, apiFetch, notify, onReused, onCreateNew }) {
         borderBottom:"1px solid #fde68a",
         display:"flex", alignItems:"center", gap:10,
       }}>
-        <span style={{ fontSize:18, lineHeight:1 }}>⚠️</span>
+        <AlertTriangle size={18} color="#d97706" style={{ flexShrink: 0 }} />
         <div>
           <div style={{ fontSize:13, fontWeight:700, color:"#92400e" }}>
             {t("This table is used by", lang)} {existing.length} {existing.length>1?t("existing KPIs", lang):t("existing KPI", lang)}
@@ -289,7 +289,7 @@ function ReusePrompt({ existing, apiFetch, notify, onReused, onCreateNew }) {
 }
 
 // ─── KPI Form (used in both Create and Edit views) ───────────────────────────
-function KpiForm({ cfg, tables, tabStatus, existingConfigs, scope, onBack, onSaved, notify, apiFetch, onRetryTables, currentAcademicYear, onColsLoaded = () => {} }) {
+function KpiForm({ cfg, tables, tabStatus, existingConfigs, scope, onBack, onSaved, notify, apiFetch, onRetryTables, currentAcademicYear, noAcademicYearConfigured = false, onColsLoaded = () => {} }) {
   const { lang } = useLanguage();
   const isEdit = !!cfg?.id;
 
@@ -336,7 +336,9 @@ function KpiForm({ cfg, tables, tabStatus, existingConfigs, scope, onBack, onSav
   )];
 
   const filteredTables = tables.filter(t => !tabSearch || t.table_name.toLowerCase().includes(tabSearch.toLowerCase()));
-  const numCols        = cols.filter(c => isNumeric(c.data_type));
+  // Use the backend-supplied is_numeric flag so custom fields with numeric schema types
+  // are included in the Y-axis picker even though their data_type is always "text".
+  const numCols        = cols.filter(c => c.is_numeric ?? isNumeric(c.data_type));
   const toggleY        = cn => setYCols(p => p.includes(cn) ? p.filter(c=>c!==cn) : [...p, cn]);
 
   useEffect(() => {
@@ -347,7 +349,10 @@ function KpiForm({ cfg, tables, tabStatus, existingConfigs, scope, onBack, onSav
     }
 
     setColsLoading(true);
-    apiFetch(`/tables/${encodeURIComponent(selTable)}/columns`)
+    // Pass ?year= so the backend applies institution+year scoping when resolving
+    // custom fields from custom_field_schemas (enforces per-year field isolation).
+    const yearParam = academicYear ? `?year=${encodeURIComponent(academicYear)}` : "";
+    apiFetch(`/tables/${encodeURIComponent(selTable)}/columns${yearParam}`)
       .then(r => { setCols(r.data); onColsLoaded(r.data); setColsLoading(false); })
       .catch(() => setColsLoading(false));
 
@@ -381,7 +386,7 @@ function KpiForm({ cfg, tables, tabStatus, existingConfigs, scope, onBack, onSav
     if (["sum","avg","min","max"].includes(aggregationType)) {
       const incompatible = yCols.filter(cn => {
         const col = cols.find(c => c.column_name === cn);
-        return col && !isNumeric(col.data_type);
+        return col && !(col.is_numeric ?? isNumeric(col.data_type));
       });
       if (incompatible.length) {
         setSubmitError(
@@ -474,7 +479,9 @@ function KpiForm({ cfg, tables, tabStatus, existingConfigs, scope, onBack, onSav
           </div>
         ) : (
           <div style={{ padding:"10px 14px", background:"#fef3c7", border:"1px solid #fbbf24", borderRadius:8, fontSize:12, color:"#92400e" }}>
-            {t("No academic year selected. Please select one from the top header.", lang)}
+            {noAcademicYearConfigured
+              ? t("No Academic Year Configured. Please configure an academic year in settings before creating KPIs.", lang)
+              : t("No academic year selected. Please select one from the top header.", lang)}
           </div>
         )}
         <div style={{ fontSize:11, color:"#94a3b8", marginTop:4 }}>
@@ -659,7 +666,8 @@ function KpiForm({ cfg, tables, tabStatus, existingConfigs, scope, onBack, onSav
                       {xCol===c.column_name && <div style={{ width:7, height:7, borderRadius:"50%", background:"#2563eb" }}/>}
                     </div>
                     <span style={{ fontSize:13, fontWeight:500, flex:1, color:"#1e293b" }}>{c.column_name}</span>
-                    <span style={{ fontSize:11, padding:"1px 6px", borderRadius:4, background: isNumeric(c.data_type)?"#eff6ff":"#f1f5f9", color: isNumeric(c.data_type)?"#1e40af":"#94a3b8" }}>{c.data_type}</span>
+                    {c.is_custom_field && <span style={{ fontSize:10, padding:"1px 5px", borderRadius:4, background:"#fef9c3", color:"#92400e", border:"1px solid #fde68a", fontWeight:600 }}>custom</span>}
+                    <span style={{ fontSize:11, padding:"1px 6px", borderRadius:4, background:(c.is_numeric??isNumeric(c.data_type))?"#eff6ff":"#f1f5f9", color:(c.is_numeric??isNumeric(c.data_type))?"#1e40af":"#94a3b8" }}>{c.schema_type||c.data_type}</span>
                   </div>
                 ))}
               </div>
@@ -708,7 +716,8 @@ function KpiForm({ cfg, tables, tabStatus, existingConfigs, scope, onBack, onSav
                         {sel&&<svg width="9" height="9" viewBox="0 0 12 12" fill="none"><polyline points="2,6 5,9 10,3" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
                       </div>
                       <span style={{ fontSize:13, fontWeight:500, flex:1, color:"#1e293b" }}>{c.column_name}</span>
-                      <span style={{ fontSize:11, padding:"1px 6px", borderRadius:4, background:"#eff6ff", color:"#1e40af" }}>{c.data_type}</span>
+                      {c.is_custom_field && <span style={{ fontSize:10, padding:"1px 5px", borderRadius:4, background:"#fef9c3", color:"#92400e", border:"1px solid #fde68a", fontWeight:600 }}>custom</span>}
+                      <span style={{ fontSize:11, padding:"1px 6px", borderRadius:4, background:"#eff6ff", color:"#1e40af" }}>{c.schema_type||c.data_type}</span>
                     </div>
                   );
                 })}
@@ -719,11 +728,11 @@ function KpiForm({ cfg, tables, tabStatus, existingConfigs, scope, onBack, onSav
             {["sum","avg","min","max"].includes(aggregationType) && yCols.length > 0 && (() => {
               const bad = yCols.filter(cn => {
                 const c = cols.find(x => x.column_name === cn);
-                return c && !isNumeric(c.data_type);
+                return c && !(c.is_numeric ?? isNumeric(c.data_type));
               });
               return bad.length > 0 ? (
                 <div style={{ marginTop:6, padding:"7px 12px", background:"#fef2f2", border:"1px solid #fecaca", borderRadius:7, fontSize:11, color:"#dc2626" }}>
-                  ⛔ "{bad.join('", "')}" is not numeric. {aggregationType.toUpperCase()} requires numeric columns. Switch to COUNT or COUNT DISTINCT, or select a numeric column.
+                  <Ban size={13} style={{ verticalAlign: "-2px", marginRight: 6 }} />"{bad.join('", "')}" is not numeric. {aggregationType.toUpperCase()} requires numeric columns. Switch to COUNT or COUNT DISTINCT, or select a numeric column.
                 </div>
               ) : null;
             })()}
@@ -855,7 +864,7 @@ export default function KpiManagementPage({ scope = "institute" }) {
   const location = useLocation();
   const { accessToken } = useAuth();
   const apiFetch = useCallback(makeApiFetch(accessToken), [accessToken]); // eslint-disable-line
-  const { academicYear } = useAcademicYear() || {};
+  const { academicYear, options: ayOptions = [] } = useAcademicYear() || {};
 
   // colLabels: column_name → { label_en, label_hi } — populated when KpiForm loads a table
   const [colLabels, setColLabels] = useState({});
@@ -1087,6 +1096,7 @@ export default function KpiManagementPage({ scope = "institute" }) {
         apiFetch={apiFetch}
         onRetryTables={loadTables}
         currentAcademicYear={academicYear}
+        noAcademicYearConfigured={ayOptions.length === 0}
         onColsLoaded={onColsLoaded}
       />
     );
@@ -1126,7 +1136,7 @@ export default function KpiManagementPage({ scope = "institute" }) {
               </div>
               {truncated && (
                 <div style={{ marginTop:6, padding:"5px 10px", background:"#fffbeb", border:"1px solid #fbbf24", borderRadius:6, fontSize:11, color:"#92400e" }}>
-                  ⚠️ Showing first 5,000 rows (dataset is larger). Enable an aggregation (Sum, Count, Avg…) to see complete totals across all records.
+                  <AlertTriangle size={12} style={{ verticalAlign: "-2px", marginRight: 6 }} />Showing first 5,000 rows (dataset is larger). Enable an aggregation (Sum, Count, Avg…) to see complete totals across all records.
                 </div>
               )}
             </div>

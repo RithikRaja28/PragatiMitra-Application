@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Save, FolderTree } from "lucide-react";
+import { Save, FolderTree, Pencil } from "lucide-react";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { t } from "../../../i18n/translations";
 import { PageContainer, PageHeader } from "../../../ui";
@@ -199,7 +199,7 @@ function SectionItem({ section, selected, onSelect, onUpdate, onDelete, onSelect
           : <span style={{ flex: 1, fontSize: 12, fontWeight: 600, color: C.text }}>{section.name}</span>
         }
         <button onClick={e => { e.stopPropagation(); setEditName(true); setDraft(section.name); }}
-          style={{ ...btn(), padding: "2px 7px", fontSize: 10 }}>✎</button>
+          style={{ ...btn(), padding: "2px 7px", fontSize: 10, display: "inline-flex", alignItems: "center" }}><Pencil size={11} /></button>
         <button onClick={e => { e.stopPropagation(); onDelete(section.id); }}
           style={{ ...btn("danger"), padding: "2px 7px", fontSize: 10 }}>✕</button>
       </div>
@@ -219,7 +219,7 @@ function SectionItem({ section, selected, onSelect, onUpdate, onDelete, onSelect
                 : <span style={{ flex: 1, fontSize: 11, color: "#374151" }}>{sub.name}</span>
               }
               <button onClick={e => { e.stopPropagation(); setEditSubId(sub.id); setEditSubDraft(sub.name); }}
-                style={{ ...btn(), padding: "2px 6px", fontSize: 10 }}>✎</button>
+                style={{ ...btn(), padding: "2px 6px", fontSize: 10, display: "inline-flex", alignItems: "center" }}><Pencil size={11} /></button>
               <button onClick={e => { e.stopPropagation(); delSub(sub.id); }}
                 style={{ ...btn("danger"), padding: "2px 6px", fontSize: 10 }}>✕</button>
             </div>
@@ -465,7 +465,7 @@ export default function ReportSetupPage() {
                         {wfTemplates.map(w => (
                           <option key={w.id} value={w.id}>
                             {w.name}
-                            {w.is_default ? " ★" : ""}
+                            {w.is_default ? " (Default)" : ""}
                             {" "}({w.step_count} step{Number(w.step_count) !== 1 ? "s" : ""})
                           </option>
                         ))}

@@ -1,4 +1,5 @@
 import React from "react";
+import { Paperclip } from "lucide-react";
 
 export const DOC_FONT = "'Calibri', 'Segoe UI', Arial, sans-serif";
 export const A4_W     = 794;
@@ -42,7 +43,7 @@ export function WordBlock({ block }) {
           <div style={{ width: `${w}%` }}>
             {c.url ? (
               <img src={c.url} alt={c.alt || c.caption || ""}
-                style={{ width: "100%", borderRadius: 3, border: "1px solid #e5e7eb" }}
+                style={{ width: "100%", maxHeight: 600, objectFit: "contain", borderRadius: 3, border: "1px solid #e5e7eb" }}
                 onError={(e) => { e.currentTarget.style.display = "none"; }} />
             ) : (
               <div style={{ height: 60, background: "#f9fafb", border: "1px dashed #d1d5db", borderRadius: 4, display: "flex", alignItems: "center", justifyContent: "center", color: "#9ca3af", fontSize: 10 }}>
@@ -188,7 +189,7 @@ export function WordBlock({ block }) {
     case "FILE":
       return (
         <div style={{ fontFamily: DOC_FONT, fontSize: 10, margin: "6px 0 10px", padding: "5px 10px", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 2, display: "flex", alignItems: "center", gap: 5 }}>
-          <span>📎</span>
+          <span style={{ display: "inline-flex" }}><Paperclip size={12} /></span>
           <a href={c.url || "#"} target="_blank" rel="noreferrer" style={{ color: "#1d4ed8", textDecoration: "underline" }}>
             {c.name || c.url || "Attachment"}
           </a>

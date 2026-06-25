@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
+import { Users, Image as ImageIcon, Pencil, Layers, MousePointerClick } from "lucide-react";
 import { useAuth } from "../../../../store/AuthContext";
 import { useApi }  from "../../../../hooks/useApi";
 import FormScreen        from "../../../../components/shared/FormScreen";
@@ -220,7 +221,7 @@ function AssignFormPage({ sectionId, sectionTitle, reportTitle, apiFetch, onBack
       pageTitle={reportTitle || "Report"}
       formTitle="Assign Section"
       formSubtitle={sectionTitle ? `Section: ${sectionTitle}` : "Assign by user, role, or department"}
-      icon="👥" iconBg="#ede9fe"
+      icon={<Users size={20} color="#7c3aed" />} iconBg="#ede9fe"
       onBack={onBack}
       onSubmit={handleSubmit}
       submitting={saving}
@@ -460,7 +461,7 @@ function SnapshotPreview({ blocks }) {
           }
           case "IMAGE":
             return <div key={i} style={{ margin: "8px 0", fontSize: 12, color: "#64748b" }}>
-              📷 {c.caption || c.url || "Image"}
+              <ImageIcon size={12} style={{ verticalAlign: "-2px", marginRight: 5 }} />{c.caption || c.url || "Image"}
             </div>;
           default:
             return null;
@@ -670,7 +671,7 @@ function SectionDetailPanel({ section, sections, apiFetch, isAdmin, onAssign, on
                 style={{ fontSize: 18, fontWeight: 700, color: "#1e293b", lineHeight: 1.3, cursor: isAdmin ? "text" : "default", display: "flex", alignItems: "center", gap: 6 }}
               >
                 {section.title}
-                {isAdmin && <span style={{ fontSize: 11, color: "#cbd5e1", flexShrink: 0 }}>✏</span>}
+                {isAdmin && <span style={{ color: "#cbd5e1", flexShrink: 0, display: "inline-flex" }}><Pencil size={11} /></span>}
               </div>
             )}
           </div>
@@ -1014,7 +1015,7 @@ export default function CollaborativeEditorPage({ reportId, reportTitle, onBack 
         pageTitle={report?.title || reportTitle}
         formTitle={isSubsection ? "New Subsection" : "New Section"}
         formSubtitle={isSubsection ? `Under: ${parentTitle}` : "Add a section to structure your report"}
-        icon="📑" iconBg="#ede9fe"
+        icon={<Layers size={20} color="#7c3aed" />} iconBg="#ede9fe"
         onBack={() => { setShowNewSection(false); setNewSectionParentId(null); setSecForm({ title: "", description: "" }); setSecErrors({}); setCreateSecErr(""); }}
         onSubmit={handleCreateSection}
         submitting={creatingSec}
@@ -1134,7 +1135,7 @@ export default function CollaborativeEditorPage({ reportId, reportTitle, onBack 
 
             {sections.length === 0 && (
               <div style={{ margin: "16px 8px", padding: "20px 14px", textAlign: "center", background: "#faf5ff", border: "1px dashed #c4b5fd", borderRadius: 10 }}>
-                <div style={{ fontSize: 22, marginBottom: 6 }}>📑</div>
+                <div style={{ marginBottom: 6 }}><Layers size={22} color="#a78bfa" /></div>
                 <div style={{ fontSize: 12, fontWeight: 600, color: "#7c3aed", marginBottom: 4 }}>No sections yet</div>
                 <div style={{ fontSize: 11, color: "#94a3b8" }}>Add sections to structure your report</div>
               </div>
@@ -1175,7 +1176,7 @@ export default function CollaborativeEditorPage({ reportId, reportTitle, onBack 
                 </>
               ) : (
                 <>
-                  <div style={{ fontSize: 36, marginBottom: 12 }}>👈</div>
+                  <div style={{ marginBottom: 12 }}><MousePointerClick size={32} color="#cbd5e1" /></div>
                   <div style={{ fontSize: 14, fontWeight: 600, color: "#1e293b", marginBottom: 6 }}>Select a section</div>
                   <p style={{ fontSize: 13, color: "#94a3b8" }}>
                     Click a section on the left to view its details, manage assignments, and add subsections.

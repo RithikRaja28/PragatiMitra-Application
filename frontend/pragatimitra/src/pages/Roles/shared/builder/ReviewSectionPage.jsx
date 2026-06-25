@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useApi }  from "../../../../hooks/useApi";
 import { useAuth } from "../../../../store/AuthContext";
+import { MessageSquare } from "lucide-react";
 import Toast from "../../../../components/shared/Toast";
 import BuilderHeader from "./BuilderHeader";
 
@@ -12,14 +13,15 @@ async function apiJson(apiFetch, path, opts) {
 }
 
 /* ── colours ─────────────────────────────────────────────────────────────── */
+/* Standardized to the project blue theme (src/ui/tokens.js). */
 const C = {
   primary: "#2563eb", primaryLt: "#dbeafe",
   success: "#16a34a", successLt: "#dcfce7",
-  danger:  "#dc2626", dangerLt:  "#fee2e2",
+  danger:  "#dc2626", dangerLt:  "#fef2f2",
   warning: "#d97706", warningLt: "#fef3c7",
-  purple:  "#6366f1", purpleLt:  "#e0e7ff",
-  text:    "#0f172a", textSub:   "#64748b",
-  border:  "#e2e8f0", bg:        "#f8fafc", surface: "#fff",
+  purple:  "#7c3aed", purpleLt:  "#ede9fe",
+  text:    "#111827", textSub:   "#6b7280",
+  border:  "#e5e7eb", bg:        "#f8fafc", surface: "#fff",
 };
 
 const STATUS_META = {
@@ -544,11 +546,11 @@ export default function ReviewSectionPage({ sectionId, onBack }) {
                       padding: "3px 9px", borderRadius: 5, fontSize: 10, fontWeight: 600,
                       background: unresCnt > 0 ? "#fef3c7" : isOpen ? "#eef2ff" : "#f8fafc",
                       border: `1px solid ${unresCnt > 0 ? "#fcd34d" : isOpen ? "#c7d2fe" : "#e2e8f0"}`,
-                      color: unresCnt > 0 ? "#92400e" : isOpen ? "#4338ca" : "#94a3b8",
+                      color: unresCnt > 0 ? "#92400e" : isOpen ? "#1d4ed8" : "#94a3b8",
                       transition: "all 0.15s",
                     }}
                   >
-                    <span>💬</span>
+                    <span style={{ display: "inline-flex" }}><MessageSquare size={14} /></span>
                     <span>
                       {unresCnt > 0
                         ? `${unresCnt} unresolved`
@@ -852,7 +854,7 @@ export default function ReviewSectionPage({ sectionId, onBack }) {
                   return (
                     <div key={block.id} style={{ borderBottom: `1px solid ${C.border}`, padding: "10px 16px" }}>
                       <div style={{
-                        fontSize: 9, fontWeight: 800, color: "#818cf8",
+                        fontSize: 9, fontWeight: 800, color: "#60a5fa",
                         background: "#eef2ff", padding: "2px 7px", borderRadius: 4,
                         display: "inline-block", textTransform: "uppercase",
                         letterSpacing: 0.5, marginBottom: 8,

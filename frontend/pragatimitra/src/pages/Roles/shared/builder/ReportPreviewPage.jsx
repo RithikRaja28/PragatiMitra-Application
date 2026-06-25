@@ -90,6 +90,7 @@ export default function ReportPreviewPage({ reportId, reportTitle, onBack }) {
   const [error,          setError]          = useState("");
   const [scale,          setScale]          = useState(0.65);
   const [pages,          setPages]          = useState([]);
+  const [imgReady,       setImgReady]       = useState(0);
 
   const containerRef = useRef(null);
   const measureRef   = useRef(null);
@@ -151,7 +152,25 @@ export default function ReportPreviewPage({ reportId, reportTitle, onBack }) {
     return items;
   }, [sections, blocksBySection]);
 
-  /* Paginate using hidden measurement div */
+  /* Wait for all images in the measurement div to load, then signal re-pagination */
+  useEffect(() => {
+    if (!measureRef.current) return;
+    const imgs = Array.from(measureRef.current.querySelectorAll("img"));
+    if (!imgs.length) { setImgReady((n) => n + 1); return; }
+
+    let pending = imgs.filter((img) => !img.complete).length;
+    if (pending === 0) { setImgReady((n) => n + 1); return; }
+
+    const done = () => { pending--; if (pending === 0) setImgReady((n) => n + 1); };
+    imgs.forEach((img) => {
+      if (!img.complete) {
+        img.addEventListener("load",  done, { once: true });
+        img.addEventListener("error", done, { once: true });
+      }
+    });
+  }, [allItems]);
+
+  /* Paginate using hidden measurement div — re-runs after images load */
   useEffect(() => {
     if (!allItems.length) { setPages([]); return; }
     if (!measureRef.current) { setPages([allItems]); return; }
@@ -177,7 +196,7 @@ export default function ReportPreviewPage({ reportId, reportTitle, onBack }) {
     });
     if (current.length) result.push(current);
     setPages(result.length ? result : [allItems]);
-  }, [allItems]);
+  }, [allItems, imgReady]);
 
   function renderItem(item) {
     if (item.itemType === "SECTION_HEADER") {

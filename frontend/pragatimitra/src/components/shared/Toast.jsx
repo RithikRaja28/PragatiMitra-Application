@@ -1,12 +1,13 @@
 import React, { createContext, useContext, useState, useCallback } from "react";
+import { Check, X, Info, AlertTriangle } from "lucide-react";
 
 const ToastContext = createContext(null);
 
 const TYPE_STYLE = {
-  success: { bg: "#f0fdf4", border: "#86efac", icon: "✓", iconColor: "#16a34a", titleColor: "#15803d" },
-  error:   { bg: "#fef2f2", border: "#fca5a5", icon: "✕", iconColor: "#dc2626", titleColor: "#b91c1c" },
-  info:    { bg: "#eff6ff", border: "#93c5fd", icon: "i", iconColor: "#2563eb", titleColor: "#1d4ed8" },
-  warning: { bg: "#fffbeb", border: "#fcd34d", icon: "!", iconColor: "#d97706", titleColor: "#b45309" },
+  success: { bg: "#f0fdf4", border: "#86efac", Icon: Check,         iconColor: "#16a34a", titleColor: "#15803d" },
+  error:   { bg: "#fef2f2", border: "#fca5a5", Icon: X,             iconColor: "#dc2626", titleColor: "#b91c1c" },
+  info:    { bg: "#eff6ff", border: "#93c5fd", Icon: Info,          iconColor: "#2563eb", titleColor: "#1d4ed8" },
+  warning: { bg: "#fffbeb", border: "#fcd34d", Icon: AlertTriangle, iconColor: "#d97706", titleColor: "#b45309" },
 };
 
 function ToastItem({ id, message, type = "success", onRemove }) {
@@ -24,17 +25,18 @@ function ToastItem({ id, message, type = "success", onRemove }) {
       <div style={{
         width: 22, height: 22, borderRadius: "50%", background: s.iconColor,
         color: "#fff", display: "flex", alignItems: "center", justifyContent: "center",
-        fontSize: 11, fontWeight: 800, flexShrink: 0, marginTop: 1,
+        flexShrink: 0, marginTop: 1,
       }}>
-        {s.icon}
+        <s.Icon size={13} strokeWidth={3} color="#fff" />
       </div>
       <div style={{ flex: 1, fontSize: 13, color: s.titleColor, fontWeight: 600, lineHeight: 1.4 }}>
         {message}
       </div>
       <button onClick={() => onRemove(id)} style={{
         background: "none", border: "none", cursor: "pointer",
-        color: "#94a3b8", fontSize: 15, lineHeight: 1, padding: "0 2px", flexShrink: 0,
-      }}>✕</button>
+        color: "#94a3b8", lineHeight: 1, padding: "0 2px", flexShrink: 0,
+        display: "inline-flex", alignItems: "center",
+      }}><X size={15} /></button>
     </div>
   );
 }
@@ -106,9 +108,9 @@ function Toast({ type = "success", message, onClose }) {
       <div style={{
         width: 22, height: 22, borderRadius: "50%", background: s.iconColor,
         color: "#fff", display: "flex", alignItems: "center", justifyContent: "center",
-        fontSize: 11, fontWeight: 800, flexShrink: 0, marginTop: 1,
+        flexShrink: 0, marginTop: 1,
       }}>
-        {s.icon}
+        <s.Icon size={13} strokeWidth={3} color="#fff" />
       </div>
       <div style={{ flex: 1, fontSize: 13, color: s.titleColor, fontWeight: 600, lineHeight: 1.4 }}>
         {message}

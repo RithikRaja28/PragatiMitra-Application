@@ -14,6 +14,7 @@
  *   onClose    — called when the wizard is dismissed
  */
 import React, { useState, useEffect } from "react";
+import { useAcademicYear } from "../../../../store/AcademicYearContext";
 
 const OVERLAY = {
   position: "fixed", inset: 0, background: "rgba(15,23,42,0.5)",
@@ -31,11 +32,14 @@ const CARD = {
 export default function FormImportWizard({ sectionId, orderIndex, apiFetch, onImported, onClose }) {
   const [step, setStep] = useState(1);
 
+  // Use the app-wide selected academic year — same source as InstituteFormManagementPage.
+  const { selectedYear, academicYear: contextAcademicYear } = useAcademicYear() || {};
+
   // Step 1 state
   const [forms,         setForms]         = useState([]);
   const [loadingForms,  setLoadingForms]  = useState(true);
   const [selectedForm,  setSelectedForm]  = useState("");
-  const [academicYear,  setAcademicYear]  = useState("");
+  const [academicYear,  setAcademicYear]  = useState(contextAcademicYear || "");
   const [language,      setLanguage]      = useState("en");
 
   // Step 2 state
@@ -53,15 +57,26 @@ export default function FormImportWizard({ sectionId, orderIndex, apiFetch, onIm
 
   const [stepErr, setStepErr] = useState("");
 
-  /* ── Load forms on mount ── */
+  /* ── Load forms — active only for the selected cycle year, same as InstituteFormManagementPage ── */
   useEffect(() => {
     setLoadingForms(true);
-    apiFetch("/api/report-integration/forms")
+    const url = selectedYear != null
+      ? `/api/forms/institution-forms?year=${selectedYear}`
+      : "/api/forms/institution-forms";
+    apiFetch(url)
       .then(r => r.json())
-      .then(d => { if (d.success) setForms(d.data || []); })
+      .then(d => {
+        if (d.success) {
+          const all = d.forms || [];
+          const active = selectedYear != null
+            ? all.filter(f => f.lifecycle_status === "active")
+            : all;
+          setForms(active);
+        }
+      })
       .catch(() => {})
       .finally(() => setLoadingForms(false));
-  }, [apiFetch]);
+  }, [apiFetch, selectedYear]);
 
   /* ── Step 1 → 2: load columns ── */
   async function goToStep2() {
@@ -70,17 +85,14 @@ export default function FormImportWizard({ sectionId, orderIndex, apiFetch, onIm
     setLoadingCols(true);
     try {
       const qParams = new URLSearchParams();
-      if (academicYear) qParams.set("year", academicYear);
+      // Backend expects integer year — use selectedYear from context, not the display string
+      if (selectedYear != null) qParams.set("year", selectedYear);
       if (language === "hi") qParams.set("language", "hi");
       const q    = qParams.toString() ? `?${qParams}` : "";
       const res  = await apiFetch(`/api/report-integration/forms/${encodeURIComponent(selectedForm)}/columns${q}`);
       const data = await res.json();
       if (!data.success) throw new Error(data.message || "Failed to load columns");
-      // Backend returns { system: [...], dynamic: [...] }
-      const combined = [
-        ...(data.data?.system  || []).map(c => ({ ...c, type: "system" })),
-        ...(data.data?.dynamic || []).map(c => ({ ...c, type: "dynamic" })),
-      ];
+      const combined = (data.data?.dynamic || []).map(c => ({ ...c, type: "dynamic" }));
       setColumns(combined);
       setSelectedCols(combined.map(c => c.key));
       setStep(2);
@@ -98,7 +110,7 @@ export default function FormImportWizard({ sectionId, orderIndex, apiFetch, onIm
     setLoadingPreview(true);
     try {
       const params = new URLSearchParams({ columns: selectedCols.join(",") });
-      if (academicYear) params.set("year", academicYear);
+      if (selectedYear != null) params.set("year", selectedYear);
       if (language === "hi") params.set("language", "hi");
       const res  = await apiFetch(`/api/report-integration/forms/${encodeURIComponent(selectedForm)}/preview?${params}`);
       const data = await res.json();
@@ -122,7 +134,7 @@ export default function FormImportWizard({ sectionId, orderIndex, apiFetch, onIm
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           form_name:        selectedForm,
-          academic_year:    academicYear || null,
+          academic_year:    selectedYear ?? null,
           columns:          selectedCols,
           order_index:      orderIndex,
           language,
@@ -145,8 +157,8 @@ export default function FormImportWizard({ sectionId, orderIndex, apiFetch, onIm
     );
   }
 
-  const headerBg   = "linear-gradient(135deg,#4f46e5,#7c3aed)";
-  const btnPrimary = { padding: "8px 22px", borderRadius: 10, border: "none", background: "linear-gradient(135deg,#4f46e5,#7c3aed)", color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" };
+  const headerBg   = "linear-gradient(135deg,#2563eb,#7c3aed)";
+  const btnPrimary = { padding: "8px 22px", borderRadius: 10, border: "none", background: "linear-gradient(135deg,#2563eb,#7c3aed)", color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" };
   const btnSecondary = { padding: "8px 18px", borderRadius: 10, border: "1.5px solid #e2e8f0", background: "#fff", color: "#64748b", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" };
 
   const formObj = forms.find(f => f.form_name === selectedForm);
@@ -202,7 +214,7 @@ export default function FormImportWizard({ sectionId, orderIndex, apiFetch, onIm
                 </div>
               ) : forms.length === 0 ? (
                 <div style={{ textAlign: "center", padding: "40px 0", color: "#94a3b8", fontSize: 13 }}>
-                  No forms available. Forms must be created in the Form Builder first.
+                  No active forms found{contextAcademicYear ? ` for ${contextAcademicYear}` : ""}. Forms must be active in Form Management for this reporting cycle.
                 </div>
               ) : (
                 <>
@@ -238,21 +250,13 @@ export default function FormImportWizard({ sectionId, orderIndex, apiFetch, onIm
                   )}
 
                   <label style={{ fontSize: 11, fontWeight: 700, color: "#64748b", display: "block", marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.5 }}>
-                    Academic Year (optional filter)
+                    Reporting Cycle Year
                   </label>
-                  <input
-                    type="text"
-                    value={academicYear}
-                    onChange={e => setAcademicYear(e.target.value)}
-                    placeholder="e.g. 2024-25"
-                    style={{
-                      width: "100%", padding: "10px 14px", border: "1.5px solid #e2e8f0",
-                      borderRadius: 10, fontSize: 13, color: "#1e293b", background: "#fff",
-                      outline: "none", boxSizing: "border-box",
-                    }}
-                  />
-                  <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 5, marginBottom: 20 }}>
-                    Leave blank to include all records regardless of academic year.
+                  <div style={{
+                    padding: "10px 14px", border: "1.5px solid #e2e8f0", borderRadius: 10,
+                    fontSize: 13, color: "#475569", background: "#f8fafc", marginBottom: 20,
+                  }}>
+                    {contextAcademicYear || "—"}
                   </div>
 
                   <label style={{ fontSize: 11, fontWeight: 700, color: "#64748b", display: "block", marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.5 }}>
@@ -329,14 +333,6 @@ export default function FormImportWizard({ sectionId, orderIndex, apiFetch, onIm
                             <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 1 }}>{col.description}</div>
                           )}
                         </div>
-                        <span style={{
-                          fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.4,
-                          color: col.type === "system" ? "#0891b2" : "#7c3aed",
-                          background: col.type === "system" ? "#e0f2fe" : "#ede9fe",
-                          padding: "2px 6px", borderRadius: 4,
-                        }}>
-                          {col.type}
-                        </span>
                       </label>
                     );
                   })}
