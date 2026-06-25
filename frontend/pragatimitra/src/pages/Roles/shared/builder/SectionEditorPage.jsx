@@ -1692,9 +1692,8 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
     const c = block.content || {};
     switch (block.block_type) {
       case "PARAGRAPH": {
-        const tmp = document.createElement("div");
-        tmp.innerHTML = c.html || c.text || "";
-        return { kind: "html", text: tmp.textContent || "" };
+        const raw = c.html || c.text || "";
+        return { kind: "html", html: raw };
       }
       case "HEADING":
         return { kind: "text", text: c.text || "" };
@@ -1722,6 +1721,11 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
       const data = await res.json();
       return data?.data?.hi || "";
     };
+    const translateHtml = async (html) => {
+      const res  = await apiFetch("/api/report-integration/translate", { method: "POST", body: JSON.stringify({ html }) });
+      const data = await res.json();
+      return data?.data?.hi || "";
+    };
     const translateMany = async (texts) => {
       const res  = await apiFetch("/api/report-integration/translate", { method: "POST", body: JSON.stringify({ texts }) });
       const data = await res.json();
@@ -1730,8 +1734,8 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
 
     switch (extracted.kind) {
       case "html": {
-        if (!extracted.text.trim()) return null;
-        return { html: `<p>${await translateOne(extracted.text)}</p>`, _stale: false };
+        if (!extracted.html.trim()) return null;
+        return { html: await translateHtml(extracted.html), _stale: false };
       }
       case "text": {
         if (!extracted.text.trim()) return null;

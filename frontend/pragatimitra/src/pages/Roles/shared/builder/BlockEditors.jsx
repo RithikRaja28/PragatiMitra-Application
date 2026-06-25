@@ -63,8 +63,9 @@ const selectSt = {
 
 /* ── Translate-from-English button (bilingual text block editors) ─────────
    getSource() returns either a string or a string[] (batch). onTranslated
-   receives the matching shape back (string or string[]). */
-function TranslateButton({ apiFetch, getSource, onTranslated, label = "Translate from English" }) {
+   receives the matching shape back (string or string[]).
+   isHtml=true — sends { html } to backend so all tags/styles are preserved. */
+function TranslateButton({ apiFetch, getSource, onTranslated, label = "Translate from English", isHtml = false }) {
   const [busy, setBusy] = useState(false);
   const [err,  setErr]  = useState("");
 
@@ -75,7 +76,7 @@ function TranslateButton({ apiFetch, getSource, onTranslated, label = "Translate
     if (isBatch ? !source.some((s) => s && s.trim()) : !source || !source.trim()) return;
     setBusy(true);
     try {
-      const body = isBatch ? { texts: source } : { text: source };
+      const body = isBatch ? { texts: source } : isHtml ? { html: source } : { text: source };
       const res  = await apiFetch("/api/report-integration/translate", { method: "POST", body: JSON.stringify(body) });
       const data = await res.json();
       if (!res.ok || !data.success) throw new Error(data.message || "Translation failed");
@@ -380,19 +381,17 @@ export function RichTextBlock({ content, onChange, readOnly, lang = "en", apiFet
         <TBtn onClick={() => exec("removeFormat")} title="Clear all formatting" style={{ fontSize: 10, color: "#9ca3af" }}>Clr</TBtn>
       </div>
 
-      {needsTranslation && (
+      {isHi && (content.html || content.text) && (
         <div style={{ padding: "6px 10px", background: isStale ? "#fffbeb" : "#faf5ff", border: `1px solid ${isStale ? "#fcd34d" : "#e9d5ff"}`, borderTop: "none", display: "flex", alignItems: "center", gap: 8 }}>
           <span style={{ fontSize: 11, color: isStale ? "#b45309" : "#7c3aed" }}>
-            {isStale ? "Hindi translation may be outdated (English changed) —" : "No Hindi content yet —"}
+            {isStale ? "Hindi may be outdated —" : hiHtml ? "Re-translate to fix formatting —" : "No Hindi content yet —"}
           </span>
           <TranslateButton
             apiFetch={apiFetch}
-            getSource={() => {
-              const tmp = document.createElement("div");
-              tmp.innerHTML = content.html || content.text || "";
-              return tmp.textContent || tmp.innerText || "";
-            }}
-            onTranslated={(hi) => onSaveTranslation?.("hi", { html: `<p>${hi}</p>`, _stale: false })}
+            isHtml
+            label={hiHtml ? "Re-translate from English" : "Translate from English"}
+            getSource={() => content.html || content.text || ""}
+            onTranslated={(hi) => onSaveTranslation?.("hi", { html: hi, _stale: false })}
           />
         </div>
       )}

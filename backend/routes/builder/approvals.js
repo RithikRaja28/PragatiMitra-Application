@@ -46,7 +46,7 @@ async function getWorkflowSteps(pool, sectionId) {
 
 function canReview(user, step) {
   const roles = user.roles || [];
-  if (roles.includes("super_admin") || roles.includes("institute_admin")) return true;
+  if (roles.includes("super_admin")) return true;   // super_admin only: god-mode override
   if (!step) return false;
   if (step.approver_user_id && step.approver_user_id === user.userId) return true;
   if (step.approver_role && roles.includes(step.approver_role.toLowerCase())) return true;
@@ -111,9 +111,14 @@ router.get("/section/:sectionId/pipeline", async (req, res) => {
 
     const needsDirectorApproval = !!section.needs_director_approval;
     const isDirectorsOffice     = (req.user.roles || []).includes("directors_office");
-    const canReviewNow          =
+    const isAdmin               = (req.user.roles || []).some(r => ["super_admin","institute_admin"].includes(r));
+    // Admins can act as fallback reviewers ONLY on sections with no workflow step AND not
+    // pending director approval (those must go exclusively to directors_office).
+    const isAdminSteplessFallback = isAdmin && !needsDirectorApproval && currentIdx === -1 && steps.length === 0;
+    const canReviewNow =
       (needsDirectorApproval && isDirectorsOffice) ||
-      canReview(req.user, steps[currentIdx]);
+      canReview(req.user, steps[currentIdx]) ||
+      isAdminSteplessFallback;
 
     return res.json({
       success: true,
@@ -292,14 +297,22 @@ router.post("/section/:sectionId/review", async (req, res) => {
     if (!["SUBMITTED", "UNDER_REVIEW"].includes(section.status))
       return res.status(422).json({ success: false, message: `Cannot review from status: ${section.status}` });
 
-    // Verify permission: admin bypass OR matching workflow step OR director final approval
+    // Verify permission: must be the designated approver for the current step,
+    // OR directors_office for final director approval,
+    // OR admin fallback for truly stepless sections (no workflow template assigned).
     const steps               = await getWorkflowSteps(pool, sectionId);
-    const currentStep         = steps.find(s => s.id === section.current_step_id) || steps[0];
+    const currentStep         = steps.find(s => s.id === section.current_step_id) ?? null;
     const isAdmin             = (req.user.roles || []).some(r => ["super_admin","institute_admin"].includes(r));
     const isDirectorsOffice   = (req.user.roles || []).includes("directors_office");
     const needsDirectorApproval = !!section.needs_director_approval;
+    const isAdminSteplessFallback = isAdmin && !needsDirectorApproval && !currentStep && steps.length === 0;
 
-    if (!isAdmin && !canReview(req.user, currentStep) && !(needsDirectorApproval && isDirectorsOffice))
+    const canAct =
+      (needsDirectorApproval && isDirectorsOffice) ||
+      canReview(req.user, currentStep) ||
+      isAdminSteplessFallback;
+
+    if (!canAct)
       return res.status(403).json({ success: false, message: "You are not the designated approver for this step" });
 
     const dec = decision.toUpperCase();
@@ -334,7 +347,7 @@ router.post("/section/:sectionId/review", async (req, res) => {
     let newStatus  = null;
     let nextStepId = section.current_step_id;
 
-    if (needsDirectorApproval && (isDirectorsOffice || isAdmin)) {
+    if (needsDirectorApproval && isDirectorsOffice) {
       // ── Director's Office final approval path ──────────────────────────────
       nextStepId = null;
       await pool.query(

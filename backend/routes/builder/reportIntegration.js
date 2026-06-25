@@ -16,7 +16,7 @@
 const express           = require("express");
 const { verifyToken }   = require("../../middleware/auth");
 const { createSectionSnapshot } = require("../../utils/snapshotHelper");
-const { translateSentence }     = require("../../services/translationService");
+const { translateSentence, translateHtml } = require("../../services/translationService");
 const { getActiveSchema }       = require("../../services/schemaResolver");
 const logger            = require("../../utils/logger");
 const { getLogContext } = logger;
@@ -25,13 +25,20 @@ const router = express.Router();
 router.use(verifyToken);
 
 /* ── POST /translate — on-demand EN→HI translation for section editor blocks ──
-   Accepts either { text } for a single string or { texts: string[] } for a
-   batch (e.g. list items, table cells). translateSentence never rejects for a
-   valid non-empty string — it falls back through transliteration/phonetics
-   internally — so the only realistic failure here is bad input. */
+   Accepts:
+     { html }          — rich HTML string; translated with format:'html' so all
+                         tags, inline styles, and structure are preserved
+     { text }          — single plain-text string
+     { texts: string[] } — batch of plain-text strings (list items, table cells) */
 router.post("/translate", async (req, res) => {
-  const { text, texts } = req.body;
+  const { html, text, texts } = req.body;
   try {
+    if (typeof html === "string") {
+      if (!html.trim())
+        return res.status(400).json({ success: false, message: "html is required" });
+      const hi = await translateHtml(html.trim());
+      return res.json({ success: true, data: { hi } });
+    }
     if (Array.isArray(texts)) {
       if (!texts.length || !texts.every((t) => typeof t === "string"))
         return res.status(400).json({ success: false, message: "texts must be a non-empty string array" });
@@ -41,7 +48,7 @@ router.post("/translate", async (req, res) => {
       return res.json({ success: true, data: { translations } });
     }
     if (typeof text !== "string" || !text.trim())
-      return res.status(400).json({ success: false, message: "text is required" });
+      return res.status(400).json({ success: false, message: "text or html is required" });
     const hi = await translateSentence(text.trim());
     return res.json({ success: true, data: { hi } });
   } catch (err) {

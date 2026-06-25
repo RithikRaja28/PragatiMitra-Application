@@ -32,10 +32,11 @@ const isUUID  = (v) => typeof v === "string" && UUID_RE.test(v);
 router.get("/review-queue", async (req, res) => {
   const pool = req.app.locals.pool;
   try {
-    const roles   = req.user.roles || [];
-    const isAdmin = roles.includes("super_admin") || roles.includes("institute_admin");
-    const instId  = req.user.institutionId || null;
-    const userId  = req.user.userId;
+    const roles              = req.user.roles || [];
+    const isAdmin            = roles.includes("super_admin") || roles.includes("institute_admin");
+    const isDirectorsOffice  = roles.includes("directors_office");
+    const instId             = req.user.institutionId || null;
+    const userId             = req.user.userId;
 
     /*
      * Strict step routing:
@@ -45,12 +46,16 @@ router.get("/review-queue", async (req, res) => {
      *   Admins additionally see submitted sections that have NO workflow step
      *   assigned (current_step_id IS NULL) as an oversight fallback — those
      *   sections can't route to anyone specific.
+     *
+     *   Directors office users additionally see all sections where
+     *   needs_director_approval = TRUE (routed after last workflow step).
      */
     const { rows } = await pool.query(
       `SELECT
          s.id, s.title, s.status, s.report_id, s.current_step_id,
          s.submission_deadline,
          s.updated_at AS submitted_at,
+         s.needs_director_approval,
          r.title AS report_title, r.report_type, r.academic_year,
          ws.step_name  AS current_step_name,
          ws.step_order AS current_step_order,
@@ -66,11 +71,13 @@ router.get("/review-queue", async (req, res) => {
            /* Step explicitly designates this user or their role */
            ws.approver_user_id = $2
            OR ws.approver_role = ANY($3::text[])
-           /* Admins see workflow-less sections as fallback oversight */
-           OR ($4 AND s.current_step_id IS NULL)
+           /* Admins see stepless sections as fallback oversight — NOT director-approval ones */
+           OR ($4 AND s.current_step_id IS NULL AND NOT COALESCE(s.needs_director_approval, FALSE))
+           /* Directors office see all sections pending their final approval */
+           OR ($5 AND s.needs_director_approval = TRUE)
          )
        ORDER BY s.updated_at DESC`,
-      [instId, userId, roles, isAdmin]
+      [instId, userId, roles, isAdmin, isDirectorsOffice]
     );
 
     return res.json({ success: true, data: rows });

@@ -43,7 +43,7 @@ export function WordBlock({ block }) {
           <div style={{ width: `${w}%` }}>
             {c.url ? (
               <img src={c.url} alt={c.alt || c.caption || ""}
-                style={{ width: "100%", borderRadius: 3, border: "1px solid #e5e7eb" }}
+                style={{ width: "100%", maxHeight: 600, objectFit: "contain", borderRadius: 3, border: "1px solid #e5e7eb" }}
                 onError={(e) => { e.currentTarget.style.display = "none"; }} />
             ) : (
               <div style={{ height: 60, background: "#f9fafb", border: "1px dashed #d1d5db", borderRadius: 4, display: "flex", alignItems: "center", justifyContent: "center", color: "#9ca3af", fontSize: 10 }}>
