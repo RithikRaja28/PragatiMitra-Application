@@ -2,7 +2,7 @@
 
 /**
  * routes/builder/compile.js
- * Generates DOCX/PDF/HTML/JSON that visually matches ReportPreviewPage + wordDocUtils.jsx.
+ * Generates DOCX/PDF that visually matches ReportPreviewPage + wordDocUtils.jsx.
  *
  * GET  /report/:reportId/status
  * POST /report/:reportId
@@ -213,7 +213,7 @@ router.post(
       } = req.body;
 
       const fmt = format.toUpperCase();
-      if (!["DOCX", "PDF", "HTML", "JSON"].includes(fmt))
+      if (!["DOCX", "PDF"].includes(fmt))
         return res.status(400).json({ success: false, message: "Invalid format" });
 
       // Fetch report + branding
@@ -291,23 +291,15 @@ router.post(
 
       const ts       = Date.now();
       const safeName = report.title.replace(/[^a-zA-Z0-9]/g, "_").slice(0, 60);
-      const ext      = fmt === "DOCX" ? "docx" : fmt === "PDF" ? "pdf" : fmt === "JSON" ? "json" : "html";
+      const ext      = fmt === "DOCX" ? "docx" : "pdf";
       const fileName = `${safeName}_${ts}.${ext}`;
       const outPath  = path.join(EXPORTS_DIR, fileName);
 
       let fileSize = 0;
       if (fmt === "DOCX") {
         fileSize = await generateDocx(report, sections, outPath, opts);
-      } else if (fmt === "PDF") {
-        fileSize = await generatePdf(report, sections, outPath, opts);
-      } else if (fmt === "JSON") {
-        const json = JSON.stringify({ report, sections, opts }, null, 2);
-        fs.writeFileSync(outPath, json);
-        fileSize = Buffer.byteLength(json);
       } else {
-        const html = buildHtml(report, sections, opts);
-        fs.writeFileSync(outPath, html);
-        fileSize = Buffer.byteLength(html);
+        fileSize = await generatePdf(report, sections, outPath, opts);
       }
 
       const { rows: compRows } = await pool.query(
@@ -375,8 +367,6 @@ router.get("/report/:reportId/:compileId/download", async (req, res) => {
     const mimeMap = {
       DOCX: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
       PDF:  "application/pdf",
-      HTML: "text/html",
-      JSON: "application/json",
     };
     res.setHeader("Content-Type", mimeMap[artifact.format] || "application/octet-stream");
     res.setHeader("Content-Disposition", `attachment; filename="${path.basename(artifact.storage_path)}"`);

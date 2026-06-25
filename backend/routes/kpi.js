@@ -601,6 +601,8 @@ async function ensureTables(pool) {
   await safeAddText("kpi_config", "institute_id");
   await safeAddText("kpi_config", "department_id");
 
+  await safeAdd(`ALTER TABLE kpi_svg_reports ADD COLUMN IF NOT EXISTS academic_year VARCHAR(20)`);
+
   // 4. Performance indexes (idempotent — IF NOT EXISTS)
   await safeAdd(`CREATE INDEX IF NOT EXISTS idx_kpi_config_scope_inst   ON kpi_config (scope, institute_id)  WHERE scope = 'institute'`);
   await safeAdd(`CREATE INDEX IF NOT EXISTS idx_kpi_config_scope_dept   ON kpi_config (scope, department_id) WHERE scope = 'department'`);
@@ -1380,9 +1382,9 @@ router.post("/configs/:id/export-svg", async (req, res) => {
       return res.status(403).json({ ok: false, error: "Not authorized." });
     const cfg = cfgRows[0];
     const { rows } = await req.pool.query(
-      `INSERT INTO kpi_svg_reports (config_id, title, svg_data, report_data)
-       VALUES ($1,$2,$3,$4) RETURNING id, config_id, title, svg_bytes, exported_at`,
-      [cfg.id, cfg.title, svg_data, report_data ? JSON.stringify(report_data) : null]
+      `INSERT INTO kpi_svg_reports (config_id, title, svg_data, report_data, academic_year)
+       VALUES ($1,$2,$3,$4,$5) RETURNING id, config_id, title, svg_bytes, exported_at, academic_year`,
+      [cfg.id, cfg.title, svg_data, report_data ? JSON.stringify(report_data) : null, cfg.academic_year || null]
     );
 
     await writeAuditLog(req, {

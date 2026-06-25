@@ -36,8 +36,6 @@ const C = {
 const FORMAT_OPTIONS = [
   { value: "pdf",  label: "PDF",  icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/></svg>, desc: "Portable Document Format — best for sharing" },
   { value: "docx", label: "DOCX", icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/></svg>, desc: "Microsoft Word — editable document" },
-  { value: "html", label: "HTML", icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>, desc: "Web page — view in browser" },
-  { value: "json", label: "JSON", icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>, desc: "Structured data — for integrations" },
 ];
 
 const LANG_OPTIONS = [
@@ -216,7 +214,7 @@ export default function CompileReportPage({ reportId, onBack }) {
         {/* ── format selector ── */}
         <div style={{ marginTop: 28 }}>
           <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 14 }}>Output Format</div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 14 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
             {FORMAT_OPTIONS.map(f => (
               <FormatCard key={f.value} {...f} selected={format === f.value} onClick={() => setFormat(f.value)} />
             ))}

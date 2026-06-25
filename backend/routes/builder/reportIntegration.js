@@ -824,11 +824,18 @@ router.get("/kpi-reports/years", async (req, res) => {
   try {
     if (!(await kpiTableExists(pool))) return res.json({ success: true, data: [] });
 
+    const iid = req.user.institutionId || null;
     const { rows } = await pool.query(
-      `SELECT DISTINCT academic_year
-       FROM public.kpi_svg_reports
-       WHERE academic_year IS NOT NULL
-       ORDER BY academic_year DESC`
+      `SELECT DISTINCT COALESCE(ksr.academic_year, kc.academic_year) AS academic_year
+       FROM public.kpi_svg_reports ksr
+       JOIN public.kpi_config kc ON kc.id = ksr.config_id
+       LEFT JOIN public.departments dept ON dept.department_id::text = kc.department_id
+       WHERE COALESCE(ksr.academic_year, kc.academic_year) IS NOT NULL
+         AND ($1::text IS NULL
+              OR kc.institute_id = $1::text
+              OR dept.institution_id::text = $1::text)
+       ORDER BY academic_year DESC`,
+      [iid]
     );
     return res.json({ success: true, data: rows.map(r => r.academic_year) });
   } catch (err) {
@@ -845,25 +852,32 @@ router.get("/kpi-reports", async (req, res) => {
 
     const year   = req.query.year != null ? Number(req.query.year) : null;
     const search = (req.query.search || "").trim();
+    const iid    = req.user.institutionId || null;
 
-    const params = [];
-    let where    = "WHERE 1=1";
+    const params = [iid];
+    let where    = `WHERE ($1::text IS NULL
+                          OR kc.institute_id = $1::text
+                          OR dept.institution_id::text = $1::text)`;
 
     if (year) {
       params.push(year);
-      where += ` AND academic_year = $${params.length}`;
+      where += ` AND COALESCE(ksr.academic_year, kc.academic_year)::text = $${params.length}::text`;
     }
     if (search) {
       params.push(`%${search}%`);
-      where += ` AND title ILIKE $${params.length}`;
+      where += ` AND ksr.title ILIKE $${params.length}`;
     }
 
     const { rows } = await pool.query(
-      `SELECT id, config_id, title, academic_year, exported_at,
-              LENGTH(svg_data) AS svg_size
-       FROM public.kpi_svg_reports
+      `SELECT ksr.id, ksr.config_id, ksr.title,
+              COALESCE(ksr.academic_year, kc.academic_year) AS academic_year,
+              ksr.exported_at,
+              LENGTH(ksr.svg_data) AS svg_size
+       FROM public.kpi_svg_reports ksr
+       JOIN public.kpi_config kc ON kc.id = ksr.config_id
+       LEFT JOIN public.departments dept ON dept.department_id::text = kc.department_id
        ${where}
-       ORDER BY exported_at DESC`,
+       ORDER BY ksr.exported_at DESC`,
       params
     );
     return res.json({ success: true, data: rows });
@@ -884,10 +898,18 @@ router.get("/kpi-reports/:id", async (req, res) => {
     if (!Number.isFinite(kpiId) || kpiId <= 0)
       return res.status(400).json({ success: false, message: "Invalid KPI id" });
 
+    const iid = req.user.institutionId || null;
     const { rows } = await pool.query(
-      `SELECT id, config_id, title, svg_data, academic_year, exported_at
-       FROM public.kpi_svg_reports WHERE id = $1`,
-      [kpiId]
+      `SELECT ksr.id, ksr.config_id, ksr.title, ksr.svg_data, ksr.exported_at,
+              COALESCE(ksr.academic_year, kc.academic_year) AS academic_year
+       FROM public.kpi_svg_reports ksr
+       JOIN public.kpi_config kc ON kc.id = ksr.config_id
+       LEFT JOIN public.departments dept ON dept.department_id::text = kc.department_id
+       WHERE ksr.id = $1
+         AND ($2::text IS NULL
+              OR kc.institute_id = $2::text
+              OR dept.institution_id::text = $2::text)`,
+      [kpiId, iid]
     );
     if (!rows.length) return res.status(404).json({ success: false, message: "KPI not found" });
 
@@ -904,7 +926,7 @@ router.get("/kpi-reports/:id", async (req, res) => {
         academic_year: kpi.academic_year,
         exported_at:   kpi.exported_at,
         svg_data:      sanitized_svg,
-        extracted,       // { columns, series, totals }
+        extracted,
       },
     });
   } catch (err) {
@@ -937,11 +959,19 @@ router.post("/sections/:sectionId/blocks/kpi-import", async (req, res) => {
     if (!(await kpiTableExists(pool)))
       return res.status(404).json({ success: false, message: "KPI reports table not found" });
 
-    // Fetch SVG
+    // Fetch SVG — join kpi_config to resolve academic_year when missing on the export row
+    const iid = req.user.institutionId || null;
     const { rows: kpiRows } = await pool.query(
-      `SELECT id, config_id, title, svg_data, academic_year, exported_at
-       FROM public.kpi_svg_reports WHERE id=$1`,
-      [kpiReportId]
+      `SELECT ksr.id, ksr.config_id, ksr.title, ksr.svg_data, ksr.exported_at,
+              COALESCE(ksr.academic_year, kc.academic_year) AS academic_year
+       FROM public.kpi_svg_reports ksr
+       JOIN public.kpi_config kc ON kc.id = ksr.config_id
+       LEFT JOIN public.departments dept ON dept.department_id::text = kc.department_id
+       WHERE ksr.id = $1
+         AND ($2::text IS NULL
+              OR kc.institute_id = $2::text
+              OR dept.institution_id::text = $2::text)`,
+      [kpiReportId, iid]
     );
     if (!kpiRows.length) return res.status(404).json({ success: false, message: "KPI report not found" });
 
@@ -1026,8 +1056,11 @@ router.post("/blocks/:blockId/kpi-reimport", async (req, res) => {
       return res.status(404).json({ success: false, message: "KPI reports table not found" });
 
     const { rows: kpiRows } = await pool.query(
-      `SELECT id, title, svg_data, academic_year, exported_at
-       FROM public.kpi_svg_reports WHERE id=$1`,
+      `SELECT ksr.id, ksr.title, ksr.svg_data, ksr.exported_at,
+              COALESCE(ksr.academic_year, kc.academic_year) AS academic_year
+       FROM public.kpi_svg_reports ksr
+       JOIN public.kpi_config kc ON kc.id = ksr.config_id
+       WHERE ksr.id = $1`,
       [kpiReportId]
     );
     if (!kpiRows.length) return res.status(404).json({ success: false, message: "KPI report not found" });

@@ -93,9 +93,10 @@ export default function AssignSectionsPage({ reportId, onBack }) {
       const instId = authUser?.institutionId || authUser?.institution_id || "";
       const deptUrl = instId ? `/api/departments?institution_id=${instId}` : "/api/departments";
 
+      const userUrl = instId ? `/api/lookup/users?institution_id=${instId}` : "/api/lookup/users";
       const [repRes, userRes, deptRes, roleRes] = await Promise.all([
         apiJson(apiFetch, `/api/builder/reports/${reportId}`),
-        apiJson(apiFetch, "/api/users"),
+        apiJson(apiFetch, userUrl),
         apiJson(apiFetch, deptUrl),
         apiJson(apiFetch, "/api/roles").catch(() => ({ data: [] })),
       ]);
@@ -375,7 +376,7 @@ export default function AssignSectionsPage({ reportId, onBack }) {
                     onChange={e => { setUserSearch(e.target.value); if (!e.target.value) setAssignUserId(""); }} />
                   {userSearch && (
                     <div style={{ maxHeight: 180, overflowY: "auto", border: `1px solid ${C.border}`, borderRadius: 6, marginTop: 4 }}>
-                      {filteredUsers.slice(0, 12).map(u => (
+                      {filteredUsers.slice(0, 50).map(u => (
                         <div key={u.id}
                           style={{ padding: "7px 10px", cursor: "pointer", fontSize: 12, color: C.text,
                                    background: assignUserId === u.id ? C.primaryLt : "transparent",
