@@ -167,6 +167,7 @@ const CSS = `
     padding: 32px 30px;
     width: 430px;
     max-width: 100%;
+    font-family: 'Plus Jakarta Sans', sans-serif;
     animation: noaSlideUp 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
   }
   @keyframes noaSlideUp {

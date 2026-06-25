@@ -87,13 +87,13 @@ function AssignmentList({ assignments, onEdit, onToggle, onDelete, toggling, del
                 </td>
                 <td style={{ padding: "14px 16px" }}>
                   <div style={{ display: "flex", gap: 6 }}>
-                    <button onClick={() => onEdit(a)} disabled={isBusy} style={{ padding: "5px 12px", borderRadius: 7, border: "1.5px solid #e2e8f0", background: "#fff", fontSize: 12, fontWeight: 600, color: ACCENT, cursor: isBusy ? "not-allowed" : "pointer", opacity: isBusy ? 0.6 : 1 }}>
+                    <button onClick={() => onEdit(a)} disabled={isBusy} style={{ padding: "5px 12px", borderRadius: 7, border: "1.5px solid #e2e8f0", background: "#fff", fontSize: 12, fontFamily: "inherit", fontWeight: 600, color: ACCENT, cursor: isBusy ? "not-allowed" : "pointer", opacity: isBusy ? 0.6 : 1 }}>
                       {t("Edit", lang)}
                     </button>
-                    <button onClick={() => onToggle(a.id, !a.is_active)} disabled={isBusy} style={{ padding: "5px 12px", borderRadius: 7, border: `1.5px solid ${a.is_active ? "#fed7aa" : "#bbf7d0"}`, background: "#fff", fontSize: 12, fontWeight: 600, color: a.is_active ? "#c2410c" : "#15803d", cursor: isBusy ? "not-allowed" : "pointer", opacity: isBusy ? 0.6 : 1 }}>
+                    <button onClick={() => onToggle(a.id, !a.is_active)} disabled={isBusy} style={{ padding: "5px 12px", borderRadius: 7, border: `1.5px solid ${a.is_active ? "#fed7aa" : "#bbf7d0"}`, background: "#fff", fontSize: 12, fontFamily: "inherit", fontWeight: 600, color: a.is_active ? "#c2410c" : "#15803d", cursor: isBusy ? "not-allowed" : "pointer", opacity: isBusy ? 0.6 : 1 }}>
                       {toggling === a.id ? "…" : a.is_active ? t("Disable", lang) : t("Enable", lang)}
                     </button>
-                    <button onClick={() => onDelete(a.id)} disabled={isBusy} style={{ padding: "5px 12px", borderRadius: 7, border: "1.5px solid #fecaca", background: "#fff", fontSize: 12, fontWeight: 600, color: "#dc2626", cursor: isBusy ? "not-allowed" : "pointer", opacity: isBusy ? 0.6 : 1 }}>
+                    <button onClick={() => onDelete(a.id)} disabled={isBusy} style={{ padding: "5px 12px", borderRadius: 7, border: "1.5px solid #fecaca", background: "#fff", fontSize: 12, fontFamily: "inherit", fontWeight: 600, color: "#dc2626", cursor: isBusy ? "not-allowed" : "pointer", opacity: isBusy ? 0.6 : 1 }}>
                       {deleting === a.id ? "…" : t("Delete", lang)}
                     </button>
                   </div>
@@ -142,7 +142,7 @@ function AssignmentModal({ mode, assignment, onDone, onClose, apiFetch, institut
      In edit mode the year is pre-set, so this fires immediately. */
   useEffect(() => {
     if (!form.reporting_year) { setUsers([]); return; }
-    const params = new URLSearchParams({ institution_id: institutionId, exclude_roles: "super_admin" });
+    const params = new URLSearchParams({ institution_id: institutionId, exclude_roles: "super_admin,institute_admin,publication_cell,directors_office,finance_officer" });
     setLoadingUsers(true);
     apiFetch(`/api/lookup/users?${params}`)
       .then(r => r.json())
@@ -190,7 +190,7 @@ function AssignmentModal({ mode, assignment, onDone, onClose, apiFetch, institut
 
   const overlay = (
     <div
-      style={{ position: "fixed", inset: 0, zIndex: 10000, background: "rgba(15,23,42,0.55)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}
+      style={{ position: "fixed", inset: 0, zIndex: 10000, background: "rgba(15,23,42,0.55)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, fontFamily: "'Plus Jakarta Sans', sans-serif" }}
       onClick={(e) => { if (e.target === e.currentTarget && !saving) onClose(); }}
     >
       <div style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 520, maxHeight: "90vh", overflow: "auto", boxShadow: "0 24px 64px rgba(0,0,0,0.22)", display: "flex", flexDirection: "column" }}>
