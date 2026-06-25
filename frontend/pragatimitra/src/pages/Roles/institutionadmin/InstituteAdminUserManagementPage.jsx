@@ -751,7 +751,6 @@ export default function InstituteAdminUserManagementPage() {
           <>
             Manage users belonging to{" "}
             <strong style={{ color: "#0891b2" }}>{institutionName}</strong>
-            {" — "}Super Admin and Institute Admin accounts are not shown here.
           </>
         }
         actions={
