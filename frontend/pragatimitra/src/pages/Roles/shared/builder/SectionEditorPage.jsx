@@ -3091,7 +3091,7 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
           <KpiImportWizard
             sectionId={sectionId}
             orderIndex={kpiImportWizard.orderIndex}
-            defaultYear={reportMeta?.academic_year ? Number(String(reportMeta.academic_year).split("-")[0]) : undefined}
+            defaultYear={reportMeta?.academic_year || undefined}
             apiFetch={apiFetch}
             onImported={handleKpiImported}
             onClose={() => setKpiImportWizard({ open: false, afterIndex: undefined, orderIndex: undefined })}

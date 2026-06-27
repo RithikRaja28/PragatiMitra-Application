@@ -850,7 +850,7 @@ router.get("/kpi-reports", async (req, res) => {
   try {
     if (!(await kpiTableExists(pool))) return res.json({ success: true, data: [] });
 
-    const year   = req.query.year != null ? Number(req.query.year) : null;
+    const year   = (req.query.year || "").trim() || null;
     const search = (req.query.search || "").trim();
     const iid    = req.user.institutionId || null;
 

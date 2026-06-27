@@ -237,19 +237,6 @@ pool.query(`ALTER TABLE public.audit_logs ADD COLUMN IF NOT EXISTS browser_name 
 pool.query(`ALTER TABLE public.audit_logs ADD COLUMN IF NOT EXISTS session_id UUID`)
   .catch((e) => logger.error("Failed to ensure audit_logs.session_id column", { stack: e.stack }));
 
-/* ── kpi_svg_reports: ensure academic_year column + backfill from exported_at ── */
-pool.query(`ALTER TABLE public.kpi_svg_reports ADD COLUMN IF NOT EXISTS academic_year INTEGER`)
-  .then(() => pool.query(`
-    UPDATE public.kpi_svg_reports
-    SET academic_year = CASE
-      WHEN EXTRACT(MONTH FROM exported_at) >= 4
-        THEN EXTRACT(YEAR FROM exported_at)::int
-      ELSE EXTRACT(YEAR FROM exported_at)::int - 1
-    END
-    WHERE academic_year IS NULL
-  `))
-  .catch(e => logger.error("Failed to ensure kpi_svg_reports.academic_year", { stack: e.stack }));
-
 /* ── section_versions: ensure reviewer/decision columns added after initial schema.
    Guarded so it no-ops cleanly when the report-builder table hasn't been created
    yet (its migration may not have run on this database). ── */
