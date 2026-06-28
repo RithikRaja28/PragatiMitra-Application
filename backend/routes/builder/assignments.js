@@ -21,8 +21,37 @@
 const express           = require("express");
 const { verifyToken, requireRole } = require("../../middleware/auth");
 const { writeAuditLog } = require("../../utils/audit");
+const { enqueueEmail }  = require("../../services/mailService");
 const logger            = require("../../utils/logger");
 const { getLogContext } = logger;
+
+/* Fire-and-forget: fetch section+report context then enqueue assignment email */
+function _emailSectionAssigned(pool, { userId, userName, sectionId, role, dueAt }) {
+  pool.query(
+    `SELECT u.email, u.full_name, rs.title AS section_title, r.title AS report_title
+     FROM public.users u
+     JOIN public.report_sections rs ON rs.id = $2
+     JOIN public.reports r ON r.id = rs.report_id
+     WHERE u.id = $1`,
+    [userId, sectionId]
+  ).then(({ rows }) => {
+    if (!rows[0]?.email) return;
+    const { email, full_name, section_title, report_title } = rows[0];
+    enqueueEmail(pool, {
+      eventId:         "section_assigned",
+      recipientEmail:  email,
+      recipientUserId: userId,
+      payload: {
+        full_name:    userName || full_name,
+        section_name: section_title  || `Section ${sectionId.slice(0, 8)}`,
+        report_name:  report_title   || "Report",
+        role:         role           || "CONTRIBUTOR",
+        due_at:       dueAt ? new Date(dueAt).toLocaleDateString() : null,
+        login_url:    process.env.APP_LOGIN_URL || "http://localhost:5173/login",
+      },
+    }).catch((e) => logger.error("Failed to enqueue section_assigned email", { err: e.message }));
+  }).catch(() => {});
+}
 
 const router = express.Router();
 router.use(verifyToken);
@@ -171,6 +200,8 @@ router.post(
         [user_id, `You have been assigned a new section as ${role}`, sectionId]
       ).catch(() => {});
 
+      _emailSectionAssigned(pool, { userId: user_id, userName: ur.rows[0].full_name, sectionId, role: role.toUpperCase(), dueAt: due_at });
+
       await writeAuditLog(req, {
         actionType: "SECTION_ASSIGNED", entityType: "SECTION", entityId: sectionId,
         newValue: { user_id, role }, status: "SUCCESS",
@@ -219,6 +250,7 @@ router.post(
            VALUES ($1, 'SECTION_ASSIGNED', 'Section assigned to you', $2, 'SECTION', $3)`,
           [u.user_id, `You have been assigned a section as ${role}`, sectionId]
         ).catch(() => {});
+        _emailSectionAssigned(pool, { userId: u.user_id, userName: null, sectionId, role, dueAt: due_at || u.due_at });
       }
 
       return res.status(201).json({ success: true, data: created });
@@ -271,6 +303,7 @@ router.post(
             [secId, user_id, r, due_at || null, req.user.userId]
           );
           created.push({ type: "user", ...rows[0] });
+          _emailSectionAssigned(pool, { userId: user_id, userName: null, sectionId: secId, role: r, dueAt: due_at });
         }
         if (isUUID(department_id)) {
           const [sdaRes] = await Promise.all([
