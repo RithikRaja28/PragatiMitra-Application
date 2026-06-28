@@ -5,6 +5,8 @@ import React, { useRef, useEffect, useState } from "react";
 import { AlignLeft, AlignCenter, AlignRight, AlignJustify, Settings } from "lucide-react";
 import { useApi } from "../../../../hooks/useApi";
 import { useLanguage } from "../../../../i18n/LanguageContext";
+import { useCompressionSettings } from "../../../../hooks/useCompressionSettings";
+import { Toast } from "../../../../components/shared/formUtils";
 
 function cfgTitle(cfg, lang) {
   return (lang === "hi" && cfg?.title_hi) ? cfg.title_hi : (cfg?.title || "KPI Chart");
@@ -109,11 +111,19 @@ function TranslateButton({ apiFetch, getSource, onTranslated, label = "Translate
 }
 
 /* ── S3 upload helper ─────────────────────────────────────────────────── */
-async function uploadToS3(file, apiFetch, folder) {
+async function uploadToS3(file, apiFetch, folder, compressionSettings) {
   if (!file) throw new Error("No file selected");
-  if (file.size > 10 * 1024 * 1024) throw new Error("File must be under 10 MB");
   const ALLOWED = ["image/jpeg", "image/png", "image/webp"];
   if (!ALLOWED.includes(file.type)) throw new Error("Only JPEG, PNG and WebP images are allowed");
+
+  if (compressionSettings) {
+    const sizeKB = file.size / 1024;
+    const minKB  = Number(compressionSettings.image_min_kb);
+    const maxKB  = Number(compressionSettings.image_max_kb);
+    if (sizeKB < minKB || sizeKB > maxKB) {
+      throw new Error(`Uploaded image size: ${Math.round(sizeKB)} KB. Allowed size: ${minKB} KB – ${maxKB} KB.`);
+    }
+  }
 
   const presignRes = await apiFetch("/api/upload/presign", {
     method: "POST",
@@ -131,26 +141,66 @@ async function uploadToS3(file, apiFetch, folder) {
 
 function UploadImageBtn({ onUploaded, apiFetch, folder, disabled }) {
   const fileRef  = useRef(null);
-  const [uploading, setUploading] = useState(false);
-  const [err,       setErr]       = useState("");
+  const [uploading,    setUploading]    = useState(false);
+  const [err,          setErr]          = useState("");
+  const [uploadResult, setUploadResult] = useState(null); // null | "success" | "error"
+  const [toast,        setToast]        = useState(null);
+  const { settings: compressionSettings } = useCompressionSettings();
+
+  function showToast(message, type = "success") {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3500);
+  }
 
   async function handleChange(e) {
     const file = e.target.files?.[0];
     if (!file) return;
-    setUploading(true); setErr("");
-    try { onUploaded(await uploadToS3(file, apiFetch, folder)); }
-    catch (ex) { setErr(ex.message || "Upload failed"); }
-    finally { setUploading(false); if (fileRef.current) fileRef.current.value = ""; }
+    setUploading(true); setErr(""); setUploadResult(null);
+    try {
+      onUploaded(await uploadToS3(file, apiFetch, folder, compressionSettings));
+      setUploadResult("success");
+      showToast("Upload Successful");
+      setTimeout(() => setUploadResult(null), 2500);
+    } catch (ex) {
+      setErr(ex.message || "Upload failed");
+      setUploadResult("error");
+      showToast("Upload Failed", "error");
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
   }
 
   return (
-    <div style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-start", gap: 2 }}>
+    <div style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-start", gap: 3 }}>
+      {toast && <Toast message={toast.message} type={toast.type} />}
       <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" style={{ display: "none" }} onChange={handleChange} />
-      <button type="button" onClick={() => fileRef.current?.click()} disabled={uploading || disabled}
-        style={{ padding: "5px 11px", border: "1px solid #e2e8f0", borderRadius: 7, background: uploading ? "#f1f5f9" : "#fff", fontSize: 11, cursor: uploading || disabled ? "not-allowed" : "pointer", color: "#475569", fontWeight: 600, display: "flex", alignItems: "center", gap: 5, whiteSpace: "nowrap" }}>
-        {uploading ? "Uploading..." : "Upload"}
-      </button>
-      {err && <div style={{ fontSize: 10, color: "#b91c1c", maxWidth: 200 }}>{err}</div>}
+
+      {uploadResult === "success" ? (
+        <div style={{ fontSize: 11, color: "#16a34a", fontWeight: 600 }}>✓ Uploaded Successfully</div>
+      ) : (
+        <button type="button" onClick={() => fileRef.current?.click()} disabled={uploading || disabled}
+          style={{ padding: "5px 11px", border: "1px solid #e2e8f0", borderRadius: 7, background: uploading ? "#f1f5f9" : "#fff", fontSize: 11, cursor: uploading || disabled ? "not-allowed" : "pointer", color: "#475569", fontWeight: 600, display: "flex", alignItems: "center", gap: 5, whiteSpace: "nowrap" }}>
+          {uploading ? "Uploading..." : "Upload"}
+        </button>
+      )}
+
+      <div style={{ fontSize: 10, color: "#94a3b8" }}>
+        Images (JPG, JPEG, PNG): {Number(compressionSettings.image_min_kb)} KB – {Number(compressionSettings.image_max_kb)} KB
+      </div>
+
+      {uploadResult === "error" && err && (
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 4, maxWidth: 240 }}>
+          <div style={{ fontSize: 10, color: "#dc2626", fontWeight: 600 }}>{err}</div>
+          <button
+            type="button"
+            onClick={() => { setErr(""); setUploadResult(null); fileRef.current?.click(); }}
+            style={{ fontSize: 10, fontWeight: 600, color: "#dc2626", background: "none", border: "1px solid #f87171", borderRadius: 5, padding: "3px 8px", cursor: "pointer" }}
+          >
+            ↩ Click to Upload Again
+          </button>
+        </div>
+      )}
     </div>
   );
 }
