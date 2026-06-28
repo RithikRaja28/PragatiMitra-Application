@@ -18,6 +18,7 @@ const https   = require("https");
 
 const { verifyToken, requireRole } = require("../../middleware/auth");
 const { writeAuditLog }            = require("../../utils/audit");
+const { uploadBuffer, getReadUrl, deleteFile: deleteS3File } = require("../../utils/s3");
 const logger                       = require("../../utils/logger");
 const { getLogContext }            = logger;
 const { translateSentence }        = require("../../services/translationService");
@@ -302,12 +303,29 @@ router.post(
         fileSize = await generatePdf(report, sections, outPath, opts);
       }
 
+      // Upload to S3 (compiled-reports folder) — fall back to local file on S3 failure
+      const mimeType = fmt === "DOCX"
+        ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        : "application/pdf";
+      const s3Key = `compiled-reports/${reportId}/${fileName}`;
+      let storePath = outPath;
+      let storeOpts = opts;
+      try {
+        const buffer = fs.readFileSync(outPath);
+        await uploadBuffer(s3Key, buffer, mimeType);
+        storeOpts = { ...opts, s3_key: s3Key };
+        storePath = s3Key;
+        fs.unlink(outPath, () => {}); // clean up local file after successful S3 upload
+      } catch (s3Err) {
+        logger.warn("compile: S3 upload failed, keeping local file", { err: s3Err.message });
+      }
+
       const { rows: compRows } = await pool.query(
         `INSERT INTO public.compiled_reports
            (report_id, language, format, storage_path, file_size, compile_options, included_sections, compiled_by)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
-        [reportId, language, fmt, outPath, fileSize,
-         JSON.stringify(opts), sections.map(s => s.id), req.user.userId]
+        [reportId, language, fmt, storePath, fileSize,
+         JSON.stringify(storeOpts), sections.map(s => s.id), req.user.userId]
       );
 
       await writeAuditLog(req, {
@@ -361,9 +379,17 @@ router.get("/report/:reportId/:compileId/download", async (req, res) => {
     );
     if (!rows.length) return res.status(404).json({ success: false, message: "Artifact not found" });
     const artifact = rows[0];
+    const s3Key    = artifact.compile_options?.s3_key;
+
+    // S3-stored file: redirect to presigned URL (1-hour window)
+    if (s3Key) {
+      const url = await getReadUrl(s3Key, 3600);
+      return res.redirect(url);
+    }
+
+    // Fallback: stream from local disk (legacy records created before S3 integration)
     if (!fs.existsSync(artifact.storage_path))
       return res.status(404).json({ success: false, message: "File not found on server" });
-
     const mimeMap = {
       DOCX: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
       PDF:  "application/pdf",
@@ -377,6 +403,48 @@ router.get("/report/:reportId/:compileId/download", async (req, res) => {
     return res.status(500).json({ success: false, message: "Failed to download artifact" });
   }
 });
+
+/* ═════════════════════════════ DELETE ══════════════════════════════════════ */
+
+router.delete(
+  "/report/:reportId/:compileId",
+  requireRole(["super_admin", "institute_admin", "publication_cell"]),
+  async (req, res) => {
+    const pool = req.app.locals.pool;
+    try {
+      const { reportId, compileId } = req.params;
+      const { rows } = await pool.query(
+        `SELECT * FROM public.compiled_reports WHERE id = $1 AND report_id = $2`,
+        [compileId, reportId]
+      );
+      if (!rows.length) return res.status(404).json({ success: false, message: "Compiled report not found" });
+      const artifact = rows[0];
+      const s3Key    = artifact.compile_options?.s3_key;
+
+      // Remove from S3 if stored there
+      if (s3Key) {
+        await deleteS3File(s3Key).catch((e) =>
+          logger.warn("compile DELETE: S3 delete failed (continuing)", { key: s3Key, err: e.message })
+        );
+      } else if (artifact.storage_path && fs.existsSync(artifact.storage_path)) {
+        fs.unlink(artifact.storage_path, () => {});
+      }
+
+      await pool.query(`DELETE FROM public.compiled_reports WHERE id = $1`, [compileId]);
+
+      await writeAuditLog(req, {
+        actionType: "COMPILED_REPORT_DELETED", entityType: "REPORT", entityId: reportId,
+        oldValue: { compile_id: compileId, format: artifact.format }, status: "SUCCESS",
+        message: `Compiled ${artifact.format} report deleted`,
+      });
+
+      return res.json({ success: true, message: "Compiled report deleted" });
+    } catch (err) {
+      logger.error("compile DELETE", { ...getLogContext(req), err: err.message });
+      return res.status(500).json({ success: false, message: "Failed to delete compiled report" });
+    }
+  }
+);
 
 /* ══════════════════════════ DOCX GENERATION ════════════════════════════════ */
 /* Styling mirrors wordDocUtils.jsx → WordBlock + SectionHeader + A4Page      */

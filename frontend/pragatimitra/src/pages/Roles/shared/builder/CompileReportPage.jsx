@@ -51,10 +51,11 @@ export default function CompileReportPage({ reportId, onBack }) {
   const [history,   setHistory]   = useState([]);
   const [format,    setFormat]    = useState("pdf");
   const [language,  setLanguage]  = useState("en");
-  const [loading,   setLoading]   = useState(true);
-  const [compiling, setCompiling] = useState(false);
-  const [progress,  setProgress]  = useState(0);
-  const [toast,     setToast]     = useState(null);
+  const [loading,     setLoading]     = useState(true);
+  const [compiling,   setCompiling]   = useState(false);
+  const [progress,    setProgress]    = useState(0);
+  const [toast,       setToast]       = useState(null);
+  const [deletingId,  setDeletingId]  = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -113,6 +114,20 @@ export default function CompileReportPage({ reportId, onBack }) {
       await downloadViaFetch(apiFetch, dlPath, fname);
     } catch {
       setToast({ type: "error", message: "Download failed" });
+    }
+  };
+
+  const handleDelete = async (item) => {
+    if (!window.confirm(`Delete this ${item.format?.toUpperCase()} compilation? This cannot be undone.`)) return;
+    setDeletingId(item.id);
+    try {
+      await apiJson(apiFetch, `/api/builder/compile/report/${reportId}/${item.id}`, { method: "DELETE" });
+      setHistory(prev => prev.filter(h => h.id !== item.id));
+      setToast({ type: "success", message: "Compiled report deleted" });
+    } catch (err) {
+      setToast({ type: "error", message: err.message || "Delete failed" });
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -316,17 +331,34 @@ export default function CompileReportPage({ reportId, onBack }) {
                         {item.file_size ? `${Math.round(item.file_size / 1024)} KB` : "—"}
                       </td>
                       <td style={{ padding: "10px 14px" }}>
-                        <button onClick={() => handleDownload(item)}
-                          style={{
-                            display: "inline-flex", alignItems: "center", gap: 5,
-                            padding: "5px 12px", background: C.primary, color: "#fff",
-                            border: "none", borderRadius: 7, cursor: "pointer", fontSize: 11, fontWeight: 600,
-                          }}
-                          onMouseEnter={e => e.currentTarget.style.background = "#1d4ed8"}
-                          onMouseLeave={e => e.currentTarget.style.background = C.primary}>
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                          Download
-                        </button>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <button onClick={() => handleDownload(item)}
+                            style={{
+                              display: "inline-flex", alignItems: "center", gap: 5,
+                              padding: "5px 12px", background: C.primary, color: "#fff",
+                              border: "none", borderRadius: 7, cursor: "pointer", fontSize: 11, fontWeight: 600,
+                            }}
+                            onMouseEnter={e => e.currentTarget.style.background = "#1d4ed8"}
+                            onMouseLeave={e => e.currentTarget.style.background = C.primary}>
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                            Download
+                          </button>
+                          <button
+                            onClick={() => handleDelete(item)}
+                            disabled={deletingId === item.id}
+                            style={{
+                              display: "inline-flex", alignItems: "center", gap: 5,
+                              padding: "5px 10px", background: "#fef2f2", color: C.danger,
+                              border: `1px solid #fca5a5`, borderRadius: 7,
+                              cursor: deletingId === item.id ? "not-allowed" : "pointer",
+                              fontSize: 11, fontWeight: 600, opacity: deletingId === item.id ? 0.6 : 1,
+                            }}
+                            onMouseEnter={e => { if (deletingId !== item.id) e.currentTarget.style.background = "#fee2e2"; }}
+                            onMouseLeave={e => { e.currentTarget.style.background = "#fef2f2"; }}>
+                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
+                            {deletingId === item.id ? "Deleting…" : "Delete"}
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}

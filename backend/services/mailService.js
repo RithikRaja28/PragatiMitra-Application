@@ -1093,6 +1093,52 @@ async function sendFormRejectedEmail(pool, { full_name, email, section_name, rev
   }
 }
 
+/* ── Report section assigned to a user — notifies the assignee ── */
+async function sendSectionAssignedEmail(pool, { full_name, email, section_name, report_name, role, due_at, login_url, userId }) {
+  const EVENT = "section_assigned";
+  let tmpl;
+  try { tmpl = await getTemplateFromDB(pool, EVENT); }
+  catch (err) { logger.error(`sendSectionAssignedEmail: template not found: ${err.message}`); return null; }
+  const tokens = baseTokens({
+    UserName:     full_name,
+    FULL_NAME:    full_name,
+    Email:        email,
+    EMAIL:        email,
+    SECTION_NAME: section_name,
+    REPORT_NAME:  report_name || "Report",
+    ROLE:         role        || "Contributor",
+    DUE_AT:       due_at      || "Not set",
+    LoginURL:     login_url   || process.env.APP_LOGIN_URL || "http://localhost:5173/login",
+    LOGIN_URL:    login_url   || process.env.APP_LOGIN_URL || "http://localhost:5173/login",
+  });
+  if (tmpl.email_enabled) {
+    const subject   = resolveTokens(tmpl.email_subject, tokens);
+    const introText = resolveTokens(tmpl.email_body,    tokens);
+    await sendMail({ to: email, subject, html: loadNotificationLayout({
+      ...tokens,
+      HEADER_BADGE:    "Section Assigned",
+      HEADER_TITLE:    "A Section Has Been Assigned to You",
+      HEADER_SUBTITLE: `You have been assigned to edit "${section_name}"`,
+      INTRO_TEXT:      introText,
+      DETAILS_HTML:    _detailsTable([
+        ["Report",  report_name || "Report"],
+        ["Section", section_name],
+        ["Role",    role        || "Contributor"],
+        ["Due",     due_at      || "Not set"],
+      ]),
+      CTA_HTML: _ctaButton(tokens.LOGIN_URL, "View Section →"),
+    }) });
+  }
+  if (tmpl.app_enabled) {
+    const uid = await resolveUserId(pool, userId, email);
+    await insertNotification(pool, {
+      userId: uid, eventId: EVENT,
+      title:   resolveTokens(tmpl.email_subject, tokens),
+      message: resolveTokens(tmpl.app_message,   tokens),
+    });
+  }
+}
+
 /* ── Bulk import completed — notifies the admin who triggered the import ── */
 async function sendImportCompletedEmail(pool, { full_name, email, imported, skipped, failed, total, login_url, userId }) {
   const tmpl   = await getTemplateFromDB(pool, "import_completed");
@@ -1375,6 +1421,16 @@ async function _dispatchJob(pool, job) {
         login_url:        payload.login_url,
         userId,
       });
+    case "section_assigned":
+      return sendSectionAssignedEmail(pool, {
+        full_name:    payload.full_name,  email,
+        section_name: payload.section_name,
+        report_name:  payload.report_name,
+        role:         payload.role,
+        due_at:       payload.due_at,
+        login_url:    payload.login_url,
+        userId,
+      });
     case "form_submitted":
       return sendFormSubmittedEmail(pool, {
         full_name:         payload.full_name,  email,
@@ -1512,9 +1568,37 @@ async function _processNext(pool) {
   return true;
 }
 
+/* ── Ensure report-module templates exist in notification_templates ── */
+async function _seedReportTemplates(pool) {
+  const templates = [
+    {
+      event_id:      "section_assigned",
+      label:         "Report Section Assigned",
+      email_enabled: true,
+      app_enabled:   true,
+      email_subject: "Section Assigned for Editing — {SECTION_NAME}",
+      email_body:    "Hi {FULL_NAME},\n\nA section has been assigned to you for editing on {APP_NAME}.\n\nReport: {REPORT_NAME}\nSection: {SECTION_NAME}\nRole: {ROLE}\nDue: {DUE_AT}\n\nPlease complete the content and submit it for review.\n\nLog in to get started: {LOGIN_URL}\n\n— {APP_NAME} Team",
+      app_message:   'Section "{SECTION_NAME}" has been assigned to you as {ROLE}.',
+      role_group:    "contributor",
+      category:      "Reports",
+    },
+  ];
+  for (const t of templates) {
+    await pool.query(
+      `INSERT INTO public.notification_templates
+         (event_id, label, email_enabled, app_enabled, email_subject, email_body, app_message, role_group, category, is_active)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,TRUE)
+       ON CONFLICT (event_id) DO NOTHING`,
+      [t.event_id, t.label, t.email_enabled, t.app_enabled,
+       t.email_subject, t.email_body, t.app_message, t.role_group, t.category]
+    ).catch((e) => logger.warn(`_seedReportTemplates: skipped ${t.event_id}: ${e.message}`));
+  }
+}
+
 /* ── Start background polling loop (call once from server.js) ── */
 function startEmailWorker(pool) {
   logger.info(`emailWorker: started — polling every ${POLL_INTERVAL_MS / 1000}s`);
+  _seedReportTemplates(pool).catch((e) => logger.warn("emailWorker: template seed failed", { err: e.message }));
 
   async function tick() {
     try {
@@ -1559,6 +1643,7 @@ module.exports = {
   sendImportCompletedEmail,
   sendFormAssignedEmail,
   sendFormLockedEmail,
+  sendSectionAssignedEmail,
   sendFormSubmittedEmail,
   sendFormApprovedEmail,
   sendFormRejectedEmail,
