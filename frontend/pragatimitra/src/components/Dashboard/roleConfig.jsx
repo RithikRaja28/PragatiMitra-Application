@@ -30,6 +30,8 @@ import ReportBuilderListPage        from "../../pages/Roles/shared/builder/Repor
 import MyAssignedSectionsPage       from "../../pages/Roles/shared/builder/MyAssignedSectionsPage";
 import TemplateListPage              from "../../pages/Roles/shared/builder/TemplateListPage";
 import ReportAuditLogsPage          from "../../pages/Roles/shared/builder/ReportAuditLogsPage";
+import SharedReportsPage            from "../../pages/Roles/shared/builder/SharedReportsPage";
+import SharedReportViewPage         from "../../pages/Roles/shared/builder/SharedReportViewPage";
 
 /* ── Super Admin page imports ───────────────────────────────── */
 import SuperAdminOverviewPage    from "../../pages/Roles/superadmin/SuperAdminOverviewPage";
@@ -136,6 +138,10 @@ const FORM_FILL_SUB = [
 
 const FORM_DATA_SUB = [
   { path: "form-data/records", element: <FormDataPage /> },
+];
+
+const SHARED_REPORTS_SUB = [
+  { path: "shared-reports/view", element: <SharedReportViewPage /> },
 ];
 
 const KPI_INSTITUTE_SUB = [
@@ -326,11 +332,12 @@ export const ROLE_CONFIG = {
       {
         group: "Reports",
         items: [
-          { id: "ia-report-cycles",   label: "Report Cycles",   icon: "CalendarDays",  permission: null, slug: "report-cycles" },
-          { id: "ia-kpi",             label: "KPI Charts",      icon: "BarChart2",     permission: null, slug: "kpi-management",  subRoutes: KPI_INSTITUTE_SUB },
-          { id: "ia-report-builder",  label: "Reports",         icon: "BookOpen",      permission: null, slug: "report-builder",  subRoutes: REPORT_BUILDER_SUB },
-          { id: "ia-my-sections",     label: "My Sections",     icon: "FileEdit",      permission: null, slug: "my-sections",     subRoutes: MY_SECTIONS_SUB },
-          { id: "ia-review-queue",    label: "Review Queue",    icon: "ClipboardList", permission: null, slug: "review-queue",    subRoutes: REVIEW_QUEUE_SUB },
+          { id: "ia-report-cycles",    label: "Report Cycles",    icon: "CalendarDays",  permission: null, slug: "report-cycles" },
+          { id: "ia-kpi",              label: "KPI Charts",       icon: "BarChart2",     permission: null, slug: "kpi-management",     subRoutes: KPI_INSTITUTE_SUB },
+          { id: "ia-report-builder",   label: "Reports",          icon: "BookOpen",      permission: null, slug: "report-builder",     subRoutes: REPORT_BUILDER_SUB },
+          { id: "ia-my-sections",      label: "My Sections",      icon: "FileEdit",      permission: null, slug: "my-sections",        subRoutes: MY_SECTIONS_SUB },
+          { id: "ia-review-queue",     label: "Review Queue",     icon: "ClipboardList", permission: null, slug: "review-queue",       subRoutes: REVIEW_QUEUE_SUB },
+          { id: "ia-report-audit",     label: "Report Audit Logs", icon: "ScrollText",   permission: null, slug: "report-audit-logs" },
         ],
       },
       {
@@ -355,7 +362,8 @@ export const ROLE_CONFIG = {
       "ia-kpi":               <InstituteKpiPage />,
       "ia-report-builder":    <ReportBuilderListPage />,
       "ia-my-sections":       <MyAssignedSectionsPage />,
-      "ia-review-queue":      <ReviewQueuePage />,
+      "ia-review-queue":          <ReviewQueuePage />,
+      "ia-report-audit":          <ReportAuditLogsPage />,
       "ia-workflow-templates":    <WorkflowTemplatePage />,
     },
     defaultPage: "ia-overview",
@@ -381,15 +389,22 @@ export const ROLE_CONFIG = {
       {
         group: "Review",
         items: [
-          { id: "do-review-queue", label: "Review Queue", icon: "ClipboardList", permission: null, slug: "review-queue", subRoutes: REVIEW_QUEUE_SUB },
-          { id: "do-my-sections",  label: "My Sections",  icon: "FileEdit",      permission: null, slug: "my-sections",  subRoutes: MY_SECTIONS_SUB },
+          { id: "do-review-queue",   label: "Review Queue",   icon: "ClipboardList", permission: null, slug: "review-queue",   subRoutes: REVIEW_QUEUE_SUB },
+          { id: "do-my-sections",    label: "My Sections",    icon: "FileEdit",      permission: null, slug: "my-sections",    subRoutes: MY_SECTIONS_SUB },
+        ],
+      },
+      {
+        group: "Reports",
+        items: [
+          { id: "do-shared-reports", label: "Shared Reports", icon: "Eye",           permission: null, slug: "shared-reports", subRoutes: SHARED_REPORTS_SUB },
         ],
       },
     ],
     pages: {
-      "do-dashboard":    <DirectorsDashboardPage />,
-      "do-review-queue": <ReviewQueuePage />,
-      "do-my-sections":  <MyAssignedSectionsPage />,
+      "do-dashboard":      <DirectorsDashboardPage />,
+      "do-review-queue":   <ReviewQueuePage />,
+      "do-my-sections":    <MyAssignedSectionsPage />,
+      "do-shared-reports": <SharedReportsPage />,
     },
     defaultPage: "do-dashboard",
     user: {
@@ -442,6 +457,7 @@ export const ROLE_CONFIG = {
             slug: "kpi-management",
             subRoutes: KPI_DEPT_SUB,
           },
+          { id: "da-shared-reports", label: "Shared Reports", icon: "Eye", permission: null, slug: "shared-reports", subRoutes: SHARED_REPORTS_SUB },
         ],
       },
       {
@@ -480,14 +496,15 @@ export const ROLE_CONFIG = {
       },
     ],
     pages: {
-      "da-dashboard":     <DeptAdminDashboardPage />,
-      "da-users":         <DeptUsersPage />,
-      "da-kpi":           <DeptKpiPage />,
-      "da-dept-forms":    <DepartmentFormManagementPage />,
-      "da-form-data":     <FormDataPage />,
-      "da-dept-sections": <DeptSectionAssignPage />,
-      "da-my-sections":   <MyAssignedSectionsPage />,
-      "da-review-queue":  <ReviewQueuePage />,
+      "da-dashboard":      <DeptAdminDashboardPage />,
+      "da-users":          <DeptUsersPage />,
+      "da-kpi":            <DeptKpiPage />,
+      "da-dept-forms":     <DepartmentFormManagementPage />,
+      "da-form-data":      <FormDataPage />,
+      "da-dept-sections":  <DeptSectionAssignPage />,
+      "da-my-sections":    <MyAssignedSectionsPage />,
+      "da-review-queue":   <ReviewQueuePage />,
+      "da-shared-reports": <SharedReportsPage />,
     },
     defaultPage: "da-dashboard",
     user: {
@@ -539,6 +556,12 @@ export const ROLE_CONFIG = {
         ],
       },
       {
+        group: "Reports",
+        items: [
+          { id: "dno-shared-reports", label: "Shared Reports", icon: "Eye", permission: null, slug: "shared-reports", subRoutes: SHARED_REPORTS_SUB },
+        ],
+      },
+      {
         group: "Forms",
         items: [
           {
@@ -563,11 +586,12 @@ export const ROLE_CONFIG = {
       },
     ],
     pages: {
-      "dno-dashboard":   <NodalDashboardPage />,
-      "dno-sections":    <MyAssignedSectionsPage />,
-      "dno-submissions": <SubmissionsPage />,
-      "dno-dept-forms":  <DepartmentFormFillPage />,
-      "dno-form-data":   <FormDataPage />,
+      "dno-dashboard":     <NodalDashboardPage />,
+      "dno-sections":      <MyAssignedSectionsPage />,
+      "dno-submissions":   <SubmissionsPage />,
+      "dno-dept-forms":    <DepartmentFormFillPage />,
+      "dno-form-data":     <FormDataPage />,
+      "dno-shared-reports": <SharedReportsPage />,
     },
     defaultPage: "dno-dashboard",
     user: { name: "Nodal Officer", initials: "NO", org: "Samhita Siddhanta" },
@@ -598,15 +622,17 @@ export const ROLE_CONFIG = {
       {
         group: "My Work",
         items: [
-          { id: "c-sections", label: "My Sections", icon: "FileEdit", permission: null, slug: "my-sections", subRoutes: MY_SECTIONS_SUB },
+          { id: "c-sections",       label: "My Sections",    icon: "FileEdit", permission: null, slug: "my-sections",    subRoutes: MY_SECTIONS_SUB },
+          { id: "c-shared-reports", label: "Shared Reports", icon: "Eye",      permission: null, slug: "shared-reports", subRoutes: SHARED_REPORTS_SUB },
         ],
       },
     ],
     pages: {
-      "c-overview":   <ContributorDashboardPage />,
-      "c-form-data":  <FormDataPage />,
-      "c-dept-forms": <DepartmentFormFillPage />,
-      "c-sections":   <MyAssignedSectionsPage />,
+      "c-overview":        <ContributorDashboardPage />,
+      "c-form-data":       <FormDataPage />,
+      "c-dept-forms":      <DepartmentFormFillPage />,
+      "c-sections":        <MyAssignedSectionsPage />,
+      "c-shared-reports":  <SharedReportsPage />,
     },
     defaultPage: "c-overview",
     user: { name: "Contributor", initials: "CT", org: "PragatiMitra" },
@@ -618,14 +644,16 @@ export const ROLE_CONFIG = {
       {
         group: "My Work",
         items: [
-          { id: "rv-sections",     label: "My Sections",  icon: "FileEdit",      permission: null, slug: "my-sections",  subRoutes: MY_SECTIONS_SUB },
-          { id: "rv-review-queue", label: "Review Queue", icon: "ClipboardList", permission: null, slug: "review-queue", subRoutes: REVIEW_QUEUE_SUB },
+          { id: "rv-sections",       label: "My Sections",    icon: "FileEdit",      permission: null, slug: "my-sections",    subRoutes: MY_SECTIONS_SUB },
+          { id: "rv-review-queue",   label: "Review Queue",   icon: "ClipboardList", permission: null, slug: "review-queue",   subRoutes: REVIEW_QUEUE_SUB },
+          { id: "rv-shared-reports", label: "Shared Reports", icon: "Eye",           permission: null, slug: "shared-reports", subRoutes: SHARED_REPORTS_SUB },
         ],
       },
     ],
     pages: {
-      "rv-sections":     <MyAssignedSectionsPage />,
-      "rv-review-queue": <ReviewQueuePage />,
+      "rv-sections":       <MyAssignedSectionsPage />,
+      "rv-review-queue":   <ReviewQueuePage />,
+      "rv-shared-reports": <SharedReportsPage />,
     },
     defaultPage: "rv-sections",
     user: { name: "Reviewer", initials: "RV", org: "PragatiMitra" },
@@ -658,11 +686,18 @@ export const ROLE_CONFIG = {
           },
         ],
       },
+      {
+        group: "Reports",
+        items: [
+          { id: "pc-shared-reports", label: "Shared Reports", icon: "Eye", permission: null, slug: "shared-reports", subRoutes: SHARED_REPORTS_SUB },
+        ],
+      },
     ],
     pages: {
       "pc-sections":           <MyAssignedSectionsPage />,
       "pc-templates":          <TemplateListPage />,
       "pc-workflow-templates": <WorkflowTemplatePage />,
+      "pc-shared-reports":     <SharedReportsPage />,
     },
     defaultPage: "pc-sections",
     user: { name: "Publication Cell", initials: "PC", org: "PragatiMitra" },
@@ -678,11 +713,13 @@ export const ROLE_CONFIG = {
       { group: "", items: [{ id: "ha-overview", label: "Dashboard", icon: "LayoutDashboard", permission: null, slug: "overview" }] },
       { group: "Forms", items: [{ id: "ha-form-data", label: "Forms & Data Entry", icon: "ClipboardList", permission: null, slug: "form-data", subRoutes: FORM_DATA_SUB }] },
       { group: "KPI", items: [{ id: "ha-kpi", label: "KPI Charts", icon: "BarChart2", permission: null, slug: "kpi-management", subRoutes: KPI_HOSPITAL_SUB }] },
+      { group: "Reports", items: [{ id: "ha-shared-reports", label: "Shared Reports", icon: "Eye", permission: null, slug: "shared-reports", subRoutes: SHARED_REPORTS_SUB }] },
     ],
     pages: {
-      "ha-overview":  <DomainDashboardPage domain="hospital" />,
-      "ha-form-data": <FormDataPage />,
-      "ha-kpi":       <DomainKpiPage domain="hospital" />,
+      "ha-overview":       <DomainDashboardPage domain="hospital" />,
+      "ha-form-data":      <FormDataPage />,
+      "ha-kpi":            <DomainKpiPage domain="hospital" />,
+      "ha-shared-reports": <SharedReportsPage />,
     },
     defaultPage: "ha-overview",
     user: { name: "Hospital Admin", initials: "HA", org: "PragatiMitra" },
@@ -696,11 +733,13 @@ export const ROLE_CONFIG = {
       { group: "", items: [{ id: "fa-overview", label: "Dashboard", icon: "LayoutDashboard", permission: null, slug: "overview" }] },
       { group: "Forms", items: [{ id: "fa-form-data", label: "Forms & Data Entry", icon: "ClipboardList", permission: null, slug: "form-data", subRoutes: FORM_DATA_SUB }] },
       { group: "KPI", items: [{ id: "fa-kpi", label: "KPI Charts", icon: "BarChart2", permission: null, slug: "kpi-management", subRoutes: KPI_FINANCE_SUB }] },
+      { group: "Reports", items: [{ id: "fa-shared-reports", label: "Shared Reports", icon: "Eye", permission: null, slug: "shared-reports", subRoutes: SHARED_REPORTS_SUB }] },
     ],
     pages: {
-      "fa-overview":  <DomainDashboardPage domain="finance" />,
-      "fa-form-data": <FormDataPage />,
-      "fa-kpi":       <DomainKpiPage domain="finance" />,
+      "fa-overview":       <DomainDashboardPage domain="finance" />,
+      "fa-form-data":      <FormDataPage />,
+      "fa-kpi":            <DomainKpiPage domain="finance" />,
+      "fa-shared-reports": <SharedReportsPage />,
     },
     defaultPage: "fa-overview",
     user: { name: "Finance Admin", initials: "FA", org: "PragatiMitra" },

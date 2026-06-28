@@ -383,7 +383,7 @@ router.post("/sections/:sectionId/blocks/table-import", async (req, res) => {
           `Form Import — ${formName} (${year})`,
           `Auto-generated from form: ${formName}, year: ${year}`,
           storedQuery,
-          JSON.stringify({ form_name: formName, academic_year: Number(year), selected_columns: safeSelected, language, imported_at: importedAt }),
+          JSON.stringify({ form_name: formName, academic_year: Number(year), selected_columns: safeSelected, language, imported_at: importedAt, schema_fields: schemaFields }),
           JSON.stringify(columnMap),
           req.user.userId,
         ]
@@ -503,31 +503,40 @@ router.post("/blocks/:blockId/refetch", async (req, res) => {
     if (!primaryIid) return res.status(400).json({ success: false, message: "Could not determine institution" });
 
     const primaryPhysical = await getPhysicalCols(pool, primaryTable);
-    let primarySchema = [];
-    if (await tableExists(pool, "custom_field_schemas")) {
-      const qps = [primaryFormName, primaryIid];
-      let sq = `SELECT schema -> 'fields' AS fields FROM public.custom_field_schemas
-                WHERE form_name=$1 AND institution_id=$2 AND is_active=TRUE`;
-      if (primaryYear) { qps.push(Number(primaryYear)); sq += ` AND year=$${qps.length}`; }
-      sq += ` ORDER BY created_at DESC LIMIT 1`;
-      const { rows: sfr } = await pool.query(sq, qps);
-      primarySchema = Array.isArray(sfr[0]?.fields) ? sfr[0].fields : [];
+    // Prefer stored schema_fields (saved at import time) so refetch always uses the
+    // same column labels that content.columns[].key was built with.  Fall back to a
+    // live DB query only when not stored (e.g. old blocks imported before this fix).
+    let primarySchema = Array.isArray(dsParams.schema_fields) ? dsParams.schema_fields : null;
+    if (!primarySchema) {
+      primarySchema = [];
+      if (await tableExists(pool, "custom_field_schemas")) {
+        const qps = [primaryFormName, primaryIid];
+        let sq = `SELECT schema -> 'fields' AS fields FROM public.custom_field_schemas
+                  WHERE form_name=$1 AND institution_id=$2 AND is_active=TRUE`;
+        if (primaryYear) { qps.push(Number(primaryYear)); sq += ` AND year=$${qps.length}`; }
+        sq += ` ORDER BY created_at DESC LIMIT 1`;
+        const { rows: sfr } = await pool.query(sq, qps);
+        primarySchema = Array.isArray(sfr[0]?.fields) ? sfr[0].fields : [];
+      }
     }
     const primarySafe = validateColumns(primarySelected, primaryPhysical, primarySchema);
+    const freshColumnMeta = buildColumnMeta(primarySafe, primarySchema, primaryLanguage2);
     const rebuiltQuery = buildFullQuery(primaryTable, primarySafe, primaryIid, primaryYear, primarySchema, primaryLanguage2, primaryPhysical);
 
     const { rows: freshRows } = await pool.query(rebuiltQuery);
     const importedAt = new Date().toISOString();
 
-    // Update block content — replace rows + imported_at
+    // Update block content — replace rows, columns, and imported_at so the stored
+    // column meta always matches the fresh query aliases (prevents key-mismatch blanks).
     await pool.query(
       `UPDATE public.section_blocks
        SET content    = content
                      || jsonb_build_object('rows', $1::jsonb)
-                     || jsonb_build_object('imported_at', $2::text),
-           updated_by = $3
-       WHERE id=$4 AND deleted_at IS NULL`,
-      [JSON.stringify(freshRows), importedAt, req.user.userId, blockId]
+                     || jsonb_build_object('columns', $2::jsonb)
+                     || jsonb_build_object('imported_at', $3::text),
+           updated_by = $4
+       WHERE id=$5 AND deleted_at IS NULL`,
+      [JSON.stringify(freshRows), JSON.stringify(freshColumnMeta), importedAt, req.user.userId, blockId]
     );
 
     // Track last-fetch time in data_sources.params
@@ -551,15 +560,19 @@ router.post("/blocks/:blockId/refetch", async (req, res) => {
           const iid = await resolveInstitutionId(pool, req.user.userId, null);
           if (iid) {
             const physicalCols = await getPhysicalCols(pool, tableName);
-            let schemaFields = [];
-            if (await tableExists(pool, "custom_field_schemas")) {
-              const qParams = [formName, iid];
-              let sq = `SELECT schema -> 'fields' AS fields FROM public.custom_field_schemas
-                        WHERE form_name=$1 AND institution_id=$2 AND is_active=TRUE`;
-              if (year) { qParams.push(Number(year)); sq += ` AND year=$${qParams.length}`; }
-              sq += ` ORDER BY created_at DESC LIMIT 1`;
-              const { rows } = await pool.query(sq, qParams);
-              schemaFields = Array.isArray(rows[0]?.fields) ? rows[0].fields : [];
+            // Reuse the already-resolved primarySchema for the Hindi sync (same block,
+            // same form) — avoids a redundant DB round-trip and keeps labels consistent.
+            let schemaFields = primarySchema;
+            if (!schemaFields || !schemaFields.length) {
+              if (await tableExists(pool, "custom_field_schemas")) {
+                const qParams = [formName, iid];
+                let sq = `SELECT schema -> 'fields' AS fields FROM public.custom_field_schemas
+                          WHERE form_name=$1 AND institution_id=$2 AND is_active=TRUE`;
+                if (year) { qParams.push(Number(year)); sq += ` AND year=$${qParams.length}`; }
+                sq += ` ORDER BY created_at DESC LIMIT 1`;
+                const { rows } = await pool.query(sq, qParams);
+                schemaFields = Array.isArray(rows[0]?.fields) ? rows[0].fields : [];
+              }
             }
             const safeSelected = validateColumns(selected, physicalCols, schemaFields);
           if (safeSelected.length) {
@@ -592,7 +605,7 @@ router.post("/blocks/:blockId/refetch", async (req, res) => {
         `Re-fetched from ${formName} — ${freshRows.length} rows`);
     } catch {}
 
-    return res.json({ success: true, data: { rows: freshRows, imported_at: importedAt, count: freshRows.length, translations } });
+    return res.json({ success: true, data: { rows: freshRows, columns: freshColumnMeta, imported_at: importedAt, count: freshRows.length, translations } });
   } catch (err) {
     logger.error("report-integration POST /blocks/:blockId/refetch", { ...getLogContext(req), err: err.message });
     return res.status(500).json({ success: false, message: "Failed to re-fetch: " + err.message });
