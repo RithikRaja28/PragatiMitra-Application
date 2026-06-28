@@ -10,7 +10,7 @@ import { useAuth } from "../../store/AuthContext";
 import { useAcademicYear } from "../../store/AcademicYearContext";
 import { useLanguage } from "../../i18n/LanguageContext";
 import { t } from "../../i18n/translations";
-import { S, Toast, isAuthError, formatDate } from "../../components/shared/formUtils";
+import { Toast, isAuthError, formatDate } from "../../components/shared/formUtils";
 import PageHeader from "../../components/shared/PageHeader";
 import { tableCardStyle } from "../../components/shared/ui";
 import { Button, Input, Textarea, FieldLabel, Badge, DataTable, color } from "../../ui";
@@ -59,8 +59,383 @@ function IcoSortDesc() { return <svg width="12" height="12" viewBox="0 0 24 24" 
 function IcoSort() { return <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="7" y1="12" x2="17" y2="12"/><line x1="11" y1="18" x2="13" y2="18"/></svg>; }
 function IcoSearch() { return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>; }
 
-const ALLOWED_TYPES = ["image/jpeg","image/png","image/webp","application/pdf","application/msword","application/vnd.openxmlformats-officedocument.wordprocessingml.document","application/vnd.ms-excel","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"];
+/* ── Document upload ─────────────────────────────────────────────── */
+const ALLOWED_TYPES = [
+  "image/jpeg", "image/png", "image/webp", "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+];
 const MAX_SIZE = 10 * 1024 * 1024;
+const DOC_LABEL_STYLE = { display: "block", fontSize: 13, fontWeight: 500, color: "#334155", marginBottom: 6 };
+
+export function DocumentUploadField({ label, required, value, onChange, getToken, labelStyle = DOC_LABEL_STYLE }) {
+  const fileRef = useRef(null);
+  const [status, setStatus] = useState("idle");
+  const [errMsg, setErrMsg] = useState("");
+  const [fileName, setFileName] = useState("");
+  const hasExisting = !!value && status === "idle";
+
+  async function handleFile(file) {
+    if (!file) return;
+    if (!ALLOWED_TYPES.includes(file.type)) { setErrMsg("File type not allowed."); setStatus("error"); return; }
+    if (file.size > MAX_SIZE) { setErrMsg("File exceeds 10 MB."); setStatus("error"); return; }
+    setStatus("uploading"); setErrMsg(""); setFileName(file.name);
+    try {
+      const token = getToken();
+      const fd = new FormData(); fd.append("file", file);
+      const res = await api.post("/api/upload/document", { token, body: fd });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || "Upload failed.");
+      onChange(data.fileKey);
+      setStatus("done");
+    } catch (err) { setErrMsg(err.message || "Upload failed."); setStatus("error"); }
+  }
+
+  return (
+    <div>
+      <label style={labelStyle}>{label}{required && " *"}</label>
+      <div
+        onClick={() => fileRef.current?.click()}
+        onDragOver={e => e.preventDefault()}
+        onDrop={e => { e.preventDefault(); handleFile(e.dataTransfer.files[0]); }}
+        style={{
+          border: `2px dashed ${status === "error" ? "#f87171" : status === "done" ? "#34d399" : "#cbd5e1"}`,
+          borderRadius: 10, padding: "18px 16px", textAlign: "center",
+          cursor: status === "uploading" ? "not-allowed" : "pointer",
+          background: status === "done" ? "#f0fdf4" : status === "error" ? "#fef2f2" : "#f8fafc",
+          transition: "all .15s",
+        }}>
+        <input
+          ref={fileRef} type="file"
+          accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.webp"
+          style={{ display: "none" }}
+          onChange={e => handleFile(e.target.files[0])}
+          disabled={status === "uploading"}
+        />
+        {status === "uploading" && (
+          <div style={{ fontSize: 13, color: "#64748b" }}>Uploading <strong>{fileName}</strong>…</div>
+        )}
+        {status === "done" && (
+          <div style={{ fontSize: 13, color: "#16a34a", fontWeight: 600 }}>
+            ✓ <strong>{fileName}</strong> uploaded.{" "}
+            <span style={{ fontWeight: 400, color: "#64748b" }}>Click to replace.</span>
+          </div>
+        )}
+        {status === "error" && (
+          <div style={{ fontSize: 13 }}>
+            <div style={{ color: "#dc2626", fontWeight: 600, marginBottom: 4 }}>{errMsg}</div>
+            <span style={{ color: "#64748b", fontSize: 12 }}>Click to try again.</span>
+          </div>
+        )}
+        {status === "idle" && (
+          <div>
+            <div style={{ color: "#94a3b8", marginBottom: 6, display: "flex", justifyContent: "center" }}><IcoUpload /></div>
+            {hasExisting
+              ? <div style={{ fontSize: 13, color: "#64748b" }}><IcoFile /> File attached.{" "}<span style={{ color: ACCENT, fontWeight: 600 }}>Click to replace.</span></div>
+              : <div style={{ fontSize: 13, color: "#64748b" }}>
+                  <span style={{ color: ACCENT, fontWeight: 600 }}>Click to upload</span> or drag &amp; drop
+                  <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 4 }}>PDF, Word, Excel, Images · max 10 MB</div>
+                </div>
+            }
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export function DocumentCell({ fileKey, getToken, lang = "en" }) {
+  const [loading, setLoading] = useState(false);
+  if (!fileKey) return <span style={{ color: "#cbd5e1" }}>—</span>;
+  const isLegacyUrl = fileKey.startsWith("http://") || fileKey.startsWith("https://");
+  async function handleView() {
+    if (isLegacyUrl) { window.open(fileKey, "_blank", "noreferrer"); return; }
+    setLoading(true);
+    try {
+      const token = getToken ? getToken() : null;
+      const res = await api.post("/api/upload/read-url", { token, json: { fileKey } });
+      const data = await res.json();
+      if (data.readUrl) window.open(data.readUrl, "_blank", "noreferrer");
+    } finally { setLoading(false); }
+  }
+  return (
+    <button
+      onClick={handleView}
+      disabled={loading}
+      style={{ display: "inline-flex", alignItems: "center", gap: 5, color: ACCENT, fontSize: 12, fontWeight: 600, background: "none", border: "none", cursor: loading ? "wait" : "pointer", padding: 0, textDecoration: "none" }}>
+      <IcoFile />{" "}
+      {loading
+        ? (lang === "hi" ? "लोड हो रहा है…" : "Loading…")
+        : (lang === "hi" ? "दस्तावेज़ देखें ↗" : "View Doc ↗")}
+    </button>
+  );
+}
+
+/* ── Record edit sub-components ─────────────────────────────────────── */
+export function FieldInput({ field, value, onChange, getToken, lang = "en" }) {
+  const col = dbCol(field.column_name);
+  const label = field.label?.[lang] || field.label?.en || displayCol(field.column_name);
+  const type = field.type;
+  if (type === "boolean") return (
+    <div>
+      <FieldLabel required={field.required}>{label}</FieldLabel>
+      <div style={{ display: "flex", gap: 16, marginTop: 2 }}>
+        {[{ val: "true", text: "Yes" }, { val: "false", text: "No" }].map(({ val, text }) => (
+          <label key={val} style={{ display: "flex", alignItems: "center", gap: 7, cursor: "pointer", fontSize: 13 }}>
+            <input type="radio" name={col} value={val} checked={String(value) === val}
+              onChange={() => onChange(col, val === "true")}
+              style={{ accentColor: ACCENT, width: 15, height: 15 }} /> {text}
+          </label>
+        ))}
+      </div>
+    </div>
+  );
+  if (type === "textarea" || type === "description") return (
+    <div>
+      <FieldLabel required={field.required}>{label}</FieldLabel>
+      <Textarea value={value || ""} onChange={e => onChange(col, e.target.value)} required={field.required} />
+    </div>
+  );
+  if (type === "document") return (
+    <DocumentUploadField label={label} required={field.required} value={value}
+      onChange={url => onChange(col, url)} getToken={getToken} />
+  );
+  const inputType = type === "number" ? "number" : type === "date" ? "date" : type === "email" ? "email" : type === "phone" ? "tel" : "text";
+  return (
+    <div>
+      <FieldLabel required={field.required}>{label}</FieldLabel>
+      <Input type={inputType} value={value || ""} onChange={e => onChange(col, e.target.value)} required={field.required} />
+    </div>
+  );
+}
+
+export function ReadOnlyField({ field, value, lang = "en", getToken }) {
+  const label = field.label?.[lang] || field.label?.en || displayCol(field.column_name);
+  const isArea = field.type === "textarea" || field.type === "description";
+  const empty = value == null || value === "";
+  let display;
+  if (field.type === "boolean")
+    display = value === true || value === "true" ? "Yes" : value === false || value === "false" ? "No" : "—";
+  else if (field.type === "document") {
+    return (
+      <div>
+        <FieldLabel>{label}</FieldLabel>
+        <div style={{ width: "100%", minHeight: 44, padding: "0 14px", display: "flex", alignItems: "center", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 13, color: "#475569", background: "#fff", boxSizing: "border-box" }}>
+          {empty ? "—" : <DocumentCell fileKey={value} getToken={getToken} lang={lang} />}
+        </div>
+      </div>
+    );
+  } else {
+    display = empty ? "—" : String(value);
+  }
+  return (
+    <div>
+      <FieldLabel>{label}</FieldLabel>
+      <div style={{
+        width: "100%", minHeight: isArea ? 80 : 44, padding: isArea ? "10px 14px" : "0 14px",
+        display: "flex", alignItems: isArea ? "flex-start" : "center",
+        border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 13,
+        color: empty ? "#94a3b8" : "#475569", background: "#fff",
+        whiteSpace: "pre-wrap", wordBreak: "break-word", boxSizing: "border-box",
+      }}>
+        {display}
+      </div>
+    </div>
+  );
+}
+
+export function ModalPane({ title, reference, helper, loading, children }) {
+  const { lang } = useLanguage();
+  return (
+    <div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: helper ? 4 : 14 }}>
+        <span style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.5, textTransform: "uppercase", color: reference ? "#64748b" : ACCENT }}>
+          {title}
+        </span>
+        {reference && (
+          <span style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: 0.4, textTransform: "uppercase", color: "#64748b", background: "#e2e8f0", borderRadius: 20, padding: "2px 8px" }}>
+            {t("Read Only", lang)}
+          </span>
+        )}
+        {reference && loading && (
+          <span style={{ fontSize: 11, color: "#94a3b8", fontWeight: 600 }}>· {t("Loading…", lang)}</span>
+        )}
+      </div>
+      {helper && (
+        <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 12 }}>{helper}</div>
+      )}
+      <div style={
+        reference
+          ? { display: "flex", flexDirection: "column", gap: 16, background: "#F8FAFC", opacity: 0.95, pointerEvents: "none", borderRadius: 8, padding: 16, border: "1px dashed #e2e8f0" }
+          : { display: "flex", flexDirection: "column", gap: 16 }
+      }>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+export function RecordEditPage({
+  fields,
+  record,
+  onSave,
+  onBack,
+  getToken,
+  formName,
+  counterpartPath,
+  formTitle,
+  apiFetch,
+  translationEnabled = true,
+  viewOnly = false,
+  breadcrumb,
+}) {
+  const { lang } = useLanguage();
+  const isEdit = !!record;
+  const editLang = record?.language === "hi" ? "hi" : "en";
+  const refLang  = editLang === "hi" ? "en" : "hi";
+  const showReference = translationEnabled !== false && !!record?.id;
+  const cpPath = counterpartPath ||
+    (formName && record?.id ? `/api/form-data/${formName}/records/${record.id}/counterpart` : null);
+
+  const [formData, setFormData] = useState(() => {
+    const init = {};
+    fields.forEach(f => { const col = dbCol(f.column_name); init[col] = record ? (record[col] ?? "") : ""; });
+    return init;
+  });
+  const [refData, setRefData]       = useState({});
+  const [refLoading, setRefLoading] = useState(false);
+  const [saving, setSaving]         = useState(false);
+  const [error, setError]           = useState("");
+
+  function handleChange(col, val) { setFormData(prev => ({ ...prev, [col]: val })); }
+
+  useEffect(() => {
+    const id = "pm-rec-edit-css";
+    if (document.getElementById(id)) return;
+    const el = document.createElement("style");
+    el.id = id;
+    el.textContent = `
+      .pm-rec-grid { display:grid; grid-template-columns:1.5fr 1fr; gap:32px; }
+      @media (max-width: 1000px){ .pm-rec-grid { grid-template-columns:1fr; gap:24px; } }
+    `;
+    document.head.appendChild(el);
+  }, []);
+
+  const refetchCounterpart = useCallback(() => {
+    if (!showReference || !cpPath) return;
+    setRefLoading(true);
+    apiFetch(cpPath)
+      .then(r => r.json())
+      .then(d => {
+        const ref = d?.record || {};
+        const next = {};
+        fields.forEach(f => { const col = dbCol(f.column_name); next[col] = ref[col] ?? ""; });
+        setRefData(next);
+      })
+      .catch(() => {})
+      .finally(() => setRefLoading(false));
+  }, [showReference, cpPath, apiFetch, fields]);
+
+  useEffect(() => { refetchCounterpart(); }, [refetchCounterpart]);
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (viewOnly) return;
+    setSaving(true); setError("");
+    const res = await onSave(formData);
+    if (res?.success) { onBack(); return; }
+    setSaving(false);
+    setError(res?.message || "Failed to save record.");
+  }
+
+  const noFields = (
+    <div style={{ textAlign: "center", color: "#94a3b8", fontSize: 13, padding: "24px 0" }}>
+      No schema fields configured for this form.
+    </div>
+  );
+
+  const defaultBreadcrumb = [
+    t("Home", lang),
+    { label: t("Forms & Data Entry", lang), onClick: onBack },
+    formTitle,
+    isEdit ? t("Edit Record", lang) : t("Add Record", lang),
+  ];
+
+  const editablePane = (
+    <ModalPane title={
+      viewOnly
+        ? (editLang === "hi" ? (lang === "hi" ? "हिंदी" : "Hindi") : (lang === "hi" ? "अंग्रेज़ी" : "English"))
+        : (editLang === "hi" ? t("Hindi (Editable)", lang) : t("English (Editable)", lang))
+    }>
+      {fields.length === 0 ? noFields : fields.map(field => (
+        viewOnly
+          ? <ReadOnlyField key={dbCol(field.column_name)} field={field} value={formData[dbCol(field.column_name)]} lang={editLang} getToken={getToken} />
+          : <FieldInput key={dbCol(field.column_name)} field={field} value={formData[dbCol(field.column_name)]} onChange={handleChange} getToken={getToken} lang={editLang} />
+      ))}
+    </ModalPane>
+  );
+
+  const referencePane = (
+    <ModalPane
+      title={editLang === "hi" ? t("English Reference (Current)", lang) : t("Hindi Reference (Current)", lang)}
+      reference loading={refLoading}
+      helper={t("Translation updates after save.", lang)}
+    >
+      {fields.length === 0 ? noFields : fields.map(field => (
+        <ReadOnlyField key={dbCol(field.column_name)} field={field} value={refData[dbCol(field.column_name)]} lang={refLang} getToken={getToken} />
+      ))}
+    </ModalPane>
+  );
+
+  const leftPane  = editLang === "hi" ? referencePane : editablePane;
+  const rightPane = editLang === "hi" ? editablePane  : referencePane;
+
+  return (
+    <div className="pm-rec-edit" style={{ padding: "20px 28px 28px", fontFamily: "'Plus Jakarta Sans', sans-serif", minHeight: "100%", maxWidth: 1440, display: "flex", flexDirection: "column" }}>
+      <PageHeader
+        breadcrumb={breadcrumb || defaultBreadcrumb}
+        title={isEdit ? t("Edit Record", lang) : t("Add Record", lang)}
+        description={isEdit ? t("Update data and review translated values.", lang) : t("Fill in the details below.", lang)}
+        actions={
+          <Button variant="ghost" onClick={onBack} icon={<span style={{ fontSize: 15, lineHeight: 1 }}>←</span>}>{t("Back", lang)}</Button>
+        }
+      />
+      {viewOnly && (
+        <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#fef2f2", border: "1px solid #fecaca", color: "#b91c1c", borderRadius: 8, padding: "6px 12px", fontSize: 12, fontWeight: 700, marginBottom: 16 }}>
+          <Lock size={13} strokeWidth={2.2} /> {t("VIEW ONLY", lang)}
+        </div>
+      )}
+      <form onSubmit={handleSubmit} style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+        <div style={{ flex: 1, minHeight: 0, background: "#fff", border: "1px solid #e5e7eb", borderRadius: 12, boxShadow: "0 1px 3px rgba(16,24,40,0.04)", overflow: "hidden", display: "flex", flexDirection: "column" }}>
+          <div style={{ padding: "16px 28px", borderBottom: "1px solid #e5e7eb" }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: "#1e293b" }}>{formTitle}</div>
+            <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 2 }}>
+              {isEdit ? t("Edit this record", lang) : t("Enter the details for a new record", lang)}
+            </div>
+          </div>
+          <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 28 }}>
+            {showReference ? <div className="pm-rec-grid">{leftPane}{rightPane}</div> : editablePane}
+            {error && (
+              <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, padding: "10px 14px", fontSize: 13, color: "#b91c1c", marginTop: 16 }}>
+                {error}
+              </div>
+            )}
+          </div>
+          <div style={{ padding: "16px 28px", borderTop: "1px solid #e5e7eb", background: "#f8fafc", display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 12 }}>
+            <Button type="button" variant="secondary" onClick={onBack} disabled={saving}>{t("Cancel", lang)}</Button>
+            {!viewOnly && (
+              <Button type="submit" variant="primary" loading={saving} disabled={saving}>
+                {saving ? t("Saving…", lang) : isEdit ? t("Update Record", lang) : t("Add Record", lang)}
+              </Button>
+            )}
+          </div>
+        </div>
+      </form>
+    </div>
+  );
+}
 
 /* ════════════════════════════════════════════════════════════════════
    Portal Modal Wrapper — renders outside any overflow:hidden parent
@@ -84,308 +459,6 @@ function ModalPortal({ children }) {
   );
 }
 
-function DocumentUploadField({ label, required, value, onChange, getToken }) {
-  const fileRef = useRef(null);
-  const [status, setStatus] = useState("idle");
-  const [errMsg, setErrMsg] = useState("");
-  const [fileName, setFileName] = useState("");
-  const hasExisting = !!value && status === "idle";
-  async function handleFile(file) {
-    if (!file) return;
-    if (!ALLOWED_TYPES.includes(file.type)) { setErrMsg("File type not allowed."); setStatus("error"); return; }
-    if (file.size > MAX_SIZE) { setErrMsg("File exceeds 10 MB."); setStatus("error"); return; }
-    setStatus("uploading"); setErrMsg(""); setFileName(file.name);
-    try {
-      const token = getToken();
-      const fd = new FormData(); fd.append("file", file);
-      const res = await api.post("/api/upload/document", { token, body: fd });
-      const data = await res.json();
-      if (!data.success) throw new Error(data.error || "Upload failed.");
-      /* Backend returns the S3 key; store it (not a URL) */
-      onChange(data.fileKey);
-      setStatus("done");
-    } catch (err) { setErrMsg(err.message || "Upload failed."); setStatus("error"); }
-  }
-  return (
-    <div>
-      <label style={S.label}>{label}{required && " *"}</label>
-      <div onClick={() => fileRef.current?.click()} onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); handleFile(e.dataTransfer.files[0]); }}
-        style={{ border: `2px dashed ${status==="error"?"#f87171":status==="done"?"#34d399":"#cbd5e1"}`, borderRadius: 10, padding: "18px 16px", textAlign: "center", cursor: status==="uploading"?"not-allowed":"pointer", background: status==="done"?"#f0fdf4":status==="error"?"#fef2f2":"#f8fafc", transition: "all .15s" }}>
-        <input ref={fileRef} type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.webp" style={{ display: "none" }} onChange={e => handleFile(e.target.files[0])} disabled={status==="uploading"} />
-        {status === "uploading" && <div style={{ fontSize: 13, color: "#64748b" }}>Uploading <strong>{fileName}</strong>…</div>}
-        {status === "done" && <div style={{ fontSize: 13, color: "#16a34a", fontWeight: 600 }}>✓ <strong>{fileName}</strong> uploaded. <span style={{ fontWeight: 400, color: "#64748b" }}>Click to replace.</span></div>}
-        {status === "error" && <div style={{ fontSize: 13 }}><div style={{ color: "#dc2626", fontWeight: 600, marginBottom: 4 }}>{errMsg}</div><span style={{ color: "#64748b", fontSize: 12 }}>Click to try again.</span></div>}
-        {status === "idle" && <div><div style={{ color: "#94a3b8", marginBottom: 6, display: "flex", justifyContent: "center" }}><IcoUpload /></div>{hasExisting ? <div style={{ fontSize: 13, color: "#64748b" }}><IcoFile /> File attached. <span style={{ color: ACCENT, fontWeight: 600 }}>Click to replace.</span></div> : <div style={{ fontSize: 13, color: "#64748b" }}><span style={{ color: ACCENT, fontWeight: 600 }}>Click to upload</span> or drag & drop<div style={{ fontSize: 11, color: "#94a3b8", marginTop: 4 }}>PDF, Word, Excel, Images · max 10 MB</div></div>}</div>}
-      </div>
-    </div>
-  );
-}
-
-function DocumentCell({ fileKey, getToken, lang = "en" }) {
-  const [loading, setLoading] = useState(false);
-  if (!fileKey) return <span style={{ color: "#cbd5e1" }}>—</span>;
-
-  /* Legacy: value is a full local URL stored before S3 migration */
-  const isLegacyUrl = fileKey.startsWith("http://") || fileKey.startsWith("https://");
-
-  async function handleView() {
-    if (isLegacyUrl) { window.open(fileKey, "_blank", "noreferrer"); return; }
-    setLoading(true);
-    try {
-      const token = getToken ? getToken() : null;
-      const res = await api.post("/api/upload/read-url", { token, json: { fileKey } });
-      const data = await res.json();
-      if (data.readUrl) window.open(data.readUrl, "_blank", "noreferrer");
-    } finally { setLoading(false); }
-  }
-
-  return (
-    <button onClick={handleView} disabled={loading}
-      style={{ display: "inline-flex", alignItems: "center", gap: 5, color: ACCENT, fontSize: 12, fontWeight: 600, background: "none", border: "none", cursor: loading ? "wait" : "pointer", padding: 0, textDecoration: "none" }}>
-      <IcoFile /> {loading ? (lang === "hi" ? "लोड हो रहा है…" : "Loading…") : (lang === "hi" ? "दस्तावेज़ देखें ↗" : "View Doc ↗")}
-    </button>
-  );
-}
-
-function FieldInput({ field, value, onChange, getToken, lang = "en" }) {
-  const col = dbCol(field.column_name);
-  const label = field.label?.[lang] || field.label?.en || displayCol(field.column_name);
-  const type = field.type;
-  if (type === "boolean") return (
-    <div><FieldLabel required={field.required}>{label}</FieldLabel>
-      <div style={{ display: "flex", gap: 16, marginTop: 2 }}>
-        {[{val:"true",text:"Yes"},{val:"false",text:"No"}].map(({val,text}) => (
-          <label key={val} style={{ display: "flex", alignItems: "center", gap: 7, cursor: "pointer", fontSize: 13 }}>
-            <input type="radio" name={col} value={val} checked={String(value)===val} onChange={() => onChange(col, val==="true")} style={{ accentColor: ACCENT, width: 15, height: 15 }} /> {text}
-          </label>
-        ))}
-      </div>
-    </div>
-  );
-  if (type === "textarea" || type === "description") return <div><FieldLabel required={field.required}>{label}</FieldLabel><Textarea value={value||""} onChange={e => onChange(col, e.target.value)} required={field.required} /></div>;
-  if (type === "document") return <DocumentUploadField label={label} required={field.required} value={value} onChange={url => onChange(col, url)} getToken={getToken} />;
-  const inputType = type==="number"?"number":type==="date"?"date":type==="email"?"email":type==="phone"?"tel":"text";
-  return <div><FieldLabel required={field.required}>{label}</FieldLabel><Input type={inputType} value={value||""} onChange={e => onChange(col, e.target.value)} required={field.required} /></div>;
-}
-
-/* ── Read-only field renderer (reference pane of the edit dialog) ──────── */
-function ReadOnlyField({ field, value, lang = "en" }) {
-  const label  = field.label?.[lang] || field.label?.en || displayCol(field.column_name);
-  const isArea = field.type === "textarea" || field.type === "description";
-  const empty  = value == null || value === "";
-
-  let display;
-  if (field.type === "boolean")
-    display = value === true || value === "true" ? "Yes" : value === false || value === "false" ? "No" : "—";
-  else if (field.type === "document")
-    display = empty ? "—" : "File attached";
-  else
-    display = empty ? "—" : String(value);
-
-  return (
-    <div>
-      <FieldLabel>{label}</FieldLabel>
-      <div
-        style={{
-          width: "100%",
-          minHeight: isArea ? 80 : 44,
-          padding: isArea ? "10px 14px" : "0 14px",
-          display: "flex",
-          alignItems: isArea ? "flex-start" : "center",
-          border: "1px solid #e2e8f0",
-          borderRadius: 8,
-          fontSize: 13,
-          color: empty ? "#94a3b8" : "#475569",
-          background: "#fff",
-          whiteSpace: "pre-wrap",
-          wordBreak: "break-word",
-          boxSizing: "border-box",
-        }}
-      >
-        {display}
-      </div>
-    </div>
-  );
-}
-
-/* ── One titled column of the edit dialog ─────────────────────────────── */
-function ModalPane({ title, reference, helper, loading, children }) {
-  const { lang } = useLanguage();
-  return (
-    <div>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: helper ? 4 : 14 }}>
-        <span style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.5, textTransform: "uppercase", color: reference ? "#64748b" : ACCENT }}>
-          {title}
-        </span>
-        {reference && (
-          <span style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: 0.4, textTransform: "uppercase", color: "#64748b", background: "#e2e8f0", borderRadius: 20, padding: "2px 8px" }}>
-            {t("Read Only", lang)}
-          </span>
-        )}
-        {reference && loading && (
-          <span style={{ fontSize: 11, color: "#94a3b8", fontWeight: 600 }}>· {t("Loading…", lang)}</span>
-        )}
-      </div>
-      {helper && (
-        <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 12 }}>{helper}</div>
-      )}
-      {/* Reference side: visually muted + non-interactive per spec */}
-      <div
-        style={
-          reference
-            ? { display: "flex", flexDirection: "column", gap: 16, background: "#F8FAFC", opacity: 0.95, pointerEvents: "none", borderRadius: 8, padding: 16, border: "1px dashed #e2e8f0" }
-            : { display: "flex", flexDirection: "column", gap: 16 }
-        }
-      >
-        {children}
-      </div>
-    </div>
-  );
-}
-
-/* ════════════════════════════════════════════════════════════════════
-   RecordEditPage — DEDICATED in-shell edit page (replaces the large overlay
-   dialog). Navbar + sidebar stay visible; no overlay. English editable on the
-   left, current Hindi shown read-only on the right (60/40). NO live translation
-   — the read-only preview is the saved DB values and refreshes only AFTER save.
-   onSave(formData) → Promise<{ success, message }> (parent performs the API
-   call; the page stays open and refreshes the preview on success).
-════════════════════════════════════════════════════════════════════ */
-function RecordEditPage({ fields, record, onSave, onBack, getToken, formName, formTitle, apiFetch, translationEnabled = true, viewOnly = false }) {
-  const { lang } = useLanguage();
-  const isEdit = !!record;
-  const editLang = record?.language === "hi" ? "hi" : "en";
-  const refLang  = editLang === "hi" ? "en" : "hi";
-  const showReference = translationEnabled !== false && !!record?.id;
-
-  const [formData, setFormData] = useState(() => {
-    const init = {};
-    fields.forEach(f => { const col = dbCol(f.column_name); init[col] = record ? (record[col] ?? "") : ""; });
-    return init;
-  });
-  const [refData, setRefData]       = useState({});
-  const [refLoading, setRefLoading] = useState(false);
-  const [saving, setSaving]         = useState(false);
-  const [error, setError]           = useState("");
-
-  function handleChange(col, val) { setFormData(prev => ({ ...prev, [col]: val })); }
-
-  /* Inject scoped CSS once: 60/40 split layout (stacks on tablet). Field styling
-     now comes from the standard ui Input/Textarea (src/ui/Field). */
-  useEffect(() => {
-    const id = "pm-rec-edit-css";
-    if (document.getElementById(id)) return;
-    const el = document.createElement("style");
-    el.id = id;
-    el.textContent = `
-      .pm-rec-grid { display:grid; grid-template-columns:1.5fr 1fr; gap:32px; }
-      @media (max-width: 1000px){ .pm-rec-grid { grid-template-columns:1fr; gap:24px; } }
-    `;
-    document.head.appendChild(el);
-  }, []);
-
-  /* One-time read-only fetch of the linked translated row. NO live preview, NO
-     translation API call while typing — refreshed only after a successful save. */
-  const refetchCounterpart = useCallback(() => {
-    if (!showReference || !record?.id) return;
-    setRefLoading(true);
-    apiFetch(`/api/form-data/${formName}/records/${record.id}/counterpart`)
-      .then(r => r.json())
-      .then(d => {
-        const ref = d?.record || {};
-        const next = {};
-        fields.forEach(f => { const col = dbCol(f.column_name); next[col] = ref[col] ?? ""; });
-        setRefData(next);
-      })
-      .catch(() => {})
-      .finally(() => setRefLoading(false));
-  }, [showReference, record?.id, formName, apiFetch, fields]);
-
-  useEffect(() => { refetchCounterpart(); }, [refetchCounterpart]);
-
-  async function handleSubmit(e) {
-    e.preventDefault();
-    if (viewOnly) return;
-    setSaving(true); setError("");
-    const res = await onSave(formData);
-    if (res?.success) {
-      // Both new and updated records return to the list immediately — Update
-      // Record now matches the Create Record flow. onBack() also reloads the
-      // list so the saved changes show up right away (no manual back needed).
-      onBack();
-      return;
-    }
-    setSaving(false);
-    setError(res?.message || "Failed to save record.");
-  }
-
-  const noFields = <div style={{ textAlign: "center", color: "#94a3b8", fontSize: 13, padding: "24px 0" }}>No schema fields configured for this form.</div>;
-
-  const editablePane = (
-    <ModalPane title={viewOnly ? (editLang === "hi" ? (lang === "hi" ? "हिंदी" : "Hindi") : (lang === "hi" ? "अंग्रेज़ी" : "English")) : (editLang === "hi" ? t("Hindi (Editable)", lang) : t("English (Editable)", lang))}>
-      {fields.length === 0 ? noFields : fields.map(field => (
-        viewOnly
-          ? <ReadOnlyField key={dbCol(field.column_name)} field={field} value={formData[dbCol(field.column_name)]} lang={editLang} />
-          : <FieldInput key={dbCol(field.column_name)} field={field} value={formData[dbCol(field.column_name)]} onChange={handleChange} getToken={getToken} lang={editLang} />
-      ))}
-    </ModalPane>
-  );
-
-  const referencePane = (
-    <ModalPane title={editLang === "hi" ? t("English Reference (Current)", lang) : t("Hindi Reference (Current)", lang)} reference loading={refLoading} helper={t("Translation updates after save.", lang)}>
-      {fields.length === 0 ? noFields : fields.map(field => (
-        <ReadOnlyField key={dbCol(field.column_name)} field={field} value={refData[dbCol(field.column_name)]} lang={refLang} />
-      ))}
-    </ModalPane>
-  );
-
-  const leftPane  = editLang === "hi" ? referencePane : editablePane;
-  const rightPane = editLang === "hi" ? editablePane  : referencePane;
-
-  return (
-    <div className="pm-rec-edit" style={{ padding: "20px 28px 28px", fontFamily: "'Plus Jakarta Sans', sans-serif", minHeight: "100%", maxWidth: 1440, display: "flex", flexDirection: "column" }}>
-      <PageHeader
-        breadcrumb={[t("Home", lang), { label: t("Forms & Data Entry", lang), onClick: onBack }, formTitle, isEdit ? t("Edit Record", lang) : t("Add Record", lang)]}
-        title={isEdit ? t("Edit Record", lang) : t("Add Record", lang)}
-        description={isEdit ? t("Update data and review translated values.", lang) : t("Fill in the details below.", lang)}
-        actions={
-          <Button variant="ghost" onClick={onBack} icon={<span style={{ fontSize: 15, lineHeight: 1 }}>←</span>}>{t("Back", lang)}</Button>
-        }
-      />
-
-      {viewOnly && (
-        <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#fef2f2", border: "1px solid #fecaca", color: "#b91c1c", borderRadius: 8, padding: "6px 12px", fontSize: 12, fontWeight: 700, marginBottom: 16 }}>
-          <Lock size={13} strokeWidth={2.2} /> {t("VIEW ONLY", lang)}
-        </div>
-      )}
-
-      {/* One cohesive card: header → scrolling fields → footer with the actions,
-          so the inputs and the Cancel/Save buttons read as a single unit. */}
-      <form onSubmit={handleSubmit} style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
-        <div style={{ flex: 1, minHeight: 0, background: "#fff", border: "1px solid #e5e7eb", borderRadius: 12, boxShadow: "0 1px 3px rgba(16,24,40,0.04)", overflow: "hidden", display: "flex", flexDirection: "column" }}>
-          <div style={{ padding: "16px 28px", borderBottom: "1px solid #e5e7eb" }}>
-            <div style={{ fontSize: 14, fontWeight: 700, color: "#1e293b" }}>{formTitle}</div>
-            <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 2 }}>{isEdit ? t("Edit this record", lang) : t("Enter the details for a new record", lang)}</div>
-          </div>
-          <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 28 }}>
-            {showReference ? <div className="pm-rec-grid">{leftPane}{rightPane}</div> : editablePane}
-            {error && (
-              <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, padding: "10px 14px", fontSize: 13, color: "#b91c1c", marginTop: 16 }}>{error}</div>
-            )}
-          </div>
-          <div style={{ padding: "16px 28px", borderTop: "1px solid #e5e7eb", background: "#f8fafc", display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 12 }}>
-            <Button type="button" variant="secondary" onClick={onBack} disabled={saving}>{t("Cancel", lang)}</Button>
-            {!viewOnly && (
-              <Button type="submit" variant="primary" loading={saving} disabled={saving}>
-                {saving ? t("Saving…", lang) : isEdit ? t("Update Record", lang) : t("Add Record", lang)}
-              </Button>
-            )}
-          </div>
-        </div>
-      </form>
-    </div>
-  );
-}
 
 /* ════════════════════════════════════════════════════════════════════
    DeleteModal — single or bulk, rendered via ModalPortal
@@ -1116,6 +1189,13 @@ export default function FormDataPage() {
     setCurrentPage(1);
   };
 
+  /* ── Pre-edit lock state ── */
+  const [acquiringLock, setAcquiringLock] = useState(null); // record id being locked
+  const lockedRecordRef = useRef(null); // id of the record whose lock we currently hold
+  const lockUrlRef = useRef(null);       // full path for the DELETE lock endpoint currently held
+  const accessTokenRef = useRef(accessToken);
+  useEffect(() => { accessTokenRef.current = accessToken; }, [accessToken]);
+
   /* ── Modal state ── */
   const [modalOpen, setModalOpen]       = useState(false);
   const [editRecord, setEditRecord]     = useState(null);
@@ -1146,6 +1226,118 @@ export default function FormDataPage() {
   const showToast = (message, type = "success") => {
     setToast({ message, type }); setTimeout(() => setToast(null), 3500);
   };
+
+  /* Release any held lock when the browser tab/window is closed or component unmounts.
+     Uses fetch+keepalive (not sendBeacon) because sendBeacon is POST-only and would
+     hit the acquire endpoint instead of the release endpoint. The [] dependency array
+     ensures this effect runs exactly once — no premature cleanup when apiFetch
+     gets a new reference due to auth-context updates. */
+  useEffect(() => {
+    const releaseLockViaFetch = () => {
+      const url = lockUrlRef.current;
+      if (!url) return;
+      try {
+        fetch(`${api.API_BASE}${url}`, {
+          method: "DELETE",
+          keepalive: true,
+          headers: {
+            "Content-Type": "application/json",
+            ...(accessTokenRef.current ? { Authorization: `Bearer ${accessTokenRef.current}` } : {}),
+          },
+        });
+      } catch {} // best-effort
+    };
+    window.addEventListener("beforeunload", releaseLockViaFetch);
+    return () => {
+      window.removeEventListener("beforeunload", releaseLockViaFetch);
+      // Also release on SPA navigation (component unmount without tab close).
+      releaseLockViaFetch();
+      lockUrlRef.current = null;
+      lockedRecordRef.current = null;
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* Acquire the pre-edit lock then fetch the latest record from the DB so the
+     edit form is never pre-populated with stale list-page data.
+     Two separate try-catch blocks so step 1 (lock) and step 2 (record fetch)
+     produce distinct, accurate error messages. */
+  async function handleEditClick(rec) {
+    if (!formEntity) return;
+    setAcquiringLock(rec.id);
+    const lockPath = `/api/form-data/${formEntity.form_name}/records/${rec.id}/lock`;
+
+    // ── Step 1: acquire the lock ──────────────────────────────────────────
+    let lockData;
+    try {
+      const lockRes = await apiFetch(lockPath, { method: "POST" });
+      lockData = await lockRes.json();
+    } catch (e) {
+      setAcquiringLock(null);
+      showToast("Could not acquire edit lock. Please try again.", "error");
+      return;
+    }
+
+    if (lockData.acquired === false) {
+      setAcquiringLock(null);
+      showToast(
+        `This record is currently being edited by ${lockData.lockedByName || "another user"}. Please try again later.`,
+        "error"
+      );
+      return;
+    }
+    if (lockData.acquired !== true) {
+      setAcquiringLock(null);
+      showToast(lockData.message || "Could not acquire edit lock. Please try again.", "error");
+      return;
+    }
+
+    // Lock acquired — register it so cleanup handlers can release it on unmount or tab close.
+    lockUrlRef.current = lockPath;
+    lockedRecordRef.current = rec.id;
+
+    // ── Step 2: fetch the latest record from DB ───────────────────────────
+    try {
+      const recRes = await apiFetch(`/api/form-data/${formEntity.form_name}/records/${rec.id}`);
+      const recData = await recRes.json();
+
+      if (!recData.success || !recData.record) {
+        try { await apiFetch(lockPath, { method: "DELETE" }); } catch {}
+        lockUrlRef.current = null;
+        lockedRecordRef.current = null;
+        if (recRes.status === 404) {
+          showToast("This record has been deleted. Refreshing the list.", "error");
+          if (formEntity) loadRecords(formEntity);
+        } else {
+          showToast(recData.message || "Failed to load the latest record data. Please try again.", "error");
+        }
+        return;
+      }
+
+      // ── Step 3: open edit form with fresh data ─────────────────────────
+      setEditTarget(recData.record);
+    } catch (e) {
+      // Record fetch failed (network error, server not yet restarted, etc.)
+      try { await apiFetch(lockPath, { method: "DELETE" }); } catch {}
+      lockUrlRef.current = null;
+      lockedRecordRef.current = null;
+      showToast("Failed to load the latest record data. Please try again.", "error");
+    } finally {
+      setAcquiringLock(null);
+    }
+  }
+
+  /* Release the lock and return to the list. Used for both Cancel and post-Save. */
+  async function handleBackFromEdit() {
+    if (lockUrlRef.current) {
+      try {
+        await apiFetch(lockUrlRef.current, { method: "DELETE" });
+      } catch {} // best-effort — lock TTL will clean up
+      lockUrlRef.current = null;
+      lockedRecordRef.current = null;
+    }
+    setEditTarget(null);
+    if (formEntity) loadRecords(formEntity);
+  }
 
   const formsLoadedRef = useRef(false);
   const loadForms = useCallback(async () => {
@@ -1518,7 +1710,7 @@ export default function FormDataPage() {
           translationEnabled={formEntity.translate_to_hindi !== false}
           viewOnly={readOnly && editTarget !== "new"}
           onSave={saveRecord}
-          onBack={() => { setEditTarget(null); loadRecords(formEntity); }}
+          onBack={handleBackFromEdit}
         />
       </>
     );
@@ -1734,7 +1926,7 @@ export default function FormDataPage() {
                 getToken={getToken}
                 selected={selectedIds.has(rec.id)}
                 onSelect={() => toggleSelectOne(rec.id)}
-                onEdit={(e) => { e.stopPropagation(); setEditTarget(rec); }}
+                onEdit={(e) => { e.stopPropagation(); handleEditClick(rec); }}
                 onDelete={(e) => { e.stopPropagation(); setDeleteTarget(rec.id); }}
                 canEdit={canEdit}
                 readOnly={readOnly}
@@ -1826,8 +2018,9 @@ export default function FormDataPage() {
                         <td style={{ ...tdStyle, textAlign: "right" }}>
                           <div style={{ display: "inline-flex", gap: 6 }}>
                             <button
-                              onClick={(e) => { e.stopPropagation(); setEditTarget(rec); }}
-                              style={actionBtn}
+                              onClick={(e) => { e.stopPropagation(); handleEditClick(rec); }}
+                              style={{ ...actionBtn, opacity: acquiringLock === rec.id ? 0.6 : 1, cursor: acquiringLock ? "wait" : "pointer" }}
+                              disabled={!!acquiringLock}
                               title={viewingTranslated ? "Edit Hindi record" : "Edit record"}
                             >
                               <IcoEdit />

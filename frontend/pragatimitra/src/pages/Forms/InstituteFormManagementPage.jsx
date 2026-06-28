@@ -311,9 +311,34 @@ export default function InstituteFormManagementPage() {
 
   const searching = search.trim().length > 0;
 
-  /* ── Row actions: View + Manage visible, rest in a viewport-aware menu ── */
+  /* ── Row actions: archived forms are export-only; active forms get full controls ── */
   function renderActions(form) {
     const isActive = (form.lifecycle_status ?? "active") === "active";
+    const isArchived = !isActive;
+
+    if (isArchived) {
+      return (
+        <div style={{ display: "inline-flex", alignItems: "center", gap: 6, justifyContent: "flex-end" }}>
+          <Dropdown
+            align="right" width={210}
+            button={({ toggle }) => (
+              <Button variant="secondary" iconOnly title={t("More actions", lang)} icon={<MoreHorizontal size={18} strokeWidth={STROKE} />} onClick={toggle} />
+            )}
+          >
+            {yearAware && (
+              <>
+                <MenuLabel>{t("Manage", lang)}</MenuLabel>
+                <MenuItem icon={<ArchiveRestore size={16} strokeWidth={STROKE} />} disabled={ayLocked} onClick={() => setLifecycle(form, "active")}>{t("Activate for", lang)} {academicYear}</MenuItem>
+              </>
+            )}
+            <MenuLabel>{t("Export", lang)}</MenuLabel>
+            <MenuItem icon={<FileCsv size={16} strokeWidth={STROKE} />} onClick={() => downloadExport(form.form_name, "csv", lang, accessToken)}>{t("Download CSV", lang)}</MenuItem>
+            <MenuItem icon={<FileSpreadsheet size={16} strokeWidth={STROKE} />} onClick={() => downloadExport(form.form_name, "xlsx", lang, accessToken)}>{t("Download Excel", lang)}</MenuItem>
+          </Dropdown>
+        </div>
+      );
+    }
+
     return (
       <div style={{ display: "inline-flex", alignItems: "center", gap: 6, justifyContent: "flex-end" }}>
         <Button variant="secondary" iconOnly title={t("View records", lang)} icon={<Eye size={18} strokeWidth={STROKE} />} onClick={() => navigate(`${listPath}/records`, { state: { entity: form } })} />
@@ -326,9 +351,8 @@ export default function InstituteFormManagementPage() {
         >
           <MenuLabel>{t("Manage", lang)}</MenuLabel>
           <MenuItem icon={<CalendarClock size={16} strokeWidth={STROKE} />} disabled={ayLocked} onClick={() => setDeadlineForm(form)}>{t("Deadline", lang)}</MenuItem>
-          {yearAware && (isActive
-            ? <MenuItem icon={<Archive size={16} strokeWidth={STROKE} />} disabled={ayLocked} onClick={() => setLifecycle(form, "archived")}>{t("Archive for", lang)} {academicYear}</MenuItem>
-            : <MenuItem icon={<ArchiveRestore size={16} strokeWidth={STROKE} />} disabled={ayLocked} onClick={() => setLifecycle(form, "active")}>{t("Activate for", lang)} {academicYear}</MenuItem>
+          {yearAware && (
+            <MenuItem icon={<Archive size={16} strokeWidth={STROKE} />} disabled={ayLocked} onClick={() => setLifecycle(form, "archived")}>{t("Archive for", lang)} {academicYear}</MenuItem>
           )}
           {form.is_locked
             ? <MenuItem icon={<Unlock size={16} strokeWidth={STROKE} />} disabled={ayLocked || lockTogglingForm === form.form_name} onClick={() => handleToggleLock(form)}>{t("Unlock form", lang)}</MenuItem>
@@ -381,9 +405,15 @@ export default function InstituteFormManagementPage() {
     },
     {
       key: "access", header: t("Access", lang), width: 110,
-      render: (form) => form.is_locked
-        ? <Badge tone="danger" icon={<Lock size={11} strokeWidth={STROKE} />}>{t("Locked", lang)}</Badge>
-        : <Badge tone="success">{t("Open", lang)}</Badge>,
+      render: (form) => {
+        const lifecycleStatus = form.lifecycle_status ?? "active";
+        if (lifecycleStatus !== "active") {
+          return <Badge tone="neutral" icon={<Archive size={11} strokeWidth={STROKE} />}>{t("Archived", lang)}</Badge>;
+        }
+        return form.is_locked
+          ? <Badge tone="danger" icon={<Lock size={11} strokeWidth={STROKE} />}>{t("Locked", lang)}</Badge>
+          : <Badge tone="success">{t("Open", lang)}</Badge>;
+      },
     },
     { key: "actions", header: "", align: "right", width: 150, render: renderActions },
   ];

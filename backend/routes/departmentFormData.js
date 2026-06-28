@@ -3,9 +3,9 @@
 /**
  * routes/departmentFormData.js  →  mounted at /api/department-form-data
  * ─────────────────────────────────────────────────────────────────────────
- * Records CRUD for department forms. Department forms are SINGLE-LANGUAGE
- * (English) — there is no translation: no Hindi mirror rows, no language-aware
- * reads. Operates ONLY on dept_form_<slug> tables scoped by department_id +
+ * Records CRUD for department forms. Field labels are multilingual (en/hi):
+ * schema labels are enriched on-the-fly via enrichSchemaLabels when a non-English
+ * language is requested. Operates ONLY on dept_form_<slug> tables scoped by department_id +
  * academic_year. Reads the department_* metadata tables; never touches
  * table_list / custom_field_schemas / form_lock_config / *_records.
  * (Legacy rows keep a `language` column; reads filter to 'en'/NULL, and deletes
@@ -19,11 +19,47 @@ const express = require("express");
 const ExcelJS = require("exceljs");
 const { verifyToken } = require("../middleware/auth");
 const logger = require("../utils/logger");
+const { writeAuditLog } = require("../utils/audit");
 const { resolveDeptContext, deptRecordsTable, quoteIdent } = require("../services/departmentFormService");
 const { getEffectiveState, STATE } = require("../services/stateResolver");
 const { resolveOperatingYear } = require("../services/academicYearService");
 const { assertEquivalent } = require("../services/equivalenceGuard");
 const { assertDomainOwnerAccess } = require("../services/domainService");
+const LOCK_TTL_MINUTES = 15;
+async function acquireLock(pool, { recordId, formType, formId, userId, userName, ttlMinutes = LOCK_TTL_MINUTES }) {
+  const { rowCount } = await pool.query(
+    `WITH cleanup AS (
+       DELETE FROM record_edit_locks
+         WHERE record_id = $1 AND expires_at < now()
+     )
+     INSERT INTO record_edit_locks
+       (record_id, form_type, form_id, locked_by, locked_by_name, expires_at)
+     VALUES ($1, $2, $3, $4, $5, now() + (INTERVAL '1 minute' * $6::int))
+     ON CONFLICT (record_id) DO NOTHING`,
+    [recordId, formType, formId, userId, userName || "Another user", ttlMinutes]
+  );
+  if (rowCount > 0) return { acquired: true };
+  const { rows } = await pool.query(
+    `SELECT locked_by, locked_by_name, expires_at FROM record_edit_locks WHERE record_id = $1`,
+    [recordId]
+  );
+  if (!rows.length) return acquireLock(pool, { recordId, formType, formId, userId, userName, ttlMinutes });
+  if (rows[0].locked_by === userId) {
+    await pool.query(
+      `UPDATE record_edit_locks SET expires_at = now() + (INTERVAL '1 minute' * $1::int), locked_at = now() WHERE record_id = $2`,
+      [ttlMinutes, recordId]
+    );
+    return { acquired: true };
+  }
+  return { acquired: false, lockedByName: rows[0].locked_by_name || "Another user", expiresAt: rows[0].expires_at };
+}
+async function releaseLock(pool, { recordId, userId }) {
+  await pool.query(
+    `DELETE FROM record_edit_locks WHERE record_id = $1 AND locked_by = $2`,
+    [recordId, userId]
+  );
+}
+const { enrichSchemaLabels, translateRow, resolveTranslationMode } = require("../services/translationService");
 
 const router = express.Router();
 router.use(verifyToken);
@@ -123,6 +159,14 @@ function activeFields(schema) {
     if (excluded.has(col) || excluded.has(f.column_name) || seen.has(col)) return false;
     seen.add(col); return true;
   });
+}
+
+function buildFieldModes(fields) {
+  const modes = {};
+  for (const f of (fields || [])) {
+    modes[dbCol(f.column_name)] = resolveTranslationMode(f);
+  }
+  return modes;
 }
 
 /* Load a department form owned by the caller's department, enforcing role
@@ -233,8 +277,9 @@ async function deptLockBlock(pool, form, year) {
 }
 
 /* ─────────────────────────────────────────────────────────────────────
-   GET /api/department-form-data/:id/records?year=
-   Department forms are single-language (English) — no translation.
+   GET /api/department-form-data/:id/records?year=&language=
+   Supports multilingual field labels (en/hi) — schema labels are
+   enriched on the fly for the requested language before returning.
 ───────────────────────────────────────────────────────────────────── */
 router.get("/:id/records", async (req, res) => {
   const pool = req.app.locals.pool;
@@ -245,6 +290,7 @@ router.get("/:id/records", async (req, res) => {
 
     const table = deptRecordsTable(form.department_id, form.form_name);
     const year = resolveYear(req);
+    const language = (req.query.language || "en").toLowerCase();
 
     // Tolerate a missing physical table (e.g. legacy/partial state) — return empty.
     const { rows: ex } = await pool.query(
@@ -252,20 +298,49 @@ router.get("/:id/records", async (req, res) => {
       [table]
     );
     const effectiveSchema = await loadEffectiveSchema(pool, form, year);
+
+    // enrichSchemaLabels expects a schema-row wrapper ({ schema: { fields } }).
+    // Wrap, enrich, then unwrap so the response shape stays the same.
+    const displaySchema = language !== "en"
+      ? (await enrichSchemaLabels({ schema: effectiveSchema }, language).catch(() => ({ schema: effectiveSchema }))).schema
+      : effectiveSchema;
+
     if (!ex.length) {
       const lk = await deptLockBlock(pool, form, year);
-      return res.json({ success: true, records: [], schema: { schema: effectiveSchema, year, form_name: form.form_name }, lock: { is_locked: lk.locked, message: lk.message } });
+      return res.json({ success: true, records: [], schema: { schema: displaySchema, year, form_name: form.form_name }, lock: { is_locked: lk.locked, message: lk.message } });
     }
 
-    // Only original (English) rows — any legacy Hindi mirror rows are ignored.
-    const { rows: rawRecords } = await pool.query(
-      `SELECT t.*, u.full_name AS entered_by
-       FROM ${table} t
-       LEFT JOIN users u ON u.id = t.created_by
-       WHERE t.department_id = $1 AND t.academic_year = $2 AND (t.language = 'en' OR t.language IS NULL)
-       ORDER BY t.created_at DESC`,
-      [departmentId, year]
-    );
+    // Return records in the requested language. For Hindi: prefer translated mirror rows;
+    // fall back to English rows that have no Hindi mirror (legacy / untranslated).
+    const { rows: rawRecords } = language === "en"
+      ? await pool.query(
+          `SELECT t.*, u.full_name AS entered_by
+           FROM ${table} t
+           LEFT JOIN users u ON u.id = t.created_by
+           WHERE t.department_id = $1 AND t.academic_year = $2 AND (t.language = 'en' OR t.language IS NULL)
+           ORDER BY t.created_at DESC`,
+          [departmentId, year]
+        )
+      : await pool.query(
+          `WITH has_translation AS (
+             SELECT source_row_id FROM ${table}
+             WHERE  language = $3 AND source_row_id IS NOT NULL
+               AND  department_id = $1 AND academic_year = $2
+           )
+           SELECT t.*, u.full_name AS entered_by
+           FROM ${table} t
+           LEFT JOIN users u ON u.id = t.created_by
+           WHERE t.department_id = $1 AND t.academic_year = $2
+             AND (
+               t.language = $3
+               OR (
+                 (t.language = 'en' OR t.language IS NULL)
+                 AND t.id NOT IN (SELECT source_row_id FROM has_translation WHERE source_row_id IS NOT NULL)
+               )
+             )
+           ORDER BY t.created_at DESC`,
+          [departmentId, year, language]
+        );
     const lock = await deptLockBlock(pool, form, year);
 
     // Flatten custom_fields (extra JSONB fields from non-creation years) into each row.
@@ -277,12 +352,104 @@ router.get("/:id/records", async (req, res) => {
     return res.json({
       success: true,
       records,
-      schema: { schema: effectiveSchema, year, form_name: form.form_name },
+      schema: { schema: displaySchema, year, form_name: form.form_name },
       lock: { is_locked: lock.locked, message: lock.message },
     });
   } catch (err) {
     logger.error("GET /api/department-form-data/:id/records", { stack: err.stack });
     return res.status(500).json({ success: false, message: "Failed to fetch records." });
+  }
+});
+
+/* ─────────────────────────────────────────────────────────────────────
+   GET /api/department-form-data/:id/records/:recordId
+   Fetches the latest version of a single record. Called by the edit flow
+   immediately after lock acquisition so the form is always pre-populated
+   with fresh DB data rather than the potentially stale list-page snapshot.
+─────────────────────────────────────────────────────────────────────── */
+router.get("/:id/records/:recordId", async (req, res) => {
+  const pool = req.app.locals.pool;
+  try {
+    const { form, departmentId, error } = await loadForm(pool, req, req.params.id);
+    if (error) return res.status(404).json({ success: false, message: error });
+    if (!validSlug(form.form_name)) return res.status(400).json({ success: false, message: "Invalid form." });
+
+    const table = deptRecordsTable(form.department_id, form.form_name);
+
+    const { rows } = await pool.query(
+      `SELECT t.*, u.full_name AS entered_by
+       FROM ${table} t
+       LEFT JOIN users u ON u.id = t.created_by
+       WHERE t.department_id = $1 AND t.id = $2 AND (t.language = 'en' OR t.language IS NULL)`,
+      [departmentId, req.params.recordId]
+    );
+
+    if (!rows.length)
+      return res.status(404).json({ success: false, message: "Record not found or has been deleted." });
+
+    const record = rows[0];
+    if (record.custom_fields && typeof record.custom_fields === "object") {
+      Object.assign(record, record.custom_fields);
+    }
+
+    return res.json({ success: true, record });
+  } catch (err) {
+    logger.error("GET /api/department-form-data/:id/records/:recordId", { stack: err.stack });
+    return res.status(500).json({ success: false, message: "Failed to fetch record." });
+  }
+});
+
+/* ─────────────────────────────────────────────────────────────────────
+   GET /api/department-form-data/:id/records/:recordId/counterpart
+   Returns the linked record in the opposite language for the reference pane:
+     • English source row  → returns the Hindi mirror (source_row_id = recordId)
+     • Hindi mirror row    → returns the English source (id = source_row_id)
+   Registered BEFORE the POST /:id/records route (distinct path with /counterpart suffix).
+───────────────────────────────────────────────────────────────────── */
+router.get("/:id/records/:recordId/counterpart", async (req, res) => {
+  const pool = req.app.locals.pool;
+  try {
+    const { form, departmentId, error } = await loadForm(pool, req, req.params.id);
+    if (error) return res.status(404).json({ success: false, message: error });
+    if (!validSlug(form.form_name)) return res.status(400).json({ success: false, message: "Invalid form." });
+
+    const table = deptRecordsTable(form.department_id, form.form_name);
+    await ensureSourceRowIdColumn(pool, table);
+
+    const { rows: selfRows } = await pool.query(
+      `SELECT * FROM ${table} WHERE id = $1 AND department_id = $2`,
+      [req.params.recordId, departmentId]
+    );
+    if (!selfRows.length)
+      return res.status(404).json({ success: false, message: "Record not found." });
+
+    const self = selfRows[0];
+    let counterpart = null;
+
+    if (self.language === "hi" && self.source_row_id) {
+      // Hindi mirror → return the English source
+      const { rows } = await pool.query(
+        `SELECT * FROM ${table} WHERE id = $1 AND department_id = $2`,
+        [self.source_row_id, departmentId]
+      );
+      counterpart = rows[0] || null;
+    } else {
+      // English source → return the Hindi mirror (if any)
+      const { rows } = await pool.query(
+        `SELECT * FROM ${table} WHERE source_row_id = $1 AND department_id = $2 AND language = 'hi' LIMIT 1`,
+        [self.id, departmentId]
+      );
+      counterpart = rows[0] || null;
+    }
+
+    if (counterpart?.custom_fields && typeof counterpart.custom_fields === "object") {
+      Object.assign(counterpart, counterpart.custom_fields);
+    }
+
+    return res.json({ success: true, record: counterpart });
+  } catch (err) {
+    logger.error("GET /api/department-form-data/:id/records/:recordId/counterpart", { stack: err.stack });
+    return res.status(500).json({ success: false, message: "Failed to fetch counterpart record." });
   }
 });
 
@@ -335,6 +502,32 @@ router.post("/:id/records", async (req, res) => {
       Object.assign(record, record.custom_fields);
     }
 
+    // Create Hindi mirror row — English record already committed; translation failure is non-fatal.
+    try {
+      await ensureSourceRowIdColumn(pool, table);
+      const fieldModes = buildFieldModes(fields);
+      const hiData = await translateRow(data, fieldModes);
+      const hiCustomFieldsJson = extraFieldCols.length > 0
+        ? JSON.stringify(Object.fromEntries(extraFieldCols.map((c) => [c, hiData[c] ?? null])))
+        : null;
+      const hiCols = ["form_name", "department_id", "institution_id", "academic_year", "role_name", "schema_id",
+        "language", "created_by", "custom_fields", "source_row_id", ...baseFieldCols.map(quoteIdent)];
+      const hiVals = [form.form_name, departmentId, institutionId, year, null, form.id,
+        "hi", createdBy, hiCustomFieldsJson, record.id, ...baseFieldCols.map((c) => hiData[c] ?? null)];
+      const hiPh = hiVals.map((_, i) => `$${i + 1}`).join(", ");
+      await pool.query(`INSERT INTO ${table} (${hiCols.join(", ")}) VALUES (${hiPh})`, hiVals);
+    } catch (hiErr) {
+      logger.warn("Hindi translation failed; English record saved.", { form: form.form_name, error: hiErr.message });
+    }
+
+    await writeAuditLog(req, {
+      actionType: "DEPARTMENT_FORM_RECORD_CREATED",
+      entityType: "department_form_record",
+      entityId: record.id,
+      newValue: { form_name: form.form_name, form_id: form.id, academic_year: year },
+      message: `Record created in department form "${form.form_name}"`,
+    }).catch(() => {});
+
     return res.json({ success: true, record, message: "Record created successfully." });
   } catch (err) {
     logger.error("POST /api/department-form-data/:id/records", { stack: err.stack });
@@ -352,7 +545,7 @@ router.put("/:id/records/:recordId", async (req, res) => {
   if (!data || typeof data !== "object")
     return res.status(400).json({ success: false, message: "data is required." });
   try {
-    const { form, departmentId, error } = await loadForm(pool, req, req.params.id);
+    const { form, departmentId, institutionId, error } = await loadForm(pool, req, req.params.id);
     if (error) return res.status(404).json({ success: false, message: error });
     const table = deptRecordsTable(form.department_id, form.form_name);
     const year = resolveYear(req);
@@ -397,10 +590,124 @@ router.put("/:id/records/:recordId", async (req, res) => {
       Object.assign(record, record.custom_fields);
     }
 
+    // Release the pre-edit lock on successful save (best-effort).
+    releaseLock(pool, { recordId: req.params.recordId, userId: req.user.userId }).catch(() => {});
+
+    // Sync Hindi mirror row — English record already updated; translation failure is non-fatal.
+    try {
+      await ensureSourceRowIdColumn(pool, table);
+      const fieldModes = buildFieldModes(fields);
+      const hiData = await translateRow(data, fieldModes);
+      const hiCustomFieldsJson = extraFieldCols.length > 0
+        ? JSON.stringify(Object.fromEntries(extraFieldCols.map((c) => [c, hiData[c] ?? null])))
+        : null;
+
+      const { rows: hiExisting } = await pool.query(
+        `SELECT id FROM ${table} WHERE source_row_id = $1 AND department_id = $2`,
+        [req.params.recordId, departmentId]
+      );
+
+      if (hiExisting.length > 0) {
+        let hi = 1;
+        const hiSet = [
+          ...baseFieldCols.map((c) => `${quoteIdent(c)} = $${hi++}`),
+          ...(extraFieldCols.length > 0 ? [`custom_fields = $${hi++}`] : []),
+          "updated_at = now()",
+        ];
+        const hiVals = [
+          ...baseFieldCols.map((c) => hiData[c] ?? null),
+          ...(extraFieldCols.length > 0 ? [hiCustomFieldsJson] : []),
+          req.params.recordId, departmentId,
+        ];
+        await pool.query(
+          `UPDATE ${table} SET ${hiSet.join(", ")} WHERE source_row_id = $${hi++} AND department_id = $${hi++}`,
+          hiVals
+        );
+      } else {
+        const hiCols = ["form_name", "department_id", "institution_id", "academic_year", "role_name", "schema_id",
+          "language", "created_by", "custom_fields", "source_row_id", ...baseFieldCols.map(quoteIdent)];
+        const hiVals = [form.form_name, departmentId, institutionId, year, null, form.id,
+          "hi", req.user.userId, hiCustomFieldsJson, req.params.recordId, ...baseFieldCols.map((c) => hiData[c] ?? null)];
+        const hiPh = hiVals.map((_, i) => `$${i + 1}`).join(", ");
+        await pool.query(`INSERT INTO ${table} (${hiCols.join(", ")}) VALUES (${hiPh})`, hiVals);
+      }
+    } catch (hiErr) {
+      logger.warn("Hindi mirror sync failed; English record updated.", { form: form.form_name, error: hiErr.message });
+    }
+
+    await writeAuditLog(req, {
+      actionType: "DEPARTMENT_FORM_RECORD_UPDATED",
+      entityType: "department_form_record",
+      entityId: record.id,
+      newValue: { form_name: form.form_name, form_id: form.id, academic_year: year },
+      message: `Record updated in department form "${form.form_name}"`,
+    }).catch(() => {});
+
     return res.json({ success: true, record, message: "Record updated successfully." });
   } catch (err) {
     logger.error("PUT /api/department-form-data/:id/records/:recordId", { stack: err.stack });
     return res.status(500).json({ success: false, message: "Failed to update record." });
+  }
+});
+
+/* ─────────────────────────────────────────────────────────────────────
+   POST /api/department-form-data/:id/records/:recordId/lock
+   Acquire a pre-edit lock. Returns 200 { acquired:true } or
+   409 { acquired:false, lockedByName, expiresAt } when locked by someone else.
+───────────────────────────────────────────────────────────────────── */
+router.post("/:id/records/:recordId/lock", async (req, res) => {
+  const pool = req.app.locals.pool;
+  if (!requireContributor(req, res)) return;
+  try {
+    const { form, error } = await loadForm(pool, req, req.params.id);
+    if (error) return res.status(404).json({ success: false, message: error });
+
+    const { rows: userRows } = await pool.query(
+      `SELECT full_name FROM users WHERE id = $1`,
+      [req.user.userId]
+    );
+    const userName = userRows[0]?.full_name || "A user";
+
+    const result = await acquireLock(pool, {
+      recordId: req.params.recordId,
+      formType: "department",
+      formId: String(form.id),
+      userId: req.user.userId,
+      userName,
+    });
+
+    if (result.acquired) {
+      return res.json({ success: true, acquired: true });
+    }
+    // Return 200 (not 409) so the response is always treated as a normal business
+    // outcome; the frontend distinguishes acquired:true vs acquired:false.
+    return res.json({
+      success: true,
+      acquired: false,
+      lockedByName: result.lockedByName,
+      expiresAt: result.expiresAt,
+    });
+  } catch (err) {
+    logger.error("POST /api/department-form-data/:id/records/:recordId/lock", { stack: err.stack });
+    return res.status(500).json({ success: false, message: "Failed to acquire edit lock." });
+  }
+});
+
+/* ─────────────────────────────────────────────────────────────────────
+   DELETE /api/department-form-data/:id/records/:recordId/lock
+   Release the caller's edit lock. Silently succeeds if no lock exists.
+───────────────────────────────────────────────────────────────────── */
+router.delete("/:id/records/:recordId/lock", async (req, res) => {
+  const pool = req.app.locals.pool;
+  try {
+    await releaseLock(pool, {
+      recordId: req.params.recordId,
+      userId: req.user.userId,
+    });
+    return res.json({ success: true });
+  } catch (err) {
+    logger.error("DELETE /api/department-form-data/:id/records/:recordId/lock", { stack: err.stack });
+    return res.status(500).json({ success: false, message: "Failed to release edit lock." });
   }
 });
 
@@ -438,6 +745,15 @@ router.delete("/:id/records/bulk-delete", async (req, res) => {
         )
       : { rowCount: 0 };
     const deleted = rowCount ?? 0;
+
+    await writeAuditLog(req, {
+      actionType: "DEPARTMENT_FORM_RECORDS_BULK_DELETED",
+      entityType: "department_form_record",
+      entityId: null,
+      newValue: { form_name: form.form_name, form_id: form.id, academic_year: year, deleted_count: deleted },
+      message: `${deleted} record(s) bulk deleted from department form "${form.form_name}"`,
+    }).catch(() => {});
+
     return res.json({ success: true, deleted, failed: Math.max(0, ids.length - deleted), message: `${deleted} record(s) deleted.` });
   } catch (err) {
     logger.error("DELETE /api/department-form-data bulk-delete", { stack: err.stack });
@@ -446,12 +762,14 @@ router.delete("/:id/records/bulk-delete", async (req, res) => {
 });
 
 /* ─────────────────────────────────────────────────────────────────────
-   GET /api/department-form-data/:id/export?format=csv|xlsx
-   Exports the department's records for the selected year (English only).
+   GET /api/department-form-data/:id/export?format=csv|xlsx&language=
+   Exports the department's records for the selected year.
+   Supports language=hi to export translated values with Hindi headers.
 ───────────────────────────────────────────────────────────────────── */
 router.get("/:id/export", async (req, res) => {
   const pool = req.app.locals.pool;
   const { format = "csv" } = req.query;
+  const language = (req.query.language || "en").toLowerCase();
   try {
     const { form, departmentId, error } = await loadForm(pool, req, req.params.id);
     if (error) return res.status(404).json({ success: false, message: error });
@@ -459,18 +777,42 @@ router.get("/:id/export", async (req, res) => {
     const year = resolveYear(req);
 
     const effectiveSchema = await loadEffectiveSchema(pool, form, year);
-    const fields = activeFields(effectiveSchema);
+    const displaySchema = language !== "en"
+      ? (await enrichSchemaLabels({ schema: effectiveSchema }, language).catch(() => ({ schema: effectiveSchema }))).schema
+      : effectiveSchema;
+    const fields = activeFields(displaySchema);
     const cols = fields.map((f) => dbCol(f.column_name));
-    const headers = fields.map((f) => f.label?.en || f.column_name.replace(/_/g, " "));
+    const headers = fields.map((f) => f.label?.[language] || f.label?.en || f.column_name.replace(/_/g, " "));
 
-    const { rows } = await pool.query(
-      `SELECT t.*, u.full_name AS entered_by
-       FROM ${table} t
-       LEFT JOIN users u ON u.id = t.created_by
-       WHERE t.department_id = $1 AND t.academic_year = $2 AND (t.language = 'en' OR t.language IS NULL)
-       ORDER BY t.created_at DESC`,
-      [departmentId, year]
-    );
+    const { rows } = language === "en"
+      ? await pool.query(
+          `SELECT t.*, u.full_name AS entered_by
+           FROM ${table} t
+           LEFT JOIN users u ON u.id = t.created_by
+           WHERE t.department_id = $1 AND t.academic_year = $2 AND (t.language = 'en' OR t.language IS NULL)
+           ORDER BY t.created_at DESC`,
+          [departmentId, year]
+        )
+      : await pool.query(
+          `WITH has_translation AS (
+             SELECT source_row_id FROM ${table}
+             WHERE  language = $3 AND source_row_id IS NOT NULL
+               AND  department_id = $1 AND academic_year = $2
+           )
+           SELECT t.*, u.full_name AS entered_by
+           FROM ${table} t
+           LEFT JOIN users u ON u.id = t.created_by
+           WHERE t.department_id = $1 AND t.academic_year = $2
+             AND (
+               t.language = $3
+               OR (
+                 (t.language = 'en' OR t.language IS NULL)
+                 AND t.id NOT IN (SELECT source_row_id FROM has_translation WHERE source_row_id IS NOT NULL)
+               )
+             )
+           ORDER BY t.created_at DESC`,
+          [departmentId, year, language]
+        );
 
     const allHeaders = ["#", "Added By", ...headers, "Created"];
     const dataRows = rows.map((r, i) => {
@@ -492,7 +834,7 @@ router.get("/:id/export", async (req, res) => {
       ];
     });
 
-    const baseName = `${form.form_name}_${year}`;
+    const baseName = `${form.form_name}_${year}${language !== "en" ? `_${language}` : ""}`;
 
     if (format === "xlsx") {
       const wb = new ExcelJS.Workbook();
@@ -544,6 +886,15 @@ router.delete("/:id/records/:recordId", async (req, res) => {
       [rootId, departmentId]
     );
     if (!rowCount) return res.status(404).json({ success: false, message: "Record not found." });
+
+    await writeAuditLog(req, {
+      actionType: "DEPARTMENT_FORM_RECORD_DELETED",
+      entityType: "department_form_record",
+      entityId: rootId,
+      newValue: { form_name: form.form_name, form_id: form.id, academic_year: year },
+      message: `Record deleted from department form "${form.form_name}"`,
+    }).catch(() => {});
+
     return res.json({ success: true, message: "Record deleted successfully." });
   } catch (err) {
     logger.error("DELETE /api/department-form-data/:id/records/:recordId", { stack: err.stack });

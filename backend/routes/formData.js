@@ -13,6 +13,40 @@ const { assertFormDomainAccess } = require("../services/domainService");
 const { resolveEffectiveDepartment, getDepartmentWriteBlock } = require("../services/departmentContext");
 const { ensureSchemaExists } = require("../services/schemaPropagationService");
 const { isFormAssigned, isContributorOnly } = require("./formAssignments");
+const LOCK_TTL_MINUTES = 15;
+async function acquireLock(pool, { recordId, formType, formId, userId, userName, ttlMinutes = LOCK_TTL_MINUTES }) {
+  const { rowCount } = await pool.query(
+    `WITH cleanup AS (
+       DELETE FROM record_edit_locks
+         WHERE record_id = $1 AND expires_at < now()
+     )
+     INSERT INTO record_edit_locks
+       (record_id, form_type, form_id, locked_by, locked_by_name, expires_at)
+     VALUES ($1, $2, $3, $4, $5, now() + (INTERVAL '1 minute' * $6::int))
+     ON CONFLICT (record_id) DO NOTHING`,
+    [recordId, formType, formId, userId, userName || "Another user", ttlMinutes]
+  );
+  if (rowCount > 0) return { acquired: true };
+  const { rows } = await pool.query(
+    `SELECT locked_by, locked_by_name, expires_at FROM record_edit_locks WHERE record_id = $1`,
+    [recordId]
+  );
+  if (!rows.length) return acquireLock(pool, { recordId, formType, formId, userId, userName, ttlMinutes });
+  if (rows[0].locked_by === userId) {
+    await pool.query(
+      `UPDATE record_edit_locks SET expires_at = now() + (INTERVAL '1 minute' * $1::int), locked_at = now() WHERE record_id = $2`,
+      [ttlMinutes, recordId]
+    );
+    return { acquired: true };
+  }
+  return { acquired: false, lockedByName: rows[0].locked_by_name || "Another user", expiresAt: rows[0].expires_at };
+}
+async function releaseLock(pool, { recordId, userId }) {
+  await pool.query(
+    `DELETE FROM record_edit_locks WHERE record_id = $1 AND locked_by = $2`,
+    [recordId, userId]
+  );
+}
 
 /* Bug 17 — shared-form schema ownership. On a WRITE, a consumer institution must
    store its OWN schema copy's id, never the creator's. getActiveSchema falls back
@@ -616,6 +650,52 @@ router.get("/:formName/records", async (req, res) => {
 });
 
 /* ─────────────────────────────────────────────────────────────────────
+   GET /api/form-data/:formName/records/:id
+   Fetches the latest version of a single record. Called by the edit flow
+   immediately after lock acquisition so the form is always pre-populated
+   with fresh DB data rather than the potentially stale list-page snapshot.
+   Scoped to the caller's institution (and department for dept admins).
+─────────────────────────────────────────────────────────────────────── */
+router.get("/:formName/records/:id", async (req, res) => {
+  const pool = req.app.locals.pool;
+  const { formName, id } = req.params;
+
+  if (!validateFormName(formName))
+    return res.status(400).json({ success: false, message: "Invalid form name." });
+
+  try {
+    const ctx = await resolveUserContext(pool, req);
+    if (!ctx.institutionId)
+      return res.status(400).json({ success: false, message: "Institution ID required." });
+
+    let whereClause = "id = $1 AND institution_id = $2 AND (language = 'en' OR language IS NULL)";
+    const params = [id, ctx.institutionId];
+    if (ctx.role === "department_admin" && ctx.departmentId) {
+      whereClause += ` AND (department_id = $3 OR department_id IS NULL)`;
+      params.push(ctx.departmentId);
+    }
+
+    const { rows } = await pool.query(
+      `SELECT * FROM ${formName}_records WHERE ${whereClause}`,
+      params
+    );
+
+    if (!rows.length)
+      return res.status(404).json({ success: false, message: "Record not found or has been deleted." });
+
+    const record = rows[0];
+    if (record.custom_fields && typeof record.custom_fields === "object") {
+      Object.assign(record, record.custom_fields);
+    }
+
+    return res.json({ success: true, record });
+  } catch (err) {
+    logger.error(`GET /api/form-data/${formName}/records/${id}`, { stack: err.stack });
+    return res.status(500).json({ success: false, message: "Failed to fetch record." });
+  }
+});
+
+/* ─────────────────────────────────────────────────────────────────────
    GET /api/form-data/:formName/records/:id/counterpart
    Returns the linked row in the OTHER language for the read-only reference pane
    of the edit dialog:
@@ -818,6 +898,63 @@ router.post("/:formName/records", async (req, res) => {
 });
 
 /* ─────────────────────────────────────────────────────────────────────
+   POST /api/form-data/:formName/records/:id/lock
+   Acquire a pre-edit lock. Returns 200 { acquired:true } or
+   409 { acquired:false, lockedByName, expiresAt } when locked by someone else.
+─────────────────────────────────────────────────────────────────────── */
+router.post("/:formName/records/:id/lock", async (req, res) => {
+  const pool = req.app.locals.pool;
+  const { formName, id } = req.params;
+  if (!validateFormName(formName))
+    return res.status(400).json({ success: false, message: "Invalid form name." });
+  try {
+    const { rows: userRows } = await pool.query(
+      `SELECT full_name FROM users WHERE id = $1`,
+      [req.user.userId]
+    );
+    const userName = userRows[0]?.full_name || "A user";
+
+    const result = await acquireLock(pool, {
+      recordId: id,
+      formType: "institute",
+      formId: formName,
+      userId: req.user.userId,
+      userName,
+    });
+
+    if (result.acquired) {
+      return res.json({ success: true, acquired: true });
+    }
+    // Return 200 (not 409) so the response is always a normal business outcome.
+    return res.json({
+      success: true,
+      acquired: false,
+      lockedByName: result.lockedByName,
+      expiresAt: result.expiresAt,
+    });
+  } catch (err) {
+    logger.error(`POST /api/form-data/${formName}/records/${id}/lock`, { stack: err.stack });
+    return res.status(500).json({ success: false, message: "Failed to acquire edit lock." });
+  }
+});
+
+/* ─────────────────────────────────────────────────────────────────────
+   DELETE /api/form-data/:formName/records/:id/lock
+   Release the caller's edit lock. Silently succeeds if no lock exists.
+─────────────────────────────────────────────────────────────────────── */
+router.delete("/:formName/records/:id/lock", async (req, res) => {
+  const pool = req.app.locals.pool;
+  const { id } = req.params;
+  try {
+    await releaseLock(pool, { recordId: id, userId: req.user.userId });
+    return res.json({ success: true });
+  } catch (err) {
+    logger.error(`DELETE /api/form-data/records/${id}/lock`, { stack: err.stack });
+    return res.status(500).json({ success: false, message: "Failed to release edit lock." });
+  }
+});
+
+/* ─────────────────────────────────────────────────────────────────────
    PUT /api/form-data/:formName/records/:id
    Lock-checked. Updates English row then synchronously awaits the Hindi
    mirror update before responding.
@@ -1005,6 +1142,9 @@ router.put("/:formName/records/:id", async (req, res) => {
         logger.error(`Hindi row update failed for ${formName}/${id}`, { stack: err.stack });
       }
     }
+
+    // Release the pre-edit lock on successful save (best-effort).
+    releaseLock(pool, { recordId: id, userId: req.user.userId }).catch(() => {});
 
     return res.json({ success: true, record: rows[0], message: "Record updated successfully." });
   } catch (err) {

@@ -70,6 +70,31 @@ async function resolveInstitutionId(pool, req) {
   return institutionId;
 }
 
+/* Returns true when the form is classified as archived in academic_year_form_config
+   for the selected academic year (X-Academic-Year header). Used to block writes
+   (deadline, lock, unlock, schema) on archived forms. Returns false when no year
+   context is present so non-year-aware institutions are unaffected. */
+async function isInstitutionFormArchived(pool, formName, institutionId, req) {
+  const headerYear = Number(req.headers["x-academic-year"]);
+  if (!Number.isInteger(headerYear) || headerYear <= 0 || !institutionId) return false;
+  const academicYear = formatAcademicYear(headerYear);
+  const { rows: formRows } = await pool.query(
+    "SELECT id FROM table_list WHERE form_name = $1 LIMIT 1",
+    [formName]
+  );
+  if (!formRows.length) return false;
+  const formId = String(formRows[0].id);
+  const { rows: cfgRows } = await pool.query(
+    `SELECT archived_forms_json FROM academic_year_form_config
+     WHERE institution_id = $1 AND academic_year = $2`,
+    [institutionId, academicYear]
+  );
+  if (!cfgRows.length) return false;
+  const archived = cfgRows[0].archived_forms_json;
+  const archivedSet = new Set(Array.isArray(archived) ? archived.map(String) : []);
+  return archivedSet.has(formId);
+}
+
 /* ─────────────────────────────────────────────────────────────────────
    GET /api/forms/languages
 ───────────────────────────────────────────────────────────────────── */
@@ -1041,6 +1066,9 @@ router.put(
       if (ayLock.locked)
         return res.status(403).json({ success: false, message: ayLock.message });
 
+      if (await isInstitutionFormArchived(pool, formName, institutionId, req))
+        return res.status(409).json({ success: false, message: "This form is archived for the selected academic year. Archived forms cannot be modified." });
+
       // Auto-fill missing Hindi labels before persisting.
       // translate_to_hindi may be toggled in this same request; default to true if not specified.
       const effectiveTranslate = typeof translate_to_hindi === "boolean" ? translate_to_hindi : true;
@@ -1531,6 +1559,9 @@ router.put(
       if (ayLock.locked)
         return res.status(403).json({ success: false, message: ayLock.message });
 
+      if (await isInstitutionFormArchived(pool, formName, institutionId, req))
+        return res.status(409).json({ success: false, message: "This form is archived for the selected academic year. Archived forms cannot be modified." });
+
       // Issue 5 — deadlines are scoped to the SELECTED academic year (X-Academic-
       // Year header). When a year is in context we write ONLY that year's per-year
       // row and leave every other year — and the legacy form-wide row — untouched.
@@ -1652,6 +1683,9 @@ router.post(
         return res.status(400).json({ success: false, message: "Institution ID required." });
       }
 
+      if (await isInstitutionFormArchived(pool, formName, institutionId, req))
+        return res.status(409).json({ success: false, message: "This form is archived for the selected academic year. Archived forms cannot be modified." });
+
       const { rows } = await pool.query(
         `INSERT INTO form_lock_config (form_name, institution_id, is_locked, locked_by, locked_at)
          VALUES ($1, $2, true, $3, now())
@@ -1744,6 +1778,9 @@ router.post(
       if (!institutionId) {
         return res.status(400).json({ success: false, message: "Institution ID required." });
       }
+
+      if (await isInstitutionFormArchived(pool, formName, institutionId, req))
+        return res.status(409).json({ success: false, message: "This form is archived for the selected academic year. Archived forms cannot be modified." });
 
       const { rows } = await pool.query(
         `INSERT INTO form_lock_config (form_name, institution_id, is_locked)

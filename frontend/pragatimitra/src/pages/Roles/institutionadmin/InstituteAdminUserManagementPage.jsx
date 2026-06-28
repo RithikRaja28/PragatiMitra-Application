@@ -577,7 +577,7 @@ function UserList({ apiFetch, onEdit, institutionId, onToast }) {
         <input
           placeholder={t("Search name or email…", lang)}
           value={search}
-          onChange={setSearch}
+          onChange={(e) => setSearch(e.target.value)}
           style={{ flex: 1, width: "auto" }}
         />
         <Select

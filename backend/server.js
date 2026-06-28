@@ -389,6 +389,27 @@ ensureSchemaProvenanceColumns(pool)
   .then(() => propagateAllSharedSchemas(pool))
   .catch((e) => logger.error("Failed to propagate shared form schemas", { stack: e.stack }));
 
+/* ── Record-level edit locks: table + background cleanup ─────────── */
+pool.query(`
+  CREATE TABLE IF NOT EXISTS record_edit_locks (
+    id             UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    record_id      UUID        NOT NULL UNIQUE,
+    form_type      TEXT        NOT NULL,
+    form_id        TEXT        NOT NULL,
+    locked_by      UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    locked_by_name TEXT        NOT NULL DEFAULT '',
+    locked_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    expires_at     TIMESTAMPTZ NOT NULL
+  )
+`).then(() => Promise.all([
+  pool.query(`CREATE INDEX IF NOT EXISTS idx_rel_expires ON record_edit_locks(expires_at)`),
+])).catch((e) => logger.error("Failed to ensure record_edit_locks table", { stack: e.stack }));
+
+setInterval(() => {
+  pool.query(`DELETE FROM record_edit_locks WHERE expires_at < now()`)
+    .catch((e) => logger.error("Failed to clean expired record edit locks", { stack: e.stack }));
+}, 10 * 60 * 1000).unref();
+
 /* ── Import session cache: rows stored server-side after parse ───── */
 app.locals.importSessions = new Map();
 // Purge sessions older than 1 hour every 30 minutes

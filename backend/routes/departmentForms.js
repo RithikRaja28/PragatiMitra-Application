@@ -24,6 +24,7 @@ const { enqueueEmail }    = require("../services/mailService");
 const { getDepartmentState, DEPARTMENT_INACTIVE_MESSAGE } = require("../services/departmentContext");
 const { assertDomainOwnerAccess, resolveUserDomain } = require("../services/domainService");
 const { ensureRecordsIndexes } = require("../services/recordsIndexService");
+const { translateSentence } = require("../services/translationService");
 
 const router = express.Router();
 router.use(verifyToken);
@@ -141,6 +142,17 @@ async function loadOwnedForm(pool, req, id) {
       return { error: "You don't have access to this form." };
   }
   return { form: rows[0], departmentId };
+}
+
+/* Returns true when the department form is archived for the given academic year.
+   Used to block deadline, lock, unlock, and schema edits on archived forms. */
+async function isDeptFormArchivedForYear(pool, formId, year) {
+  const { rows } = await pool.query(
+    `SELECT is_archived FROM department_form_year_mapping
+     WHERE department_form_id = $1 AND academic_year = $2`,
+    [formId, year]
+  );
+  return rows.length > 0 && !!rows[0].is_archived;
 }
 
 /* ─────────────────────────────────────────────────────────────────────
@@ -466,7 +478,7 @@ router.post("/", requireRole(WRITE_ROLES), requireActiveDepartment, async (req, 
     if (!isNaN(d.getTime())) createDeadline = d.toISOString();
   }
 
-  // Department forms are single-language — translation is not supported.
+  // Runtime record translation is not supported for department forms.
   const translateEnabled = false;
   const year = resolveYear(req);
   let table; // set after department is resolved (table is namespaced per department)
@@ -477,6 +489,8 @@ router.post("/", requireRole(WRITE_ROLES), requireActiveDepartment, async (req, 
       return res.status(400).json({ success: false, message: "No department is associated with your account." });
 
     table = deptRecordsTable(departmentId, slug);
+
+    await autoFillHindiLabels(schema).catch(() => {});
 
     const usedColNames = collectColumnNames(schema.fields);
 
@@ -650,6 +664,9 @@ router.put("/:id/schema", requireRole(WRITE_ROLES), requireActiveDepartment, asy
     const { form, error } = await loadOwnedForm(pool, req, req.params.id);
     if (error) return res.status(404).json({ success: false, message: error });
 
+    if (await isDeptFormArchivedForYear(pool, form.id, year))
+      return res.status(409).json({ success: false, message: "This form is archived for the selected academic year. Archived forms cannot be modified." });
+
     const creationYear = form.academic_year;
     const isCreationYear = year === creationYear;
     const table = deptRecordsTable(form.department_id, form.form_name);
@@ -688,6 +705,8 @@ router.put("/:id/schema", requireRole(WRITE_ROLES), requireActiveDepartment, asy
     }
 
     const mergedUsed = Array.from(new Set([...(form.used_column_names || []), ...collectColumnNames(schema.fields)]));
+
+    await autoFillHindiLabels(schema).catch(() => {});
 
     const client = await pool.connect();
     try {
@@ -736,13 +755,22 @@ router.put("/:id/schema", requireRole(WRITE_ROLES), requireActiveDepartment, asy
       }
 
       await client.query("COMMIT");
-      return res.json({ success: true, message: "Schema updated successfully." });
     } catch (err) {
       await client.query("ROLLBACK");
       throw err;
     } finally {
       client.release();
     }
+
+    await writeAuditLog(req, {
+      actionType: "DEPARTMENT_FORM_SCHEMA_UPDATED",
+      entityType: "department_form",
+      entityId: form.id,
+      newValue: { form_name: form.form_name, academic_year: year, is_creation_year: isCreationYear },
+      message: `Department form schema updated - "${form.form_name}" for ${year}`,
+    }).catch(() => {});
+
+    return res.json({ success: true, message: "Schema updated successfully." });
   } catch (err) {
     logger.error("PUT /api/department-forms/:id/schema", { stack: err.stack });
     return res.status(500).json({ success: false, message: "Failed to update schema." });
@@ -772,13 +800,22 @@ router.put("/:id/roles", requireRole(WRITE_ROLES), requireActiveDepartment, asyn
         );
       }
       await client.query("COMMIT");
-      return res.json({ success: true, message: "Role access updated." });
     } catch (err) {
       await client.query("ROLLBACK");
       throw err;
     } finally {
       client.release();
     }
+
+    await writeAuditLog(req, {
+      actionType: "DEPARTMENT_FORM_ROLES_UPDATED",
+      entityType: "department_form",
+      entityId: form.id,
+      newValue: { form_name: form.form_name, roles },
+      message: `Department form roles updated - "${form.form_name}"`,
+    }).catch(() => {});
+
+    return res.json({ success: true, message: "Role access updated." });
   } catch (err) {
     logger.error("PUT /api/department-forms/:id/roles", { stack: err.stack });
     return res.status(500).json({ success: false, message: "Failed to update roles." });
@@ -806,6 +843,9 @@ router.put("/:id/deadline", requireRole(WRITE_ROLES), requireActiveDepartment, a
     // Deadline is scoped to the SELECTED academic year — a deadline set for one
     // year is never inherited by another (year isolation). Keyed per (form, year).
     const year = resolveYear(req);
+
+    if (await isDeptFormArchivedForYear(pool, form.id, year))
+      return res.status(409).json({ success: false, message: "This form is archived for the selected academic year. Archived forms cannot be modified." });
 
     const { rows } = await pool.query(
       `INSERT INTO department_form_deadline_config
@@ -858,6 +898,9 @@ async function setYearLock(req, res, locked) {
     const { form, error } = await loadOwnedForm(pool, req, req.params.id);
     if (error) return res.status(404).json({ success: false, message: error });
     const year = resolveYear(req);
+
+    if (await isDeptFormArchivedForYear(pool, form.id, year))
+      return res.status(409).json({ success: false, message: "This form is archived for the selected academic year. Archived forms cannot be modified." });
 
     // Block unlock when the deadline has already passed — the deadline-based
     // lock is still active regardless of the manual is_locked flag, so

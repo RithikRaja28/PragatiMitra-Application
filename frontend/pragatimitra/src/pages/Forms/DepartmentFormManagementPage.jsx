@@ -204,6 +204,22 @@ export default function DepartmentFormManagementPage() {
   const searching = search.trim().length > 0;
 
   function renderActions(form) {
+    if (form.is_archived) {
+      return (
+        <div style={{ display: "inline-flex", alignItems: "center", gap: 6, justifyContent: "flex-end" }}>
+          <Dropdown align="right" width={200} button={({ toggle }) => (<Button variant="secondary" iconOnly title={t("Export", lang)} icon={<Download size={18} strokeWidth={STROKE} />} onClick={toggle} />)}>
+            <MenuLabel>{t("Export", lang)}</MenuLabel>
+            <MenuItem icon={<FileCsv size={16} strokeWidth={STROKE} />} onClick={() => downloadDeptExport(form.id, "csv", accessToken, selectedYear)}>{t("Download CSV", lang)}</MenuItem>
+            <MenuItem icon={<FileSpreadsheet size={16} strokeWidth={STROKE} />} onClick={() => downloadDeptExport(form.id, "xlsx", accessToken, selectedYear)}>{t("Download Excel", lang)}</MenuItem>
+          </Dropdown>
+          <Dropdown align="right" width={210} button={({ toggle }) => (<Button variant="secondary" iconOnly title={t("More actions", lang)} icon={<MoreHorizontal size={18} strokeWidth={STROKE} />} onClick={toggle} />)}>
+            <MenuLabel>{t("Manage", lang)}</MenuLabel>
+            <MenuItem icon={<ArchiveRestore size={16} strokeWidth={STROKE} />} disabled={busyId === form.id} onClick={() => setArchive(form, false)}>{t("Activate for", lang)} {academicYear || selectedYear}</MenuItem>
+          </Dropdown>
+        </div>
+      );
+    }
+
     return (
       <div style={{ display: "inline-flex", alignItems: "center", gap: 6, justifyContent: "flex-end" }}>
         <Button variant="secondary" iconOnly title={t("View records", lang)} icon={<Eye size={18} strokeWidth={STROKE} />} onClick={() => navigate(`${listPath}/records`, { state: { entity: form } })} />
@@ -216,9 +232,7 @@ export default function DepartmentFormManagementPage() {
         </Dropdown>
         <Dropdown align="right" width={210} button={({ toggle }) => (<Button variant="secondary" iconOnly title={t("More actions", lang)} icon={<MoreHorizontal size={18} strokeWidth={STROKE} />} onClick={toggle} />)}>
           <MenuLabel>{t("Manage", lang)}</MenuLabel>
-          {form.is_archived
-            ? <MenuItem icon={<ArchiveRestore size={16} strokeWidth={STROKE} />} disabled={busyId === form.id} onClick={() => setArchive(form, false)}>{t("Activate for", lang)} {academicYear || selectedYear}</MenuItem>
-            : <MenuItem icon={<Archive size={16} strokeWidth={STROKE} />} disabled={busyId === form.id} onClick={() => setArchive(form, true)}>{t("Archive for", lang)} {academicYear || selectedYear}</MenuItem>}
+          <MenuItem icon={<Archive size={16} strokeWidth={STROKE} />} disabled={busyId === form.id} onClick={() => setArchive(form, true)}>{t("Archive for", lang)} {academicYear || selectedYear}</MenuItem>
           {form.is_locked
             ? <MenuItem icon={<Unlock size={16} strokeWidth={STROKE} />} disabled={busyId === form.id || !!form.deadline_expired} title={form.deadline_expired ? t("Deadline has expired — remove the deadline first to unlock", lang) : undefined} onClick={() => !form.deadline_expired && toggleLock(form)}>{t("Unlock form", lang)}</MenuItem>
             : <MenuItem icon={<Lock size={16} strokeWidth={STROKE} />} disabled={busyId === form.id} onClick={() => toggleLock(form)}>{t("Lock form", lang)}</MenuItem>}
@@ -258,9 +272,14 @@ export default function DepartmentFormManagementPage() {
     },
     {
       key: "access", header: t("Access", lang), width: 110,
-      render: (form) => form.is_locked
-        ? <Badge tone="danger" icon={<Lock size={11} strokeWidth={STROKE} />}>{t("Locked", lang)}</Badge>
-        : <Badge tone="success">{t("Open", lang)}</Badge>,
+      render: (form) => {
+        if (form.is_archived) {
+          return <Badge tone="neutral" icon={<Archive size={11} strokeWidth={STROKE} />}>{t("Archived", lang)}</Badge>;
+        }
+        return form.is_locked
+          ? <Badge tone="danger" icon={<Lock size={11} strokeWidth={STROKE} />}>{t("Locked", lang)}</Badge>
+          : <Badge tone="success">{t("Open", lang)}</Badge>;
+      },
     },
     { key: "actions", header: "", align: "right", width: 192, render: renderActions },
   ];

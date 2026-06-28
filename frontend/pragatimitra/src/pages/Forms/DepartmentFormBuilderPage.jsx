@@ -137,11 +137,16 @@ function FieldRow({ field, index, total, onChange, onRemove, onMove, isEdit }) {
             )}
           </div>
           <div>
-            <label style={labelStyle}>{t("Label", lang)}</label>
-            <input style={inputStyle(false)} value={field.label?.en || ""} placeholder={t("Label", lang)}
+            <label style={labelStyle}>{t("Label (English) *", lang)}</label>
+            <input style={inputStyle(false)} value={field.label?.en || ""} placeholder={t("e.g. Student Name", lang)}
               onChange={(e) => onChange(index, "label.en", e.target.value)} />
           </div>
-          <label style={{ display: "flex", alignItems: "center", gap: 8, paddingTop: 8, cursor: "pointer" }}>
+          <div>
+            <label style={labelStyle}>{t("Label (Hindi)", lang)} <span style={{ fontSize: 11, color: color.muted, fontWeight: 400 }}>({t("auto-filled if blank", lang)})</span></label>
+            <input style={inputStyle(false)} value={field.label?.hi || ""} placeholder="जैसे छात्र का नाम"
+              onChange={(e) => onChange(index, "label.hi", e.target.value)} />
+          </div>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, paddingTop: 8, cursor: "pointer", gridColumn: "1 / -1" }}>
             <input type="checkbox" checked={!!field.required} onChange={(e) => onChange(index, "required", e.target.checked)} style={{ accentColor: color.primary, width: 15, height: 15 }} />
             <span style={{ fontSize: 13, color: "#475569", fontWeight: 500 }}>{t("Required field", lang)}</span>
           </label>
@@ -203,7 +208,7 @@ export default function DepartmentFormBuilderPage({ mode, initialData, onDone, o
   function validateFields() {
     for (const f of fields) {
       if (!f.column_name.trim()) { setError(t("Every field needs a column name.", lang)); return false; }
-      if (!f.label?.en?.trim()) { setError(t("Every field needs an English label.", lang)); return false; }
+      if (!f.label?.en?.trim()) { setError(t("Every field needs a Label (English).", lang)); return false; }
     }
     if (fields.length === 0) { setError(t("Add at least one field.", lang)); return false; }
     setError(""); return true;

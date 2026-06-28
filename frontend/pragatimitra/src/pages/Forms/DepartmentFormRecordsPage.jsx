@@ -3,14 +3,15 @@ import { Plus, Pencil, Trash2, Lock, FilePlus, Download, FileText as FileCsv, Fi
 import { useApi } from "../../hooks/useApi";
 import { useAuth } from "../../store/AuthContext";
 import { Toast, isAuthError } from "../../components/shared/formUtils";
-import { color, Button, PageHeader, Badge, EmptyState, Modal, DataTable, Dropdown, MenuItem, MenuLabel, Input, Textarea, FieldLabel } from "../../ui";
+import { color, Button, PageHeader, Badge, EmptyState, Modal, DataTable, Dropdown, MenuItem, MenuLabel } from "../../ui";
 import { useLanguage } from "../../i18n/LanguageContext";
 import { t } from "../../i18n/translations";
 import api from "../../services/api";
+import { DocumentCell, RecordEditPage } from "./FormDataPage";
 
-async function downloadDeptExport(formId, format, accessToken, year) {
+async function downloadDeptExport(formId, format, accessToken, year, lang = "en") {
   const yq = year != null ? `&year=${year}` : "";
-  const res = await api.get(`/api/department-form-data/${formId}/export?format=${format}${yq}`,
+  const res = await api.get(`/api/department-form-data/${formId}/export?format=${format}&language=${lang}${yq}`,
     { token: accessToken });
   if (!res.ok) return;
   const blob = await res.blob();
@@ -37,133 +38,6 @@ function recordsDeadlineBadge(deadlineAt) {
   return { tone: days <= 3 ? "warning" : "success", label: `EXPIRES IN ${days} DAYS` };
 }
 
-/* ── Add / Edit record (single-language English form) ── */
-const labelStyle = { display: "block", fontSize: 13, fontWeight: 500, color: "#334155", marginBottom: 6 };
-
-function ReadOnlyVal({ label, value, type }) {
-  const { lang } = useLanguage();
-  let display;
-  if (type === "boolean") display = value === true || value === "true" ? t("Yes", lang) : value === false || value === "false" ? t("No", lang) : "—";
-  else display = value == null || value === "" ? "—" : String(value);
-  const empty = display === "—";
-  return (
-    <div>
-      <label style={labelStyle}>{label}</label>
-      <div style={{ width: "100%", minHeight: 48, padding: "12px 14px", border: `1px solid ${color.border}`, borderRadius: 10, fontSize: 14, color: empty ? "#94a3b8" : "#475569", background: "#fff", whiteSpace: "pre-wrap", wordBreak: "break-word", boxSizing: "border-box" }}>
-        {display}
-      </div>
-    </div>
-  );
-}
-
-/* ════════════════════════════════════════════════════════════════════
-   RecordEditView — dedicated in-shell edit/add page for a department record.
-   Single-language (English); department forms do not support translation.
-════════════════════════════════════════════════════════════════════ */
-function RecordEditView({ form, fields, record, year, viewOnly = false, onBack, showToast }) {
-  const { apiFetch } = useApi();
-  const { lang } = useLanguage();
-  const isEdit = !!record;
-  const yq = year != null ? `?year=${year}` : "";
-
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-  const [data, setData] = useState(() => { const init = {}; fields.forEach((f) => { const c = dbCol(f.column_name); init[c] = record ? (record[c] ?? "") : ""; }); return init; });
-  const set = (c, v) => setData((p) => ({ ...p, [c]: v }));
-
-  async function save(e) {
-    e.preventDefault();
-    if (viewOnly || saving) return;   // guard double-submit
-    setSaving(true); setError("");
-    try {
-      const res = isEdit
-        ? await apiFetch(`/api/department-form-data/${form.id}/records/${record.id}${yq}`, { method: "PUT", body: JSON.stringify({ data, year }) })
-        : await apiFetch(`/api/department-form-data/${form.id}/records${yq}`, { method: "POST", body: JSON.stringify({ data, year }) });
-      const d = await res.json();
-      if (d.success) {
-        showToast(d.message || "Saved.");
-        // Both add and edit → return to the records list (onBack refreshes it).
-        // Keeps the button disabled through navigation so it can't be re-submitted.
-        onBack();
-        return;
-      } else {
-        setError(d.message || "Failed to save record.");
-        setSaving(false);
-      }
-    } catch (e2) {
-      if (!isAuthError(e2)) setError("Network error. Please try again.");
-      setSaving(false);
-    }
-  }
-
-  function renderInput(f) {
-    const c = dbCol(f.column_name);
-    const label = f.label?.en || displayCol(f.column_name);
-    if (viewOnly) return <ReadOnlyVal key={c} label={label} value={data[c]} type={f.type} />;
-    if (f.type === "boolean") {
-      return (
-        <div key={c}>
-          <FieldLabel required={f.required}>{label}</FieldLabel>
-          <div style={{ display: "flex", gap: 16 }}>
-            {[["true", "Yes"], ["false", "No"]].map(([val, txt]) => (
-              <label key={val} style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 13, cursor: "pointer" }}>
-                <input type="radio" name={c} checked={String(data[c]) === val} onChange={() => set(c, val === "true")} style={{ accentColor: color.primary }} /> {t(txt, lang)}
-              </label>
-            ))}
-          </div>
-        </div>
-      );
-    }
-    if (f.type === "textarea" || f.type === "description") {
-      return (
-        <div key={c}>
-          <FieldLabel required={f.required}>{label}</FieldLabel>
-          <Textarea value={data[c] || ""} onChange={(e) => set(c, e.target.value)} />
-        </div>
-      );
-    }
-    const type = f.type === "number" ? "number" : f.type === "date" ? "date" : f.type === "email" ? "email" : f.type === "phone" ? "tel" : "text";
-    return (
-      <div key={c}>
-        <FieldLabel required={f.required}>{label}</FieldLabel>
-        <Input type={type} value={data[c] || ""} onChange={(e) => set(c, e.target.value)} />
-      </div>
-    );
-  }
-
-  return (
-    <div style={{ padding: "24px 32px 32px", fontFamily: "'Plus Jakarta Sans', sans-serif", minHeight: "100%", maxWidth: 1600, margin: "0 auto", display: "flex", flexDirection: "column" }}>
-      <PageHeader
-        breadcrumb={[t("Home", lang), t("Department", lang), { label: t("Department Forms", lang), onClick: onBack }, titleOf(form.form_name), isEdit ? t("Edit Record", lang) : t("Add Record", lang)]}
-        title={isEdit ? t("Edit Record", lang) : t("Add Record", lang)}
-        description={isEdit ? t("Update the record details.", lang) : t("Fill in the details below.", lang)}
-        actions={<Button variant="secondary" onClick={onBack}>{t("← Back", lang)}</Button>}
-      />
-      {viewOnly && (
-        <Badge tone="danger" icon={<Lock size={12} strokeWidth={2.2} />} style={{ marginBottom: 16 }}>{t("VIEW ONLY", lang)}</Badge>
-      )}
-      <form onSubmit={save} style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
-        <div style={{ flex: 1, minHeight: 0, background: "#fff", border: `1px solid ${color.border}`, borderRadius: 12, boxShadow: "0 1px 3px rgba(16,24,40,0.04)", overflow: "hidden", display: "flex", flexDirection: "column" }}>
-          <div style={{ padding: "16px 28px", borderBottom: `1px solid ${color.border}` }}>
-            <div style={{ fontSize: 14, fontWeight: 700, color: color.text }}>{titleOf(form.form_name)}</div>
-            <div style={{ fontSize: 12, color: color.muted, marginTop: 2 }}>{isEdit ? t("Edit this record", lang) : t("Enter the details for a new record", lang)}</div>
-          </div>
-          <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 28, display: "flex", flexDirection: "column", gap: 20 }}>
-            {fields.length === 0
-              ? <div style={{ fontSize: 13, color: color.muted, textAlign: "center", padding: "12px 0" }}>{t("This form has no fields yet.", lang)}</div>
-              : fields.map(renderInput)}
-            {error && <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 8, padding: "10px 14px", fontSize: 13, color: "#B91C1C" }}>{error}</div>}
-          </div>
-          <div style={{ padding: "16px 28px", borderTop: `1px solid ${color.border}`, background: color.hover, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 12 }}>
-            <Button variant="secondary" type="button" disabled={saving} onClick={onBack}>{t("Cancel", lang)}</Button>
-            {!viewOnly && <Button variant="primary" type="submit" loading={saving} disabled={saving}>{isEdit ? t("Update Record", lang) : t("Add Record", lang)}</Button>}
-          </div>
-        </div>
-      </form>
-    </div>
-  );
-}
-
 export default function DepartmentFormRecordsPage({ form, year = null, onBack }) {
   const { apiFetch } = useApi();
   const { accessToken, user } = useAuth();
@@ -185,8 +59,36 @@ export default function DepartmentFormRecordsPage({ form, year = null, onBack })
   const [editTarget, setEditTarget] = useState(null); // null = list · "new" = add · record = edit
   const [deleteId, setDeleteId] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  const [acquiringLock, setAcquiringLock] = useState(null); // record id currently being locked
+  const lockedRecordRef = useRef(null); // id of the record whose lock we currently hold
+  const lockUrlRef = useRef(null);       // full path for the DELETE lock endpoint currently held
+  const accessTokenRef = useRef(accessToken);
+  useEffect(() => { accessTokenRef.current = accessToken; }, [accessToken]);
 
   const showToast = (message, type = "success") => { setToast({ message, type }); setTimeout(() => setToast(null), 3500); };
+
+  async function saveRecord(formData) {
+    const editing = editTarget && editTarget !== "new" ? editTarget : null;
+    const yqSave = year != null ? `?year=${year}` : "";
+    try {
+      const res = editing
+        ? await apiFetch(`/api/department-form-data/${form.id}/records/${editing.id}${yqSave}`, {
+            method: "PUT", body: JSON.stringify({ data: formData, year }),
+          })
+        : await apiFetch(`/api/department-form-data/${form.id}/records${yqSave}`, {
+            method: "POST", body: JSON.stringify({ data: formData, year }),
+          });
+      const d = await res.json();
+      if (d.success) {
+        showToast(d.message || "Saved.");
+        return { success: true, message: d.message };
+      }
+      return { success: false, message: d.message || "Failed to save record." };
+    } catch (e) {
+      if (!isAuthError(e)) return { success: false, message: "Network error. Please try again." };
+      return { success: false };
+    }
+  }
 
   // Skeleton only on the FIRST load. On refreshes (year change, post-save reload)
   // keep the current rows visible and swap them in place — no flicker / height jump.
@@ -195,7 +97,7 @@ export default function DepartmentFormRecordsPage({ form, year = null, onBack })
     if (!hasLoadedRef.current) setLoading(true);
     setError("");
     try {
-      const res = await apiFetch(`/api/department-form-data/${form.id}/records${year != null ? `?year=${year}` : ""}`);
+      const res = await apiFetch(`/api/department-form-data/${form.id}/records?language=${lang}${yq}`);
       const d = await res.json();
       if (d.success) { setRecords(d.records || []); setSchema(d.schema?.schema || null); setLock(d.lock || { is_locked: false }); }
       else setError(d.message || t("Failed to load records.", lang));
@@ -213,6 +115,120 @@ export default function DepartmentFormRecordsPage({ form, year = null, onBack })
     const tmr = setTimeout(() => setShowSkeleton(true), 220);
     return () => clearTimeout(tmr);
   }, [loading]);
+
+  /* Release any held lock when the browser tab/window is closed or component unmounts.
+     Uses fetch+keepalive (not sendBeacon) because sendBeacon is POST-only and would
+     hit the acquire endpoint instead of the release endpoint. The [] dependency array
+     ensures this effect runs exactly once — no premature cleanup when apiFetch
+     gets a new reference due to auth-context updates. */
+  useEffect(() => {
+    const releaseLockViaFetch = () => {
+      const url = lockUrlRef.current;
+      if (!url) return;
+      try {
+        fetch(`${api.API_BASE}${url}`, {
+          method: "DELETE",
+          keepalive: true,
+          headers: {
+            "Content-Type": "application/json",
+            ...(accessTokenRef.current ? { Authorization: `Bearer ${accessTokenRef.current}` } : {}),
+          },
+        });
+      } catch {} // best-effort
+    };
+    window.addEventListener("beforeunload", releaseLockViaFetch);
+    return () => {
+      window.removeEventListener("beforeunload", releaseLockViaFetch);
+      // Also release on SPA navigation (component unmount without tab close).
+      releaseLockViaFetch();
+      lockUrlRef.current = null;
+      lockedRecordRef.current = null;
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* Acquire the pre-edit lock then fetch the latest record from the DB so the
+     edit form is never pre-populated with stale list-page data.
+     Two separate try-catch blocks so step 1 (lock) and step 2 (record fetch)
+     produce distinct, accurate error messages. */
+  async function handleEditClick(r) {
+    // Hindi mirror rows have source_row_id pointing to the English source.
+    // Always lock and edit the English source so the translation pipeline can re-run on save.
+    const sourceId = r.source_row_id || r.id;
+    setAcquiringLock(r.id);
+    const lockPath = `/api/department-form-data/${form.id}/records/${sourceId}/lock`;
+
+    // ── Step 1: acquire the lock ──────────────────────────────────────────
+    let lockData;
+    try {
+      const lockRes = await apiFetch(lockPath, { method: "POST" });
+      lockData = await lockRes.json();
+    } catch (e) {
+      setAcquiringLock(null);
+      if (!isAuthError(e)) showToast(t("Could not acquire edit lock. Please try again.", lang), "error");
+      return;
+    }
+
+    if (lockData.acquired === false) {
+      setAcquiringLock(null);
+      showToast(
+        `This record is currently being edited by ${lockData.lockedByName || "another user"}. Please try again later.`,
+        "error"
+      );
+      return;
+    }
+    if (lockData.acquired !== true) {
+      setAcquiringLock(null);
+      showToast(lockData.message || t("Could not acquire edit lock. Please try again.", lang), "error");
+      return;
+    }
+
+    // Lock acquired — register it so cleanup handlers can release it on unmount or tab close.
+    lockUrlRef.current = lockPath;
+    lockedRecordRef.current = sourceId;
+
+    // ── Step 2: fetch the latest record from DB ───────────────────────────
+    try {
+      const recRes = await apiFetch(`/api/department-form-data/${form.id}/records/${sourceId}`);
+      const recData = await recRes.json();
+
+      if (!recData.success || !recData.record) {
+        try { await apiFetch(lockPath, { method: "DELETE" }); } catch {}
+        lockUrlRef.current = null;
+        lockedRecordRef.current = null;
+        if (recRes.status === 404) {
+          showToast(t("This record has been deleted. Refreshing the list.", lang), "error");
+          load();
+        } else {
+          showToast(recData.message || t("Failed to load the latest record data. Please try again.", lang), "error");
+        }
+        return;
+      }
+
+      // ── Step 3: open edit form with fresh data ─────────────────────────
+      setEditTarget(recData.record);
+    } catch (e) {
+      // Record fetch failed (network error, server not yet restarted, etc.)
+      try { await apiFetch(lockPath, { method: "DELETE" }); } catch {}
+      lockUrlRef.current = null;
+      lockedRecordRef.current = null;
+      if (!isAuthError(e)) showToast(t("Failed to load the latest record data. Please try again.", lang), "error");
+    } finally {
+      setAcquiringLock(null);
+    }
+  }
+
+  /* Release the lock and return to the list. Used for both Cancel and post-Save. */
+  async function handleBackFromEdit() {
+    if (lockUrlRef.current) {
+      try {
+        await apiFetch(lockUrlRef.current, { method: "DELETE" });
+      } catch {} // best-effort — lock TTL will clean up
+      lockUrlRef.current = null;
+      lockedRecordRef.current = null;
+    }
+    setEditTarget(null);
+    load();
+  }
 
   const excluded = new Set(schema?.excluded_fixed_columns || []);
   const fields = (schema?.fields || []).filter((f) => !f.hidden && !excluded.has(dbCol(f.column_name)) && !excluded.has(f.column_name));
@@ -235,10 +251,11 @@ export default function DepartmentFormRecordsPage({ form, year = null, onBack })
   const columns = [
     { key: "entered_by", header: t("Added By", lang), width: 180, render: (r) => r.entered_by ? <span style={{ fontSize: 13, fontWeight: 600, color: color.text }}>{r.entered_by}</span> : <span style={{ color: color.muted }}>—</span> },
     ...fields.map((f) => ({
-      key: dbCol(f.column_name), header: f.label?.en || displayCol(f.column_name), ellipsis: true, width: 200,
+      key: dbCol(f.column_name), header: f.label?.[lang] || f.label?.en || displayCol(f.column_name), ellipsis: true, width: 200,
       render: (r) => {
         const v = r[dbCol(f.column_name)];
         if (f.type === "boolean") return v === true || v === "true" ? t("Yes", lang) : v === false || v === "false" ? t("No", lang) : "—";
+        if (f.type === "document") return <DocumentCell fileKey={v || ""} getToken={() => accessToken} lang={lang} />;
         return v ?? <span style={{ color: "#cbd5e1" }}>—</span>;
       },
     })),
@@ -247,26 +264,38 @@ export default function DepartmentFormRecordsPage({ form, year = null, onBack })
       key: "actions", header: "", align: "right", width: 100,
       render: (r) => (
         <div style={{ display: "inline-flex", gap: 6, justifyContent: "flex-end" }}>
-          <Button variant="secondary" iconOnly title={t("Edit", lang)} icon={<Pencil size={16} strokeWidth={STROKE} />} onClick={() => setEditTarget(r)} />
+          <Button variant="secondary" iconOnly title={t("Edit", lang)} icon={<Pencil size={16} strokeWidth={STROKE} />} loading={acquiringLock === r.id} disabled={!!acquiringLock} onClick={() => handleEditClick(r)} />
           {!readOnly && <Button variant="outlineDanger" iconOnly title={t("Delete", lang)} icon={<Trash2 size={16} strokeWidth={STROKE} />} onClick={() => setDeleteId(r.id)} />}
         </div>
       ),
     }] : []),
   ];
 
-  /* Dedicated in-shell edit/add page (no overlay) */
+  /* Dedicated in-shell edit/add page (no overlay) — uses the shared RecordEditPage
+     for the same two-pane (English editable / Hindi reference) layout as Institution Forms. */
   if (editTarget) {
+    const editing = editTarget !== "new" ? editTarget : null;
     return (
       <>
         {toast && <Toast message={toast.message} type={toast.type} />}
-        <RecordEditView
-          form={form}
+        <RecordEditPage
           fields={fields}
-          record={editTarget === "new" ? null : editTarget}
-          year={year}
+          record={editing}
+          formTitle={titleOf(form.form_name)}
+          counterpartPath={editing?.id ? `/api/department-form-data/${form.id}/records/${editing.id}/counterpart` : null}
+          apiFetch={apiFetch}
+          getToken={() => accessToken}
+          translationEnabled={true}
           viewOnly={editTarget !== "new" && lock.is_locked}
-          onBack={() => { setEditTarget(null); load(); }}
-          showToast={showToast}
+          onSave={saveRecord}
+          onBack={handleBackFromEdit}
+          breadcrumb={[
+            t("Home", lang),
+            t("Department", lang),
+            { label: t("Department Forms", lang), onClick: handleBackFromEdit },
+            titleOf(form.form_name),
+            editing ? t("Edit Record", lang) : t("Add Record", lang),
+          ]}
         />
       </>
     );
@@ -294,8 +323,8 @@ export default function DepartmentFormRecordsPage({ form, year = null, onBack })
               <Button variant="secondary" icon={<Download size={18} strokeWidth={STROKE} />} onClick={toggle}>{t("Export", lang)}</Button>
             )}>
               <MenuLabel>{t("Export", lang)}</MenuLabel>
-              <MenuItem icon={<FileCsv size={16} strokeWidth={STROKE} />} onClick={() => downloadDeptExport(form.id, "csv", accessToken, year)}>{t("Download CSV", lang)}</MenuItem>
-              <MenuItem icon={<FileSpreadsheet size={16} strokeWidth={STROKE} />} onClick={() => downloadDeptExport(form.id, "xlsx", accessToken, year)}>{t("Download Excel", lang)}</MenuItem>
+              <MenuItem icon={<FileCsv size={16} strokeWidth={STROKE} />} onClick={() => downloadDeptExport(form.id, "csv", accessToken, year, lang)}>{t("Download CSV", lang)}</MenuItem>
+              <MenuItem icon={<FileSpreadsheet size={16} strokeWidth={STROKE} />} onClick={() => downloadDeptExport(form.id, "xlsx", accessToken, year, lang)}>{t("Download Excel", lang)}</MenuItem>
             </Dropdown>
             {canEnterData && (
               <Button

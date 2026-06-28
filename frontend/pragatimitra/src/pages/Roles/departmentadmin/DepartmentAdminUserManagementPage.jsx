@@ -521,10 +521,11 @@ function UserList({ apiFetch, onEdit }) {
   };
 
   const filtered = users.filter((u) => {
+    const q = search.toLowerCase();
     const matchSearch =
-      u.full_name.toLowerCase().includes(search.toLowerCase()) ||
-      u.email.toLowerCase().includes(search.toLowerCase());
-    const matchStatus = filterStatus === "all" || u.account_status === filterStatus;
+      (u.full_name || "").toLowerCase().includes(q) ||
+      (u.email || "").toLowerCase().includes(q);
+    const matchStatus = filterStatus === "all" || (u.account_status || "") === filterStatus;
     return matchSearch && matchStatus;
   });
 
