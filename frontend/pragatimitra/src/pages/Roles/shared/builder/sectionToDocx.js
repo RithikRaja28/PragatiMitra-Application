@@ -856,7 +856,7 @@ export function printSectionAsPdf(section, blocks, reportMeta) {
   const bodyHtml = blocks.map(blockToHtml).join("\n");
 
   const win = window.open("", "_blank");
-  if (!win) { alert("Popup blocked. Please allow popups and try again."); return; }
+  if (!win) { throw new Error("Popup blocked. Please allow popups and try again."); }
 
   win.document.write(`<!DOCTYPE html>
 <html lang="en">

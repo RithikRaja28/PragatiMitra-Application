@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useApi } from "../../../../hooks/useApi";
 import Toast from "../../../../components/shared/Toast";
+import { ConfirmDialog } from "../../../../components/shared/formUtils";
 import BuilderHeader from "./BuilderHeader";
 
 async function apiJson(apiFetch, path, opts) {
@@ -56,6 +57,7 @@ export default function CompileReportPage({ reportId, onBack }) {
   const [progress,    setProgress]    = useState(0);
   const [toast,       setToast]       = useState(null);
   const [deletingId,  setDeletingId]  = useState(null);
+  const [confirmItem, setConfirmItem] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -117,8 +119,8 @@ export default function CompileReportPage({ reportId, onBack }) {
     }
   };
 
-  const handleDelete = async (item) => {
-    if (!window.confirm(`Delete this ${item.format?.toUpperCase()} compilation? This cannot be undone.`)) return;
+  const handleDelete = (item) => setConfirmItem(item);
+  const doDelete = async (item) => {
     setDeletingId(item.id);
     try {
       await apiJson(apiFetch, `/api/builder/compile/report/${reportId}/${item.id}`, { method: "DELETE" });
@@ -149,6 +151,16 @@ export default function CompileReportPage({ reportId, onBack }) {
     <div style={{ minHeight: "100vh", background: "transparent", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       {toast && <Toast {...toast} onClose={() => setToast(null)} />}
+      {confirmItem && (
+        <ConfirmDialog
+          variant="danger"
+          title="Delete compilation?"
+          message={`Delete this ${confirmItem.format?.toUpperCase?.() || ""} compilation? This action cannot be undone.`}
+          confirmLabel="Delete"
+          onConfirm={() => doDelete(confirmItem)}
+          onCancel={() => setConfirmItem(null)}
+        />
+      )}
 
       {/* header */}
       <BuilderHeader

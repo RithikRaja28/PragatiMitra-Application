@@ -6,7 +6,7 @@ import { useLanguage } from "../../../../i18n/LanguageContext";
 import { t } from "../../../../i18n/translations";
 import { PageContainer, PageHeader, Toolbar, SearchInput, FilterChip, Select, Button, Card, EmptyState, ErrorState } from "../../../../ui";
 import FormScreen              from "../../../../components/shared/FormScreen";
-import { S }                  from "../../../../components/shared/formUtils";
+import { S, Toast, ConfirmDialog } from "../../../../components/shared/formUtils";
 import CollaborativeEditorPage   from "./CollaborativeEditorPage";
 import CreateReportWizardPage    from "./CreateReportWizardPage";
 import ReportStructurePage       from "./ReportStructurePage";
@@ -443,6 +443,15 @@ export default function ReportBuilderListPage() {
   const [filterStatus,   setFilterStatus]   = useState("");
   const [deletingId,     setDeletingId]     = useState(null);
   const [editingReportId, setEditingReportId] = useState(null);
+  const [confirmDelete,  setConfirmDelete]  = useState(null); // { id, title }
+  const [toast,          setToast]          = useState(null);
+
+  /* Auto-dismiss the (presentational) toast. */
+  useEffect(() => {
+    if (!toast) return;
+    const id = setTimeout(() => setToast(null), 3000);
+    return () => clearTimeout(id);
+  }, [toast]);
 
   const roleNames    = new Set((user?.roles || []).map((r) => r.name || r));
   const isSuperAdmin = roleNames.has("super_admin");
@@ -481,15 +490,18 @@ export default function ReportBuilderListPage() {
     fetchReports();
   }
 
-  /* ── delete ── */
-  async function handleDelete(id, title) {
-    if (!window.confirm(`Delete report "${title}"? This cannot be undone.`)) return;
+  /* ── delete (confirm via shared ConfirmDialog, errors via Toast) ── */
+  function handleDelete(id, title) {
+    setConfirmDelete({ id, title });
+  }
+  async function doDelete(id) {
     setDeletingId(id);
     try {
       const res = await apiFetch(`/api/builder/reports/${id}`, { method: "DELETE" });
       if (!res.ok) { const j = await res.json(); throw new Error(j.message); }
       setReports((prev) => prev.filter((r) => r.id !== id));
-    } catch (ex) { alert(ex.message || "Failed to delete"); }
+      setToast({ message: "Report deleted.", type: "success" });
+    } catch (ex) { setToast({ message: ex.message || "Failed to delete report.", type: "error" }); }
     finally { setDeletingId(null); }
   }
 
@@ -606,6 +618,17 @@ export default function ReportBuilderListPage() {
         @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.45} }
         @keyframes spin   { to { transform: rotate(360deg) } }
       `}</style>
+      {toast && <Toast message={toast.message} type={toast.type} />}
+      {confirmDelete && (
+        <ConfirmDialog
+          variant="danger"
+          title="Delete report?"
+          message={`Delete report "${confirmDelete.title}"? This action cannot be undone.`}
+          confirmLabel="Delete"
+          onConfirm={() => doDelete(confirmDelete.id)}
+          onCancel={() => setConfirmDelete(null)}
+        />
+      )}
 
       <PageHeader
         breadcrumb={[t("Home", lang), t("Report Builder", lang)]}

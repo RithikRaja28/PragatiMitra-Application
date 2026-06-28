@@ -11,6 +11,7 @@ import { BLOCK_ICONS, BlockEditor, DEFAULT_CONTENT } from "./BlockEditors";
 import { generateSectionDocx, downloadBlob, printSectionAsPdf } from "./sectionToDocx";
 import FormImportWizard from "./FormImportWizard";
 import KpiImportWizard  from "./KpiImportWizard";
+import { Toast, ConfirmDialog } from "../../../../components/shared/formUtils";
 
 /* ═══════════════════════════════════════════════════════════════════════════
    BLOCK COMMENTS SIDEBAR — threaded inline comments per content block
@@ -1453,6 +1454,14 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
   const [commentsOpen,     setCommentsOpen]     = useState(true);
   const [chatOpen,         setChatOpen]         = useState(false);
   const [exporting,        setExporting]        = useState(false);
+  const [toast,            setToast]            = useState(null);
+  const [confirmAction,    setConfirmAction]    = useState(null); // { title, message, confirmLabel, variant, onConfirm }
+
+  useEffect(() => {
+    if (!toast) return;
+    const id = setTimeout(() => setToast(null), 3000);
+    return () => clearTimeout(id);
+  }, [toast]);
   const [blockCounts,      setBlockCounts]      = useState({});
   const [selectedBlockId,  setSelectedBlockId]  = useState(null);
   const [activeInserter,   setActiveInserter]   = useState(null);
@@ -1973,10 +1982,35 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
     // Does NOT add to dirtyBlocks — DB was already updated by the refetch/reimport endpoint
   }
 
-  async function deleteBlock(blockId) {
-    if (!window.confirm("Delete this block?")) return;
+  function deleteBlock(blockId) {
+    setConfirmAction({
+      title: "Delete block?",
+      message: "Delete this block? This action cannot be undone.",
+      confirmLabel: "Delete",
+      variant: "danger",
+      onConfirm: () => doDeleteBlock(blockId),
+    });
+  }
+  async function doDeleteBlock(blockId) {
     await apiFetch(`/api/builder/blocks/${blockId}`, { method: "DELETE" });
     setBlocks((prev) => prev.filter((b) => b.id !== blockId));
+  }
+
+  async function doRestoreVersion(versionNum) {
+    try {
+      const res = await apiFetch(`/api/builder/versions/section/${sectionId}/${versionNum}/restore`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ description: `Restored to version ${versionNum}` }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        setToast({ message: `Restored to version ${versionNum}. Reloading…`, type: "success" });
+        setTimeout(() => window.location.reload(), 900);
+      } else {
+        setToast({ message: json.message || "Restore failed", type: "error" });
+      }
+    } catch { setToast({ message: "Restore failed", type: "error" }); }
   }
 
   async function moveBlock(idx, dir) {
@@ -1998,14 +2032,15 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
       downloadBlob(blob, filename);
     } catch (err) {
       console.error("docx export failed:", err);
-      alert("Export failed: " + (err?.message || "unknown error"));
+      setToast({ message: "Export failed: " + (err?.message || "unknown error"), type: "error" });
     } finally {
       setExporting(false);
     }
   }
 
   function handleExportPdf() {
-    printSectionAsPdf(section, blocks, reportMeta);
+    try { printSectionAsPdf(section, blocks, reportMeta); }
+    catch (err) { setToast({ message: err?.message || "PDF export failed", type: "error" }); return; }
   }
 
   async function handleSubmitConfirm() {
@@ -2083,6 +2118,17 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
       fontFamily: "'Plus Jakarta Sans', sans-serif", background: "#f1f5f9",
       minHeight: 0,
     }}>
+      {toast && <Toast message={toast.message} type={toast.type} />}
+      {confirmAction && (
+        <ConfirmDialog
+          variant={confirmAction.variant || "danger"}
+          title={confirmAction.title}
+          message={confirmAction.message}
+          confirmLabel={confirmAction.confirmLabel}
+          onConfirm={() => confirmAction.onConfirm()}
+          onCancel={() => setConfirmAction(null)}
+        />
+      )}
 
       {/* ── top bar ── */}
       <div style={{
@@ -2324,24 +2370,13 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
                   >{isViewing ? "Close" : "View"}</button>
                   {isAdmin && (
                     <button
-                      onClick={async () => {
-                        const desc = window.prompt(`Restore description (optional):`, `Restored to version ${v.version_num}`);
-                        if (desc === null) return;
-                        try {
-                          const res = await apiFetch(`/api/builder/versions/section/${sectionId}/${v.version_num}/restore`, {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ description: desc || `Restored to version ${v.version_num}` }),
-                          });
-                          const json = await res.json();
-                          if (json.success) {
-                            alert(`Restored to version ${v.version_num}. Page will reload.`);
-                            window.location.reload();
-                          } else {
-                            alert(json.message || "Restore failed");
-                          }
-                        } catch { alert("Restore failed"); }
-                      }}
+                      onClick={() => setConfirmAction({
+                        title: "Restore version?",
+                        message: `Restore to version ${v.version_num}? The current content will be archived first, then the page will reload.`,
+                        confirmLabel: "Restore",
+                        variant: "info",
+                        onConfirm: () => doRestoreVersion(v.version_num),
+                      })}
                       style={{
                         padding: "3px 10px", borderRadius: 6, border: "1px solid #fecaca",
                         background: "#fff", color: "#b91c1c",

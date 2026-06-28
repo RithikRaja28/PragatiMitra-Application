@@ -4,6 +4,7 @@ import { Users, FileText, BarChart3, Wallet, ShieldCheck, Plus } from "lucide-re
 import { useApi } from "../../../hooks/useApi";
 import PageHeader from "../../../components/shared/PageHeader";
 import { PageContainer, Button } from "../../../ui";
+import { ConfirmDialog } from "../../../components/shared/formUtils";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { t } from "../../../i18n/translations";
 
@@ -1523,6 +1524,7 @@ export default function RoleAccessPage() {
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(null);
+  const [confirmDelRole, setConfirmDelRole] = useState(null);
   const [toast, setToast] = useState(null);
 
   const isCreate = location.pathname.endsWith("/create");
@@ -1575,13 +1577,10 @@ export default function RoleAccessPage() {
     }
   }
 
-  async function handleDelete(role) {
-    if (
-      !window.confirm(
-        `Delete role "${role.display_name}"? This cannot be undone.`,
-      )
-    )
-      return;
+  function handleDelete(role) {
+    setConfirmDelRole(role);
+  }
+  async function doDelete(role) {
     setDeleting(role.id);
     try {
       const res = await apiFetch(`/api/roles/${role.id}`, { method: "DELETE" });
@@ -1621,6 +1620,16 @@ export default function RoleAccessPage() {
       }}
     >
       <ToastBanner toast={toast} />
+      {confirmDelRole && (
+        <ConfirmDialog
+          variant="danger"
+          title="Delete role?"
+          message={`Delete role "${confirmDelRole.display_name}"? This action cannot be undone.`}
+          confirmLabel="Delete"
+          onConfirm={() => doDelete(confirmDelRole)}
+          onCancel={() => setConfirmDelRole(null)}
+        />
+      )}
       {loading && (
         <div
           style={{

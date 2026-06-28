@@ -3,7 +3,7 @@ import { Users, Image as ImageIcon, Pencil, Layers, MousePointerClick } from "lu
 import { useAuth } from "../../../../store/AuthContext";
 import { useApi }  from "../../../../hooks/useApi";
 import FormScreen        from "../../../../components/shared/FormScreen";
-import { S }             from "../../../../components/shared/formUtils";
+import { S, ConfirmDialog } from "../../../../components/shared/formUtils";
 import { useToast }      from "../../../../components/shared/Toast";
 import ReportPreviewPage from "./ReportPreviewPage";
 
@@ -477,6 +477,7 @@ function VersionHistoryPage({ sectionId, sectionTitle, reportTitle, apiFetch, is
   const [loading,    setLoading]    = useState(true);
   const [restoring,  setRestoring]  = useState(null);
   const [restoreErr, setRestoreErr] = useState("");
+  const [confirmRestore, setConfirmRestore] = useState(null); // version number
   const [viewSnap,   setViewSnap]   = useState(null);   // { vNum, section, blocks }
   const [viewLoading,setViewLoading]= useState(false);
 
@@ -500,8 +501,8 @@ function VersionHistoryPage({ sectionId, sectionTitle, reportTitle, apiFetch, is
     finally { setViewLoading(false); }
   }
 
-  async function restore(vNum) {
-    if (!window.confirm(`Restore to version ${vNum}? Current content will be archived first.`)) return;
+  function restore(vNum) { setConfirmRestore(vNum); }
+  async function doRestore(vNum) {
     setRestoring(vNum); setRestoreErr("");
     try {
       const res  = await apiFetch(`/api/builder/versions/section/${sectionId}/${vNum}/restore`, { method: "POST" });
@@ -542,6 +543,16 @@ function VersionHistoryPage({ sectionId, sectionTitle, reportTitle, apiFetch, is
 
   return (
     <div style={{ padding: "32px 36px", fontFamily: "'Plus Jakarta Sans', sans-serif", minHeight: "100%" }}>
+      {confirmRestore != null && (
+        <ConfirmDialog
+          variant="info"
+          title="Restore version?"
+          message={`Restore to version ${confirmRestore}? The current content will be archived first.`}
+          confirmLabel="Restore"
+          onConfirm={() => doRestore(confirmRestore)}
+          onCancel={() => setConfirmRestore(null)}
+        />
+      )}
       <button type="button" onClick={onBack} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "none", border: "none", fontSize: 13, fontWeight: 600, color: "#2563eb", cursor: "pointer", padding: 0, marginBottom: 24 }}>
         ← Back to {reportTitle || "Report"}
       </button>
@@ -871,6 +882,7 @@ export default function CollaborativeEditorPage({ reportId, reportTitle, onBack 
   const [showVersions,      setShowVersions]      = useState(false);
   const [showPreview,       setShowPreview]       = useState(false);
   const [publishing,        setPublishing]        = useState(false);
+  const [confirmAction,     setConfirmAction]     = useState(null); // { title, message, confirmLabel, variant, onConfirm }
 
   const [secForm,      setSecForm]      = useState({ title: "", description: "" });
   const [secErrors,    setSecErrors]    = useState({});
@@ -955,8 +967,16 @@ export default function CollaborativeEditorPage({ reportId, reportTitle, onBack 
     apiFetch("/api/builder/sections/reorder", { method: "POST", body: JSON.stringify({ items }) });
   }
 
-  async function handleDeleteSection(section) {
-    if (!window.confirm(`Delete section "${section.title}"? This cannot be undone.`)) return;
+  function handleDeleteSection(section) {
+    setConfirmAction({
+      title: "Delete section?",
+      message: `Delete section "${section.title}"? This action cannot be undone.`,
+      confirmLabel: "Delete",
+      variant: "danger",
+      onConfirm: () => doDeleteSection(section),
+    });
+  }
+  async function doDeleteSection(section) {
     await apiFetch(`/api/builder/sections/${section.id}`, { method: "DELETE" });
     setSections((prev) => prev.filter((s) => s.id !== section.id));
     if (selected?.id === section.id) setSelected(null);
@@ -990,8 +1010,16 @@ export default function CollaborativeEditorPage({ reportId, reportTitle, onBack 
     finally { setCreatingSec(false); }
   }
 
-  async function handlePublish() {
-    if (!window.confirm("Publish this report? It will be marked as published for all assigned users.")) return;
+  function handlePublish() {
+    setConfirmAction({
+      title: "Publish report?",
+      message: "Publish this report? It will be marked as published for all assigned users.",
+      confirmLabel: "Publish",
+      variant: "info",
+      onConfirm: () => doPublish(),
+    });
+  }
+  async function doPublish() {
     setPublishing(true);
     try {
       const res  = await apiFetch(`/api/builder/reports/${reportId}`, { method: "PUT", body: JSON.stringify({ status: "PUBLISHED" }) });
@@ -1072,6 +1100,17 @@ export default function CollaborativeEditorPage({ reportId, reportTitle, onBack 
   /* ── layout ── */
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", fontFamily: "'Plus Jakarta Sans', sans-serif", background: "#f8fafc" }}>
+
+      {confirmAction && (
+        <ConfirmDialog
+          variant={confirmAction.variant || "danger"}
+          title={confirmAction.title}
+          message={confirmAction.message}
+          confirmLabel={confirmAction.confirmLabel}
+          onConfirm={() => confirmAction.onConfirm()}
+          onCancel={() => setConfirmAction(null)}
+        />
+      )}
 
       {/* Top bar */}
       <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 20px", background: "#fff", borderBottom: "1px solid rgba(0,0,0,0.07)", flexShrink: 0 }}>
