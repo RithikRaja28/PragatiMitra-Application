@@ -16,6 +16,7 @@ router.get("/", verifyToken, requireRole(["super_admin", "institute_admin"]), as
     const { rows } = await pool.query(`
       SELECT id, name, display_name, description, permissions, is_system, created_at
       FROM roles
+      WHERE name <> 'super_admin'
       ORDER BY display_name
     `);
     res.json({ success: true, data: rows });

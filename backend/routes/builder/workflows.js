@@ -70,6 +70,7 @@ router.get("/roles", async (req, res) => {
     const { rows } = await pool.query(
       `SELECT id, name, display_name, description
        FROM public.roles
+       WHERE name <> 'super_admin'
        ORDER BY display_name ASC`
     );
     return res.json({ success: true, data: rows });

@@ -93,7 +93,7 @@ export default function AssignSectionsPage({ reportId, onBack }) {
       const instId = authUser?.institutionId || authUser?.institution_id || "";
       const deptUrl = instId ? `/api/departments?institution_id=${instId}` : "/api/departments";
 
-      const userUrl = instId ? `/api/lookup/users?institution_id=${instId}` : "/api/lookup/users";
+      const userUrl = instId ? `/api/lookup/users?institution_id=${instId}&exclude_roles=super_admin` : "/api/lookup/users?exclude_roles=super_admin";
       const [repRes, userRes, deptRes, roleRes] = await Promise.all([
         apiJson(apiFetch, `/api/builder/reports/${reportId}`),
         apiJson(apiFetch, userUrl),
@@ -416,7 +416,7 @@ export default function AssignSectionsPage({ reportId, onBack }) {
                 <label style={lbl}>System Role</label>
                 <select style={inp} value={assignRoleName} onChange={e => setAssignRoleName(e.target.value)}>
                   <option value="">— Select a role —</option>
-                  {roles.map(r => (
+                  {roles.filter(r => r.name !== "super_admin").map(r => (
                     <option key={r.id || r.name} value={r.name}>{r.display_name || r.name}</option>
                   ))}
                 </select>

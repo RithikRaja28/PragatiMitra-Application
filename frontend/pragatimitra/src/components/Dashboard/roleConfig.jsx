@@ -265,9 +265,7 @@ export const ROLE_CONFIG = {
       {
         group: "Reports",
         items: [
-          { id: "report-builder",    label: "Reports",          icon: "BookOpen",   permission: null, slug: "report-builder",    subRoutes: REPORT_BUILDER_SUB },
-          { id: "sa-my-sections",    label: "My Sections",      icon: "FileEdit",   permission: null, slug: "my-sections",       subRoutes: MY_SECTIONS_SUB },
-          { id: "sa-report-audit",   label: "Report Audit Logs",icon: "ScrollText", permission: null, slug: "report-audit-logs" },
+          { id: "sa-report-audit", label: "Report Audit Logs", icon: "ScrollText", permission: null, slug: "report-audit-logs" },
         ],
       },
     ],
@@ -277,10 +275,8 @@ export const ROLE_CONFIG = {
       departments: <DepartmentManagementPage />,
       institutions: <InstitutionManagementPage />,
       "role-access": <RoleAccessPage />,
-      "audit-logs":       <AuditLogsPage />,
-      "report-builder":   <ReportBuilderListPage />,
-      "sa-my-sections":   <MyAssignedSectionsPage />,
-      "sa-report-audit":  <ReportAuditLogsPage />,
+      "audit-logs":      <AuditLogsPage />,
+      "sa-report-audit": <ReportAuditLogsPage />,
     },
     defaultPage: "overview",
     user: { name: "Super Admin", initials: "SA", org: "PragatiMitra HQ" },

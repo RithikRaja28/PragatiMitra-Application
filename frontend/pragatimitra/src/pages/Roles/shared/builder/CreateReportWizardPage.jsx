@@ -132,7 +132,7 @@ export default function CreateReportWizardPage({ onCreated, onCancel, initialRep
     ]).then(([cyc, wf, roles, depts]) => {
       setCycles(cyc.data || []);
       setAllWorkflows(wf.data || []);
-      setAllRoles(roles.data || []);
+      setAllRoles((roles.data || []).filter(r => r.name !== "super_admin"));
       setDepartments(depts.data || []);
       const def = (wf.data || []).find(w => w.is_default);
       if (def) setDefaultWfId(def.id);

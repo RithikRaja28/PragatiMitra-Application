@@ -243,6 +243,21 @@ router.post(
         return res.status(400).json({ success: false, message: "section_ids[] required" });
 
       const created = [];
+      // Validate target user is not a super_admin before assigning
+      if (isUUID(user_id)) {
+        const { rows: roleCheck } = await pool.query(
+          `SELECT 1 FROM public.user_roles ur
+           JOIN public.roles r ON r.id = ur.role_id
+           WHERE ur.user_id = $1 AND r.name = 'super_admin'
+             AND ur.revoked_at IS NULL
+             AND (ur.expires_at IS NULL OR ur.expires_at > now())
+           LIMIT 1`,
+          [user_id]
+        );
+        if (roleCheck.length)
+          return res.status(400).json({ success: false, message: "Super admin users cannot be assigned to report sections." });
+      }
+
       for (const secId of section_ids) {
         if (!isUUID(secId)) continue;
         if (isUUID(user_id)) {
