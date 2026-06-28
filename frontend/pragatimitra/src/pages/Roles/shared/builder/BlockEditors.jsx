@@ -213,6 +213,8 @@ export function RichTextBlock({ content, onChange, readOnly, lang = "en", apiFet
   const savedSel  = useRef(null);
   const isHi      = lang === "hi";
   const hiHtml    = translations?.hi?.html || "";
+  const [linkUrl, setLinkUrl] = useState(null); // null = closed, "" or string = modal open
+  const [rtMsg,   setRtMsg]   = useState("");    // transient inline hint
 
   // Resync the contentEditable DOM whenever the active language's field changes
   // externally (initial mount, language toggle, or a translate-button update) —
@@ -281,9 +283,22 @@ export function RichTextBlock({ content, onChange, readOnly, lang = "en", apiFet
   const insertLink = () => {
     restoreSelection();
     const sel = window.getSelection();
-    if (!sel || sel.isCollapsed) { alert("Select text first, then click Link."); return; }
-    const url = window.prompt("Enter URL:", "https://");
-    if (url) exec("createLink", url);
+    if (!sel || sel.isCollapsed) {
+      setRtMsg("Select text first, then click Link.");
+      setTimeout(() => setRtMsg(""), 2500);
+      return;
+    }
+    saveSelection();           // keep the highlighted range while the modal is open
+    setLinkUrl("https://");
+  };
+  const applyLink = () => {
+    const url = (linkUrl || "").trim();
+    setLinkUrl(null);
+    if (url && url !== "https://") {
+      editorRef.current?.focus();   // execCommand needs the editor focused
+      restoreSelection();
+      exec("createLink", url);
+    }
   };
 
   if (readOnly) {
@@ -303,6 +318,30 @@ export function RichTextBlock({ content, onChange, readOnly, lang = "en", apiFet
 
   return (
     <div>
+      {rtMsg && (
+        <div style={{ marginBottom: 6, fontSize: 11, fontWeight: 600, color: "#92400e", background: "#fef3c7", border: "1px solid #fde68a", borderRadius: 6, padding: "5px 10px" }}>{rtMsg}</div>
+      )}
+      {linkUrl !== null && (
+        <div onMouseDown={(e) => { if (e.target === e.currentTarget) setLinkUrl(null); }}
+          style={{ position: "fixed", inset: 0, zIndex: 10000, background: "rgba(15,23,42,0.45)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+          <div onMouseDown={(e) => e.stopPropagation()}
+            style={{ background: "#fff", borderRadius: 12, width: "100%", maxWidth: 420, padding: 20, boxShadow: "0 20px 60px rgba(0,0,0,0.22)", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: "#1e293b", marginBottom: 12 }}>Insert link</div>
+            <input
+              autoFocus
+              value={linkUrl}
+              onChange={(e) => setLinkUrl(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); applyLink(); } if (e.key === "Escape") setLinkUrl(null); }}
+              placeholder="https://example.com"
+              style={{ width: "100%", boxSizing: "border-box", height: 40, padding: "0 12px", border: "1px solid #cbd5e1", borderRadius: 8, fontSize: 13, outline: "none", fontFamily: "inherit" }}
+            />
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 16 }}>
+              <button type="button" onClick={() => setLinkUrl(null)} style={{ padding: "8px 16px", borderRadius: 8, border: "1px solid #cbd5e1", background: "#fff", fontSize: 13, fontWeight: 600, color: "#475569", cursor: "pointer" }}>Cancel</button>
+              <button type="button" onClick={applyLink} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: "#2563eb", color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>Insert</button>
+            </div>
+          </div>
+        </div>
+      )}
       <style>{`
         .rtb-editor ul  { list-style-type: disc;    margin: 4px 0 8px 0; padding-left: 28px; }
         .rtb-editor ol  { list-style-type: decimal; margin: 4px 0 8px 0; padding-left: 28px; }

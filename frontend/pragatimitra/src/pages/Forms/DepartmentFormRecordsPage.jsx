@@ -50,6 +50,7 @@ export default function DepartmentFormRecordsPage({ form, year = null, onBack })
   const canEnterData = roleNames.includes("contributor") || roleNames.includes("department_admin");
   const yq = year != null ? `&year=${year}` : "";
   const [records, setRecords] = useState([]);
+  const [page, setPage] = useState(1);
   const [schema, setSchema] = useState(null);
   const [lock, setLock] = useState({ is_locked: false, message: null });
   const [loading, setLoading] = useState(true);
@@ -301,6 +302,13 @@ export default function DepartmentFormRecordsPage({ form, year = null, onBack })
     );
   }
 
+  /* Client-side pagination — keeps large department-record sets fast and
+     consistent with the institution records page. */
+  const PAGE_SIZE  = 25;
+  const totalPages = Math.max(1, Math.ceil(records.length / PAGE_SIZE));
+  const safePage   = Math.min(page, totalPages);
+  const pageRows   = records.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+
   return (
     <div style={{ padding: "24px 32px", fontFamily: "'Plus Jakarta Sans', sans-serif", minHeight: "100%", maxWidth: 1600, margin: "0 auto", display: "flex", flexDirection: "column" }}>
       {toast && <Toast message={toast.message} type={toast.type} />}
@@ -374,12 +382,24 @@ export default function DepartmentFormRecordsPage({ form, year = null, onBack })
           <DataTable
             fill
             columns={columns}
-            rows={records}
+            rows={pageRows}
             rowKey={(r) => r.id}
             loading={loading}
             minWidth={760}
             empty={<EmptyState icon={<FilePlus size={26} strokeWidth={1.5} />} title={t("No records yet", lang)} description={t("Click “Add Record” to create the first entry.", lang)}
               action={!readOnly ? <Button variant="primary" icon={<Plus size={18} strokeWidth={STROKE} />} onClick={() => setEditTarget("new")}>{t("Add Record", lang)}</Button> : undefined} />}
+            pagination={records.length > PAGE_SIZE ? (
+              <>
+                <span style={{ fontSize: 13, color: color.muted }}>
+                  {(safePage - 1) * PAGE_SIZE + 1}–{Math.min(safePage * PAGE_SIZE, records.length)} {t("of", lang)} {records.length}
+                </span>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <Button variant="secondary" disabled={safePage <= 1} onClick={() => setPage(safePage - 1)}>{t("Prev", lang)}</Button>
+                  <span style={{ fontSize: 13, color: color.text }}>{safePage} / {totalPages}</span>
+                  <Button variant="secondary" disabled={safePage >= totalPages} onClick={() => setPage(safePage + 1)}>{t("Next", lang)}</Button>
+                </div>
+              </>
+            ) : null}
           />
         )}
       </div>

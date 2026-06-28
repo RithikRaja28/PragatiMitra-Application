@@ -125,15 +125,15 @@ function Pill({ bg, tc, children }) {
 
 function ActivityIcon({ type }) {
   const styles = { flexShrink: 0, strokeWidth: 2 };
-  if (type === "SUBMITTED")  return <Send      size={13} style={{ ...styles, color: color.primary }} />;
+  if (type === "SUBMITTED")  return <Send        size={13} style={{ ...styles, color: color.primary }} />;
   if (type === "APPROVED")   return <CheckCircle2 size={13} style={{ ...styles, color: "#16a34a" }} />;
-  if (type === "SENT_BACK")  return <RotateCcw size={13} style={{ ...styles, color: "#d97706" }} />;
-  return                            <Activity  size={13} style={{ ...styles, color: color.muted  }} />;
+  if (type === "SENT_BACK")  return <RotateCcw   size={13} style={{ ...styles, color: "#d97706" }} />;
+  return                            <Activity    size={13} style={{ ...styles, color: color.muted }} />;
 }
 
 function activityLabel(type, lang) {
-  if (type === "SUBMITTED")  return t("Section Submitted",    lang);
-  if (type === "APPROVED")   return t("Section Approved",     lang);
+  if (type === "SUBMITTED")  return t("Section Submitted",      lang);
+  if (type === "APPROVED")   return t("Section Approved",       lang);
   if (type === "SENT_BACK")  return t("Sent Back for Revision", lang);
   return type;
 }
@@ -276,7 +276,7 @@ export default function DirectorsDashboardPage() {
 
         {!loading && !errors.queue && (
           <>
-            {/* ── summary bar ── */}
+            {/* ── summary counts ── */}
             <div style={{
               display: "grid",
               gridTemplateColumns: "repeat(3, 1fr)",
@@ -331,7 +331,7 @@ export default function DirectorsDashboardPage() {
               ))}
             </div>
 
-            {/* ── priority items (final approval only) ── */}
+            {/* ── priority items needing director decision ── */}
             {finalApproval.length > 0 && (
               <div>
                 <div style={{
@@ -385,8 +385,7 @@ export default function DirectorsDashboardPage() {
                     style={{
                       padding: "9px 18px", borderTop: "1px solid #e9d5ff",
                       fontSize: 12, color: "#7c3aed", fontWeight: 600,
-                      cursor: "pointer", fontFamily: FF,
-                      background: "#faf5ff",
+                      cursor: "pointer", fontFamily: FF, background: "#faf5ff",
                     }}
                     onMouseEnter={e => e.currentTarget.style.background = "#f0e0ff"}
                     onMouseLeave={e => e.currentTarget.style.background = "#faf5ff"}
@@ -443,12 +442,12 @@ export default function DirectorsDashboardPage() {
           )}
 
           {!loading && !errors.reports && upcomingDeadlines.length > 0 && upcomingDeadlines.map((ev, i) => {
-            const days    = daysUntil(ev.date);
-            const isUrgent = days !== null && days <= 7;
+            const days     = daysUntil(ev.date);
+            const isUrgent  = days !== null && days <= 7;
             const isOverdue = days !== null && days < 0;
-            const typeBg = ev.type === "Submission" ? "#dbeafe"
-                         : ev.type === "Review"     ? "#fce7f3"
-                         :                            "#dcfce7";
+            const typeBg    = ev.type === "Submission" ? "#dbeafe"
+                            : ev.type === "Review"     ? "#fce7f3"
+                            :                            "#dcfce7";
             const typeColor = ev.type === "Submission" ? "#1e40af"
                             : ev.type === "Review"     ? "#9d174d"
                             :                            "#15803d";
@@ -494,7 +493,7 @@ export default function DirectorsDashboardPage() {
           })}
         </Card>
 
-        {/* ── SECTION 3: Recent Activities ──────────────────────────────────── */}
+        {/* ── SECTION 3: Recent Activity ────────────────────────────────────── */}
         <Card padding={0} style={{ overflow: "hidden", fontFamily: FF }}>
           <SectionHeader
             icon={<Activity style={{ color: color.primary }} />}
@@ -524,7 +523,6 @@ export default function DirectorsDashboardPage() {
                 borderTop: i > 0 ? ROW_BORDER : "none",
               }}
             >
-              {/* icon dot */}
               <div style={{
                 marginTop: 2, width: 28, height: 28, borderRadius: "50%", flexShrink: 0,
                 background: ev.activity_type === "APPROVED"  ? "#dcfce7"
@@ -536,7 +534,6 @@ export default function DirectorsDashboardPage() {
               </div>
 
               <div style={{ flex: 1, minWidth: 0 }}>
-                {/* event label */}
                 <div style={{
                   fontSize: 12, fontWeight: 700,
                   color: activityAccent(ev.activity_type),
@@ -544,8 +541,6 @@ export default function DirectorsDashboardPage() {
                 }}>
                   {activityLabel(ev.activity_type, lang)}
                 </div>
-
-                {/* section title */}
                 <div style={{
                   fontSize: 13, fontWeight: 600, color: color.text,
                   overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
@@ -553,24 +548,14 @@ export default function DirectorsDashboardPage() {
                 }}>
                   {ev.section_title || "—"}
                 </div>
-
-                {/* report + time */}
                 <div style={{ fontSize: 11, color: color.muted }}>
-                  {ev.report_title && (
-                    <span style={{ marginRight: 6 }}>
-                      {ev.report_title}
-                      {ev.academic_year && (
-                        <span style={{ color: "#9ca3af", marginLeft: 4 }}>
-                          · {ev.academic_year}
-                        </span>
-                      )}
-                    </span>
+                  {ev.report_title}
+                  {ev.academic_year && (
+                    <span style={{ color: "#9ca3af", marginLeft: 4 }}>· {ev.academic_year}</span>
                   )}
                 </div>
                 <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 1 }}>
-                  {ev.actor_name && (
-                    <span style={{ marginRight: 4 }}>{ev.actor_name} ·</span>
-                  )}
+                  {ev.actor_name && <span style={{ marginRight: 4 }}>{ev.actor_name} ·</span>}
                   {timeAgo(ev.activity_at)}
                 </div>
               </div>

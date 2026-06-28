@@ -3,6 +3,7 @@ import { useApi } from "../../../../hooks/useApi";
 import { Button } from "../../../../ui";
 import { Languages } from "lucide-react";
 import Toast from "../../../../components/shared/Toast";
+import { ConfirmDialog } from "../../../../components/shared/formUtils";
 import BuilderHeader from "./BuilderHeader";
 
 async function apiJson(apiFetch, path, opts) {
@@ -52,6 +53,7 @@ export default function ReportStructurePage({ reportId, onNavigate }) {
   const [deptProgress, setDeptProgress] = useState([]);
   const [loading,  setLoading]  = useState(true);
   const [toast,    setToast]    = useState(null);
+  const [confirmDelId, setConfirmDelId] = useState(null);
   const [expanded, setExpanded] = useState({});
   const [hover,    setHover]    = useState(null);
   const [addingTo, setAddingTo] = useState(null);
@@ -131,8 +133,8 @@ export default function ReportStructurePage({ reportId, onNavigate }) {
     }
   };
 
-  const deleteSection = async (secId) => {
-    if (!confirm("Delete this section and all its content?")) return;
+  const deleteSection = (secId) => setConfirmDelId(secId);
+  const doDeleteSection = async (secId) => {
     try {
       await apiJson(apiFetch, `/api/builder/sections/${secId}`, { method: "DELETE" });
       await load();
@@ -154,6 +156,16 @@ export default function ReportStructurePage({ reportId, onNavigate }) {
   return (
     <div style={{ minHeight: "100vh", background: "transparent", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
       {toast && <Toast {...toast} onClose={() => setToast(null)} />}
+      {confirmDelId && (
+        <ConfirmDialog
+          variant="danger"
+          title="Delete section?"
+          message="Delete this section and all its content? This action cannot be undone."
+          confirmLabel="Delete"
+          onConfirm={() => doDeleteSection(confirmDelId)}
+          onCancel={() => setConfirmDelId(null)}
+        />
+      )}
 
       {/* ── header ── */}
       <BuilderHeader

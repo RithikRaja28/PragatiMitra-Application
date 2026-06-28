@@ -1,7 +1,8 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { useApi } from "../../../hooks/useApi";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { t } from "../../../i18n/translations";
-import { PageContainer, PageHeader, Toolbar, Select, Card } from "../../../ui";
+import { PageContainer, PageHeader, Toolbar, Select, Card, EmptyState, ErrorState } from "../../../ui";
 
 const C = {
   primary:   "#2563eb",
@@ -13,230 +14,149 @@ const C = {
   surface:   "#ffffff",
 };
 
-const STAGE_ORDER = ["Draft", "HoD Review", "Publication Review", "Director Review", "Approved"];
-
-const STAGE_STYLE = {
-  "HoD Review":        { bg: "#dbeafe", color: "#1e40af" },
-  "Publication Review":{ bg: "#ede9fe", color: "#5b21b6" },
-  "Director Review":   { bg: "#fef3c7", color: "#92400e" },
-  "Approved":          { bg: "#dcfce7", color: "#166534" },
-  "Sent Back":         { bg: "#fee2e2", color: "#991b1b" },
+/* Section status enum → label + badge colors (matches the builder status set). */
+const STATUS_META = {
+  NOT_STARTED:  { label: "Not Started",  bg: "#f1f5f9", color: "#475569" },
+  IN_PROGRESS:  { label: "In Progress",  bg: "#fef3c7", color: "#92400e" },
+  SUBMITTED:    { label: "Submitted",    bg: "#d1fae5", color: "#065f46" },
+  UNDER_REVIEW: { label: "Under Review", bg: "#dbeafe", color: "#1e40af" },
+  APPROVED:     { label: "Approved",     bg: "#dcfce7", color: "#166534" },
+  SENT_BACK:    { label: "Sent Back",    bg: "#fee2e2", color: "#991b1b" },
+  LOCKED:       { label: "Locked",       bg: "#e2e8f0", color: "#475569" },
 };
+const STATUS_FLOW = ["IN_PROGRESS", "SUBMITTED", "UNDER_REVIEW", "APPROVED"];
 
-const STATUS_STYLE = {
-  "Pending":   { bg: "#fef3c7", color: "#92400e" },
-  "Approved":  { bg: "#dcfce7", color: "#166534" },
-  "Sent Back": { bg: "#fee2e2", color: "#991b1b" },
-  "In Review": { bg: "#dbeafe", color: "#1e40af" },
-};
-
-const SUBMISSIONS = [
-  {
-    id: 1, section: "Lab Reports", date: "2026-04-25", stage: "Approved", status: "Approved",
-    timeline: [
-      { stage: "Draft",              date: "Apr 15", actor: "A. Pillai",       done: true  },
-      { stage: "HoD Review",        date: "Apr 17", actor: "Dept. HoD",      done: true  },
-      { stage: "Publication Review", date: "Apr 20", actor: "Pub. Cell",      done: true  },
-      { stage: "Director Review",   date: "Apr 25", actor: "Director",        done: true  },
-      { stage: "Approved",          date: "Apr 25", actor: "Director",        done: true  },
-    ],
-  },
-  {
-    id: 2, section: "Ayurvedic Principles", date: "2026-04-29", stage: "Publication Review", status: "In Review",
-    timeline: [
-      { stage: "Draft",              date: "Apr 20", actor: "Dr. Rao",        done: true  },
-      { stage: "HoD Review",        date: "Apr 23", actor: "Dept. HoD",      done: true  },
-      { stage: "Publication Review", date: "Apr 29", actor: "Pub. Cell",      done: false },
-      { stage: "Director Review",   date: "—",      actor: "Director",        done: false },
-      { stage: "Approved",          date: "—",      actor: "Director",        done: false },
-    ],
-  },
-  {
-    id: 3, section: "Clinical Studies", date: "2026-04-22", stage: "HoD Review", status: "Sent Back",
-    timeline: [
-      { stage: "Draft",              date: "Apr 18", actor: "R. Menon",       done: true  },
-      { stage: "HoD Review",        date: "Apr 22", actor: "Dept. HoD",      done: true, sentBack: true },
-      { stage: "Publication Review", date: "—",      actor: "Pub. Cell",      done: false },
-      { stage: "Director Review",   date: "—",      actor: "Director",        done: false },
-      { stage: "Approved",          date: "—",      actor: "Director",        done: false },
-    ],
-    sentBackReason: "Patient data anonymization required.",
-  },
-];
-
-function ApprovalTimeline({ submission }) {
-  const { lang } = useLanguage();
-  return (
-    <div style={{ padding: "14px 16px", background: "#fff",
-      borderRadius: 12, border: `1px solid ${C.border}`,
-      boxShadow: "0 8px 28px rgba(0,0,0,0.1)", minWidth: 300, maxWidth: 360,
-      fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
-      <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 12 }}>
-        {t("Approval Timeline", lang)} — {submission.section}
-      </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
-        {submission.timeline.map((step, i) => {
-          const isLast = i === submission.timeline.length - 1;
-          const isCurrent = !step.done && (i === 0 || submission.timeline[i - 1].done);
-          return (
-            <div key={i} style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
-              {/* Timeline line */}
-              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", flexShrink: 0 }}>
-                <div style={{ width: 20, height: 20, borderRadius: "50%", display: "flex",
-                  alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 10,
-                  background: step.done ? (step.sentBack ? "#dc2626" : "#059669") : isCurrent ? C.primary : "#e2e8f0",
-                  color: step.done || isCurrent ? "#fff" : "#94a3b8",
-                  fontWeight: 700 }}>
-                  {step.done && !step.sentBack ? "✓" : step.sentBack ? "✕" : i + 1}
-                </div>
-                {!isLast && (
-                  <div style={{ width: 1.5, height: 24, background: step.done ? "#059669" : "#e2e8f0" }} />
-                )}
-              </div>
-              {/* Step content */}
-              <div style={{ paddingBottom: isLast ? 0 : 8, paddingTop: 1 }}>
-                <div style={{ fontSize: 12, fontWeight: 600,
-                  color: step.done ? (step.sentBack ? "#dc2626" : C.text) : "#94a3b8" }}>
-                  {step.stage}
-                  {step.sentBack && (
-                    <span style={{ marginLeft: 7, fontSize: 10, fontWeight: 600, color: "#dc2626",
-                      background: "#fee2e2", padding: "1px 6px", borderRadius: 20 }}>{t("Sent Back", lang)}</span>
-                  )}
-                </div>
-                <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 1 }}>
-                  {step.date !== "—" ? `${step.date} · ` : ""}{step.actor}
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-      {submission.sentBackReason && (
-        <div style={{ marginTop: 10, padding: "8px 10px", background: "#fef2f2",
-          borderRadius: 8, border: "0.5px solid #fecdd3" }}>
-          <div style={{ fontSize: 10, fontWeight: 700, color: "#991b1b",
-            textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 3 }}>{t("Sent Back Reason", lang)}</div>
-          <div style={{ fontSize: 11, color: "#dc2626" }}>{submission.sentBackReason}</div>
-        </div>
-      )}
-    </div>
-  );
+function fmtDate(iso) {
+  if (!iso) return "—";
+  try { return new Date(iso).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }); }
+  catch { return "—"; }
 }
 
 export default function SubmissionsPage() {
-  const { lang } = useLanguage();
-  const [hoveredId, setHoveredId] = useState(null);
-  const [filters,   setFilters]   = useState({ stage: "", status: "" });
+  const { lang }     = useLanguage();
+  const { apiFetch } = useApi();
 
-  const filtered = SUBMISSIONS.filter(s => {
-    if (filters.stage  && s.stage  !== filters.stage)  return false;
-    if (filters.status && s.status !== filters.status) return false;
-    return true;
-  });
+  const [sections, setSections] = useState([]);
+  const [loading,  setLoading]  = useState(true);
+  const [error,    setError]    = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+
+  /* Live, user-scoped sections — same endpoint as "My Assigned Sections". */
+  useEffect(() => {
+    let alive = true;
+    setLoading(true); setError("");
+    apiFetch("/api/builder/sections/assigned")
+      .then((r) => r.json())
+      .then((d) => {
+        if (!alive) return;
+        if (d.success) setSections(d.data || []);
+        else setError(d.message || "Failed to load submissions.");
+      })
+      .catch(() => { if (alive) setError("Failed to load submissions."); })
+      .finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
+  }, [apiFetch]);
+
+  const filtered = statusFilter ? sections.filter((s) => s.status === statusFilter) : sections;
 
   return (
     <PageContainer>
 
-      {/* Header */}
       <PageHeader
         breadcrumb={[t("Home", lang), t("Department", lang), t("Submissions", lang)]}
         title={t("My Submissions", lang)}
         description="Track your section submissions through the approval pipeline."
       />
 
-      {/* Stage progress legend */}
+      {/* Status flow legend (the section approval stages) */}
       <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 16,
         padding: "10px 16px", background: C.surface, borderRadius: 10, border: `0.5px solid ${C.border}`,
         overflowX: "auto" }}>
         <span style={{ fontSize: 10, fontWeight: 700, color: C.textSub, textTransform: "uppercase",
           letterSpacing: "0.07em", marginRight: 4, whiteSpace: "nowrap" }}>{t("Pipeline:", lang)}</span>
-        {STAGE_ORDER.map((s, i) => (
+        {STATUS_FLOW.map((s, i) => (
           <React.Fragment key={s}>
             <span style={{ fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 20, whiteSpace: "nowrap",
-              background: STAGE_STYLE[s]?.bg || "#f1f5f9",
-              color: STAGE_STYLE[s]?.color || "#475569" }}>{s}</span>
-            {i < STAGE_ORDER.length - 1 && (
-              <span style={{ color: "#cbd5e1", fontSize: 12 }}>→</span>
-            )}
+              background: STATUS_META[s].bg, color: STATUS_META[s].color }}>{STATUS_META[s].label}</span>
+            {i < STATUS_FLOW.length - 1 && <span style={{ color: "#cbd5e1", fontSize: 12 }}>→</span>}
           </React.Fragment>
         ))}
       </div>
 
-      {/* Filters — standardized toolbar */}
+      {/* Filters */}
       <Toolbar>
-        <Select value={filters.stage} onChange={e => setFilters(f => ({ ...f, stage: e.target.value }))}
-          style={{ width: 170, height: 40 }}>
-          <option value="">{t("All Stages", lang)}</option>
-          {STAGE_ORDER.slice(1).map(s => <option key={s} value={s}>{s}</option>)}
-        </Select>
-        <Select value={filters.status} onChange={e => setFilters(f => ({ ...f, status: e.target.value }))}
-          style={{ width: 170, height: 40 }}>
+        <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={{ width: 180, height: 40 }}>
           <option value="">{t("All Statuses", lang)}</option>
-          <option value="In Review">{t("In Review", lang)}</option>
-          <option value="Approved">{t("Approved", lang)}</option>
-          <option value="Sent Back">{t("Sent Back", lang)}</option>
-          <option value="Pending">{t("Pending", lang)}</option>
+          {Object.entries(STATUS_META).map(([key, m]) => (
+            <option key={key} value={key}>{m.label}</option>
+          ))}
         </Select>
       </Toolbar>
 
-      {/* Table — overflow visible so the hover timeline popup is not clipped */}
-      <Card padding={0} style={{ overflow: "visible" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
-          <thead>
-            <tr style={{ background: "#fafaf9" }}>
-              {["Section", "Submission Date", "Current Stage", "Status", ""].map(h => (
-                <th key={h} style={{ fontSize: 10, fontWeight: 700, color: C.textSub,
-                  textTransform: "uppercase", letterSpacing: "0.06em",
-                  padding: "12px 16px", textAlign: "left", borderBottom: `0.5px solid ${C.border}` }}>
-                  {h ? t(h, lang) : h}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.length === 0 ? (
-              <tr><td colSpan={5} style={{ padding: "32px", textAlign: "center", fontSize: 13, color: C.textSub }}>
-                {t("No submissions match the current filters.", lang)}
-              </td></tr>
-            ) : filtered.map((s, i) => (
-              <tr key={s.id} style={{ position: "relative", cursor: "default" }}
-                onMouseEnter={() => setHoveredId(s.id)}
-                onMouseLeave={() => setHoveredId(null)}>
-                <td style={{ padding: "14px 16px", borderTop: i > 0 ? `0.5px solid ${C.border}` : "none",
-                  fontSize: 13, fontWeight: 600, color: C.text }}>{s.section}</td>
-                <td style={{ padding: "14px 16px", borderTop: i > 0 ? `0.5px solid ${C.border}` : "none",
-                  fontSize: 12, color: C.textSub }}>{s.date}</td>
-                <td style={{ padding: "14px 16px", borderTop: i > 0 ? `0.5px solid ${C.border}` : "none" }}>
-                  <span style={{ fontSize: 10, fontWeight: 600, padding: "3px 9px", borderRadius: 20,
-                    background: STAGE_STYLE[s.stage]?.bg || "#f1f5f9",
-                    color: STAGE_STYLE[s.stage]?.color || "#475569" }}>{s.stage}</span>
-                </td>
-                <td style={{ padding: "14px 16px", borderTop: i > 0 ? `0.5px solid ${C.border}` : "none" }}>
-                  <span style={{ fontSize: 10, fontWeight: 600, padding: "3px 9px", borderRadius: 20,
-                    background: STATUS_STYLE[s.status]?.bg, color: STATUS_STYLE[s.status]?.color }}>
-                    {s.status}
-                  </span>
-                </td>
-                <td style={{ padding: "14px 16px", borderTop: i > 0 ? `0.5px solid ${C.border}` : "none",
-                  fontSize: 11, color: C.textSub, position: "relative" }}>
-                  <span style={{ cursor: "pointer", textDecoration: "underline dotted" }}>
-                    {t("View timeline ↗", lang)}
-                  </span>
-                  {hoveredId === s.id && (
-                    <div style={{ position: "absolute", right: 0, top: "calc(100% + 4px)", zIndex: 100 }}>
-                      <ApprovalTimeline submission={s} />
-                    </div>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </Card>
+      {!loading && error && (
+        <Card padding={0}><ErrorState title="Couldn’t load submissions" description={error} /></Card>
+      )}
 
-      <div style={{ marginTop: 12, fontSize: 12, color: C.textSub, textAlign: "center" }}>
-        Hover the "View timeline" cell to see the full approval trail for each section.
-      </div>
+      {loading && (
+        <div style={{ padding: "60px 0", textAlign: "center", fontSize: 14, color: C.textSub }}>{t("Loading", lang)}…</div>
+      )}
+
+      {!loading && !error && filtered.length === 0 && (
+        <Card padding={0}>
+          <EmptyState
+            icon={
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6" /><path d="M9 15l2 2 4-4" />
+              </svg>
+            }
+            title={statusFilter ? t("No submissions match the current filter.", lang) : t("No submissions yet", lang)}
+            description={statusFilter ? "" : t("Sections you work on will appear here with their approval status.", lang)}
+          />
+        </Card>
+      )}
+
+      {/* Table — live */}
+      {!loading && !error && filtered.length > 0 && (
+        <Card padding={0} style={{ overflow: "hidden" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr style={{ background: "#f8fafc" }}>
+                {["Section", "Report", "Deadline", "Status"].map((h) => (
+                  <th key={h} style={{ fontSize: 10, fontWeight: 700, color: C.textSub,
+                    textTransform: "uppercase", letterSpacing: "0.06em",
+                    padding: "12px 16px", textAlign: "left", borderBottom: `0.5px solid ${C.border}` }}>
+                    {t(h, lang)}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((s, i) => {
+                const m = STATUS_META[s.status] || STATUS_META.NOT_STARTED;
+                const overdue = s.due_at && new Date(s.due_at).getTime() < Date.now() && s.status !== "APPROVED";
+                return (
+                  <tr key={s.id}>
+                    <td style={{ padding: "14px 16px", borderTop: i > 0 ? `0.5px solid ${C.border}` : "none",
+                      fontSize: 13, fontWeight: 600, color: C.text }}>{s.title}</td>
+                    <td style={{ padding: "14px 16px", borderTop: i > 0 ? `0.5px solid ${C.border}` : "none",
+                      fontSize: 12, color: C.textSub }}>
+                      {s.report_title}{s.academic_year ? ` · ${s.academic_year}` : ""}
+                    </td>
+                    <td style={{ padding: "14px 16px", borderTop: i > 0 ? `0.5px solid ${C.border}` : "none",
+                      fontSize: 12, color: overdue ? "#dc2626" : C.textSub, fontWeight: overdue ? 600 : 400 }}>
+                      {fmtDate(s.due_at)}
+                    </td>
+                    <td style={{ padding: "14px 16px", borderTop: i > 0 ? `0.5px solid ${C.border}` : "none" }}>
+                      <span style={{ fontSize: 10, fontWeight: 600, padding: "3px 9px", borderRadius: 20,
+                        background: m.bg, color: m.color }}>{m.label}</span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </Card>
+      )}
     </PageContainer>
   );
 }
