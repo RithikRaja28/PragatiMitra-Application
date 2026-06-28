@@ -2149,7 +2149,7 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
 
         {/* ── Group: document tools (Export, History, Preview) ── */}
         <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-          <ExportMenu onWord={handleExportDocx} onPdf={handleExportPdf} exporting={exporting} disabled={blocks.length === 0} />
+          {/* <ExportMenu onWord={handleExportDocx} onPdf={handleExportPdf} exporting={exporting} disabled={blocks.length === 0} /> */}
           <ToolBtn onClick={() => setVersionHistOpen(o => !o)} active={versionHistOpen} title="Version history">
             <svg width="12" height="12" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="10" cy="10" r="8"/><path d="M10 6v4l3 3"/></svg>
             History
