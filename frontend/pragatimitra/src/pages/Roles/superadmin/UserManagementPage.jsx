@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate, useLocation, Navigate } from "react-router-dom";
+import { createPortal } from "react-dom";
 import {
-  User, UsersRound, MoreHorizontal, Power, PowerOff,
+  User, UsersRound, MoreHorizontal, Power, PowerOff, Trash2, ArchiveRestore,
   Pencil, Plus, Upload, Download, FileText, FileSpreadsheet,
 } from "lucide-react";
 import { useApi } from "../../../hooks/useApi";
-import { S, Toast } from "../../../components/shared/formUtils";
+import { S, Toast, isAuthError } from "../../../components/shared/formUtils";
 import FormScreen from "../../../components/shared/FormScreen";
 import { Select } from "../../../components/shared/ui";
 import PageHeader from "../../../components/shared/PageHeader";
@@ -15,7 +16,7 @@ import { t } from "../../../i18n/translations";
 import ImportWizard from "../../../components/shared/ImportWizard";
 
 /* ── Constants & pure helpers ──────────────────────────────────── */
-const STATUS_OPTIONS = ["ACTIVE", "INACTIVE", "SUSPENDED"];
+const STATUS_OPTIONS = ["ACTIVE", "INACTIVE", "SUSPENDED", "DELETED"];
 
 const ROLE_COLORS = {
   super_admin:        { bg: "#dbeafe", color: "#1d4ed8" },
@@ -53,7 +54,10 @@ function RoleBadge({ name, display_name }) {
 }
 
 function StatusDot({ status }) {
-  const tone = status === "ACTIVE" ? "success" : status === "SUSPENDED" ? "danger" : "neutral";
+  const tone = status === "ACTIVE"    ? "success"
+             : status === "SUSPENDED" ? "danger"
+             : status === "DELETED"   ? "danger"
+             : "neutral";
   const label = status.charAt(0) + status.slice(1).toLowerCase();
   return <Badge tone={tone}>{label}</Badge>;
 }
@@ -96,6 +100,32 @@ function PasswordInput({ value, onChange, hasError }) {
         {show ? t("Hide", lang) : t("Show", lang)}
       </button>
     </div>
+  );
+}
+
+/* ── Confirm Modal ───────────────────────────────────────────────── */
+function ConfirmModal({ title, message, confirmLabel, danger, onConfirm, onCancel }) {
+  return createPortal(
+    <div
+      style={{ position: "fixed", inset: 0, zIndex: 10000, background: "rgba(15,23,42,0.55)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}
+      onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}
+    >
+      <div style={{ background: "#fff", borderRadius: 12, width: "100%", maxWidth: 420, boxShadow: "0 24px 64px rgba(0,0,0,0.22)", overflow: "hidden" }}>
+        <div style={{ padding: "22px 24px 16px" }}>
+          <div style={{ fontSize: 16, fontWeight: 800, color: "#1e293b", marginBottom: 10 }}>{title}</div>
+          <div style={{ fontSize: 13, color: "#64748b", lineHeight: 1.6 }}>{message}</div>
+        </div>
+        <div style={{ padding: "14px 24px", borderTop: "1px solid #f1f5f9", display: "flex", justifyContent: "flex-end", gap: 10, background: "#f8fafc" }}>
+          <button onClick={onCancel} style={{ height: 38, padding: "0 16px", borderRadius: 8, border: "1px solid #cbd5e1", background: "#fff", fontSize: 13, fontWeight: 600, color: "#475569", cursor: "pointer" }}>
+            Cancel
+          </button>
+          <button onClick={onConfirm} style={{ height: 38, padding: "0 20px", borderRadius: 8, border: "none", background: danger ? "#dc2626" : "#2563eb", fontSize: 13, fontWeight: 700, color: "#fff", cursor: "pointer" }}>
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
   );
 }
 
@@ -432,7 +462,7 @@ function Pagination({ page, pageSize, total, onPageChange, onPageSizeChange }) {
 }
 
 /* ── User List ───────────────────────────────────────────────────── */
-function UserList({ apiFetch, onEdit }) {
+function UserList({ apiFetch, onEdit, showToast }) {
 
   const { lang } = useLanguage();
 
@@ -441,7 +471,8 @@ function UserList({ apiFetch, onEdit }) {
   const [error,        setError]        = useState("");
   const [search,       setSearch]       = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
-  const [toggling,     setToggling]     = useState(null);
+  const [toggling,      setToggling]      = useState(null);
+  const [confirmDelete, setConfirmDelete] = useState(null);
   const [page,         setPage]         = useState(1);
   const [pageSize,     setPageSize]     = useState(25);
 
@@ -502,15 +533,16 @@ function UserList({ apiFetch, onEdit }) {
     if (filterDepartment)  p.set("department_id",  filterDepartment);
     const qs = p.toString();
 
-    apiFetch(`/api/users${qs ? `?${qs}` : ""}`)
+    const fullQs = qs ? `${qs}&includeDeleted=true` : "includeDeleted=true";
+    apiFetch(`/api/users?${fullQs}`)
       .then((r) => r.json())
       .then((data) => {
         if (cancelled) return;
         if (data.success) setUsers(data.users);
         else setError(data.message || "Failed to load users.");
       })
-      .catch(() => {
-        if (!cancelled) setError("Network error. Could not load users.");
+      .catch((err) => {
+        if (!cancelled && !isAuthError(err)) setError("Network error. Could not load users.");
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -519,7 +551,6 @@ function UserList({ apiFetch, onEdit }) {
     return () => { cancelled = true; };
   }, [apiFetch, filterInstitution, filterRole, filterDepartment]);
 
-  /* ── unchanged: toggle active/inactive ── */
   const toggleStatus = async (user) => {
     const next = user.account_status === "ACTIVE" ? "INACTIVE" : "ACTIVE";
     setToggling(user.id);
@@ -537,9 +568,51 @@ function UserList({ apiFetch, onEdit }) {
       const data = await res.json();
       if (data.success) {
         setUsers((us) => us.map((u) => u.id === user.id ? { ...u, account_status: next } : u));
+        showToast(data.message || `User ${next === "ACTIVE" ? "activated" : "deactivated"}.`);
+      } else {
+        showToast(data.message || "Failed to update status.", "error");
       }
-    } catch {}
-    setToggling(null);
+    } catch (err) {
+      if (!isAuthError(err)) showToast("Failed to update user status.", "error");
+    } finally {
+      setToggling(null);
+    }
+  };
+
+  const executeDelete = async (user) => {
+    setToggling(user.id);
+    try {
+      const res = await apiFetch(`/api/users/${user.id}`, { method: "DELETE" });
+      const data = await res.json();
+      if (data.success) {
+        setUsers((us) => us.map((u) => u.id === user.id ? { ...u, account_status: "DELETED" } : u));
+        showToast(data.message || "User deleted.");
+      } else {
+        showToast(data.message || "Failed to delete user.", "error");
+      }
+    } catch (err) {
+      if (!isAuthError(err)) showToast("Failed to delete user.", "error");
+    } finally {
+      setToggling(null);
+    }
+  };
+
+  const executeRestore = async (user) => {
+    setToggling(user.id);
+    try {
+      const res = await apiFetch(`/api/users/${user.id}/restore`, { method: "POST" });
+      const data = await res.json();
+      if (data.success) {
+        setUsers((us) => us.map((u) => u.id === user.id ? { ...u, account_status: "ACTIVE" } : u));
+        showToast(data.message || "User restored.");
+      } else {
+        showToast(data.message || "Failed to restore user.", "error");
+      }
+    } catch (err) {
+      if (!isAuthError(err)) showToast("Failed to restore user.", "error");
+    } finally {
+      setToggling(null);
+    }
   };
 
   /* client-side: text search + status filter on the already-fetched set */
@@ -693,8 +766,9 @@ function UserList({ apiFetch, onEdit }) {
           {
             key: "actions", header: t("Actions", lang), align: "right", width: 90,
             render: (u) => {
-              const busy = toggling === u.id;
-              const isActive = u.account_status === "ACTIVE";
+              const busy      = toggling === u.id;
+              const isActive  = u.account_status === "ACTIVE";
+              const isDeleted = u.account_status === "DELETED";
               return (
                 <Dropdown
                   align="right"
@@ -703,14 +777,26 @@ function UserList({ apiFetch, onEdit }) {
                     <Button variant="ghost" iconOnly icon={<MoreHorizontal size={18} strokeWidth={2} />} onClick={toggle} aria-label="Row actions" />
                   )}
                 >
-                  <MenuItem icon={<Pencil size={16} strokeWidth={1.9} />} onClick={() => onEdit(u)}>{t("Edit", lang)}</MenuItem>
-                  {isActive ? (
+                  {!isDeleted && (
+                    <MenuItem icon={<Pencil size={16} strokeWidth={1.9} />} onClick={() => onEdit(u)}>{t("Edit", lang)}</MenuItem>
+                  )}
+                  {!isDeleted && (isActive ? (
                     <MenuItem icon={<PowerOff size={16} strokeWidth={1.9} />} danger disabled={busy} onClick={() => toggleStatus(u)}>
                       {busy ? "…" : t("Deactivate", lang)}
                     </MenuItem>
                   ) : (
                     <MenuItem icon={<Power size={16} strokeWidth={1.9} />} disabled={busy} onClick={() => toggleStatus(u)}>
                       {busy ? "…" : t("Activate", lang)}
+                    </MenuItem>
+                  ))}
+                  {isDeleted && (
+                    <MenuItem icon={<ArchiveRestore size={16} strokeWidth={1.9} />} disabled={busy} onClick={() => executeRestore(u)}>
+                      {busy ? "…" : t("Restore", lang)}
+                    </MenuItem>
+                  )}
+                  {!isDeleted && (
+                    <MenuItem icon={<Trash2 size={16} strokeWidth={1.9} />} danger disabled={busy} onClick={() => setConfirmDelete(u)}>
+                      {busy ? "…" : t("Delete", lang)}
                     </MenuItem>
                   )}
                 </Dropdown>
@@ -728,6 +814,17 @@ function UserList({ apiFetch, onEdit }) {
         onPageChange={setPage}
         onPageSizeChange={setPageSize}
       />
+
+      {confirmDelete && (
+        <ConfirmModal
+          title="Delete User"
+          message={<>Are you sure you want to delete <strong>{confirmDelete.full_name}</strong> ({confirmDelete.email})? The account will be soft-deleted — all data is preserved and can be restored.</>}
+          confirmLabel="Delete"
+          danger
+          onConfirm={() => { const u = confirmDelete; setConfirmDelete(null); executeDelete(u); }}
+          onCancel={() => setConfirmDelete(null)}
+        />
+      )}
     </>
   );
 }
@@ -909,6 +1006,7 @@ export default function UserManagementPage() {
         key={refreshKey}
         apiFetch={apiFetch}
         onEdit={(u) => navigate(`${listPath}/edit`, { state: { entity: u } })}
+        showToast={showToast}
       />
     </PageContainer>
   );

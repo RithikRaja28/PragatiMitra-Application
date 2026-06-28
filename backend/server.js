@@ -274,6 +274,10 @@ pool.query(`
     .catch((e) => logger.error(`Failed to add institution_status value '${val}'`, { stack: e.stack }));
 });
 
+/* ── department_status enum: add DELETED for soft-delete support ── */
+pool.query(`ALTER TYPE public.department_status ADD VALUE IF NOT EXISTS 'DELETED'`)
+  .catch((e) => logger.error("Failed to add department_status value 'DELETED'", { stack: e.stack }));
+
 /* ── Form deadline auto-lock: ensure columns, then start periodic checker ── */
 const { ensureDeadlineColumns, startDeadlineScheduler } = require("./services/formDeadlineService");
 ensureDeadlineColumns(pool)
@@ -284,6 +288,25 @@ ensureDeadlineColumns(pool)
 const { ensureAcademicYearTables } = require("./services/academicYearService");
 ensureAcademicYearTables(pool)
   .catch((e) => logger.error("Failed to ensure academic year tables", { stack: e.stack }));
+
+/* ── Compression settings: ensure table exists and seed default row ── */
+pool.query(`
+  CREATE TABLE IF NOT EXISTS public.compression_settings (
+    id           UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+    image_min_kb INTEGER      NOT NULL DEFAULT 40,
+    image_max_kb INTEGER      NOT NULL DEFAULT 200,
+    pdf_min_mb   NUMERIC(6,2) NOT NULL DEFAULT 1.0,
+    pdf_max_mb   NUMERIC(6,2) NOT NULL DEFAULT 2.0,
+    updated_at   TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    updated_by   UUID         REFERENCES public.users(id)
+  )
+`).then(() =>
+  pool.query(`
+    INSERT INTO public.compression_settings (image_min_kb, image_max_kb, pdf_min_mb, pdf_max_mb)
+    SELECT 40, 200, 1.0, 2.0
+    WHERE NOT EXISTS (SELECT 1 FROM public.compression_settings)
+  `)
+).catch((e) => logger.error("Failed to ensure compression_settings table", { stack: e.stack }));
 
 /* ── Shared-form access sync (idempotent) ─────────────────────────────
    Shared forms must be immediately visible to all institutions with no
@@ -404,6 +427,7 @@ app.use("/api/institutions", institutionRoutes);
 app.use("/api/audit-logs",   auditLogRoutes);
 app.use("/api/upload",       uploadRoutes);
 app.use("/api/notification-templates", notificationTemplatesRouter);
+app.use("/api/compression-settings",  require("./routes/compressionSettings"));
 app.use("/api/kpi",                    require("./routes/kpi"));
 app.use("/api/forms",                  require("./routes/forms"));
 app.use("/api/department-forms",       require("./routes/departmentForms"));

@@ -13,6 +13,7 @@ import { t } from "../../i18n/translations";
 import { S, Toast, isAuthError, formatDate } from "../../components/shared/formUtils";
 import PageHeader from "../../components/shared/PageHeader";
 import { tableCardStyle } from "../../components/shared/ui";
+import { useCompressionSettings } from "../../hooks/useCompressionSettings";
 import { Button, Input, Textarea, FieldLabel, Badge, DataTable, color } from "../../ui";
 import api from "../../services/api";
 
@@ -84,16 +85,51 @@ function ModalPortal({ children }) {
   );
 }
 
+const IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
+const PDF_TYPE    = "application/pdf";
+
 function DocumentUploadField({ label, required, value, onChange, getToken }) {
   const fileRef = useRef(null);
-  const [status, setStatus] = useState("idle");
-  const [errMsg, setErrMsg] = useState("");
+  const [status,   setStatus]   = useState("idle");
+  const [errMsg,   setErrMsg]   = useState("");
   const [fileName, setFileName] = useState("");
+  const [toast,    setToast]    = useState(null);
   const hasExisting = !!value && status === "idle";
+  const { settings: compressionSettings } = useCompressionSettings();
+
+  function showToast(message, type = "success") {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3500);
+  }
+
   async function handleFile(file) {
     if (!file) return;
-    if (!ALLOWED_TYPES.includes(file.type)) { setErrMsg("File type not allowed."); setStatus("error"); return; }
-    if (file.size > MAX_SIZE) { setErrMsg("File exceeds 10 MB."); setStatus("error"); return; }
+    if (!ALLOWED_TYPES.includes(file.type)) {
+      setErrMsg("File type not allowed."); setStatus("error");
+      showToast("Upload Failed", "error"); return;
+    }
+
+    if (IMAGE_TYPES.includes(file.type)) {
+      const sizeKB  = file.size / 1024;
+      const minKB   = Number(compressionSettings.image_min_kb);
+      const maxKB   = Number(compressionSettings.image_max_kb);
+      if (sizeKB < minKB || sizeKB > maxKB) {
+        setErrMsg(`Upload Failed. Uploaded file size: ${Math.round(sizeKB)} KB. Allowed size: ${minKB} KB – ${maxKB} KB.`);
+        setStatus("error"); showToast("Upload Failed", "error"); return;
+      }
+    } else if (file.type === PDF_TYPE) {
+      const sizeMB  = file.size / (1024 * 1024);
+      const minMB   = parseFloat(compressionSettings.pdf_min_mb);
+      const maxMB   = parseFloat(compressionSettings.pdf_max_mb);
+      if (sizeMB < minMB || sizeMB > maxMB) {
+        setErrMsg(`Upload Failed. Uploaded file size: ${parseFloat(sizeMB.toFixed(2))} MB. Allowed size: ${minMB} MB – ${maxMB} MB.`);
+        setStatus("error"); showToast("Upload Failed", "error"); return;
+      }
+    } else if (file.size > MAX_SIZE) {
+      setErrMsg("File exceeds 10 MB."); setStatus("error");
+      showToast("Upload Failed", "error"); return;
+    }
+
     setStatus("uploading"); setErrMsg(""); setFileName(file.name);
     try {
       const token = getToken();
@@ -104,18 +140,59 @@ function DocumentUploadField({ label, required, value, onChange, getToken }) {
       /* Backend returns the S3 key; store it (not a URL) */
       onChange(data.fileKey);
       setStatus("done");
-    } catch (err) { setErrMsg(err.message || "Upload failed."); setStatus("error"); }
+      showToast("Upload Successful");
+    } catch (err) {
+      setErrMsg(err.message || "Upload failed.");
+      setStatus("error");
+      showToast("Upload Failed", "error");
+    }
   }
+
   return (
     <div>
+      {toast && <Toast message={toast.message} type={toast.type} />}
       <label style={S.label}>{label}{required && " *"}</label>
-      <div onClick={() => fileRef.current?.click()} onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); handleFile(e.dataTransfer.files[0]); }}
-        style={{ border: `2px dashed ${status==="error"?"#f87171":status==="done"?"#34d399":"#cbd5e1"}`, borderRadius: 10, padding: "18px 16px", textAlign: "center", cursor: status==="uploading"?"not-allowed":"pointer", background: status==="done"?"#f0fdf4":status==="error"?"#fef2f2":"#f8fafc", transition: "all .15s" }}>
+      <div
+        onClick={() => { if (status !== "error") fileRef.current?.click(); }}
+        onDragOver={e => e.preventDefault()}
+        onDrop={e => { e.preventDefault(); handleFile(e.dataTransfer.files[0]); }}
+        style={{ border: `2px dashed ${status==="error"?"#f87171":status==="done"?"#34d399":"#cbd5e1"}`, borderRadius: 10, padding: "18px 16px", textAlign: "center", cursor: status==="uploading"?"not-allowed":status==="error"?"default":"pointer", background: status==="done"?"#f0fdf4":status==="error"?"#fef2f2":"#f8fafc", transition: "all .15s" }}
+      >
         <input ref={fileRef} type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.webp" style={{ display: "none" }} onChange={e => handleFile(e.target.files[0])} disabled={status==="uploading"} />
         {status === "uploading" && <div style={{ fontSize: 13, color: "#64748b" }}>Uploading <strong>{fileName}</strong>…</div>}
-        {status === "done" && <div style={{ fontSize: 13, color: "#16a34a", fontWeight: 600 }}>✓ <strong>{fileName}</strong> uploaded. <span style={{ fontWeight: 400, color: "#64748b" }}>Click to replace.</span></div>}
-        {status === "error" && <div style={{ fontSize: 13 }}><div style={{ color: "#dc2626", fontWeight: 600, marginBottom: 4 }}>{errMsg}</div><span style={{ color: "#64748b", fontSize: 12 }}>Click to try again.</span></div>}
-        {status === "idle" && <div><div style={{ color: "#94a3b8", marginBottom: 6, display: "flex", justifyContent: "center" }}><IcoUpload /></div>{hasExisting ? <div style={{ fontSize: 13, color: "#64748b" }}><IcoFile /> File attached. <span style={{ color: ACCENT, fontWeight: 600 }}>Click to replace.</span></div> : <div style={{ fontSize: 13, color: "#64748b" }}><span style={{ color: ACCENT, fontWeight: 600 }}>Click to upload</span> or drag & drop<div style={{ fontSize: 11, color: "#94a3b8", marginTop: 4 }}>PDF, Word, Excel, Images · max 10 MB</div></div>}</div>}
+        {status === "done" && (
+          <div style={{ fontSize: 13, color: "#16a34a", fontWeight: 600 }}>
+            ✓ Uploaded Successfully
+            <div style={{ fontWeight: 400, color: "#64748b", fontSize: 12, marginTop: 4 }}>Click to replace.</div>
+          </div>
+        )}
+        {status === "error" && (
+          <div style={{ fontSize: 13 }}>
+            <div style={{ color: "#dc2626", fontWeight: 600, marginBottom: 10 }}>{errMsg}</div>
+            <button
+              type="button"
+              onClick={e => { e.stopPropagation(); fileRef.current?.click(); }}
+              style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "6px 14px", borderRadius: 7, border: "1.5px solid #f87171", background: "#fff", color: "#dc2626", fontSize: 12, fontWeight: 600, cursor: "pointer" }}
+            >
+              ↩ Click to Upload Again
+            </button>
+          </div>
+        )}
+        {status === "idle" && (
+          <div>
+            <div style={{ color: "#94a3b8", marginBottom: 6, display: "flex", justifyContent: "center" }}><IcoUpload /></div>
+            {hasExisting
+              ? <div style={{ fontSize: 13, color: "#64748b" }}><IcoFile /> File attached. <span style={{ color: ACCENT, fontWeight: 600 }}>Click to replace.</span></div>
+              : <div style={{ fontSize: 13, color: "#64748b" }}>
+                  <span style={{ color: ACCENT, fontWeight: 600 }}>Click to upload</span> or drag &amp; drop
+                  <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 5, lineHeight: 1.7 }}>
+                    <div>Images (JPG, JPEG, PNG): {Number(compressionSettings.image_min_kb)} KB – {Number(compressionSettings.image_max_kb)} KB</div>
+                    <div>PDF: {parseFloat(compressionSettings.pdf_min_mb)} MB – {parseFloat(compressionSettings.pdf_max_mb)} MB</div>
+                  </div>
+                </div>
+            }
+          </div>
+        )}
       </div>
     </div>
   );
