@@ -274,6 +274,10 @@ pool.query(`
     .catch((e) => logger.error(`Failed to add institution_status value '${val}'`, { stack: e.stack }));
 });
 
+/* ── department_status enum: add DELETED for soft-delete support ── */
+pool.query(`ALTER TYPE public.department_status ADD VALUE IF NOT EXISTS 'DELETED'`)
+  .catch((e) => logger.error("Failed to add department_status value 'DELETED'", { stack: e.stack }));
+
 /* ── Form deadline auto-lock: ensure columns, then start periodic checker ── */
 const { ensureDeadlineColumns, startDeadlineScheduler } = require("./services/formDeadlineService");
 ensureDeadlineColumns(pool)

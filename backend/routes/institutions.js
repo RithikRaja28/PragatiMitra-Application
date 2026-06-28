@@ -615,6 +615,8 @@ router.get("/", async (req, res) => {
   const pool = req.app.locals.pool;
   try {
     await ensureLifecycleColumns(pool);
+    // includeDeleted=true lets the super-admin list and restore soft-deleted institutions
+    const includeDeleted = req.query.includeDeleted === "true";
     const { rows } = await pool.query(
       `SELECT
          i.institution_id,
@@ -643,8 +645,9 @@ router.get("/", async (req, res) => {
              AND u.account_status = 'ACTIVE'
          ) AS user_count
        FROM institutions i
-       WHERE i.deleted_at IS NULL
-       ORDER BY i.institution_name ASC`
+       WHERE ($1 OR i.deleted_at IS NULL)
+       ORDER BY i.institution_name ASC`,
+      [includeDeleted]
     );
     return res.json({ success: true, data: rows });
   } catch (err) {

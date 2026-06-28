@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate, useLocation, Navigate } from "react-router-dom";
+import { createPortal } from "react-dom";
 import {
   Building2, Pencil, Landmark, MoreHorizontal, Power, PowerOff,
   Plus, Upload, Download, FileText, FileSpreadsheet, Archive, ArchiveRestore, Trash2,
@@ -494,6 +495,32 @@ function StyledSelect({ value, onChange, children, minWidth = 180 }) {
   );
 }
 
+/* ─── Confirm Modal ──────────────────────────────────────────── */
+function ConfirmModal({ title, message, confirmLabel, danger, onConfirm, onCancel }) {
+  return createPortal(
+    <div
+      style={{ position: "fixed", inset: 0, zIndex: 10000, background: "rgba(15,23,42,0.55)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}
+      onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}
+    >
+      <div style={{ background: "#fff", borderRadius: 12, width: "100%", maxWidth: 420, boxShadow: "0 24px 64px rgba(0,0,0,0.22)", overflow: "hidden" }}>
+        <div style={{ padding: "22px 24px 16px" }}>
+          <div style={{ fontSize: 16, fontWeight: 800, color: "#1e293b", marginBottom: 10 }}>{title}</div>
+          <div style={{ fontSize: 13, color: "#64748b", lineHeight: 1.6 }}>{message}</div>
+        </div>
+        <div style={{ padding: "14px 24px", borderTop: "1px solid #f1f5f9", display: "flex", justifyContent: "flex-end", gap: 10, background: "#f8fafc" }}>
+          <button onClick={onCancel} style={{ height: 38, padding: "0 16px", borderRadius: 8, border: "1px solid #cbd5e1", background: "#fff", fontSize: 13, fontWeight: 600, color: "#475569", cursor: "pointer" }}>
+            Cancel
+          </button>
+          <button onClick={onConfirm} style={{ height: 38, padding: "0 20px", borderRadius: 8, border: "none", background: danger ? "#dc2626" : "#2563eb", fontSize: 13, fontWeight: 700, color: "#fff", cursor: "pointer" }}>
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 /* ─── Main Page ──────────────────────────────────────────────── */
 const SLUG = "institute-management";
 
@@ -512,6 +539,7 @@ export default function InstitutionManagementPage() {
   const [exportingFormat, setExportingFormat] = useState(null);
   const [page,            setPage]            = useState(1);
   const [pageSize,        setPageSize]        = useState(25);
+  const [confirmDelete,   setConfirmDelete]   = useState(null); // institution to delete
   const toastTimer = useRef(null);
 
   const isCreate = location.pathname.endsWith("/create");
@@ -556,7 +584,7 @@ export default function InstitutionManagementPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await apiFetch("/api/institutions");
+      const res = await apiFetch("/api/institutions?includeDeleted=true");
       const data = await res.json();
       if (data.success) setInstitutions(data.data);
       else setError(data.message || "Failed to load institutions.");
@@ -599,11 +627,7 @@ export default function InstitutionManagementPage() {
   /* Bug 10 — institution lifecycle: archive / restore / soft-delete. Archiving
      (or deleting) disables every user under the institution via the gate; restore
      resumes everything with no data loss. */
-  async function handleLifecycle(inst, kind) {
-    if (kind === "delete" && !window.confirm(
-      `Delete "${inst.institution_name}"? It will be soft-deleted (hidden, users disabled) and can be restored — no data is removed.`
-    )) return;
-
+  async function executeLifecycle(inst, kind) {
     const path = kind === "archive" ? `/api/institutions/${inst.institution_id}/archive`
                : kind === "restore" ? `/api/institutions/${inst.institution_id}/restore`
                : `/api/institutions/${inst.institution_id}`;
@@ -620,6 +644,11 @@ export default function InstitutionManagementPage() {
     } finally {
       setTogglingId(null);
     }
+  }
+
+  function handleLifecycle(inst, kind) {
+    if (kind === "delete") { setConfirmDelete(inst); return; }
+    executeLifecycle(inst, kind);
   }
 
   /* ── Callbacks from InstitutionForm ── */
@@ -748,8 +777,9 @@ export default function InstitutionManagementPage() {
               <StyledSelect value={statusFilter} onChange={setStatusFilter} minWidth={150}>
                 <option value="ALL">{t("All Statuses", lang)}</option>
                 <option value="ACTIVE">{t("Active", lang)}</option>
-                <option value="ARCHIVED">{t("Archived", lang)}</option>
                 <option value="INACTIVE">{t("Inactive", lang)}</option>
+                <option value="ARCHIVED">{t("Archived", lang)}</option>
+                <option value="DELETED">{t("Deleted", lang)}</option>
               </StyledSelect>
             </>
           }
@@ -792,10 +822,13 @@ export default function InstitutionManagementPage() {
             {
               key: "status", header: t("Status", lang), width: 120,
               render: (inst) => {
-                const tone = inst.status === "ACTIVE" ? "success"
-                           : inst.status === "ARCHIVED" ? "warning" : "neutral";
-                const label = inst.status === "ACTIVE" ? t("Active", lang)
+                const tone = inst.status === "ACTIVE"   ? "success"
+                           : inst.status === "ARCHIVED" ? "warning"
+                           : inst.status === "DELETED"  ? "danger"
+                           : "neutral";
+                const label = inst.status === "ACTIVE"   ? t("Active", lang)
                             : inst.status === "ARCHIVED" ? t("Archived", lang)
+                            : inst.status === "DELETED"  ? t("Deleted", lang)
                             : t("Inactive", lang);
                 return <Badge tone={tone}>{label}</Badge>;
               },
@@ -803,7 +836,9 @@ export default function InstitutionManagementPage() {
             {
               key: "actions", header: t("Actions", lang), align: "right", width: 90,
               render: (inst) => {
-                const isActive = inst.status === "ACTIVE";
+                const isActive   = inst.status === "ACTIVE";
+                const isInactive = inst.status === "INACTIVE";
+                const isDeleted  = inst.status === "DELETED";
                 const busy = togglingId === inst.institution_id;
                 return (
                   <Dropdown
@@ -816,7 +851,7 @@ export default function InstitutionManagementPage() {
                     <MenuItem icon={<Pencil size={16} strokeWidth={1.9} />} onClick={() => navigate(`${listPath}/edit`, { state: { entity: inst } })}>
                       {t("Edit", lang)}
                     </MenuItem>
-                    {isActive ? (
+                    {isActive && (
                       <>
                         <MenuItem icon={<PowerOff size={16} strokeWidth={1.9} />} disabled={busy} onClick={() => handleToggleStatus(inst)}>
                           {busy ? "…" : t("Deactivate", lang)}
@@ -825,14 +860,22 @@ export default function InstitutionManagementPage() {
                           {busy ? "…" : t("Archive", lang)}
                         </MenuItem>
                       </>
-                    ) : (
+                    )}
+                    {isInactive && (
+                      <MenuItem icon={<Power size={16} strokeWidth={1.9} />} disabled={busy} onClick={() => handleToggleStatus(inst)}>
+                        {busy ? "…" : t("Activate", lang)}
+                      </MenuItem>
+                    )}
+                    {(inst.status === "ARCHIVED" || isDeleted) && (
                       <MenuItem icon={<ArchiveRestore size={16} strokeWidth={1.9} />} disabled={busy} onClick={() => handleLifecycle(inst, "restore")}>
                         {busy ? "…" : t("Restore", lang)}
                       </MenuItem>
                     )}
-                    <MenuItem icon={<Trash2 size={16} strokeWidth={1.9} />} danger disabled={busy} onClick={() => handleLifecycle(inst, "delete")}>
-                      {busy ? "…" : t("Delete", lang)}
-                    </MenuItem>
+                    {!isDeleted && (
+                      <MenuItem icon={<Trash2 size={16} strokeWidth={1.9} />} danger disabled={busy} onClick={() => handleLifecycle(inst, "delete")}>
+                        {busy ? "…" : t("Delete", lang)}
+                      </MenuItem>
+                    )}
                   </Dropdown>
                 );
               },
@@ -857,6 +900,17 @@ export default function InstitutionManagementPage() {
           total={filtered.length}
           onPageChange={setPage}
           onPageSizeChange={(s) => { setPageSize(s); setPage(1); }}
+        />
+      )}
+
+      {confirmDelete && (
+        <ConfirmModal
+          title="Delete Institution"
+          message={<>Are you sure you want to delete <strong>{confirmDelete.institution_name}</strong>? It will be soft-deleted — users are disabled and the institution is hidden, but all data is preserved and can be restored at any time.</>}
+          confirmLabel="Delete"
+          danger
+          onConfirm={() => { const inst = confirmDelete; setConfirmDelete(null); executeLifecycle(inst, "delete"); }}
+          onCancel={() => setConfirmDelete(null)}
         />
       )}
     </PageContainer>

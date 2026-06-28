@@ -674,10 +674,11 @@ router.get(
         return res.json({ success: true, data: rows });
       }
 
-      // Super admin — original query unchanged
+      // Super admin — exclude soft-deleted institutions
       const { rows } = await pool.query(
         `SELECT institution_id, institution_name
          FROM   institutions
+         WHERE  deleted_at IS NULL
          ORDER  BY institution_name ASC`
       );
       return res.json({ success: true, data: rows });
@@ -715,6 +716,7 @@ router.get(
       return res.status(403).json({ success: false, message: "Access denied." });
     }
 
+  const includeDeleted = req.query.includeDeleted === "true";
   try {
     const { rows } = await pool.query(
       `SELECT
@@ -729,9 +731,10 @@ router.get(
               ON  u.department_id  = d.department_id
               AND u.institution_id = $1
        WHERE  d.institution_id = $1
+         AND  ($2 OR d.status::text != 'DELETED')
        GROUP  BY d.department_id, d.name, d.code, d.status, d.created_at
        ORDER  BY d.name ASC`,
-      [institution_id]
+      [institution_id, includeDeleted]
     );
     return res.json({ success: true, data: rows });
   } catch (err) {
@@ -1256,7 +1259,7 @@ router.delete(
                 i.institution_name
          FROM   departments d
          LEFT JOIN institutions i ON i.institution_id = d.institution_id
-         WHERE  d.department_id = $1 AND d.institution_id = $2 AND d.status != 'DELETED'`,
+         WHERE  d.department_id = $1 AND d.institution_id = $2 AND d.status::text != 'DELETED'`,
         [departmentId, institution_id]
       );
       if (!existingRows.length)
@@ -1291,6 +1294,59 @@ router.delete(
     } catch (err) {
       logger.error("DELETE /api/departments/:id failed", { ...getLogContext(req), stack: err.stack });
       return res.status(500).json({ success: false, message: "Failed to delete department." });
+    }
+  }
+);
+
+/* ── POST /api/departments/:id/restore ── restore a soft-deleted department ─── */
+router.post(
+  "/:id/restore",
+  requireRole(["super_admin", "institute_admin"]),
+  async (req, res) => {
+    const pool = req.app.locals.pool;
+    const departmentId = req.params.id;
+
+    if (!isUUID(departmentId)) {
+      return res.status(400).json({ success: false, message: "Invalid department ID." });
+    }
+
+    try {
+      const { rows: existingRows } = await pool.query(
+        `SELECT d.department_id, d.name, d.code, d.status, d.institution_id
+         FROM   departments d
+         WHERE  d.department_id = $1 AND d.status::text = 'DELETED'`,
+        [departmentId]
+      );
+      if (!existingRows.length)
+        return res.status(404).json({ success: false, message: "Deleted department not found." });
+
+      // Institute admin: only their own institution
+      if (isOnlyInstAdmin(req) && existingRows[0].institution_id !== req.user.institutionId) {
+        return res.status(403).json({ success: false, message: "You can only manage departments in your own institution." });
+      }
+
+      const existing = existingRows[0];
+
+      await pool.query(
+        `UPDATE departments SET status = 'ACTIVE', updated_at = now(), updated_by = $2 WHERE department_id = $1`,
+        [departmentId, req.user.userId]
+      );
+
+      await writeAuditLog(req, {
+        actionType:    "DEPARTMENT_RESTORED",
+        entityType:    "DEPARTMENT",
+        entityId:      departmentId,
+        oldValue:      { status: "DELETED" },
+        newValue:      { status: "ACTIVE" },
+        changedFields: ["status"],
+        status:        "SUCCESS",
+        message:       `Department "${existing.name}" (${existing.code}) restored`,
+      });
+
+      return res.json({ success: true, message: `Department "${existing.name}" has been restored.` });
+    } catch (err) {
+      logger.error("POST /api/departments/:id/restore failed", { ...getLogContext(req), stack: err.stack });
+      return res.status(500).json({ success: false, message: "Failed to restore department." });
     }
   }
 );
