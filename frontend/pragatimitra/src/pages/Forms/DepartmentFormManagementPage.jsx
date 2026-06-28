@@ -14,7 +14,7 @@ import { Toast, isAuthError } from "../../components/shared/formUtils";
 import DepartmentFormBuilderPage from "./DepartmentFormBuilderPage";
 import DepartmentFormRecordsPage from "./DepartmentFormRecordsPage";
 import { DateField, TimeField } from "./DateTimePicker";
-import { color, Button, PageHeader, Badge, EmptyState, Modal, Dropdown, MenuItem, MenuLabel, DataTable } from "../../ui";
+import { color, Button, PageHeader, Badge, EmptyState, Modal, Dropdown, MenuItem, MenuLabel, DataTable, Pagination } from "../../ui";
 import { useLanguage } from "../../i18n/LanguageContext";
 import { t } from "../../i18n/translations";
 import api from "../../services/api";
@@ -137,6 +137,8 @@ export default function DepartmentFormManagementPage() {
   const [deadlineForm, setDeadlineForm] = useState(null);
   const [tab, setTab] = useState("active");
   const [search, setSearch] = useState("");
+  const [page,     setPage]     = useState(1);
+  const [pageSize, setPageSize] = useState(25);
 
   const showToast = (message, type = "success") => { setToast({ message, type }); setTimeout(() => setToast(null), 3500); };
 
@@ -165,6 +167,11 @@ export default function DepartmentFormManagementPage() {
       .filter((f) => (tab === "archived" ? f.is_archived : !f.is_archived))
       .filter((f) => !q || titleOf(f.form_name).toLowerCase().includes(q) || f.form_name.toLowerCase().includes(q) || (f.form_description || "").toLowerCase().includes(q));
   }, [forms, tab, search]);
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { setPage(1); }, [search, tab, selectedYear]);
+
+  const paginatedForms = visibleForms.slice((page - 1) * pageSize, page * pageSize);
 
   async function toggleLock(form) {
     const action = form.is_locked ? "unlock" : "lock";
@@ -313,7 +320,7 @@ export default function DepartmentFormManagementPage() {
       <DataTable
         fill
         columns={columns}
-        rows={visibleForms}
+        rows={paginatedForms}
         rowKey={(f) => f.id}
         loading={loading}
         minWidth={920}
@@ -343,6 +350,14 @@ export default function DepartmentFormManagementPage() {
             action={!searching && tab === "active" ? <Button variant="primary" icon={<Plus size={18} strokeWidth={STROKE} />} onClick={() => navigate(`${listPath}/create`)}>{t("Create Form", lang)}</Button> : undefined}
           />
         }
+      />
+
+      <Pagination
+        page={page}
+        pageSize={pageSize}
+        total={visibleForms.length}
+        onPageChange={setPage}
+        onPageSizeChange={setPageSize}
       />
     </div>
   );

@@ -158,10 +158,22 @@ router.get("/shared", async (req, res) => {
     if (!instId) return res.status(400).json({ success: false, message: "institution_id required" });
     if (!roles.length) return res.json({ success: true, data: [], total: 0 });
 
+    // Optional academic year filter (X-Academic-Year header: e.g. "2023" → "2023-2024")
+    const headerYear = Number(req.get("X-Academic-Year"));
+    const academicYearStr = (Number.isInteger(headerYear) && headerYear > 1900)
+      ? `${headerYear}-${headerYear + 1}`
+      : null;
+
+    const params = [instId, ...roles];
     const placeholders = roles.map((_, i) => `$${i + 2}`).join(", ");
+    const yearClause = academicYearStr
+      ? `AND r.academic_year = $${params.push(academicYearStr)}`
+      : "";
+
     const { rows } = await pool.query(
       `SELECT DISTINCT ON (r.id) r.id, r.title, r.report_type, r.academic_year, r.status,
               r.primary_language, r.cover_image_url,
+              r.submission_deadline, r.review_deadline, r.approval_deadline,
               r.created_at, r.updated_at,
               u.full_name AS created_by_name,
               rc.name     AS cycle_name
@@ -172,8 +184,9 @@ router.get("/shared", async (req, res) => {
        WHERE r.institution_id = $1
          AND r.deleted_at IS NULL
          AND ra.role_name IN (${placeholders})
+         ${yearClause}
        ORDER BY r.id, r.updated_at DESC`,
-      [instId, ...roles]
+      params
     );
 
     return res.json({ success: true, data: rows, total: rows.length });

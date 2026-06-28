@@ -19,3 +19,4 @@ export { default as Modal } from "./Modal";
 export { Dropdown, MenuItem, MenuLabel } from "./Menu";
 export { default as DataTable } from "./DataTable";
 export { Input, Textarea, Select, FormField, FieldLabel } from "./Field";
+export { default as Pagination } from "./Pagination";

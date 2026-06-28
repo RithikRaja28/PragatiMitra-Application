@@ -1,10 +1,11 @@
 "use client";
 import { useEffect, useRef, useState, useCallback } from "react";
-import { Trash2, Eye, Edit2, Download, Search, RefreshCw, Plus, AlertTriangle, Ban } from "lucide-react";
+import { createPortal } from "react-dom";
+import { Trash2, Eye, Edit2, Download, Search, RefreshCw, Plus, AlertTriangle, Ban, CalendarClock } from "lucide-react";
 import Modal from "../../ui/Modal";
 import Button from "../../ui/Button";
 import PageHeader from "../../ui/PageHeader";
-import { color, DataTable, Badge, EmptyState } from "../../ui";
+import { color, DataTable, Badge, EmptyState, Pagination } from "../../ui";
 import { useNavigate, useLocation, Navigate } from "react-router-dom";
 import { useAuth } from "../../store/AuthContext";
 import { useAcademicYear } from "../../store/AcademicYearContext";
@@ -185,7 +186,7 @@ function ReusePrompt({ existing, apiFetch, notify, onReused, onCreateNew }) {
     setReusingId(c.id); setErr("");
     try {
       const r = await apiFetch(`/configs/${c.id}/regenerate`, { method:"POST" });
-      notify(`Refreshed "${c.title}" with latest data`);
+      notify("KPI refreshed successfully.");
       onReused(r.data.config || c);
     } catch (e) {
       setErr(e.message);
@@ -309,6 +310,7 @@ function KpiForm({ cfg, tables, tabStatus, existingConfigs, scope, onBack, onSav
   const [tabSearch,       setTabSearch]       = useState("");
   const [cols,            setCols]            = useState([]);
   const [colsLoading,     setColsLoading]     = useState(false);
+  const [colsError,       setColsError]       = useState("");
   const [submitError,     setSubmitError]     = useState("");
   const [submitting,      setSubmitting]      = useState(false);
   const academicYear = currentAcademicYear || cfg?.academic_year || "";
@@ -343,32 +345,36 @@ function KpiForm({ cfg, tables, tabStatus, existingConfigs, scope, onBack, onSav
 
   useEffect(() => {
     if (!selTable) {
-      setCols([]); setReuseState(null);
+      setCols([]); setColsError(""); setReuseState(null);
       prevSelTable.current = "";
       return;
     }
 
     setColsLoading(true);
+    setColsError("");
     // Pass ?year= so the backend applies institution+year scoping when resolving
     // custom fields from custom_field_schemas (enforces per-year field isolation).
+    // Also depends on academicYear so column list refreshes when the global year changes
+    // while the form is open (create mode) — column reset is guarded below.
     const yearParam = academicYear ? `?year=${encodeURIComponent(academicYear)}` : "";
     apiFetch(`/tables/${encodeURIComponent(selTable)}/columns${yearParam}`)
       .then(r => { setCols(r.data); onColsLoaded(r.data); setColsLoading(false); })
-      .catch(() => setColsLoading(false));
+      .catch(err => { setColsLoading(false); setColsError(err?.message || "Failed to load columns for this table."); });
 
     const prev = prevSelTable.current;
     prevSelTable.current = selTable;
 
     // Guard: do NOT reset when —
-    //   prev === null  → very first effect run (initial mount, edit or create mode)
-    //   prev === selTable → same table value seen again (React 18 Strict Mode double-fire)
+    //   prev === null    → very first effect run (initial mount, edit or create mode)
+    //   prev === selTable → same table selected again (React 18 Strict Mode double-fire
+    //                       OR academicYear changed while table stayed the same)
     if (prev === null || prev === selTable) return;
 
     // User switched to a genuinely different table — reset column selections
     const conflicts = (!isEdit) ? (existingConfigs||[]).filter(c => c.table_name === selTable) : [];
     setReuseState(conflicts.length > 0 ? "prompt" : null);
     setXCol(""); setYCols([]); setGroupByCol("");
-  }, [selTable]); // eslint-disable-line
+  }, [selTable, academicYear]); // eslint-disable-line
 
   // Whether to show the full config form (column/chart pickers)
   // Show when: editing, OR table has no conflicts, OR user chose "Create New"
@@ -414,14 +420,17 @@ function KpiForm({ cfg, tables, tabStatus, existingConfigs, scope, onBack, onSav
         group_by_column:        (aggregationType !== "none" && groupByCol) ? groupByCol : null,
         export_title:           exportTitle.trim() || null,
         scope,
+        // Optimistic lock token — backend rejects with 409 if another user saved in between.
+        // Only sent for edits; not applicable to create.
+        ...(isEdit && cfg?.updated_at ? { updated_at: cfg.updated_at } : {}),
       };
       const r = isEdit
         ? await apiFetch(`/configs/${cfg.id}`, { method:"PUT",  body:JSON.stringify(payload) })
         : await apiFetch("/configs",            { method:"POST", body:JSON.stringify(payload) });
       if (r.similar_kpis?.length) {
-        notify(`Created "${r.data.title}" — note: ${r.similar_kpis.length} similar KPI(s) already exist for this configuration.`);
+        notify(`KPI created successfully. Note: ${r.similar_kpis.length} similar KPI(s) already exist for this configuration.`);
       } else {
-        notify(`${isEdit ? "Updated" : "Created"} "${r.data.title}"`);
+        notify(isEdit ? "KPI updated successfully." : "KPI created successfully.");
       }
       onSaved(r.data);
     } catch(e) { setSubmitError(e.message); }
@@ -643,6 +652,13 @@ function KpiForm({ cfg, tables, tabStatus, existingConfigs, scope, onBack, onSav
             <label style={S.label}>{t("X-Axis Column", lang)}</label>
             <div style={{ fontSize:11, color:"#94a3b8", marginBottom:6 }}>{t("Horizontal axis — month, date, or category", lang)}</div>
             {!selTable && <div style={{ fontSize:12, color:"#94a3b8" }}>{t("Select a table first.", lang)}</div>}
+            {selTable && colsError && !colsLoading && (
+              <div style={{ display:"flex", alignItems:"center", gap:8, padding:"8px 12px", borderRadius:8, background:"#fef2f2", border:"1px solid #fecaca", fontSize:12, color:"#dc2626" }}>
+                <AlertTriangle size={13} strokeWidth={2} style={{ flexShrink:0 }} />
+                {colsError}
+                <button type="button" onClick={()=>{ setColsError(""); const yearParam=academicYear?`?year=${encodeURIComponent(academicYear)}`:""; setColsLoading(true); apiFetch(`/tables/${encodeURIComponent(selTable)}/columns${yearParam}`).then(r=>{setCols(r.data);onColsLoaded(r.data);setColsLoading(false);setColsError("");}).catch(err=>{setColsLoading(false);setColsError(err?.message||"Failed to load columns.");}); }} style={{ marginLeft:"auto", background:"none", border:"none", cursor:"pointer", fontSize:12, color:"#dc2626", fontWeight:600 }}>Retry</button>
+              </div>
+            )}
             {selTable && colsLoading && (
               xCol
                 ? <div style={{ display:"flex", alignItems:"center", gap:10, padding:"9px 14px", background:"#eff6ff", border:"1.5px solid #bfdbfe", borderRadius:9 }}>
@@ -893,6 +909,7 @@ export default function KpiManagementPage({ scope = "institute" }) {
   // ── Data state ──
   const [configs,    setConfigs]    = useState([]);
   const [cfgsLoading,setCfgsLoading]= useState(true);
+  const [cfgsError,  setCfgsError]  = useState("");
   const [tables,     setTables]     = useState([]);
   const [tabStatus,  setTabStatus]  = useState("loading");
 
@@ -914,6 +931,9 @@ export default function KpiManagementPage({ scope = "institute" }) {
   // ── Delete confirmation ──
   const [deleteTarget, setDeleteTarget] = useState(null); // cfg pending deletion
   const [deleting,     setDeleting]     = useState(false);
+  const [exportingId,  setExportingId]  = useState(null);
+  const [page,         setPage]         = useState(1);
+  const [pageSize,     setPageSize]     = useState(25);
 
   // ── Toast ──
   const [toast,      setToast]      = useState({ msg:"", err:false });
@@ -930,7 +950,9 @@ export default function KpiManagementPage({ scope = "institute" }) {
   useEffect(()=>{
     if (window.echarts) { setEReady(true); return; }
     const sc=document.createElement("script");
-    sc.src=ECHARTS_CDN; sc.onload=()=>setEReady(true);
+    sc.src=ECHARTS_CDN;
+    sc.onload=()=>setEReady(true);
+    sc.onerror=()=>notify("Failed to load chart library. Export and preview will be unavailable.", true);
     document.head.appendChild(sc);
   },[]); // eslint-disable-line
 
@@ -953,11 +975,16 @@ export default function KpiManagementPage({ scope = "institute" }) {
 
   const loadConfigs = useCallback(()=>{
     setCfgsLoading(true);
+    setCfgsError("");
     const yearQs = academicYear ? `&year=${encodeURIComponent(academicYear)}` : "";
     apiFetch(`/configs?scope=${scope}${yearQs}`)
       .then(r=>{ setConfigs(r.data); setCfgsLoading(false); })
-      .catch(()=>setCfgsLoading(false));
-  },[apiFetch, scope, academicYear]);
+      .catch(()=>{
+        setCfgsLoading(false);
+        setCfgsError("Failed to load KPI charts. Check your connection and try again.");
+        notify("Failed to load KPI charts.", true);
+      });
+  },[apiFetch, scope, academicYear, notify]);
   useEffect(()=>{ loadConfigs(); },[loadConfigs]);
 
   // ECharts ref callback
@@ -999,9 +1026,8 @@ export default function KpiManagementPage({ scope = "institute" }) {
     try {
       const r=await apiFetch(`/configs/${cfg.id}/regenerate?lang=${lang}`,{method:"POST"});
       setActiveCfg(r.data.config||cfg); applyResult(r.data, lang, colLabels);
-      const truncNote = r.data.truncated ? " · first 5,000 rows shown" : "";
-      notify(`Loaded "${(r.data.config||cfg).title}" · ${r.data.row_count} rows${truncNote}`);
-    } catch(e){ notify(e.message,true); setActiveCfg(cfg); setChartSeries(null); setChartX(null); }
+      notify("KPI refreshed successfully.");
+    } catch(e){ notify("Failed to refresh KPI.",true); setActiveCfg(cfg); setChartSeries(null); setChartX(null); }
     finally { setGenerating(false); }
   },[apiFetch,applyResult,notify,lang,colLabels]); // eslint-disable-line
 
@@ -1010,8 +1036,13 @@ export default function KpiManagementPage({ scope = "institute" }) {
     if (!activeCfg?.id) { notify(t("Preview a chart first, then export.", lang),true); return; }
     setExporting(true);
     try {
-      await new Promise(r=>setTimeout(r,50));
-      const cSvg=chartInst.current.renderToSVGString();
+      // Small delay so any pending chart re-render completes before we read the DOM.
+      await new Promise(r=>setTimeout(r,80));
+      // Read the live SVG element from the DOM — works in all browsers regardless of
+      // ECharts version (more reliable than the instance renderToSVGString() method).
+      const svgEl = chartDivRef.current?.querySelector('svg');
+      if (!svgEl) throw new Error("Chart SVG element not found. Please wait for the chart to finish loading and try again.");
+      const cSvg = new XMLSerializer().serializeToString(svgEl);
       const tSvg=buildTableSVG(chartSeries,chartX,lang);
       const cW=chartDivRef.current?.offsetWidth||860, cH=chartDivRef.current?.offsetHeight||400;
       // Export title priority (language-aware): Export Display Name → Description → KPI Title → fallback
@@ -1032,8 +1063,8 @@ export default function KpiManagementPage({ scope = "institute" }) {
         `<svg x="0" y="${tH}" width="${cW}" height="${cH}">${cSvg}</svg>` +
         `<svg x="0" y="${tH+cH+gap}" width="${cW}" height="180">${tSvg}</svg></svg>`;
       await apiFetch(`/configs/${activeCfg.id}/export-svg`,{method:"POST",body:JSON.stringify({svg_data:combined,report_data:{config_id:activeCfg.id,export_title:exportTitle,academic_year:activeCfg.academic_year||null,generated_at:new Date().toISOString()}})});
-      loadConfigs(); notify(`Exported chart #${activeCfg.id}`);
-    } catch(e){ notify(e.message,true); }
+      loadConfigs(); notify("KPI exported as SVG successfully.");
+    } catch(e){ notify("Failed to export KPI as SVG.",true); }
     finally { setExporting(false); }
   },[chartSeries,chartX,activeCfg,lang,apiFetch,loadConfigs,notify]);
 
@@ -1049,12 +1080,78 @@ export default function KpiManagementPage({ scope = "institute" }) {
       setConfigs(p=>p.filter(c=>c.id!==id));
       if (activeCfg?.id===id) { setActiveCfg(null); setChartSeries(null); setChartX(null); }
       setDeleteTarget(null);
-      notify(`Config #${id} deleted`);
-    } catch(e){ notify(e.message,true); }
+      notify("KPI deleted successfully.");
+    } catch(e){ notify("Failed to delete KPI.",true); }
     finally { setDeleting(false); }
   },[deleteTarget,activeCfg,apiFetch,notify]);
 
-  const handleSaved = (saved)=>{ loadConfigs(); navFn(`${listPath}/preview`, { state:{ entity: saved } }); };
+  const handleSaved = ()=>{ loadConfigs(); navFn(listPath); };
+
+  const exportFromList = useCallback(async (cfg) => {
+    if (!window.echarts) { notify("Chart library is still loading. Please try again in a moment.", true); return; }
+    setExportingId(cfg.id);
+    const tempDiv = document.createElement("div");
+    tempDiv.style.cssText = "position:absolute;left:-9999px;top:-9999px;width:860px;height:400px;visibility:hidden;";
+    document.body.appendChild(tempDiv);
+    let tempChart = null;
+    try {
+      const r = await apiFetch(`/configs/${cfg.id}/regenerate?lang=${lang}`, { method:"POST" });
+      const rd = r.data;
+      const chartCfg = rd.config || cfg;
+      const series = (rd.series || []).map((s, i) => ({
+        name: s.label || translateSeriesLabel(s.column, lang, {}),
+        data: s.values,
+        color: SERIES_COLORS[i % SERIES_COLORS.length],
+      }));
+      const xLabels = (rd.x || []).map(String);
+      const option = buildOption(chartCfg.chart_type || cfg.chart_type || "bar", xLabels, series, rd.y_range);
+      tempChart = window.echarts.init(tempDiv, null, { renderer: "svg" });
+      tempChart.setOption(option);
+      await new Promise(res => setTimeout(res, 80));
+      const svgEl = tempDiv.querySelector("svg");
+      if (!svgEl) throw new Error("SVG not rendered in offscreen chart");
+      const cSvg = new XMLSerializer().serializeToString(svgEl);
+      const tSvg = buildTableSVG(series, xLabels, lang);
+      const cW = 860, cH = 400;
+      const exportTitle =
+        cfgExportTitle(chartCfg, lang) ||
+        cfgDesc(chartCfg, lang) ||
+        (cfgTitle(chartCfg, lang) !== "KPI Chart" ? cfgTitle(chartCfg, lang) : "") ||
+        `${chartCfg.table_name || "KPI"} · ${new Date().toLocaleDateString("en-IN")}`;
+      const exportSubtitle = chartCfg.academic_year
+        ? `Academic Year: ${chartCfg.academic_year}  |  Chart: ${chartCfg.chart_type || "bar"}`
+        : `Chart: ${chartCfg.chart_type || cfg.chart_type || "bar"}`;
+      const esc = s => String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+      const tH = 64, gap = 16;
+      const combined =
+        `<svg xmlns="http://www.w3.org/2000/svg" width="${cW}" height="${tH+cH+gap+200}">` +
+        `<rect width="${cW}" height="${tH+cH+gap+200}" fill="#fff"/>` +
+        `<text x="16" y="28" font-size="15" font-weight="700" fill="#101828" font-family="${SVG_FONT}">${esc(exportTitle)}</text>` +
+        `<text x="16" y="48" font-size="11" fill="#64748b" font-family="${SVG_FONT}">${esc(exportSubtitle)}</text>` +
+        `<svg x="0" y="${tH}" width="${cW}" height="${cH}">${cSvg}</svg>` +
+        `<svg x="0" y="${tH+cH+gap}" width="${cW}" height="180">${tSvg}</svg></svg>`;
+      await apiFetch(`/configs/${cfg.id}/export-svg`, {
+        method: "POST",
+        body: JSON.stringify({
+          svg_data: combined,
+          report_data: {
+            config_id: cfg.id,
+            export_title: exportTitle,
+            academic_year: chartCfg.academic_year || null,
+            generated_at: new Date().toISOString(),
+          },
+        }),
+      });
+      loadConfigs();
+      notify("KPI exported as SVG successfully.");
+    } catch(e) {
+      notify("Failed to export KPI as SVG.", true);
+    } finally {
+      if (tempChart) { try { tempChart.dispose(); } catch(_) {} }
+      if (tempDiv.parentNode) document.body.removeChild(tempDiv);
+      setExportingId(null);
+    }
+  }, [apiFetch, lang, notify, loadConfigs]);
 
   // When the dedicated preview page opens (with a cfg in route state), load its
   // chart once. Re-runs become no-ops after activeCfg matches the previewed cfg.
@@ -1066,7 +1163,7 @@ export default function KpiManagementPage({ scope = "institute" }) {
   const activeCfgRef = useRef(activeCfg);
   activeCfgRef.current = activeCfg;
   useEffect(()=>{
-    if (activeCfgRef.current) regenerate(activeCfgRef.current);
+    if (isPreview && activeCfgRef.current) regenerate(activeCfgRef.current);
   },[lang]); // eslint-disable-line
 
   const filtered = configs.filter(c => {
@@ -1079,6 +1176,11 @@ export default function KpiManagementPage({ scope = "institute" }) {
     return cfgTitle(c, lang).toLowerCase().includes(q) ||
       formatTableName(c.table_name).toLowerCase().includes(q);
   });
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { setPage(1); }, [listSearch, statusFilter, academicYear]);
+
+  const paginated = filtered.slice((page - 1) * pageSize, page * pageSize);
 
   // ── Form views ──────────────────────────────────────────────────────────────
   if (isCreate || isEdit) {
@@ -1283,18 +1385,23 @@ export default function KpiManagementPage({ scope = "institute" }) {
         </div>
         )}
 
-        {/* Toast */}
-        {toast.msg && (
+        {toast.msg && createPortal(
           <div style={{
-            position:"fixed", bottom:24, right:24, zIndex:9999,
-            padding:"12px 18px", borderRadius:8, fontSize:13.5, fontWeight:500,
-            background: toast.err?"#fef2f2":"#101828",
-            color: toast.err?"#b91c1c":"#fff",
-            border: toast.err?"1px solid #fecaca":"none",
-            boxShadow:"0 4px 20px rgba(0,0,0,.16)", maxWidth:380,
+            position:"fixed", top:20, right:24, zIndex:99999,
+            padding:"13px 20px", borderRadius:10, fontSize:13, fontWeight:500,
+            background: toast.err ? "#dc2626" : "#1e293b",
+            color:"#fff",
+            boxShadow:"0 8px 28px rgba(0,0,0,0.22)", maxWidth:440,
+            lineHeight:1.55, display:"flex", alignItems:"center", gap:9,
+            fontFamily:"'Plus Jakarta Sans',sans-serif",
           }}>
-            {toast.msg}
-          </div>
+            {toast.err
+              ? <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink:0 }}><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+              : <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink:0 }}><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+            }
+            <span>{toast.msg}</span>
+          </div>,
+          document.body
         )}
       </div>
     );
@@ -1363,7 +1470,13 @@ export default function KpiManagementPage({ scope = "institute" }) {
         <div style={{ display: "inline-flex", alignItems: "center", gap: 6, justifyContent: "flex-end" }}>
           <Button variant="secondary" iconOnly title={t("Preview", lang)} icon={<Eye size={16} strokeWidth={STROKE} />} onClick={() => navFn(`${listPath}/preview`, { state: { entity: cfg } })} />
           <Button variant="secondary" iconOnly title={t("Edit", lang)} icon={<Edit2 size={16} strokeWidth={STROKE} />} onClick={() => navFn(`${listPath}/edit`, { state: { entity: cfg } })} />
-          <Button variant="secondary" iconOnly title={t("Export", lang)} icon={<Download size={16} strokeWidth={STROKE} />} onClick={() => navFn(`${listPath}/preview`, { state: { entity: cfg } })} />
+          <Button variant="secondary" iconOnly title={t("Export SVG", lang)}
+            disabled={exportingId === cfg.id}
+            icon={exportingId === cfg.id
+              ? <span style={{ width:16, height:16, border:"2px solid #e2e8f0", borderTopColor:"#2563eb", borderRadius:"50%", animation:"pm-kpi-spin 0.7s linear infinite", display:"inline-block" }}/>
+              : <Download size={16} strokeWidth={STROKE} />
+            }
+            onClick={() => exportFromList(cfg)} />
           <Button variant="outlineDanger" iconOnly title={t("Delete", lang)} icon={<Trash2 size={16} strokeWidth={STROKE} />} onClick={() => requestDelete(cfg)} />
         </div>
       ),
@@ -1371,19 +1484,26 @@ export default function KpiManagementPage({ scope = "institute" }) {
   ];
 
   return (
+    <>
+    {toast.msg && createPortal(
+      <div style={{
+        position:"fixed", top:20, right:24, zIndex:99999,
+        padding:"13px 20px", borderRadius:10, fontSize:13, fontWeight:500,
+        background: toast.err ? "#dc2626" : "#1e293b",
+        color:"#fff",
+        boxShadow:"0 8px 28px rgba(0,0,0,0.22)", maxWidth:440,
+        lineHeight:1.55, display:"flex", alignItems:"center", gap:9,
+        fontFamily:"'Plus Jakarta Sans',sans-serif",
+      }}>
+        {toast.err
+          ? <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink:0 }}><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+          : <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink:0 }}><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+        }
+        <span>{toast.msg}</span>
+      </div>,
+      document.body
+    )}
     <div style={{ padding: "24px 32px", fontFamily: "'Plus Jakarta Sans', sans-serif", minHeight: "100%", maxWidth: 1600, margin: "0 auto", background: "transparent" }}>
-      {toast.msg && (
-        <div style={{
-          position: "fixed", bottom: 24, right: 24, zIndex: 9999,
-          padding: "12px 18px", borderRadius: 8, fontSize: 13.5, fontWeight: 500,
-          background: toast.err ? "#fef2f2" : "#101828",
-          color: toast.err ? "#b91c1c" : "#fff",
-          border: toast.err ? "1px solid #fecaca" : "none",
-          boxShadow: "0 4px 20px rgba(0,0,0,.16)", maxWidth: 380,
-        }}>
-          {toast.msg}
-        </div>
-      )}
 
       <PageHeader
         breadcrumb={kpiBreadcrumb}
@@ -1397,9 +1517,17 @@ export default function KpiManagementPage({ scope = "institute" }) {
         }
       />
 
+      {cfgsError && (
+        <div style={{ display:"flex", alignItems:"center", gap:8, padding:"10px 14px", borderRadius:8, marginBottom:16, background:"#fef2f2", border:"1px solid #fecaca", fontSize:13, color:"#dc2626", fontWeight:500 }}>
+          <AlertTriangle size={15} strokeWidth={2} style={{ flexShrink:0 }} />
+          {cfgsError}
+          <button onClick={loadConfigs} style={{ marginLeft:"auto", padding:"2px 10px", borderRadius:6, border:"1px solid #fecaca", background:"transparent", color:"#dc2626", fontSize:12, fontWeight:600, cursor:"pointer" }}>Retry</button>
+        </div>
+      )}
+
       <DataTable
         columns={listColumns}
-        rows={filtered}
+        rows={paginated}
         rowKey={(c) => c.id}
         loading={cfgsLoading}
         minWidth={900}
@@ -1413,26 +1541,28 @@ export default function KpiManagementPage({ scope = "institute" }) {
                 style={{ width: "100%", height: 40, padding: "0 12px 0 34px", border: `1px solid ${color.border}`, borderRadius: 10, fontSize: 13, color: color.text, outline: "none", boxSizing: "border-box", background: color.surface }}
               />
             </div>
-            <div style={{ display: "inline-flex", border: `1px solid ${color.border}`, borderRadius: 10, padding: 3, gap: 2, background: color.hover }}>
-              {[
-                { val: "all",      label: `${t("All", lang)} (${configs.length})` },
-                { val: "draft",    label: t("Draft", lang) },
-                { val: "exported", label: t("Exported", lang) },
-              ].map(f => {
-                const on = statusFilter === f.val;
-                return (
-                  <button key={f.val} onClick={() => setStatusFilter(f.val)} className="ui-focusable"
-                    style={{ border: "none", borderRadius: 8, padding: "7px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer",
-                             background: on ? color.surface : "transparent", color: on ? color.text : color.muted,
-                             boxShadow: on ? "0 1px 2px rgba(16,24,40,0.08)" : "none" }}>
-                    {f.label}
-                  </button>
-                );
-              })}
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              {academicYear && (
+                <Badge tone="primary" icon={<CalendarClock size={12} strokeWidth={STROKE} />}>{academicYear}</Badge>
+              )}
+              <div style={{ display: "inline-flex", border: `1px solid ${color.border}`, borderRadius: 10, padding: 3, gap: 2, background: color.hover }}>
+                {[
+                  { val: "all",      label: `${t("All", lang)} (${configs.length})` },
+                  { val: "draft",    label: t("Draft", lang) },
+                  { val: "exported", label: t("Exported", lang) },
+                ].map(f => {
+                  const on = statusFilter === f.val;
+                  return (
+                    <button key={f.val} onClick={() => setStatusFilter(f.val)} className="ui-focusable"
+                      style={{ border: "none", borderRadius: 8, padding: "7px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer",
+                               background: on ? color.surface : "transparent", color: on ? color.text : color.muted,
+                               boxShadow: on ? "0 1px 2px rgba(16,24,40,0.08)" : "none" }}>
+                      {f.label}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-            {academicYear && (
-              <Badge tone="primary">{academicYear}</Badge>
-            )}
           </>
         }
         empty={
@@ -1451,6 +1581,14 @@ export default function KpiManagementPage({ scope = "institute" }) {
         }
       />
 
+      <Pagination
+        page={page}
+        pageSize={pageSize}
+        total={filtered.length}
+        onPageChange={setPage}
+        onPageSizeChange={setPageSize}
+      />
+
       {deleteTarget && (
         <KpiDeleteModal
           cfg={deleteTarget}
@@ -1460,6 +1598,7 @@ export default function KpiManagementPage({ scope = "institute" }) {
         />
       )}
     </div>
+    </>
   );
 }
 

@@ -318,9 +318,7 @@ export const ROLE_CONFIG = {
       {
         group: "Dept Management",
         items: [
-          // Gated on the real permission key. Institute Admin has
-          // manage_departments=false in the DB, so this stays hidden.
-          { id: "ia-departments",  label: "Departments", icon: "Building2", permission: "manage_departments", slug: "department-management" },
+          { id: "ia-departments", label: "Departments", icon: "Building2", permission: null, slug: "department-management" },
         ],
       },
       {

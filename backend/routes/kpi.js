@@ -552,7 +552,7 @@ async function ensureTables(pool) {
   `);
 
   // 2. Add new columns to existing tables (each individually so one failure doesn't block others)
-  const safeAdd = async (sql) => { try { await pool.query(sql); } catch (_) {} };
+  const safeAdd = async (sql) => { try { await pool.query(sql); } catch (err) { logger.warn("KPI DDL safeAdd skipped", { sql: sql.slice(0, 120), error: err.message }); } };
 
   await safeAdd(`ALTER TABLE kpi_config ADD COLUMN IF NOT EXISTS scope                  VARCHAR(20) NOT NULL DEFAULT 'institute'`);
   await safeAdd(`ALTER TABLE kpi_config ADD COLUMN IF NOT EXISTS show_on_dashboard      BOOLEAN     NOT NULL DEFAULT false`);
@@ -1176,6 +1176,7 @@ router.get("/configs", async (req, res) => {
 
     res.json({ ok: true, data: enriched });
   } catch (err) {
+    logger.error("GET /api/kpi/configs", { ...getLogContext(req), stack: err.stack });
     res.status(500).json({ ok: false, error: err.message });
   }
 });
@@ -1211,6 +1212,10 @@ router.put("/configs/:id", async (req, res) => {
     show_on_dashboard, dashboard_display_type, dashboard_group_name,
     academic_year, aggregation_type, group_by_column,
     export_title,
+    // Optimistic lock token: client sends the updated_at it last observed.
+    // If the row was saved by someone else in the meantime, the UPDATE hits 0
+    // rows and we return 409 instead of silently overwriting the other edit.
+    updated_at: lock_token,
   } = req.body;
   try {
     await ensureTables(req.pool);
@@ -1238,6 +1243,21 @@ router.put("/configs/:id", async (req, res) => {
 
     const cfgDraft = { title, description, table_name, x_col, y_cols, chart_type,
                        aggregation_type, group_by_column };
+
+    // Build WHERE clause — include optimistic lock check when client sends the token.
+    const baseParams = [
+      title, title_hi, description, description_hi,
+      table_name, x_col, y_cols, chart_type,
+      buildDisplaySql(cfgDraft, customFields), show_on_dashboard ?? false,
+      dashboard_display_type || "single", dashboard_group_name || null,
+      academic_year || null, aggregation_type || "none", group_by_column || null,
+      export_title || null, export_title_hi, ctx.user_id, req.params.id,
+    ];
+    const lockClause = lock_token
+      ? `AND updated_at = $${baseParams.length + 1}`
+      : "";
+    if (lock_token) baseParams.push(new Date(lock_token));
+
     const { rows, rowCount } = await req.pool.query(
       `UPDATE kpi_config SET
          title=$1, title_hi=$2, description=$3, description_hi=$4,
@@ -1246,15 +1266,21 @@ router.put("/configs/:id", async (req, res) => {
          academic_year=$13, aggregation_type=$14, group_by_column=$15,
          export_title=$16, export_title_hi=$17,
          updated_by=$18, updated_at=NOW()
-       WHERE id=$19 RETURNING *`,
-      [title, title_hi, description, description_hi,
-       table_name, x_col, y_cols, chart_type,
-       buildDisplaySql(cfgDraft, customFields), show_on_dashboard ?? false,
-       dashboard_display_type || "single", dashboard_group_name || null,
-       academic_year || null, aggregation_type || "none", group_by_column || null,
-       export_title || null, export_title_hi, ctx.user_id, req.params.id]
+       WHERE id=$19 ${lockClause} RETURNING *`,
+      baseParams
     );
-    if (!rowCount) return res.status(404).json({ ok: false, error: "Config not found" });
+
+    if (!rowCount) {
+      // Distinguish: was it deleted, or did someone else save first?
+      const { rowCount: stillExists } = await req.pool.query(
+        `SELECT 1 FROM kpi_config WHERE id=$1`, [req.params.id]
+      );
+      if (!stillExists) return res.status(404).json({ ok: false, error: "Config not found" });
+      return res.status(409).json({
+        ok: false,
+        error: "This KPI was modified by another user while you were editing. Please close the form, reload the list, and try again.",
+      });
+    }
 
     await writeAuditLog(req, {
       actionType: "KPI_UPDATED",
@@ -1326,8 +1352,10 @@ router.post("/configs/:id/regenerate", async (req, res) => {
     const cfg    = cfgRows[0];
     const result = await runConfigQuery(req.pool, cfg, req.query.lang || "en");
 
+    // Only update the cached query string; do NOT touch updated_at so that
+    // regenerating a chart doesn't invalidate concurrent edit sessions.
     await req.pool.query(
-      `UPDATE kpi_config SET query=$1, updated_at=NOW() WHERE id=$2`,
+      `UPDATE kpi_config SET query=$1 WHERE id=$2`,
       [result.sql, cfg.id]
     );
 
@@ -1372,6 +1400,9 @@ router.post("/configs/:id/export-svg", async (req, res) => {
   const ctx = getRoleContext(req);
   const { svg_data, report_data } = req.body;
   if (!svg_data) return res.status(400).json({ ok: false, error: "svg_data is required" });
+  const MAX_SVG_BYTES = 512 * 1024; // 512 KB
+  if (svg_data.length > MAX_SVG_BYTES)
+    return res.status(413).json({ ok: false, error: `SVG is too large (${Math.round(svg_data.length / 1024)} KB). Maximum allowed is 512 KB.` });
   try {
     await ensureTables(req.pool);
     const { rows: cfgRows, rowCount } = await req.pool.query(

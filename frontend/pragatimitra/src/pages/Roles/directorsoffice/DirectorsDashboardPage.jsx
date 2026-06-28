@@ -1,157 +1,585 @@
-import React from "react";
-import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
-import { Flag } from "lucide-react";
+import React, { useState, useCallback, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import {
+  RefreshCw, Flag, CalendarDays, Clock, ArrowRight,
+  CheckCircle2, AlertCircle, Send, RotateCcw, Activity,
+} from "lucide-react";
+import { useApi }      from "../../../hooks/useApi";
 import { useLanguage } from "../../../i18n/LanguageContext";
-import { t } from "../../../i18n/translations";
-import { PageContainer, PageHeader, Button } from "../../../ui";
+import { t }           from "../../../i18n/translations";
+import {
+  PageContainer, PageHeader, Button, Card, EmptyState,
+} from "../../../ui";
+import { color, font, radius } from "../../../ui";
 
-const C = {
-  primary:   "#1d4ed8",
-  primaryLt: "#dbeafe",
-  primaryMid:"#3b82f6",
-  text:      "#0f172a",
-  textSub:   "#64748b",
-  border:    "rgba(29,78,216,0.12)",
-  bg:        "#f0f4ff",
-  surface:   "#ffffff",
-};
+// ─── constants ────────────────────────────────────────────────────────────────
 
-const card = {
-  background: C.surface,
-  border: `0.5px solid ${C.border}`,
-  borderRadius: 14,
-  padding: "16px 20px",
-  boxShadow: "0 1px 6px rgba(29,78,216,0.07)",
-};
+const FF                   = font.family;
+const ROW_BORDER           = `1px solid ${color.border}`;
+const DEADLINE_WINDOW_DAYS = 30;
+const DONE_STATUSES        = new Set(["APPROVED", "ARCHIVED", "REJECTED", "PUBLISHED"]);
 
-const STATS = [
-  { label: "Approved by Pub. Cell", value: 8,  sub: "Ready for your review",   color: "#059669", bar: 33, badgeBg: "#dcfce7", badgeColor: "#166534" },
-  { label: "Pending Review",        value: 5,  sub: "Awaiting your decision",   color: "#d97706", bar: 21, badgeBg: "#fef3c7", badgeColor: "#92400e" },
-  { label: "Ready for Compilation", value: 12, sub: "Director-approved",        color: "#1d4ed8", bar: 50, badgeBg: "#dbeafe", badgeColor: "#1e40af" },
-  { label: "Sent Back",             value: 3,  sub: "Needs revision",           color: "#dc2626", bar: 12, badgeBg: "#fee2e2", badgeColor: "#991b1b" },
-];
+// ─── helpers ──────────────────────────────────────────────────────────────────
 
-const SECTIONS = [
-  { name: "Samhita Siddhanta — Research",  dept: "Samhita",      submittedBy: "Dr. Rao",    date: "Apr 28", status: "Pending Review",        statusBg: "#fef3c7", statusColor: "#92400e" },
-  { name: "Dravyaguna — Annual Analysis",  dept: "Dravyaguna",   submittedBy: "R. Menon",   date: "Apr 26", status: "Approved by Pub. Cell",  statusBg: "#dbeafe", statusColor: "#1e40af" },
-  { name: "Kayachikitsa — Patient Study",  dept: "Kayachikitsa", submittedBy: "M. Nair",    date: "Apr 25", status: "Ready for Compilation",  statusBg: "#dcfce7", statusColor: "#166534" },
-  { name: "Panchakarma — Procedures 2025", dept: "Panchakarma",  submittedBy: "Dr. Sharma", date: "Apr 24", status: "Sent Back",              statusBg: "#fee2e2", statusColor: "#991b1b" },
-  { name: "Kaumarabhrtiya — Child Health", dept: "Kaumarabhrt.", submittedBy: "A. Pillai",  date: "Apr 22", status: "Pending Review",        statusBg: "#fef3c7", statusColor: "#92400e" },
-];
+function timeAgo(iso) {
+  if (!iso) return "—";
+  const s = Math.floor((Date.now() - new Date(iso)) / 1000);
+  if (s < 60)    return `${s}s ago`;
+  if (s < 3600)  return `${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+  return `${Math.floor(s / 86400)}d ago`;
+}
 
-const PIE_DATA = [
-  { name: "Ready for Compilation", value: 50, color: "#1d4ed8" },
-  { name: "Approved by Pub. Cell", value: 33, color: "#059669" },
-  { name: "Pending Review",        value: 21, color: "#d97706" },
-  { name: "Sent Back",             value: 12, color: "#dc2626" },
-];
+function daysUntil(iso) {
+  if (!iso) return null;
+  return Math.ceil((new Date(iso) - Date.now()) / 86400000);
+}
+
+function formatDate(iso) {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleDateString(undefined, {
+    month: "short", day: "numeric", year: "numeric",
+  });
+}
+
+// ─── sub-components ───────────────────────────────────────────────────────────
+
+function SectionHeader({ icon, title, badge, action }) {
+  return (
+    <div style={{
+      display: "flex", alignItems: "center", justifyContent: "space-between",
+      padding: "13px 18px", borderBottom: ROW_BORDER,
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+        {React.cloneElement(icon, {
+          size: 14, strokeWidth: 2,
+          style: { flexShrink: 0, color: icon.props?.style?.color || color.primary },
+        })}
+        <span style={{ fontSize: 13, fontWeight: 700, color: color.text, fontFamily: FF }}>
+          {title}
+        </span>
+        {badge != null && (
+          <span style={{
+            fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 99,
+            background: color.hover, color: color.muted,
+          }}>
+            {badge}
+          </span>
+        )}
+      </div>
+      {action}
+    </div>
+  );
+}
+
+function SkeletonRows({ count = 3, lines = 2 }) {
+  return Array.from({ length: count }).map((_, i) => (
+    <div key={i} style={{
+      padding: "13px 18px", display: "flex", flexDirection: "column", gap: 6,
+      borderTop: i > 0 ? ROW_BORDER : "none",
+    }}>
+      {Array.from({ length: lines }).map((_, j) => (
+        <div key={j} style={{
+          height: j === 0 ? 12 : 10,
+          width: j === 0 ? "65%" : "40%",
+          borderRadius: 6,
+          background: "linear-gradient(90deg,#f1f5f9 25%,#e9ecef 50%,#f1f5f9 75%)",
+          backgroundSize: "400px 100%",
+          animation: `ui-skeleton 1.4s ease infinite ${j * 0.1}s`,
+        }} />
+      ))}
+    </div>
+  ));
+}
+
+function InlineError({ message }) {
+  return (
+    <div style={{
+      display: "flex", alignItems: "center", gap: 8,
+      padding: "16px 18px", fontSize: 12, color: "#dc2626", fontFamily: FF,
+    }}>
+      <AlertCircle size={14} strokeWidth={2} style={{ flexShrink: 0 }} />
+      {message}
+    </div>
+  );
+}
+
+function DeadlineBadge({ days }) {
+  if (days < 0)   return <Pill bg="#fef2f2" tc="#dc2626">Overdue</Pill>;
+  if (days === 0) return <Pill bg="#fef2f2" tc="#dc2626">Today</Pill>;
+  if (days <= 7)  return <Pill bg="#fff7ed" tc="#c2410c">{days}d</Pill>;
+  if (days <= 14) return <Pill bg="#fefce8" tc="#a16207">{days}d</Pill>;
+  return              <Pill bg="#f0fdf4" tc="#15803d">{days}d</Pill>;
+}
+
+function Pill({ bg, tc, children }) {
+  return (
+    <span style={{
+      fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 99,
+      background: bg, color: tc, whiteSpace: "nowrap", fontFamily: FF,
+    }}>
+      {children}
+    </span>
+  );
+}
+
+function ActivityIcon({ type }) {
+  const styles = { flexShrink: 0, strokeWidth: 2 };
+  if (type === "SUBMITTED")  return <Send      size={13} style={{ ...styles, color: color.primary }} />;
+  if (type === "APPROVED")   return <CheckCircle2 size={13} style={{ ...styles, color: "#16a34a" }} />;
+  if (type === "SENT_BACK")  return <RotateCcw size={13} style={{ ...styles, color: "#d97706" }} />;
+  return                            <Activity  size={13} style={{ ...styles, color: color.muted  }} />;
+}
+
+function activityLabel(type, lang) {
+  if (type === "SUBMITTED")  return t("Section Submitted",    lang);
+  if (type === "APPROVED")   return t("Section Approved",     lang);
+  if (type === "SENT_BACK")  return t("Sent Back for Revision", lang);
+  return type;
+}
+
+function activityAccent(type) {
+  if (type === "APPROVED")  return "#16a34a";
+  if (type === "SENT_BACK") return "#d97706";
+  return color.primary;
+}
+
+// ─── main ─────────────────────────────────────────────────────────────────────
 
 export default function DirectorsDashboardPage() {
-  const { lang } = useLanguage();
-  return (
-    <PageContainer style={{ gap: 14 }}>
+  const navigate     = useNavigate();
+  const { apiFetch } = useApi();
+  const { lang }     = useLanguage();
 
+  // ── state ──
+  const [queue,    setQueue]    = useState([]);
+  const [reports,  setReports]  = useState([]);
+  const [activity, setActivity] = useState([]);
+  const [loading,  setLoading]  = useState(true);
+  const [errors,   setErrors]   = useState({});
+
+  // ── data load ──
+  const load = useCallback(async () => {
+    setLoading(true);
+    setErrors({});
+
+    const [queueRes, reportsRes, activityRes] = await Promise.allSettled([
+      apiFetch("/api/builder/sections/review-queue").then(r => r.json()),
+      apiFetch("/api/builder/reports/shared").then(r => r.json()),
+      apiFetch("/api/builder/sections/activity").then(r => r.json()),
+    ]);
+
+    const nextErr = {};
+
+    if (queueRes.status === "fulfilled" && queueRes.value.success) {
+      setQueue(queueRes.value.data || []);
+    } else {
+      nextErr.queue = queueRes.reason?.message
+        || queueRes.value?.message
+        || "Failed to load review queue.";
+    }
+
+    if (reportsRes.status === "fulfilled" && reportsRes.value.success) {
+      setReports(reportsRes.value.data || []);
+    } else {
+      nextErr.reports = reportsRes.reason?.message
+        || reportsRes.value?.message
+        || "Failed to load reports.";
+    }
+
+    if (activityRes.status === "fulfilled" && activityRes.value.success) {
+      setActivity(activityRes.value.data || []);
+    } else {
+      nextErr.activity = activityRes.reason?.message
+        || activityRes.value?.message
+        || "Failed to load recent activity.";
+    }
+
+    setErrors(nextErr);
+    setLoading(false);
+  }, [apiFetch]);
+
+  useEffect(() => { load(); }, [load]);
+
+  // ── derived ──
+  const finalApproval = queue.filter(q => q.needs_director_approval);
+  const pendingTotal  = queue.length;
+
+  const upcomingDeadlines = reports
+    .filter(r => !DONE_STATUSES.has((r.status || "").toUpperCase()))
+    .flatMap(r => {
+      const evs = [];
+      if (r.submission_deadline) evs.push({ report: r, type: "Submission", date: r.submission_deadline });
+      if (r.review_deadline)     evs.push({ report: r, type: "Review",     date: r.review_deadline });
+      if (r.approval_deadline)   evs.push({ report: r, type: "Approval",   date: r.approval_deadline });
+      return evs;
+    })
+    .filter(ev => {
+      const d = daysUntil(ev.date);
+      return d !== null && d >= -14 && d <= DEADLINE_WINDOW_DAYS;
+    })
+    .sort((a, b) => new Date(a.date) - new Date(b.date))
+    .slice(0, 6);
+
+  // ── render ──
+  return (
+    <PageContainer style={{ gap: 16 }}>
+
+      {/* ── header ───────────────────────────────────────────────────────────── */}
       <PageHeader
-        breadcrumb={[t("Home", lang), t("Director's Office", lang), t("Review Dashboard", lang)]}
-        title={t("Report Review Dashboard", lang)}
-        description="Annual Report 2026 — section approval pipeline"
+        breadcrumb={[t("Home", lang), t("Director's Office", lang), t("Dashboard", lang)]}
+        title={t("Dashboard", lang)}
+        description={t("Your pending actions, upcoming deadlines, and recent report activity.", lang)}
         actions={
-          <Button variant="primary">{t("Go to Review Queue →", lang)}</Button>
+          <Button
+            variant="secondary"
+            icon={
+              <RefreshCw
+                size={15}
+                strokeWidth={2}
+                style={loading ? { animation: "spin .9s linear infinite" } : undefined}
+              />
+            }
+            onClick={load}
+            disabled={loading}
+          >
+            {t("Refresh", lang)}
+          </Button>
         }
       />
 
-      {/* Stat cards */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 10 }}>
-        {STATS.map(s => (
-          <div key={s.label} style={{ ...card, padding: "16px 18px", position: "relative", overflow: "hidden" }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: C.textSub, textTransform: "uppercase",
-              letterSpacing: "0.07em", marginBottom: 8 }}>{t(s.label, lang)}</div>
-            <div style={{ fontSize: 32, fontWeight: 700, color: s.color, lineHeight: 1, marginBottom: 4 }}>{s.value}</div>
-            <div style={{ fontSize: 11, color: C.textSub }}>{t(s.sub, lang)}</div>
-            <div style={{ position: "absolute", bottom: 0, left: 0, height: 3,
-              width: `${s.bar}%`, background: s.color, borderRadius: "0 2px 2px 0" }} />
-          </div>
-        ))}
-      </div>
+      {/* ══════════════════════════════════════════════════════════════════════
+          SECTION 1 — PENDING REVIEW INBOX
+      ══════════════════════════════════════════════════════════════════════ */}
+      <Card padding={0} style={{ overflow: "hidden", fontFamily: FF }}>
+        <SectionHeader
+          icon={<Flag style={{ color: "#7c3aed" }} />}
+          title={t("Pending Review Inbox", lang)}
+          action={
+            <button
+              onClick={() => navigate("/review-queue")}
+              style={{
+                display: "inline-flex", alignItems: "center", gap: 5,
+                fontSize: 12, fontWeight: 600, color: "#7c3aed",
+                background: "#ede9fe", border: "none",
+                borderRadius: radius.md, padding: "5px 12px",
+                cursor: "pointer", fontFamily: FF,
+              }}
+            >
+              {t("Open full queue", lang)} <ArrowRight size={12} strokeWidth={2.5} />
+            </button>
+          }
+        />
 
-      {/* Main row */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 280px", gap: 12 }}>
+        {loading && <SkeletonRows count={2} lines={2} />}
+        {!loading && errors.queue && <InlineError message={errors.queue} />}
 
-        {/* Section pipeline table */}
-        <div style={card}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 2 }}>{t("Sections — Approval Pipeline", lang)}</div>
-          <div style={{ fontSize: 11, color: C.textSub, marginBottom: 16 }}>All sections across departments — current report cycle</div>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr>
-                {["Section", "Department", "Submitted By", "Date", "Status"].map(h => (
-                  <th key={h} style={{ fontSize: 10, fontWeight: 700, color: C.textSub, textTransform: "uppercase",
-                    letterSpacing: "0.06em", padding: "0 0 10px", textAlign: "left" }}>{t(h, lang)}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {SECTIONS.map((s, i) => (
-                <tr key={i}>
-                  <td style={{ padding: "11px 0", borderTop: `0.5px solid ${C.border}`, fontSize: 12, fontWeight: 600, color: C.text }}>{s.name}</td>
-                  <td style={{ padding: "11px 0", borderTop: `0.5px solid ${C.border}`, fontSize: 11, color: C.textSub }}>{s.dept}</td>
-                  <td style={{ padding: "11px 0", borderTop: `0.5px solid ${C.border}`, fontSize: 11, color: C.textSub }}>{s.submittedBy}</td>
-                  <td style={{ padding: "11px 0", borderTop: `0.5px solid ${C.border}`, fontSize: 11, color: C.textSub }}>{s.date}</td>
-                  <td style={{ padding: "11px 0", borderTop: `0.5px solid ${C.border}` }}>
-                    <span style={{ fontSize: 10, fontWeight: 600, padding: "3px 9px", borderRadius: 20,
-                      background: s.statusBg, color: s.statusColor }}>{s.status}</span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Right column */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-
-          {/* Pie */}
-          <div style={card}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 2 }}>{t("Pipeline distribution", lang)}</div>
-            <div style={{ fontSize: 11, color: C.textSub, marginBottom: 8 }}>24 total sections</div>
-            <ResponsiveContainer width="100%" height={130}>
-              <PieChart>
-                <Pie data={PIE_DATA} cx="50%" cy="50%" innerRadius={36} outerRadius={56} dataKey="value" stroke="none">
-                  {PIE_DATA.map((e, i) => <Cell key={i} fill={e.color} />)}
-                </Pie>
-                <Tooltip formatter={(v, n) => [`${v}%`, n]}
-                  contentStyle={{ fontSize: 11, borderRadius: 8, border: `0.5px solid ${C.border}` }} />
-              </PieChart>
-            </ResponsiveContainer>
-            <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-              {PIE_DATA.map(p => (
-                <div key={p.name} style={{ display: "flex", justifyContent: "space-between", fontSize: 11 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, color: C.textSub }}>
-                    <span style={{ width: 8, height: 8, borderRadius: "50%", background: p.color }} />{p.name}
+        {!loading && !errors.queue && (
+          <>
+            {/* ── summary bar ── */}
+            <div style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(3, 1fr)",
+              borderBottom: pendingTotal > 0 ? ROW_BORDER : "none",
+            }}>
+              {[
+                {
+                  label: t("Needs Your Sign-off", lang),
+                  value: finalApproval.length,
+                  accent: "#7c3aed",
+                  bg: "#faf5ff",
+                },
+                {
+                  label: t("Under Review", lang),
+                  value: queue.filter(q => q.status === "UNDER_REVIEW").length,
+                  accent: color.primary,
+                  bg: color.primarySoft,
+                },
+                {
+                  label: t("Submitted — Awaiting Start", lang),
+                  value: queue.filter(q => q.status === "SUBMITTED" && !q.needs_director_approval).length,
+                  accent: "#d97706",
+                  bg: "#fffbeb",
+                },
+              ].map((s, i) => (
+                <div
+                  key={i}
+                  onClick={() => navigate("/review-queue")}
+                  style={{
+                    padding: "14px 18px",
+                    borderRight: i < 2 ? ROW_BORDER : "none",
+                    cursor: "pointer",
+                    background: "transparent",
+                    transition: "background .15s",
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.background = s.bg}
+                  onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+                >
+                  <div style={{
+                    fontSize: 24, fontWeight: 800, color: s.accent,
+                    lineHeight: 1, marginBottom: 4,
+                  }}>
+                    {s.value}
                   </div>
-                  <span style={{ fontWeight: 700, color: C.text }}>{p.value}%</span>
+                  <div style={{
+                    fontSize: 11, fontWeight: 600, color: color.muted,
+                    textTransform: "uppercase", letterSpacing: ".06em",
+                  }}>
+                    {s.label}
+                  </div>
                 </div>
               ))}
             </div>
-          </div>
 
-          {/* Pending decisions */}
-          <div style={{ ...card, background: "#fffbeb", border: "0.5px solid #fde68a" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 700, color: "#92400e", marginBottom: 10 }}><Flag size={13} strokeWidth={2.2} /> {t("Pending decisions", lang)}</div>
-            {SECTIONS.filter(s => s.status === "Pending Review").map((s, i) => (
-              <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 8,
-                padding: "6px 0", borderTop: i > 0 ? "0.5px solid #fde68a" : "none" }}>
-                <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#d97706", flexShrink: 0, marginTop: 4 }} />
-                <div>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: "#92400e" }}>{s.name}</div>
-                  <div style={{ fontSize: 10, color: "#b45309" }}>{s.submittedBy} · {s.date}</div>
+            {/* ── priority items (final approval only) ── */}
+            {finalApproval.length > 0 && (
+              <div>
+                <div style={{
+                  padding: "8px 18px", background: "#faf5ff",
+                  borderBottom: "1px solid #e9d5ff",
+                  fontSize: 10, fontWeight: 700, color: "#7c3aed",
+                  textTransform: "uppercase", letterSpacing: ".07em",
+                }}>
+                  {t("Needs Your Decision", lang)}
+                </div>
+                {finalApproval.slice(0, 3).map((q, i) => (
+                  <div
+                    key={q.id}
+                    onClick={() => navigate("/review-queue/review", { state: { entity: { id: q.id } } })}
+                    style={{
+                      display: "flex", alignItems: "center", justifyContent: "space-between",
+                      padding: "11px 18px",
+                      borderTop: i > 0 ? "1px solid #f3e8ff" : "1px solid #e9d5ff",
+                      cursor: "pointer", background: "#fdf8ff",
+                      transition: "background .12s",
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.background = "#f5e8ff"}
+                    onMouseLeave={e => e.currentTarget.style.background = "#fdf8ff"}
+                  >
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{
+                        fontSize: 13, fontWeight: 600, color: "#3b0764",
+                        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                        marginBottom: 2,
+                      }}>
+                        {q.title}
+                      </div>
+                      <div style={{ fontSize: 11, color: "#9333ea" }}>
+                        {q.report_title || "—"}
+                        {q.academic_year && (
+                          <span style={{ color: "#c4b5fd", marginLeft: 5 }}>· {q.academic_year}</span>
+                        )}
+                      </div>
+                    </div>
+                    <div style={{ marginLeft: 14, display: "flex", alignItems: "center", gap: 10 }}>
+                      <span style={{ fontSize: 11, color: "#a78bfa" }}>
+                        {timeAgo(q.submitted_at)}
+                      </span>
+                      <ArrowRight size={13} strokeWidth={2.5} style={{ color: "#7c3aed" }} />
+                    </div>
+                  </div>
+                ))}
+                {finalApproval.length > 3 && (
+                  <div
+                    onClick={() => navigate("/review-queue")}
+                    style={{
+                      padding: "9px 18px", borderTop: "1px solid #e9d5ff",
+                      fontSize: 12, color: "#7c3aed", fontWeight: 600,
+                      cursor: "pointer", fontFamily: FF,
+                      background: "#faf5ff",
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.background = "#f0e0ff"}
+                    onMouseLeave={e => e.currentTarget.style.background = "#faf5ff"}
+                  >
+                    +{finalApproval.length - 3} {t("more — open full queue", lang)} →
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ── empty queue ── */}
+            {pendingTotal === 0 && (
+              <div style={{ padding: "28px 18px" }}>
+                <EmptyState
+                  icon={<CheckCircle2 size={24} strokeWidth={1.5} style={{ color: color.success }} />}
+                  title={t("Inbox is clear", lang)}
+                  description={t("No sections are currently waiting for your review or approval.", lang)}
+                />
+              </div>
+            )}
+          </>
+        )}
+      </Card>
+
+      {/* ══════════════════════════════════════════════════════════════════════
+          SECTIONS 2 & 3 — side-by-side: Deadlines | Recent Activity
+      ══════════════════════════════════════════════════════════════════════ */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+
+        {/* ── SECTION 2: Upcoming Report Deadlines ──────────────────────────── */}
+        <Card padding={0} style={{ overflow: "hidden", fontFamily: FF }}>
+          <SectionHeader
+            icon={<CalendarDays style={{ color: "#d97706" }} />}
+            title={t("Upcoming Deadlines", lang)}
+            badge={!loading && !errors.reports ? upcomingDeadlines.length : undefined}
+            action={
+              <span style={{ fontSize: 11, color: color.muted }}>
+                {t("±30 days", lang)}
+              </span>
+            }
+          />
+
+          {loading && <SkeletonRows count={3} lines={2} />}
+          {!loading && errors.reports && <InlineError message={errors.reports} />}
+
+          {!loading && !errors.reports && upcomingDeadlines.length === 0 && (
+            <div style={{ padding: "28px 18px" }}>
+              <EmptyState
+                icon={<CheckCircle2 size={22} strokeWidth={1.5} style={{ color: color.success }} />}
+                title={t("No upcoming deadlines", lang)}
+                description={t("All deadlines are either complete or more than 30 days away.", lang)}
+              />
+            </div>
+          )}
+
+          {!loading && !errors.reports && upcomingDeadlines.length > 0 && upcomingDeadlines.map((ev, i) => {
+            const days    = daysUntil(ev.date);
+            const isUrgent = days !== null && days <= 7;
+            const isOverdue = days !== null && days < 0;
+            const typeBg = ev.type === "Submission" ? "#dbeafe"
+                         : ev.type === "Review"     ? "#fce7f3"
+                         :                            "#dcfce7";
+            const typeColor = ev.type === "Submission" ? "#1e40af"
+                            : ev.type === "Review"     ? "#9d174d"
+                            :                            "#15803d";
+            return (
+              <div
+                key={`${ev.report.id}-${ev.type}`}
+                style={{
+                  display: "flex", alignItems: "flex-start",
+                  justifyContent: "space-between", gap: 10,
+                  padding: "12px 18px",
+                  borderTop: i > 0 ? ROW_BORDER : "none",
+                  background: isOverdue ? "#fef2f2" : isUrgent ? "#fffbeb" : "transparent",
+                }}
+              >
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{
+                    fontSize: 13, fontWeight: 600,
+                    color: isOverdue ? "#dc2626" : color.text,
+                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                    marginBottom: 4,
+                  }}>
+                    {ev.report.title}
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                    <span style={{
+                      fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 99,
+                      background: typeBg, color: typeColor,
+                    }}>
+                      {t(ev.type, lang)} {t("Deadline", lang)}
+                    </span>
+                    <span style={{ fontSize: 11, color: color.muted }}>
+                      <Clock size={9} strokeWidth={2}
+                        style={{ verticalAlign: "middle", marginRight: 2 }} />
+                      {formatDate(ev.date)}
+                    </span>
+                  </div>
+                </div>
+                <div style={{ flexShrink: 0, marginTop: 2 }}>
+                  <DeadlineBadge days={days} />
                 </div>
               </div>
-            ))}
-          </div>
+            );
+          })}
+        </Card>
 
-        </div>
+        {/* ── SECTION 3: Recent Activities ──────────────────────────────────── */}
+        <Card padding={0} style={{ overflow: "hidden", fontFamily: FF }}>
+          <SectionHeader
+            icon={<Activity style={{ color: color.primary }} />}
+            title={t("Recent Activity", lang)}
+            badge={!loading && !errors.activity ? activity.length : undefined}
+          />
+
+          {loading && <SkeletonRows count={3} lines={2} />}
+          {!loading && errors.activity && <InlineError message={errors.activity} />}
+
+          {!loading && !errors.activity && activity.length === 0 && (
+            <div style={{ padding: "28px 18px" }}>
+              <EmptyState
+                icon={<Activity size={22} strokeWidth={1.5} style={{ color: color.muted }} />}
+                title={t("No recent activity", lang)}
+                description={t("Submissions, approvals, and revisions will appear here.", lang)}
+              />
+            </div>
+          )}
+
+          {!loading && !errors.activity && activity.length > 0 && activity.map((ev, i) => (
+            <div
+              key={`${ev.activity_type}-${ev.section_id}-${ev.activity_at}`}
+              style={{
+                display: "flex", alignItems: "flex-start", gap: 12,
+                padding: "12px 18px",
+                borderTop: i > 0 ? ROW_BORDER : "none",
+              }}
+            >
+              {/* icon dot */}
+              <div style={{
+                marginTop: 2, width: 28, height: 28, borderRadius: "50%", flexShrink: 0,
+                background: ev.activity_type === "APPROVED"  ? "#dcfce7"
+                           : ev.activity_type === "SENT_BACK" ? "#fef3c7"
+                           : color.primarySoft,
+                display: "flex", alignItems: "center", justifyContent: "center",
+              }}>
+                <ActivityIcon type={ev.activity_type} />
+              </div>
+
+              <div style={{ flex: 1, minWidth: 0 }}>
+                {/* event label */}
+                <div style={{
+                  fontSize: 12, fontWeight: 700,
+                  color: activityAccent(ev.activity_type),
+                  marginBottom: 2,
+                }}>
+                  {activityLabel(ev.activity_type, lang)}
+                </div>
+
+                {/* section title */}
+                <div style={{
+                  fontSize: 13, fontWeight: 600, color: color.text,
+                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                  marginBottom: 2,
+                }}>
+                  {ev.section_title || "—"}
+                </div>
+
+                {/* report + time */}
+                <div style={{ fontSize: 11, color: color.muted }}>
+                  {ev.report_title && (
+                    <span style={{ marginRight: 6 }}>
+                      {ev.report_title}
+                      {ev.academic_year && (
+                        <span style={{ color: "#9ca3af", marginLeft: 4 }}>
+                          · {ev.academic_year}
+                        </span>
+                      )}
+                    </span>
+                  )}
+                </div>
+                <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 1 }}>
+                  {ev.actor_name && (
+                    <span style={{ marginRight: 4 }}>{ev.actor_name} ·</span>
+                  )}
+                  {timeAgo(ev.activity_at)}
+                </div>
+              </div>
+            </div>
+          ))}
+        </Card>
+
       </div>
+
     </PageContainer>
   );
 }

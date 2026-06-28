@@ -17,7 +17,7 @@ import InstituteFormRecordsPage from "./InstituteFormRecordsPage";
 
 const SLUG = "form-management";
 import {
-  color, Button, PageHeader, Badge, EmptyState, Modal, Dropdown, MenuItem, MenuLabel, DataTable,
+  color, Button, PageHeader, Badge, EmptyState, Modal, Dropdown, MenuItem, MenuLabel, DataTable, Pagination,
 } from "../../ui";
 
 const STROKE = 1.75;
@@ -206,6 +206,8 @@ export default function InstituteFormManagementPage() {
 
   const [tab, setTab]       = useState("active");
   const [search, setSearch] = useState("");
+  const [page,     setPage]     = useState(1);
+  const [pageSize, setPageSize] = useState(25);
 
   const showToast = (message, type = "success") => {
     setToast({ message, type });
@@ -249,6 +251,11 @@ export default function InstituteFormManagementPage() {
         );
       });
   }, [forms, tab, search, yearAware]);
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { setPage(1); }, [search, tab, selectedYear]);
+
+  const paginatedForms = visibleForms.slice((page - 1) * pageSize, page * pageSize);
 
   async function setLifecycle(form, status) {
     if (!academicYear) { showToast(t("No academic year selected.", lang), "error"); return; }
@@ -466,7 +473,7 @@ export default function InstituteFormManagementPage() {
 
       <DataTable
         columns={columns}
-        rows={visibleForms}
+        rows={paginatedForms}
         rowKey={(f) => f.id}
         loading={loading}
         minWidth={980}
@@ -504,6 +511,14 @@ export default function InstituteFormManagementPage() {
               : undefined}
           />
         }
+      />
+
+      <Pagination
+        page={page}
+        pageSize={pageSize}
+        total={visibleForms.length}
+        onPageChange={setPage}
+        onPageSizeChange={setPageSize}
       />
     </div>
   );

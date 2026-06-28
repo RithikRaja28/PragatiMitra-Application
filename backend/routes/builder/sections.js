@@ -159,6 +159,77 @@ router.get("/assigned", async (req, res) => {
   }
 });
 
+/* ─── GET /activity — last 5 section events for the institution/year ────────
+   Returns SUBMITTED events + review decisions (APPROVED / SENT_BACK) scoped
+   to the caller's institution and the selected academic year (X-Academic-Year
+   header). Used by the Director Admin dashboard Recent Activities widget.    */
+router.get("/activity", async (req, res) => {
+  const pool = req.app.locals.pool;
+  try {
+    const instId = req.user.institutionId || null;
+    if (!instId) return res.json({ success: true, data: [] });
+
+    // Parse academic year from header (e.g. "2023" → "2023-2024")
+    const headerYear = Number(req.get("X-Academic-Year"));
+    const academicYearStr = (Number.isInteger(headerYear) && headerYear > 1900)
+      ? `${headerYear}-${headerYear + 1}`
+      : null;
+
+    const baseParams = [instId];
+    const yearClause = academicYearStr
+      ? `AND r.academic_year = $${baseParams.push(academicYearStr)}`
+      : "";
+
+    const { rows } = await pool.query(
+      `SELECT activity_at, activity_type, section_id, section_title, report_title,
+              academic_year, actor_name
+       FROM (
+         /* ── Submission events ── */
+         SELECT
+           sv.created_at                        AS activity_at,
+           'SUBMITTED'                          AS activity_type,
+           s.id                                 AS section_id,
+           s.title                              AS section_title,
+           r.title                              AS report_title,
+           r.academic_year,
+           u.full_name                          AS actor_name
+         FROM public.section_versions sv
+         JOIN public.report_sections s  ON s.id = sv.section_id AND s.deleted_at IS NULL
+         JOIN public.reports r          ON r.id = s.report_id   AND r.deleted_at IS NULL
+           AND r.institution_id = $1 ${yearClause}
+         LEFT JOIN public.users u ON u.id = sv.created_by
+         WHERE sv.event = 'SUBMITTED'
+
+         UNION ALL
+
+         /* ── Review decision events (APPROVED / SENT_BACK) ── */
+         SELECT
+           sv.latest_decision_at                AS activity_at,
+           sv.latest_decision                   AS activity_type,
+           s.id                                 AS section_id,
+           s.title                              AS section_title,
+           r.title                              AS report_title,
+           r.academic_year,
+           u.full_name                          AS actor_name
+         FROM public.section_versions sv
+         JOIN public.report_sections s  ON s.id = sv.section_id AND s.deleted_at IS NULL
+         JOIN public.reports r          ON r.id = s.report_id   AND r.deleted_at IS NULL
+           AND r.institution_id = $1 ${yearClause}
+         LEFT JOIN public.users u ON u.id = sv.latest_decision_by
+         WHERE sv.latest_decision IS NOT NULL AND sv.latest_decision_at IS NOT NULL
+       ) events
+       ORDER BY activity_at DESC
+       LIMIT 5`,
+      baseParams
+    );
+
+    return res.json({ success: true, data: rows });
+  } catch (err) {
+    logger.error("builder/sections GET /activity", { ...getLogContext(req), err: err.message });
+    return res.status(500).json({ success: false, message: "Failed to get recent activity" });
+  }
+});
+
 /* ─── GET /dept-assigned — sections for dept admin to delegate ───────────── */
 router.get("/dept-assigned", requireRole(["department_admin"]), async (req, res) => {
   const pool = req.app.locals.pool;
