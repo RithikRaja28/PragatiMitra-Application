@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate, useLocation, Navigate } from "react-router-dom";
+import { createPortal } from "react-dom";
 import {
-  Building, Pencil, MoreHorizontal, Power, PowerOff,
+  Building, Pencil, MoreHorizontal, Power, PowerOff, Trash2, ArchiveRestore,
   Plus, Upload, Download, FileSpreadsheet, FileText,
 } from "lucide-react";
 import { useApi } from "../../../hooks/useApi";
+import { useAuth } from "../../../store/AuthContext";
 import FormScreen from "../../../components/shared/FormScreen";
 import FormWizard, { ReviewGroup, ReviewItem } from "../../../components/shared/FormWizard";
 import ImportWizard from "../../../components/shared/ImportWizard";
@@ -471,14 +473,43 @@ function Pagination({ page, pageSize, total, onPage, onPageSize }) {
   );
 }
 
+/* ─── Confirm Modal ──────────────────────────────────────────── */
+function ConfirmModal({ title, message, confirmLabel, danger, onConfirm, onCancel }) {
+  return createPortal(
+    <div
+      style={{ position: "fixed", inset: 0, zIndex: 10000, background: "rgba(15,23,42,0.55)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}
+      onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}
+    >
+      <div style={{ background: "#fff", borderRadius: 12, width: "100%", maxWidth: 420, boxShadow: "0 24px 64px rgba(0,0,0,0.22)", overflow: "hidden" }}>
+        <div style={{ padding: "22px 24px 16px" }}>
+          <div style={{ fontSize: 16, fontWeight: 800, color: "#1e293b", marginBottom: 10 }}>{title}</div>
+          <div style={{ fontSize: 13, color: "#64748b", lineHeight: 1.6 }}>{message}</div>
+        </div>
+        <div style={{ padding: "14px 24px", borderTop: "1px solid #f1f5f9", display: "flex", justifyContent: "flex-end", gap: 10, background: "#f8fafc" }}>
+          <button onClick={onCancel} style={{ height: 38, padding: "0 16px", borderRadius: 8, border: "1px solid #cbd5e1", background: "#fff", fontSize: 13, fontWeight: 600, color: "#475569", cursor: "pointer" }}>
+            Cancel
+          </button>
+          <button onClick={onConfirm} style={{ height: 38, padding: "0 20px", borderRadius: 8, border: "none", background: danger ? "#dc2626" : "#2563eb", fontSize: 13, fontWeight: 700, color: "#fff", cursor: "pointer" }}>
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 /* ─── Main page ──────────────────────────────────────────────── */
 const SLUG = "department-management";
 
 export default function DepartmentManagementPage() {
   const { lang } = useLanguage();
   const { apiFetch } = useApi();
+  const { user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+
+  const isSuperAdmin = (user?.roles || []).some((r) => r.name === "super_admin");
 
   const [institutions, setInstitutions] = useState([]);
   const [selectedInstitutionId, setSelectedInstitutionId] = useState(null);
@@ -489,7 +520,8 @@ export default function DepartmentManagementPage() {
   const [loadingDepts, setLoadingDepts] = useState(false);
   const [institutionsError, setInstitutionsError] = useState(null);
 
-  const [togglingId, setTogglingId] = useState(null);
+  const [togglingId,    setTogglingId]    = useState(null);
+  const [confirmDelete, setConfirmDelete] = useState(null);
 
   const isCreate = location.pathname.endsWith("/create");
   const isImport = location.pathname.endsWith("/import");
@@ -561,7 +593,7 @@ export default function DepartmentManagementPage() {
       setLoadingDepts(true);
       setDepartments([]);
       try {
-        const res = await apiFetch(`/api/departments?institution_id=${institutionId}`);
+        const res = await apiFetch(`/api/departments?institution_id=${institutionId}&includeDeleted=true`);
         const data = await res.json();
         if (data.success) {
           setDepartments(data.data);
@@ -609,6 +641,47 @@ export default function DepartmentManagementPage() {
       if (!isAuthError(err)) {
         showToast("Failed to update department status.", "error");
       }
+    } finally {
+      setTogglingId(null);
+    }
+  }
+
+  /* ── Restore soft-deleted department ── */
+  async function executeRestore(dept) {
+    setTogglingId(dept.department_id);
+    try {
+      const res = await apiFetch(`/api/departments/${dept.department_id}/restore`, { method: "POST" });
+      const data = await res.json();
+      if (data.success) {
+        showToast(data.message, "success");
+        fetchDepartments(selectedInstitutionId);
+      } else {
+        showToast(data.message || "Failed to restore department.", "error");
+      }
+    } catch (err) {
+      if (!isAuthError(err)) showToast("Failed to restore department.", "error");
+    } finally {
+      setTogglingId(null);
+    }
+  }
+
+  /* ── Soft-delete department ── */
+  async function executeDelete(dept) {
+    setTogglingId(dept.department_id);
+    try {
+      const res = await apiFetch(`/api/departments/${dept.department_id}`, {
+        method: "DELETE",
+        body: JSON.stringify({ institution_id: selectedInstitutionId }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast(data.message, "success");
+        fetchDepartments(selectedInstitutionId);
+      } else {
+        showToast(data.message || "Failed to delete department.", "error");
+      }
+    } catch (err) {
+      if (!isAuthError(err)) showToast("Failed to delete department.", "error");
     } finally {
       setTogglingId(null);
     }
@@ -810,6 +883,7 @@ export default function DepartmentManagementPage() {
             <option value="ALL">{t("All Statuses", lang)}</option>
             <option value="ACTIVE">{t("Active", lang)}</option>
             <option value="INACTIVE">{t("Inactive", lang)}</option>
+            <option value="DELETED">{t("Deleted", lang)}</option>
           </StyledSelect>
         </div>
       )}
@@ -843,16 +917,21 @@ export default function DepartmentManagementPage() {
           },
           {
             key: "status", header: t("Status", lang), width: 120,
-            render: (dept) => (
-              <Badge tone={dept.status === "ACTIVE" ? "success" : "neutral"}>
-                {dept.status === "ACTIVE" ? t("Active", lang) : t("Inactive", lang)}
-              </Badge>
-            ),
+            render: (dept) => {
+              const tone = dept.status === "ACTIVE"   ? "success"
+                         : dept.status === "DELETED"  ? "danger"
+                         : "neutral";
+              const label = dept.status === "ACTIVE"  ? t("Active", lang)
+                          : dept.status === "DELETED" ? t("Deleted", lang)
+                          : t("Inactive", lang);
+              return <Badge tone={tone}>{label}</Badge>;
+            },
           },
           {
             key: "actions", header: t("Actions", lang), align: "right", width: 90,
             render: (dept) => {
-              const isActive = dept.status === "ACTIVE";
+              const isActive  = dept.status === "ACTIVE";
+              const isDeleted = dept.status === "DELETED";
               const busy = togglingId === dept.department_id;
               return (
                 <Dropdown
@@ -862,16 +941,28 @@ export default function DepartmentManagementPage() {
                     <Button variant="ghost" iconOnly icon={<MoreHorizontal size={18} strokeWidth={2} />} onClick={toggle} aria-label="Row actions" />
                   )}
                 >
-                  <MenuItem icon={<Pencil size={16} strokeWidth={1.9} />} onClick={() => navigate(`${listPath}/edit`, { state: { entity: dept } })}>
-                    {t("Edit", lang)}
-                  </MenuItem>
-                  {isActive ? (
+                  {!isDeleted && (
+                    <MenuItem icon={<Pencil size={16} strokeWidth={1.9} />} onClick={() => navigate(`${listPath}/edit`, { state: { entity: dept } })}>
+                      {t("Edit", lang)}
+                    </MenuItem>
+                  )}
+                  {!isDeleted && (isActive ? (
                     <MenuItem icon={<PowerOff size={16} strokeWidth={1.9} />} danger disabled={busy} onClick={() => handleToggleStatus(dept)}>
                       {busy ? "…" : t("Deactivate", lang)}
                     </MenuItem>
                   ) : (
                     <MenuItem icon={<Power size={16} strokeWidth={1.9} />} disabled={busy} onClick={() => handleToggleStatus(dept)}>
                       {busy ? "…" : t("Activate", lang)}
+                    </MenuItem>
+                  ))}
+                  {isDeleted && (
+                    <MenuItem icon={<ArchiveRestore size={16} strokeWidth={1.9} />} disabled={busy} onClick={() => executeRestore(dept)}>
+                      {busy ? "…" : t("Restore", lang)}
+                    </MenuItem>
+                  )}
+                  {!isDeleted && (
+                    <MenuItem icon={<Trash2 size={16} strokeWidth={1.9} />} danger disabled={busy} onClick={() => setConfirmDelete(dept)}>
+                      {busy ? "…" : t("Delete", lang)}
                     </MenuItem>
                   )}
                 </Dropdown>
@@ -898,6 +989,17 @@ export default function DepartmentManagementPage() {
           total={filteredDepts.length}
           onPage={setPage}
           onPageSize={(n) => { setPageSize(n); setPage(1); }}
+        />
+      )}
+
+      {confirmDelete && (
+        <ConfirmModal
+          title="Delete Department"
+          message={<>Are you sure you want to delete <strong>{confirmDelete.name}</strong> ({confirmDelete.code})? It will be soft-deleted — all data is preserved and can be restored later.</>}
+          confirmLabel="Delete"
+          danger
+          onConfirm={() => { const dept = confirmDelete; setConfirmDelete(null); executeDelete(dept); }}
+          onCancel={() => setConfirmDelete(null)}
         />
       )}
     </PageContainer>

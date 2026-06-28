@@ -121,15 +121,13 @@ router.get("/:id", async (req, res) => {
            FROM public.template_sections ts2 JOIN tree t ON ts2.parent_id = t.id
            WHERE ts2.template_id = $1
          )
-         SELECT t.*, json_agg(
-           json_build_object('id',tb.id,'block_type',tb.block_type,'order_index',tb.order_index,
-                             'default_content',tb.default_content,'is_required',tb.is_required)
-           ORDER BY tb.order_index
-         ) FILTER (WHERE tb.id IS NOT NULL) AS blocks
+         SELECT t.*,
+           (SELECT json_agg(
+             json_build_object('id',tb.id,'block_type',tb.block_type,'order_index',tb.order_index,
+                               'default_content',tb.default_content,'is_required',tb.is_required)
+             ORDER BY tb.order_index
+           ) FROM public.template_blocks tb WHERE tb.template_section_id = t.id) AS blocks
          FROM tree t
-         LEFT JOIN public.template_blocks tb ON tb.template_section_id = t.id
-         GROUP BY t.id, t.template_id, t.parent_id, t.title, t.title_translations, t.description, t.order_index,
-                  t.workflow_template_id, t.data_source_id, t.created_by, t.created_at, t.updated_at, t.depth
          ORDER BY t.depth, t.order_index`, [id]
       ),
     ]);
@@ -396,6 +394,43 @@ router.delete("/:id/sections/:secId/blocks/:blkId", requireRole(["super_admin", 
   } catch (err) {
     logger.error("templates DELETE block", { ...getLogContext(req), err: err.message });
     return res.status(500).json({ success: false, message: "Failed to remove block" });
+  }
+});
+
+/* ── DELETE /:id ── delete template (blocked if used by any report) ─────────── */
+router.delete("/:id", requireRole(["super_admin", "institute_admin", "publication_cell"]), async (req, res) => {
+  const pool = req.app.locals.pool;
+  try {
+    const { id } = req.params;
+    if (!isUUID(id)) return res.status(400).json({ success: false, message: "Invalid id" });
+
+    const { rows: tmpl } = await pool.query(
+      `SELECT name FROM public.report_templates WHERE id = $1`, [id]
+    );
+    if (!tmpl.length) return res.status(404).json({ success: false, message: "Template not found" });
+
+    const { rows: reports } = await pool.query(
+      `SELECT id, title FROM public.reports WHERE template_id = $1 ORDER BY title LIMIT 20`, [id]
+    );
+    if (reports.length) {
+      return res.status(409).json({
+        success: false,
+        message: `"${tmpl[0].name}" is used by ${reports.length} report${reports.length !== 1 ? "s" : ""}. Delete those reports first before deleting this template.`,
+        reports: reports.map(r => ({ id: r.id, title: r.title })),
+      });
+    }
+
+    await pool.query(`DELETE FROM public.report_templates WHERE id = $1`, [id]);
+
+    await writeAuditLog(req, {
+      actionType: "TEMPLATE_DELETED", entityType: "TEMPLATE", entityId: id,
+      status: "SUCCESS", message: `Template "${tmpl[0].name}" deleted`,
+    });
+
+    return res.json({ success: true, message: "Template deleted" });
+  } catch (err) {
+    logger.error("templates DELETE /:id", { ...getLogContext(req), err: err.message });
+    return res.status(500).json({ success: false, message: "Failed to delete template" });
   }
 });
 

@@ -30,7 +30,8 @@ const CARD_BASE = {
 
 function fmtYear(y) {
   if (!y) return "—";
-  return `${y}-${String(Number(y) + 1).slice(-2)}`;
+  if (String(y).includes("-")) return y;
+  return `${y}-${Number(y) + 1}`;
 }
 
 function fmtDate(ts) {

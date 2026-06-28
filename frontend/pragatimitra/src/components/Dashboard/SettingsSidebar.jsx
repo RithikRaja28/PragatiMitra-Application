@@ -18,6 +18,7 @@ import NotificationsPage          from "./settings/NotificationsPage";
 import AcademicYearPage           from "./settings/AcademicYearPage";
 import NodalOfficerPage           from "./settings/NodalOfficerPage";
 import InstituteNodalOfficerPage  from "./settings/InstituteNodalOfficerPage";
+import CompressionSettingsPage    from "./settings/CompressionSettingsPage";
 import { useAuth }                from "../../store/AuthContext";
 import { useLanguage }            from "../../i18n/LanguageContext";
 import { t }                      from "../../i18n/translations";
@@ -52,6 +53,16 @@ export function buildSettingsNav(role) {
       group: "Communication",
       items: [
         { id: "notifications", label: "Notification Templates", icon: "Bell", renderPage: () => <NotificationsPage /> },
+      ],
+    });
+  }
+
+  // ── Upload: File Compression Settings (super_admin only) ──────────────────
+  if (role === "super_admin") {
+    nav.push({
+      group: "Upload",
+      items: [
+        { id: "file-compression", label: "File Compression Settings", icon: "FileArchive", renderPage: () => <CompressionSettingsPage /> },
       ],
     });
   }

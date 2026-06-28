@@ -1004,14 +1004,11 @@ router.get("/", verifyToken, requireRole(["super_admin", "institute_admin", "dep
     let rows;
 
     if (isDeptAdmin(req)) {
-      /* Department admins only manage contributors in their own department.
-         All other roles (reviewer, dept_admin, etc.) are managed by inst/super admins. */
+      const includeDeleted = req.query.includeDeleted === "true";
       const conditions = [
-        "u.account_status != 'DELETED'",
+        ...(includeDeleted ? [] : ["u.account_status != 'DELETED'"]),
         `u.institution_id = $1`,
         `u.department_id  = $2`,
-        // Exclude users who hold any institution-level or higher role — dept admins
-        // should only see department-scoped users (contributor, dept_admin, etc.)
         `NOT EXISTS (
           SELECT 1 FROM user_roles ur_inst
           JOIN roles r_inst ON r_inst.id = ur_inst.role_id
@@ -1044,9 +1041,10 @@ router.get("/", verifyToken, requireRole(["super_admin", "institute_admin", "dep
       `, params));
 
     } else if (isOnlyInstAdmin(req)) {
+      const includeDeleted = req.query.includeDeleted === "true";
       const { role, department_id } = req.query;
       const conditions = [
-        "u.account_status != 'DELETED'",
+        ...(includeDeleted ? [] : ["u.account_status != 'DELETED'"]),
         `u.institution_id = $1`,
         /* Never surface super_admin or institute_admin users to an institute admin —
            they must not appear in the Users list or be editable from this module. */
@@ -1099,7 +1097,8 @@ router.get("/", verifyToken, requireRole(["super_admin", "institute_admin", "dep
 
     } else {
       const { institution_id, role, department_id } = req.query;
-      const conditions = ["u.account_status != 'DELETED'"];
+      const includeDeleted = req.query.includeDeleted === "true" && !isDeptAdmin(req) && !isOnlyInstAdmin(req);
+      const conditions = includeDeleted ? [] : ["u.account_status != 'DELETED'"];
       const params     = [];
 
       if (institution_id) {
@@ -1138,7 +1137,7 @@ router.get("/", verifyToken, requireRole(["super_admin", "institute_admin", "dep
         FROM users u
         LEFT JOIN institutions i ON i.institution_id = u.institution_id
         LEFT JOIN departments  d ON d.department_id  = u.department_id
-        WHERE ${conditions.join(" AND ")}
+        ${conditions.length ? `WHERE ${conditions.join(" AND ")}` : ""}
         ORDER BY u.created_at DESC
       `, params));
     }
@@ -1445,12 +1444,11 @@ router.put("/:id", verifyToken, requireRole(["super_admin", "institute_admin", "
    Kills all active sessions immediately and writes a USER_DELETED audit log
    with a full snapshot of the user record before removal.
 ───────────────────────────────────────────────────────────────────────────── */
-router.delete("/:id", verifyToken, requireRole(["super_admin"]), async (req, res) => {
+router.delete("/:id", verifyToken, requireRole(["super_admin", "institute_admin", "department_admin"]), async (req, res) => {
   const pool = req.app.locals.pool;
   const { id } = req.params;
 
   try {
-    // Fetch full user snapshot — including roles and associations — before mutating.
     const { rows: existingRows } = await pool.query(
       `SELECT
          u.id, u.full_name, u.email, u.account_status,
@@ -1474,6 +1472,21 @@ router.delete("/:id", verifyToken, requireRole(["super_admin"]), async (req, res
       return res.status(404).json({ success: false, message: "User not found." });
 
     const existing = existingRows[0];
+
+    // Scope guard — inst/dept admins cannot delete privileged users or users outside their scope
+    if (isOnlyInstAdmin(req)) {
+      if (existing.institution_id !== req.user.institutionId)
+        return res.status(403).json({ success: false, message: "You can only manage users from your own institution." });
+      const targetRoles = (existing.role_names || []);
+      if (targetRoles.includes("super_admin") || targetRoles.includes("institute_admin"))
+        return res.status(403).json({ success: false, message: "You cannot delete admin-level accounts." });
+    } else if (isDeptAdmin(req)) {
+      if (existing.institution_id !== req.user.institutionId || existing.department_id !== req.user.departmentId)
+        return res.status(403).json({ success: false, message: "You can only manage users from your own department." });
+      const targetRoles = (existing.role_names || []);
+      if (targetRoles.includes("super_admin") || targetRoles.includes("institute_admin"))
+        return res.status(403).json({ success: false, message: "You cannot delete admin-level accounts." });
+    }
 
     await pool.query(
       "UPDATE users SET account_status = 'DELETED' WHERE id = $1",
@@ -1508,6 +1521,55 @@ router.delete("/:id", verifyToken, requireRole(["super_admin"]), async (req, res
     return res.json({ success: true, message: `User "${existing.full_name}" has been deleted.` });
   } catch (err) {
     logger.error("DELETE /api/users/:id failed", { ...getLogContext(req), stack: err.stack });
+    return res.status(500).json({ success: false, message: "Internal server error." });
+  }
+});
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   POST /api/users/:id/restore  — restore a soft-deleted user (super_admin only)
+───────────────────────────────────────────────────────────────────────────── */
+router.post("/:id/restore", verifyToken, requireRole(["super_admin", "institute_admin", "department_admin"]), async (req, res) => {
+  const pool = req.app.locals.pool;
+  const { id } = req.params;
+
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, full_name, email, institution_id, department_id FROM users WHERE id = $1 AND account_status = 'DELETED'`,
+      [id]
+    );
+    if (!rows.length)
+      return res.status(404).json({ success: false, message: "Deleted user not found." });
+
+    const existing = rows[0];
+
+    // Scope guard
+    if (isOnlyInstAdmin(req)) {
+      if (existing.institution_id !== req.user.institutionId)
+        return res.status(403).json({ success: false, message: "You can only manage users from your own institution." });
+    } else if (isDeptAdmin(req)) {
+      if (existing.institution_id !== req.user.institutionId || existing.department_id !== req.user.departmentId)
+        return res.status(403).json({ success: false, message: "You can only manage users from your own department." });
+    }
+
+    await pool.query(
+      `UPDATE users SET account_status = 'ACTIVE' WHERE id = $1`,
+      [id]
+    );
+
+    await writeAuditLog(req, {
+      actionType:    "USER_RESTORED",
+      entityType:    "USER",
+      entityId:      id,
+      oldValue:      { account_status: "DELETED" },
+      newValue:      { account_status: "ACTIVE" },
+      changedFields: ["account_status"],
+      status:        "SUCCESS",
+      message:       `User "${existing.full_name}" (${existing.email}) restored`,
+    });
+
+    return res.json({ success: true, message: `User "${existing.full_name}" has been restored.` });
+  } catch (err) {
+    logger.error("POST /api/users/:id/restore failed", { ...getLogContext(req), stack: err.stack });
     return res.status(500).json({ success: false, message: "Internal server error." });
   }
 });

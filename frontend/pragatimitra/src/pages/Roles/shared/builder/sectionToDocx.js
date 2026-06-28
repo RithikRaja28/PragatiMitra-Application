@@ -356,10 +356,31 @@ async function blockToElements(block) {
       const bd  = { style: BorderStyle.SINGLE, size: 4, color: "9CA3AF" };
       const bds = { top: bd, bottom: bd, left: bd, right: bd };
       const cm  = { top: 80, bottom: 80, left: 120, right: 120 };
+
+      // Header color from block content (strip leading #)
+      const thColor = c.header_color ? c.header_color.replace(/^#/, "") : COLOR_TH_BG;
+
+      // Column widths — convert to proportional PCT (5000 = 100%).
+      // Fill null/missing widths with the average of set widths so that columns
+      // without an explicit width still get a fair share rather than overflowing.
+      const cwPx    = c.col_widths || [];
+      const numCols = headers.length;
+      const setTotal = cwPx.slice(0, numCols).reduce((s, w) => s + (w || 0), 0);
+      const setCount = cwPx.slice(0, numCols).filter(w => w).length;
+      const avgW     = setCount > 0 ? setTotal / setCount : 0;
+      const effCW    = Array.from({ length: numCols }, (_, i) => cwPx[i] || avgW);
+      const effTotal = effCW.reduce((s, w) => s + w, 0);
+      const getDocxW = (ci) => {
+        if (!effTotal || !avgW) return {};  // no widths configured → auto
+        return { width: { size: Math.round((effCW[ci] / effTotal) * 5000), type: WidthType.PCT } };
+      };
+
       const trs = [];
       if (headers.length) {
-        trs.push(new TableRow({ tableHeader: true, children: headers.map(h =>
-          new TableCell({ borders: bds, margins: cm, shading: { type: ShadingType.SOLID, color: COLOR_TH_BG },
+        trs.push(new TableRow({ tableHeader: true, children: headers.map((h, hi) =>
+          new TableCell({ borders: bds, margins: cm,
+            ...getDocxW(hi),
+            shading: { type: ShadingType.SOLID, color: thColor },
             children: [new Paragraph({ children: [new TextRun({ text: h || "", bold: true, font: FONT })] })] })
         )}));
       }
@@ -367,8 +388,9 @@ async function blockToElements(block) {
         const cells = isFormImport
           ? cols.map(col => row?.[col.key])
           : (Array.isArray(row) ? row : []);
-        trs.push(new TableRow({ children: cells.map(cell =>
+        trs.push(new TableRow({ children: cells.map((cell, ci) =>
           new TableCell({ borders: bds, margins: cm,
+            ...getDocxW(ci),
             shading: ri%2===1 ? { type: ShadingType.SOLID, color: "F9FAFB" } : undefined,
             children: [new Paragraph({ children: [new TextRun({ text: String(cell ?? ""), font: FONT })] })] })
         )}));

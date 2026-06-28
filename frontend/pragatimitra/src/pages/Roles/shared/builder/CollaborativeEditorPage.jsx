@@ -85,6 +85,7 @@ const ROLE_DESC = {
 };
 
 function AssignFormPage({ sectionId, sectionTitle, reportTitle, apiFetch, onBack, onAssigned }) {
+  const { user: authUser } = useAuth();
   const [assignType,   setAssignType]   = useState("USER");   // "USER"|"ROLE"|"DEPT"
   const [allUsers,     setAllUsers]     = useState([]);
   const [allDepts,     setAllDepts]     = useState([]);
@@ -111,7 +112,7 @@ function AssignFormPage({ sectionId, sectionTitle, reportTitle, apiFetch, onBack
     setLoadingData(true);
     Promise.all([
       apiFetch(`/api/builder/assignments/section/${sectionId}`).then((r) => r.json()),
-      apiFetch("/api/users").then((r) => r.json()),
+      apiFetch(`/api/lookup/users?institution_id=${authUser?.institutionId || ""}&exclude_roles=super_admin`).then((r) => r.json()),
       apiFetch("/api/departments").then((r) => r.json()),
       apiFetch("/api/roles").then((r) => r.json()),
     ]).then(([asgn, users, depts, roles]) => {
@@ -122,7 +123,7 @@ function AssignFormPage({ sectionId, sectionTitle, reportTitle, apiFetch, onBack
       }
       if (users.success)  setAllUsers(users.users || []);
       if (depts.success)  setAllDepts(depts.data  || []);
-      if (roles.success)  setAllRoles(roles.data  || []);
+      if (roles.success)  setAllRoles((roles.data || []).filter(r => r.name !== "super_admin"));
     }).catch(() => {}).finally(() => setLoadingData(false));
   };
 

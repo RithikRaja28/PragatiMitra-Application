@@ -36,8 +36,6 @@ const C = {
 const FORMAT_OPTIONS = [
   { value: "pdf",  label: "PDF",  icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/></svg>, desc: "Portable Document Format — best for sharing" },
   { value: "docx", label: "DOCX", icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/></svg>, desc: "Microsoft Word — editable document" },
-  { value: "html", label: "HTML", icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>, desc: "Web page — view in browser" },
-  { value: "json", label: "JSON", icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>, desc: "Structured data — for integrations" },
 ];
 
 const LANG_OPTIONS = [
@@ -53,10 +51,11 @@ export default function CompileReportPage({ reportId, onBack }) {
   const [history,   setHistory]   = useState([]);
   const [format,    setFormat]    = useState("pdf");
   const [language,  setLanguage]  = useState("en");
-  const [loading,   setLoading]   = useState(true);
-  const [compiling, setCompiling] = useState(false);
-  const [progress,  setProgress]  = useState(0);
-  const [toast,     setToast]     = useState(null);
+  const [loading,     setLoading]     = useState(true);
+  const [compiling,   setCompiling]   = useState(false);
+  const [progress,    setProgress]    = useState(0);
+  const [toast,       setToast]       = useState(null);
+  const [deletingId,  setDeletingId]  = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -115,6 +114,20 @@ export default function CompileReportPage({ reportId, onBack }) {
       await downloadViaFetch(apiFetch, dlPath, fname);
     } catch {
       setToast({ type: "error", message: "Download failed" });
+    }
+  };
+
+  const handleDelete = async (item) => {
+    if (!window.confirm(`Delete this ${item.format?.toUpperCase()} compilation? This cannot be undone.`)) return;
+    setDeletingId(item.id);
+    try {
+      await apiJson(apiFetch, `/api/builder/compile/report/${reportId}/${item.id}`, { method: "DELETE" });
+      setHistory(prev => prev.filter(h => h.id !== item.id));
+      setToast({ type: "success", message: "Compiled report deleted" });
+    } catch (err) {
+      setToast({ type: "error", message: err.message || "Delete failed" });
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -216,7 +229,7 @@ export default function CompileReportPage({ reportId, onBack }) {
         {/* ── format selector ── */}
         <div style={{ marginTop: 28 }}>
           <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 14 }}>Output Format</div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 14 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
             {FORMAT_OPTIONS.map(f => (
               <FormatCard key={f.value} {...f} selected={format === f.value} onClick={() => setFormat(f.value)} />
             ))}
@@ -318,17 +331,34 @@ export default function CompileReportPage({ reportId, onBack }) {
                         {item.file_size ? `${Math.round(item.file_size / 1024)} KB` : "—"}
                       </td>
                       <td style={{ padding: "10px 14px" }}>
-                        <button onClick={() => handleDownload(item)}
-                          style={{
-                            display: "inline-flex", alignItems: "center", gap: 5,
-                            padding: "5px 12px", background: C.primary, color: "#fff",
-                            border: "none", borderRadius: 7, cursor: "pointer", fontSize: 11, fontWeight: 600,
-                          }}
-                          onMouseEnter={e => e.currentTarget.style.background = "#1d4ed8"}
-                          onMouseLeave={e => e.currentTarget.style.background = C.primary}>
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                          Download
-                        </button>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <button onClick={() => handleDownload(item)}
+                            style={{
+                              display: "inline-flex", alignItems: "center", gap: 5,
+                              padding: "5px 12px", background: C.primary, color: "#fff",
+                              border: "none", borderRadius: 7, cursor: "pointer", fontSize: 11, fontWeight: 600,
+                            }}
+                            onMouseEnter={e => e.currentTarget.style.background = "#1d4ed8"}
+                            onMouseLeave={e => e.currentTarget.style.background = C.primary}>
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                            Download
+                          </button>
+                          <button
+                            onClick={() => handleDelete(item)}
+                            disabled={deletingId === item.id}
+                            style={{
+                              display: "inline-flex", alignItems: "center", gap: 5,
+                              padding: "5px 10px", background: "#fef2f2", color: C.danger,
+                              border: `1px solid #fca5a5`, borderRadius: 7,
+                              cursor: deletingId === item.id ? "not-allowed" : "pointer",
+                              fontSize: 11, fontWeight: 600, opacity: deletingId === item.id ? 0.6 : 1,
+                            }}
+                            onMouseEnter={e => { if (deletingId !== item.id) e.currentTarget.style.background = "#fee2e2"; }}
+                            onMouseLeave={e => { e.currentTarget.style.background = "#fef2f2"; }}>
+                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
+                            {deletingId === item.id ? "Deleting…" : "Delete"}
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}

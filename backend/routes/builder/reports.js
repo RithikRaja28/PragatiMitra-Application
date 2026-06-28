@@ -149,6 +149,40 @@ router.post(
   }
 );
 
+/* ─── GET /shared — reports shared with the caller's role ───────────────────── */
+router.get("/shared", async (req, res) => {
+  const pool = req.app.locals.pool;
+  try {
+    const roles  = (req.user.roles || []).filter(r => r !== "super_admin");
+    const instId = req.user.institutionId;
+    if (!instId) return res.status(400).json({ success: false, message: "institution_id required" });
+    if (!roles.length) return res.json({ success: true, data: [], total: 0 });
+
+    const placeholders = roles.map((_, i) => `$${i + 2}`).join(", ");
+    const { rows } = await pool.query(
+      `SELECT DISTINCT ON (r.id) r.id, r.title, r.report_type, r.academic_year, r.status,
+              r.primary_language, r.cover_image_url,
+              r.created_at, r.updated_at,
+              u.full_name AS created_by_name,
+              rc.name     AS cycle_name
+       FROM public.reports r
+       JOIN public.report_access ra ON ra.report_id = r.id AND ra.revoked_at IS NULL
+       LEFT JOIN public.users u  ON u.id  = r.created_by
+       LEFT JOIN public.reporting_cycles rc ON rc.id = r.cycle_id
+       WHERE r.institution_id = $1
+         AND r.deleted_at IS NULL
+         AND ra.role_name IN (${placeholders})
+       ORDER BY r.id, r.updated_at DESC`,
+      [instId, ...roles]
+    );
+
+    return res.json({ success: true, data: rows, total: rows.length });
+  } catch (err) {
+    logger.error("builder/reports GET /shared", { ...getLogContext(req), err: err.message });
+    return res.status(500).json({ success: false, message: "Failed to list shared reports" });
+  }
+});
+
 /* ─── GET /:id — get report with section tree ─────────────────────────────── */
 router.get("/:id", async (req, res) => {
   const pool = req.app.locals.pool;

@@ -5,6 +5,8 @@ import React, { useRef, useEffect, useState } from "react";
 import { AlignLeft, AlignCenter, AlignRight, AlignJustify, Settings } from "lucide-react";
 import { useApi } from "../../../../hooks/useApi";
 import { useLanguage } from "../../../../i18n/LanguageContext";
+import { useCompressionSettings } from "../../../../hooks/useCompressionSettings";
+import { Toast } from "../../../../components/shared/formUtils";
 
 function cfgTitle(cfg, lang) {
   return (lang === "hi" && cfg?.title_hi) ? cfg.title_hi : (cfg?.title || "KPI Chart");
@@ -109,11 +111,19 @@ function TranslateButton({ apiFetch, getSource, onTranslated, label = "Translate
 }
 
 /* ── S3 upload helper ─────────────────────────────────────────────────── */
-async function uploadToS3(file, apiFetch, folder) {
+async function uploadToS3(file, apiFetch, folder, compressionSettings) {
   if (!file) throw new Error("No file selected");
-  if (file.size > 10 * 1024 * 1024) throw new Error("File must be under 10 MB");
   const ALLOWED = ["image/jpeg", "image/png", "image/webp"];
   if (!ALLOWED.includes(file.type)) throw new Error("Only JPEG, PNG and WebP images are allowed");
+
+  if (compressionSettings) {
+    const sizeKB = file.size / 1024;
+    const minKB  = Number(compressionSettings.image_min_kb);
+    const maxKB  = Number(compressionSettings.image_max_kb);
+    if (sizeKB < minKB || sizeKB > maxKB) {
+      throw new Error(`Uploaded image size: ${Math.round(sizeKB)} KB. Allowed size: ${minKB} KB – ${maxKB} KB.`);
+    }
+  }
 
   const presignRes = await apiFetch("/api/upload/presign", {
     method: "POST",
@@ -131,26 +141,66 @@ async function uploadToS3(file, apiFetch, folder) {
 
 function UploadImageBtn({ onUploaded, apiFetch, folder, disabled }) {
   const fileRef  = useRef(null);
-  const [uploading, setUploading] = useState(false);
-  const [err,       setErr]       = useState("");
+  const [uploading,    setUploading]    = useState(false);
+  const [err,          setErr]          = useState("");
+  const [uploadResult, setUploadResult] = useState(null); // null | "success" | "error"
+  const [toast,        setToast]        = useState(null);
+  const { settings: compressionSettings } = useCompressionSettings();
+
+  function showToast(message, type = "success") {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3500);
+  }
 
   async function handleChange(e) {
     const file = e.target.files?.[0];
     if (!file) return;
-    setUploading(true); setErr("");
-    try { onUploaded(await uploadToS3(file, apiFetch, folder)); }
-    catch (ex) { setErr(ex.message || "Upload failed"); }
-    finally { setUploading(false); if (fileRef.current) fileRef.current.value = ""; }
+    setUploading(true); setErr(""); setUploadResult(null);
+    try {
+      onUploaded(await uploadToS3(file, apiFetch, folder, compressionSettings));
+      setUploadResult("success");
+      showToast("Upload Successful");
+      setTimeout(() => setUploadResult(null), 2500);
+    } catch (ex) {
+      setErr(ex.message || "Upload failed");
+      setUploadResult("error");
+      showToast("Upload Failed", "error");
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
   }
 
   return (
-    <div style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-start", gap: 2 }}>
+    <div style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-start", gap: 3 }}>
+      {toast && <Toast message={toast.message} type={toast.type} />}
       <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" style={{ display: "none" }} onChange={handleChange} />
-      <button type="button" onClick={() => fileRef.current?.click()} disabled={uploading || disabled}
-        style={{ padding: "5px 11px", border: "1px solid #e2e8f0", borderRadius: 7, background: uploading ? "#f1f5f9" : "#fff", fontSize: 11, cursor: uploading || disabled ? "not-allowed" : "pointer", color: "#475569", fontWeight: 600, display: "flex", alignItems: "center", gap: 5, whiteSpace: "nowrap" }}>
-        {uploading ? "Uploading..." : "Upload"}
-      </button>
-      {err && <div style={{ fontSize: 10, color: "#b91c1c", maxWidth: 200 }}>{err}</div>}
+
+      {uploadResult === "success" ? (
+        <div style={{ fontSize: 11, color: "#16a34a", fontWeight: 600 }}>✓ Uploaded Successfully</div>
+      ) : (
+        <button type="button" onClick={() => fileRef.current?.click()} disabled={uploading || disabled}
+          style={{ padding: "5px 11px", border: "1px solid #e2e8f0", borderRadius: 7, background: uploading ? "#f1f5f9" : "#fff", fontSize: 11, cursor: uploading || disabled ? "not-allowed" : "pointer", color: "#475569", fontWeight: 600, display: "flex", alignItems: "center", gap: 5, whiteSpace: "nowrap" }}>
+          {uploading ? "Uploading..." : "Upload"}
+        </button>
+      )}
+
+      <div style={{ fontSize: 10, color: "#94a3b8" }}>
+        Images (JPG, JPEG, PNG): {Number(compressionSettings.image_min_kb)} KB – {Number(compressionSettings.image_max_kb)} KB
+      </div>
+
+      {uploadResult === "error" && err && (
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 4, maxWidth: 240 }}>
+          <div style={{ fontSize: 10, color: "#dc2626", fontWeight: 600 }}>{err}</div>
+          <button
+            type="button"
+            onClick={() => { setErr(""); setUploadResult(null); fileRef.current?.click(); }}
+            style={{ fontSize: 10, fontWeight: 600, color: "#dc2626", background: "none", border: "1px solid #f87171", borderRadius: 5, padding: "3px 8px", cursor: "pointer" }}
+          >
+            ↩ Click to Upload Again
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -650,11 +700,13 @@ function FormImportTableBlock({ blockId, content, onChange, onRefetched, readOnl
       const res  = await apiFetch(`/api/report-integration/blocks/${blockId}/refetch`, { method: "POST" });
       const data = await res.json();
       if (!res.ok || !data.success) throw new Error(data.message || "Re-fetch failed");
-      // Backend returns { rows, imported_at, count, translations } — update content
-      // (and the Hindi translation, if any) without marking the block dirty.
+      // Backend returns { rows, columns, imported_at, count, translations }.
+      // Always apply the fresh column meta so col.key matches the row keys returned
+      // by the rebuilt query (prevents blank-cell key-mismatch after schema changes).
       const newContent = {
         ...content,
         rows:        data.data.rows        || [],
+        columns:     data.data.columns     || content.columns || [],
         imported_at: data.data.imported_at || new Date().toISOString(),
       };
       if (onRefetched) onRefetched(newContent, data.data.translations);
@@ -685,6 +737,10 @@ function FormImportTableBlock({ blockId, content, onChange, onRefetched, readOnl
     }
   }
 
+  const headerBg  = content.header_color || "#f1f5f9";
+  const colWidths = content.col_widths   || [];
+  const hasW      = colWidths.some(w => w);
+  const colStyle  = (ci) => colWidths[ci] ? { width: colWidths[ci], minWidth: colWidths[ci] } : {};
   const cell = { border: "1px solid #d1d5db", padding: "6px 10px", fontSize: 12, minWidth: 80, verticalAlign: "top" };
 
   return (
@@ -795,6 +851,47 @@ function FormImportTableBlock({ blockId, content, onChange, onRefetched, readOnl
         </div>
       )}
 
+      {/* ── Table style controls (edit mode only) ── */}
+      {!readOnly && columns.length > 0 && (
+        <div style={{
+          display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
+          marginBottom: 8, padding: "6px 10px", background: "#f8fafc",
+          border: "1px solid #e2e8f0", borderRadius: 7, fontSize: 11, color: "#64748b",
+        }}>
+          <span style={{ fontWeight: 700, color: "#475569" }}>Table Style</span>
+          <label style={{ display: "flex", alignItems: "center", gap: 5 }}>
+            <span>Header color</span>
+            <input
+              type="color"
+              value={content.header_color || "#f1f5f9"}
+              onChange={e => onChange({ ...content, header_color: e.target.value })}
+              style={{ width: 28, height: 22, border: "1px solid #e2e8f0", borderRadius: 4, cursor: "pointer", padding: 1 }}
+              title="Header background color"
+            />
+          </label>
+          <span style={{ color: "#cbd5e1" }}>|</span>
+          <span>Col widths (px):</span>
+          {columns.map((_, ci) => (
+            <input
+              key={ci}
+              type="number"
+              value={colWidths[ci] ?? ""}
+              placeholder="auto"
+              onChange={e => {
+                const w = [...(content.col_widths || Array(columns.length).fill(null))];
+                w[ci] = e.target.value !== "" ? Number(e.target.value) : null;
+                onChange({ ...content, col_widths: w });
+              }}
+              style={{
+                width: 52, fontSize: 11, border: "1px solid #e2e8f0", borderRadius: 4,
+                padding: "2px 4px", textAlign: "center", fontFamily: "inherit",
+              }}
+              title={`Column ${ci + 1} width`}
+            />
+          ))}
+        </div>
+      )}
+
       {/* ── Table ── */}
       {columns.length === 0 ? (
         <div style={{ padding: "20px", textAlign: "center", color: "#94a3b8", fontSize: 12, border: "1px dashed #e2e8f0", borderRadius: 8 }}>
@@ -802,11 +899,11 @@ function FormImportTableBlock({ blockId, content, onChange, onRefetched, readOnl
         </div>
       ) : (
         <div style={{ overflowX: "auto" }}>
-          <table style={{ borderCollapse: "collapse", width: "100%" }}>
+          <table style={{ borderCollapse: "collapse", width: "100%", ...(hasW ? { tableLayout: "fixed" } : {}) }}>
             <thead>
               <tr>
                 {columns.map((col, ci) => (
-                  <th key={ci} style={{ ...cell, background: "#f1f5f9", fontWeight: 700 }}>
+                  <th key={ci} style={{ ...cell, ...colStyle(ci), background: headerBg, fontWeight: 700 }}>
                     {col.label || col.key}
                   </th>
                 ))}
@@ -823,7 +920,7 @@ function FormImportTableBlock({ blockId, content, onChange, onRefetched, readOnl
                 rows.map((row, ri) => (
                   <tr key={ri} style={{ background: ri % 2 === 1 ? "#f9fafb" : "#fff" }}>
                     {columns.map((col, ci) => (
-                      <td key={ci} style={cell}>
+                      <td key={ci} style={{ ...cell, ...colStyle(ci) }}>
                         {readOnly
                           ? (row[col.key] != null ? String(row[col.key]) : "")
                           : (
@@ -908,7 +1005,12 @@ export function TableBlock({ content, onChange, onRefetched, readOnly, blockId, 
   };
   const addCol = () => {
     const nh = [...headers, ""], nr = rows.map((r) => [...r, ""]);
-    if (isHi) onSaveTranslation?.("hi", { headers: nh, rows: nr }); else onChange({ ...content, headers: nh, rows: nr });
+    if (isHi) {
+      onSaveTranslation?.("hi", { headers: nh, rows: nr });
+    } else {
+      const nw = content.col_widths ? [...content.col_widths, null] : undefined;
+      onChange({ ...content, headers: nh, rows: nr, ...(nw ? { col_widths: nw } : {}) });
+    }
   };
   const removeRow = (ri) => {
     const n = rows.filter((_, i) => i !== ri);
@@ -916,9 +1018,18 @@ export function TableBlock({ content, onChange, onRefetched, readOnly, blockId, 
   };
   const removeCol = (ci) => {
     const nh = headers.filter((_, i) => i !== ci), nr = rows.map((r) => r.filter((_, i) => i !== ci));
-    if (isHi) onSaveTranslation?.("hi", { headers: nh, rows: nr }); else onChange({ ...content, headers: nh, rows: nr });
+    if (isHi) {
+      onSaveTranslation?.("hi", { headers: nh, rows: nr });
+    } else {
+      const nw = (content.col_widths || []).filter((_, i) => i !== ci);
+      onChange({ ...content, headers: nh, rows: nr, col_widths: nw });
+    }
   };
 
+  const headerBg  = content.header_color || "#f1f5f9";
+  const colWidths = content.col_widths   || [];
+  const hasW      = colWidths.some(w => w);
+  const colStyle  = (ci) => colWidths[ci] ? { width: colWidths[ci], minWidth: colWidths[ci] } : {};
   const cell = { border: "1px solid #d1d5db", padding: "6px 10px", fontSize: 12, minWidth: 80, verticalAlign: "top" };
 
   return (
@@ -941,12 +1052,54 @@ export function TableBlock({ content, onChange, onRefetched, readOnly, blockId, 
           />
         </div>
       )}
+
+      {/* ── Table style controls (edit / English mode only) ── */}
+      {!readOnly && !isHi && (
+        <div style={{
+          display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
+          marginBottom: 8, padding: "6px 10px", background: "#f8fafc",
+          border: "1px solid #e2e8f0", borderRadius: 7, fontSize: 11, color: "#64748b",
+        }}>
+          <span style={{ fontWeight: 700, color: "#475569" }}>Table Style</span>
+          <label style={{ display: "flex", alignItems: "center", gap: 5 }}>
+            <span>Header color</span>
+            <input
+              type="color"
+              value={content.header_color || "#f1f5f9"}
+              onChange={e => onChange({ ...content, header_color: e.target.value })}
+              style={{ width: 28, height: 22, border: "1px solid #e2e8f0", borderRadius: 4, cursor: "pointer", padding: 1 }}
+              title="Header background color"
+            />
+          </label>
+          <span style={{ color: "#cbd5e1" }}>|</span>
+          <span>Col widths (px):</span>
+          {enHeaders.map((_, ci) => (
+            <input
+              key={ci}
+              type="number"
+              value={colWidths[ci] ?? ""}
+              placeholder="auto"
+              onChange={e => {
+                const w = [...(content.col_widths || Array(enHeaders.length).fill(null))];
+                w[ci] = e.target.value !== "" ? Number(e.target.value) : null;
+                onChange({ ...content, col_widths: w });
+              }}
+              style={{
+                width: 52, fontSize: 11, border: "1px solid #e2e8f0", borderRadius: 4,
+                padding: "2px 4px", textAlign: "center", fontFamily: "inherit",
+              }}
+              title={`Column ${ci + 1} width`}
+            />
+          ))}
+        </div>
+      )}
+
       <div style={{ overflowX: "auto" }}>
-        <table style={{ borderCollapse: "collapse", width: "100%" }}>
+        <table style={{ borderCollapse: "collapse", width: "100%", ...(hasW ? { tableLayout: "fixed" } : {}) }}>
           <thead>
             <tr>
               {headers.map((h, ci) => (
-                <th key={ci} style={{ ...cell, background: "#f1f5f9", fontWeight: 700 }}>
+                <th key={ci} style={{ ...cell, ...colStyle(ci), background: headerBg, fontWeight: 700 }}>
                   {readOnly ? h : (
                     <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                       <input value={h} onChange={(e) => updateHeader(ci, e.target.value)} placeholder={"Col " + (ci + 1)} style={{ border: "none", background: "transparent", fontWeight: 700, fontSize: 12, flex: 1, outline: "none" }} />
@@ -955,14 +1108,14 @@ export function TableBlock({ content, onChange, onRefetched, readOnly, blockId, 
                   )}
                 </th>
               ))}
-              {!readOnly && <th style={{ ...cell, background: "#f1f5f9", width: 28 }} />}
+              {!readOnly && <th style={{ ...cell, background: headerBg, width: 28 }} />}
             </tr>
           </thead>
           <tbody>
             {rows.map((row, ri) => (
               <tr key={ri} style={{ background: ri % 2 === 1 ? "#f9fafb" : "#fff" }}>
                 {row.map((c, ci) => (
-                  <td key={ci} style={cell}>
+                  <td key={ci} style={{ ...cell, ...colStyle(ci) }}>
                     {readOnly ? c : <textarea value={c} onChange={(e) => updateCell(ri, ci, e.target.value)} rows={1} style={{ border: "none", background: "transparent", fontSize: 12, width: "100%", outline: "none", resize: "vertical", fontFamily: "inherit" }} />}
                   </td>
                 ))}

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { useApi }  from "../../../../hooks/useApi";
 import { useAuth } from "../../../../store/AuthContext";
 import { PageContainer, PageHeader, Toolbar, FilterChip, Button, Card, EmptyState, ErrorState } from "../../../../ui";
-import { Layers, Tag, AlertTriangle } from "lucide-react";
+import { Layers, Tag, AlertTriangle, Trash2 } from "lucide-react";
 import TemplateCreationWizardPage from "./TemplateCreationWizardPage";
 
 /* ── design tokens ─────────────────────────────────────────────────────── */
@@ -57,11 +57,15 @@ function TemplateList({ onCreateNew, onEdit }) {
   const { apiFetch } = useApi();
   const { user }     = useAuth();
 
-  const [templates, setTemplates] = useState([]);
-  const [loading,   setLoading]   = useState(true);
-  const [err,       setErr]       = useState("");
-  const [busyId,    setBusyId]    = useState(null);
-  const [filter,    setFilter]    = useState("ALL");
+  const [templates,      setTemplates]      = useState([]);
+  const [loading,        setLoading]        = useState(true);
+  const [err,            setErr]            = useState("");
+  const [busyId,         setBusyId]         = useState(null);
+  const [filter,         setFilter]         = useState("ALL");
+  const [deleteTarget,   setDeleteTarget]   = useState(null);  // { id, name }
+  const [deleting,       setDeleting]       = useState(false);
+  const [deleteErr,      setDeleteErr]      = useState("");
+  const [blockingReports,setBlockingReports]= useState([]);
 
   const load = useCallback(async () => {
     setLoading(true); setErr("");
@@ -73,6 +77,31 @@ function TemplateList({ onCreateNew, onEdit }) {
   }, [apiFetch]);
 
   useEffect(() => { load(); }, [load]);
+
+  function openDelete(t) {
+    setDeleteTarget({ id: t.id, name: t.name });
+    setDeleteErr(""); setBlockingReports([]);
+  }
+
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+    setDeleting(true); setDeleteErr(""); setBlockingReports([]);
+    try {
+      const res  = await apiFetch(`/api/builder/templates/${deleteTarget.id}`, { method: "DELETE" });
+      const json = await res.json();
+      if (!res.ok) {
+        setDeleteErr(json.message || "Failed to delete template");
+        setBlockingReports(json.reports || []);
+        return;
+      }
+      setTemplates(prev => prev.filter(t => t.id !== deleteTarget.id));
+      setDeleteTarget(null);
+    } catch {
+      setDeleteErr("Network error — please try again");
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   async function changeStatus(id, status) {
     setBusyId(id);
@@ -215,6 +244,7 @@ function TemplateList({ onCreateNew, onEdit }) {
                 busy={busyId === t.id}
                 onEdit={onEdit}
                 onChangeStatus={changeStatus}
+                onDelete={openDelete}
               />
             ))}
           </div>
@@ -237,6 +267,92 @@ function TemplateList({ onCreateNew, onEdit }) {
             </span>
           </div>
         )}
+
+        {/* ── Delete confirm modal ──────────────────────────────────────── */}
+        {deleteTarget && (
+          <div style={{
+            position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)",
+            display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999,
+          }} onClick={e => { if (e.target === e.currentTarget && !deleting) setDeleteTarget(null); }}>
+            <div style={{
+              background: "#fff", borderRadius: 16, padding: "28px 28px 24px",
+              width: 440, maxWidth: "calc(100vw - 32px)",
+              boxShadow: "0 20px 60px rgba(0,0,0,0.18)",
+            }}>
+              {/* header */}
+              <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
+                <div style={{
+                  width: 40, height: 40, borderRadius: 10,
+                  background: "#fef2f2", display: "flex", alignItems: "center",
+                  justifyContent: "center", flexShrink: 0,
+                }}>
+                  <Trash2 size={18} color="#dc2626" />
+                </div>
+                <div>
+                  <div style={{ fontSize: 15, fontWeight: 800, color: "#111827" }}>Delete Template</div>
+                  <div style={{ fontSize: 12, color: "#6b7280", marginTop: 1 }}>This action cannot be undone</div>
+                </div>
+              </div>
+
+              {/* body */}
+              {!deleteErr ? (
+                <p style={{ fontSize: 13, color: "#374151", lineHeight: 1.6, margin: "0 0 20px" }}>
+                  Are you sure you want to delete <strong>"{deleteTarget.name}"</strong>?
+                  All sections and blocks inside it will be permanently removed.
+                </p>
+              ) : (
+                <div style={{
+                  background: "#fef2f2", border: "1px solid #fca5a5", borderRadius: 10,
+                  padding: "12px 14px", marginBottom: 16,
+                }}>
+                  <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                    <AlertTriangle size={15} color="#dc2626" style={{ marginTop: 1, flexShrink: 0 }} />
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: "#7f1d1d", marginBottom: 6 }}>
+                        {deleteErr}
+                      </div>
+                      {blockingReports.length > 0 && (
+                        <ul style={{ margin: 0, paddingLeft: 16, fontSize: 12, color: "#991b1b" }}>
+                          {blockingReports.map(r => (
+                            <li key={r.id} style={{ marginBottom: 3 }}>{r.title || "Untitled report"}</li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* actions */}
+              <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+                <button
+                  onClick={() => setDeleteTarget(null)}
+                  disabled={deleting}
+                  style={{
+                    padding: "8px 18px", borderRadius: 8, border: "1px solid #e5e7eb",
+                    background: "#f9fafb", color: "#374151", fontSize: 13, fontWeight: 600,
+                    cursor: "pointer", fontFamily: "inherit",
+                  }}
+                >Cancel</button>
+                {!blockingReports.length && (
+                  <button
+                    onClick={confirmDelete}
+                    disabled={deleting}
+                    style={{
+                      padding: "8px 18px", borderRadius: 8, border: "none",
+                      background: deleting ? "#fca5a5" : "#dc2626", color: "#fff",
+                      fontSize: 13, fontWeight: 700, cursor: deleting ? "not-allowed" : "pointer",
+                      fontFamily: "inherit", display: "flex", alignItems: "center", gap: 6,
+                    }}
+                  >
+                    <Trash2 size={13} />
+                    {deleting ? "Deleting…" : "Delete"}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
     </PageContainer>
   );
 }
@@ -244,7 +360,7 @@ function TemplateList({ onCreateNew, onEdit }) {
 /* ════════════════════════════════════════════════════════════════════════
    TEMPLATE CARD
 ════════════════════════════════════════════════════════════════════════ */
-function TemplateCard({ template: t, busy, onEdit, onChangeStatus }) {
+function TemplateCard({ template: t, busy, onEdit, onChangeStatus, onDelete }) {
   const [hover, setHover] = useState(false);
   const cfg   = STATUS[t.status] || STATUS.DRAFT;
   const isDraft    = t.status === "DRAFT";
@@ -337,47 +453,35 @@ function TemplateCard({ template: t, busy, onEdit, onChangeStatus }) {
         <div style={{ display: "flex", gap: 8, marginTop: "auto" }}>
           {isDraft && (
             <>
-              <CardBtn
-                onClick={() => onEdit(t.id)}
-                variant="ghost"
-                style={{ flex: 1 }}
-              >Edit</CardBtn>
-              <CardBtn
-                onClick={() => onChangeStatus(t.id, "ACTIVE")}
-                variant="success"
-                busy={busy}
-                style={{ flex: 1 }}
-              >{busy ? "Publishing…" : "Publish"}</CardBtn>
+              <CardBtn onClick={() => onEdit(t.id)} variant="ghost" style={{ flex: 1 }}>Edit</CardBtn>
+              <CardBtn onClick={() => onChangeStatus(t.id, "ACTIVE")} variant="success" busy={busy} style={{ flex: 1 }}>
+                {busy ? "Publishing…" : "Publish"}
+              </CardBtn>
+              <CardBtn onClick={() => onDelete(t)} variant="danger">
+                <Trash2 size={13} />
+              </CardBtn>
             </>
           )}
           {isActive && (
             <>
-              <CardBtn
-                onClick={() => onEdit(t.id)}
-                variant="primary"
-                style={{ flex: 1 }}
-              >Edit</CardBtn>
-              <CardBtn
-                onClick={() => onChangeStatus(t.id, "ARCHIVED")}
-                variant="ghost"
-                busy={busy}
-                style={{ flex: 1 }}
-              >{busy ? "…" : "Archive"}</CardBtn>
+              <CardBtn onClick={() => onEdit(t.id)} variant="primary" style={{ flex: 1 }}>Edit</CardBtn>
+              <CardBtn onClick={() => onChangeStatus(t.id, "ARCHIVED")} variant="ghost" busy={busy} style={{ flex: 1 }}>
+                {busy ? "…" : "Archive"}
+              </CardBtn>
+              <CardBtn onClick={() => onDelete(t)} variant="danger">
+                <Trash2 size={13} />
+              </CardBtn>
             </>
           )}
           {isArchived && (
             <>
-              <CardBtn
-                onClick={() => onEdit(t.id)}
-                variant="ghost"
-                style={{ flex: 1 }}
-              >Edit</CardBtn>
-              <CardBtn
-                onClick={() => onChangeStatus(t.id, "DRAFT")}
-                variant="warning"
-                busy={busy}
-                style={{ flex: 1 }}
-              >{busy ? "…" : "Restore"}</CardBtn>
+              <CardBtn onClick={() => onEdit(t.id)} variant="ghost" style={{ flex: 1 }}>Edit</CardBtn>
+              <CardBtn onClick={() => onChangeStatus(t.id, "DRAFT")} variant="warning" busy={busy} style={{ flex: 1 }}>
+                {busy ? "…" : "Restore"}
+              </CardBtn>
+              <CardBtn onClick={() => onDelete(t)} variant="danger">
+                <Trash2 size={13} />
+              </CardBtn>
             </>
           )}
         </div>
@@ -405,6 +509,7 @@ const CARD_BTN_STYLES = {
   success: { bg: "#dcfce7",   color: "#15803d"  },
   warning: { bg: "#fef9c3",   color: "#854d0e"  },
   ghost:   { bg: C.bg,        color: C.textSub  },
+  danger:  { bg: "#fef2f2",   color: "#dc2626"  },
 };
 
 function CardBtn({ onClick, variant = "ghost", busy, style: extraStyle, children }) {

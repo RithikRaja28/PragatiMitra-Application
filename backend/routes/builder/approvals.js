@@ -435,7 +435,7 @@ router.post("/section/:sectionId/review", async (req, res) => {
         newStatus  = "UNDER_REVIEW";
         nextStepId = nextStep.id;
 
-        // Notify next approver
+        // Notify next approver (in-app + email)
         if (nextStep.approver_user_id) {
           await pool.query(
             `INSERT INTO public.notifications (user_id, type, title, body, entity_type, entity_id)
@@ -443,6 +443,33 @@ router.post("/section/:sectionId/review", async (req, res) => {
                      $2, 'SECTION', $3)`,
             [nextStep.approver_user_id, `Passed to you for review: ${nextStep.step_name}`, sectionId]
           ).catch(() => {});
+
+          // Email the next-step reviewer
+          pool.query(
+            `SELECT u.full_name, u.email, rs.title AS section_title, r.title AS report_title
+             FROM public.users u
+             JOIN public.report_sections rs ON rs.id = $2
+             JOIN public.reports r ON r.id = rs.report_id
+             WHERE u.id = $1`,
+            [nextStep.approver_user_id, sectionId]
+          ).then(({ rows: nr }) => {
+            if (!nr[0]?.email) return;
+            pool.query(`SELECT full_name FROM public.users WHERE id = $1`, [req.user.userId])
+              .then(({ rows: cur }) => {
+                enqueueEmail(pool, {
+                  eventId:         "form_submitted",
+                  recipientEmail:  nr[0].email,
+                  recipientUserId: nextStep.approver_user_id,
+                  payload: {
+                    full_name:         nr[0].full_name,
+                    section_name:      nr[0].section_title || `Section ${sectionId.slice(0, 8)}`,
+                    step_name:         nextStep.step_name  || "Review Step",
+                    submitted_by_name: cur[0]?.full_name   || "Previous reviewer",
+                    login_url:         process.env.APP_LOGIN_URL || "http://localhost:5173/login",
+                  },
+                }).catch((e) => logger.error("Failed to enqueue step-advance email", { err: e.message }));
+              }).catch(() => {});
+          }).catch(() => {});
         }
       } else {
         // Last workflow step approved → route to Director's Office for final approval
@@ -453,7 +480,7 @@ router.post("/section/:sectionId/review", async (req, res) => {
           [sectionId]
         );
 
-        // Notify all directors_office users
+        // Notify all directors_office users (in-app + email)
         await pool.query(
           `INSERT INTO public.notifications (user_id, type, title, body, entity_type, entity_id)
            SELECT DISTINCT u.id, 'REVIEW_REQUESTED',
@@ -468,6 +495,35 @@ router.post("/section/:sectionId/review", async (req, res) => {
            WHERE u.account_status = 'ACTIVE'`,
           [sectionId]
         ).catch(() => {});
+
+        // Email all Director's Office users
+        pool.query(
+          `SELECT DISTINCT u.id, u.full_name, u.email, rs.title AS section_title, rp.title AS report_title
+           FROM public.users u
+           JOIN public.user_roles ur ON ur.user_id = u.id
+             AND ur.revoked_at IS NULL
+             AND (ur.expires_at IS NULL OR ur.expires_at > now())
+           JOIN public.roles ro ON ro.id = ur.role_id AND ro.name = 'directors_office'
+           JOIN public.report_sections rs ON rs.id = $1
+           JOIN public.reports rp ON rp.id = rs.report_id
+           WHERE u.account_status = 'ACTIVE'`,
+          [sectionId]
+        ).then(({ rows: dirRows }) => {
+          for (const du of dirRows) {
+            enqueueEmail(pool, {
+              eventId:         "form_submitted",
+              recipientEmail:  du.email,
+              recipientUserId: du.id,
+              payload: {
+                full_name:         du.full_name,
+                section_name:      du.section_title || `Section ${sectionId.slice(0, 8)}`,
+                step_name:         "Director's Office Final Approval",
+                submitted_by_name: "All workflow steps completed",
+                login_url:         process.env.APP_LOGIN_URL || "http://localhost:5173/login",
+              },
+            }).catch((e) => logger.error("Failed to enqueue director email", { err: e.message }));
+          }
+        }).catch(() => {});
       }
     } else {
       // SENT_BACK → reset to IN_PROGRESS, clear step

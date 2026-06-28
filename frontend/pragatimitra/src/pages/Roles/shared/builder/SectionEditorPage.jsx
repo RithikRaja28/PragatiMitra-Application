@@ -647,15 +647,19 @@ function WordBlock({ block, lang = "en", measureIdx = null }) {
       const noBottomMg  = !!block._noBottomMargin;
 
       const cell = { border: "1px solid #9ca3af", padding: "4px 7px", fontFamily: DOC_FONT, fontSize: 10, color: "#111827", verticalAlign: "top" };
+      const hdrBg = c.header_color || "#D0CECE";
+      const cwds  = c.col_widths || [];
+      const hasW  = cwds.some(w => w);
+      const cw    = (ci) => cwds[ci] ? { width: cwds[ci], minWidth: cwds[ci] } : {};
       const theadProps = measureIdx != null ? { "data-table-header": measureIdx } : {};
       return (
         <div style={{ margin: `8px 0 ${noBottomMg ? 2 : 12}px`, overflowX: "auto" }}>
-          <table style={{ borderCollapse: "collapse", width: "100%" }}>
+          <table style={{ borderCollapse: "collapse", width: "100%", ...(hasW ? { tableLayout: "fixed" } : {}) }}>
             {headers.length > 0 && (
               <thead {...theadProps}>
                 <tr>
                   {headers.map((h, hi) => (
-                    <th key={hi} style={{ ...cell, background: "#D0CECE", fontWeight: 700, textAlign: "left" }}>
+                    <th key={hi} style={{ ...cell, ...cw(hi), background: hdrBg, fontWeight: 700, textAlign: "left" }}>
                       {h || `Col ${hi + 1}`}
                       {isCont && hi === 0 && (
                         <span style={{ fontSize: 8, color: "#9ca3af", fontStyle: "italic", marginLeft: 6 }}>(contd.)</span>
@@ -673,10 +677,10 @@ function WordBlock({ block, lang = "en", measureIdx = null }) {
                   <tr key={ri} style={{ background: absRi % 2 === 0 ? "#fff" : "#f9fafb" }} {...rowProps}>
                     {isFormImport
                       ? fmtColumns.map((col, ci) => (
-                          <td key={ci} style={cell}>{row?.[col.key] != null ? String(row[col.key]) : ""}</td>
+                          <td key={ci} style={{ ...cell, ...cw(ci) }}>{row?.[col.key] != null ? String(row[col.key]) : ""}</td>
                         ))
                       : (Array.isArray(row) ? row : []).map((cell_val, ci) => (
-                          <td key={ci} style={cell}>{cell_val}</td>
+                          <td key={ci} style={{ ...cell, ...cw(ci) }}>{cell_val}</td>
                         ))
                     }
                   </tr>
@@ -1159,7 +1163,7 @@ function IconChip({ type, size = 30 }) {
   );
 }
 
-const ADD_BLOCK_TYPES = ["PARAGRAPH", "HEADING", "TABLE", "IMAGE", "IMAGE_GRID", "LIST", "FILE", "KPI", "DIVIDER"];
+const ADD_BLOCK_TYPES = ["PARAGRAPH", "HEADING", "TABLE", "IMAGE", "IMAGE_GRID", "LIST", /* "FILE", */ "KPI", "DIVIDER"];
 
 /* ── Block-type picker list, shared by InlineAdder's dropdown and the big
    "+ Add Block" button below. ────────────────────────────────────────────── */
@@ -1703,9 +1707,14 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
         return { kind: "image", caption: c.caption || "", alt: c.alt || "" };
       case "IMAGE_GRID":
         return { kind: "image_grid", cols: (c.cols || []).map((col) => ({ caption: col.caption || "", alt: col.alt || "" })) };
-      case "TABLE":
+      case "TABLE": {
         if (c.source === "form_import") return null;
-        return { kind: "table", headers: c.headers || [], rows: c.rows || [] };
+        const tHeaders = c.headers || [];
+        const tRows    = c.rows    || [];
+        const flat     = [...tHeaders, ...tRows.flat()];
+        if (!flat.some(Boolean)) return null;
+        return { kind: "table", headers: tHeaders, rows: tRows };
+      }
       default:
         return null;
     }
@@ -2149,7 +2158,7 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
 
         {/* ── Group: document tools (Export, History, Preview) ── */}
         <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-          <ExportMenu onWord={handleExportDocx} onPdf={handleExportPdf} exporting={exporting} disabled={blocks.length === 0} />
+          {/* <ExportMenu onWord={handleExportDocx} onPdf={handleExportPdf} exporting={exporting} disabled={blocks.length === 0} /> */}
           <ToolBtn onClick={() => setVersionHistOpen(o => !o)} active={versionHistOpen} title="Version history">
             <svg width="12" height="12" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="10" cy="10" r="8"/><path d="M10 6v4l3 3"/></svg>
             History
@@ -3091,7 +3100,7 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
           <KpiImportWizard
             sectionId={sectionId}
             orderIndex={kpiImportWizard.orderIndex}
-            defaultYear={reportMeta?.academic_year ? Number(String(reportMeta.academic_year).split("-")[0]) : undefined}
+            defaultYear={reportMeta?.academic_year || undefined}
             apiFetch={apiFetch}
             onImported={handleKpiImported}
             onClose={() => setKpiImportWizard({ open: false, afterIndex: undefined, orderIndex: undefined })}
