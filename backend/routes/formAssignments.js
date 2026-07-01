@@ -70,6 +70,16 @@ function isContributorOnly(req) {
   return !roles.some((r) => elevated.includes(r));
 }
 
+/* A "pure" PG student — has the pg_student role and none of the elevated roles.
+   Same visibility-restriction pattern as isContributorOnly: only assigned forms
+   are visible, scoped to (department, academic_year). */
+function isPgStudentOnly(req) {
+  const roles = req.user?.dbRoles || req.user?.roles || [];
+  if (!roles.includes("pg_student")) return false;
+  const elevated = ["super_admin", "institute_admin", "department_admin", "nodal_officer", "hospital_admin", "finance_admin", "contributor"];
+  return !roles.some((r) => elevated.includes(r));
+}
+
 /* table_list.id values assigned (active) to a user for a given academic year.
    DEPARTMENT-SCOPED: an assignment only counts while fa.department_id still
    matches the user's CURRENT department. So if the user is moved to another
@@ -167,7 +177,7 @@ router.use(async (req, _res, next) => {
 /* Department Admin / Nodal Officer / Hospital Admin / Finance Admin may assign
    within their own domain (super_admin allowed as god). assertFormDomainAccess
    inside POST / already prevents cross-domain assignments. */
-const ASSIGN_ROLES = ["super_admin", "department_admin", "nodal_officer", "hospital_admin", "finance_admin"];
+const ASSIGN_ROLES = ["super_admin", "institute_admin", "department_admin", "nodal_officer", "hospital_admin", "finance_admin"];
 
 /* GET /api/form-assignments/contributors?form_id=&year=
    Assignable contributors for the assigner's department + the form's current
@@ -439,6 +449,384 @@ router.delete("/:id", requireRole(ASSIGN_ROLES), async (req, res) => {
   }
 });
 
+/* GET /api/form-assignments/pg-students?form_id=&year=&dept_filter=<uuid>
+   Returns assignable PG students for the form's assignment modal.
+   - Institute admins (no departmentId): returns ALL institution PG students with
+     optional dept_filter; also returns departments list for the filter dropdown.
+   - Dept admins / nodal officers: returns PG students in their department only. */
+router.get("/pg-students", requireRole(ASSIGN_ROLES), async (req, res) => {
+  const pool = req.app.locals.pool;
+  try {
+    const { institutionId: instFromCtx, departmentId: deptFromCtx } = await assignerContext(pool, req);
+    const institutionId = instFromCtx || req.user.institutionId || null;
+    const departmentId  = deptFromCtx || req.user.departmentId  || null;
+    const year       = resolveYear(req);
+    const formId     = req.query.form_id || null;
+    const deptFilter = req.query.dept_filter || null;
+
+    // Institute admins have no departmentId → show all institution PG students
+    const isInstScope = !departmentId;
+
+    let pgStudents = [], departments = [];
+
+    if (isInstScope) {
+      const params = deptFilter
+        ? [institutionId, req.user.userId, deptFilter]
+        : [institutionId, req.user.userId];
+      const deptWhere = deptFilter ? `AND u.department_id = $3::uuid` : ``;
+
+      ({ rows: pgStudents } = await pool.query(
+        `SELECT u.id, u.full_name, u.email, u.department_id,
+                COALESCE(d.department_name, '') AS department_name
+         FROM users u
+         JOIN user_roles ur ON ur.user_id = u.id AND ur.revoked_at IS NULL
+              AND (ur.expires_at IS NULL OR ur.expires_at > now())
+         JOIN roles r ON r.id = ur.role_id AND r.name = 'pg_student'
+         LEFT JOIN departments d ON d.department_id = u.department_id
+         WHERE u.institution_id = $1 AND u.account_status = 'ACTIVE'
+           AND u.id <> $2 ${deptWhere}
+         ORDER BY u.full_name`,
+        params
+      ));
+
+      ({ rows: departments } = await pool.query(
+        `SELECT d.department_id AS id, d.department_name AS name
+         FROM departments d
+         WHERE d.institution_id = $1 AND d.status = 'ACTIVE'
+         ORDER BY d.department_name`,
+        [institutionId]
+      ));
+    } else {
+      ({ rows: pgStudents } = await pool.query(
+        `SELECT u.id, u.full_name, u.email
+         FROM users u
+         JOIN user_roles ur ON ur.user_id = u.id AND ur.revoked_at IS NULL
+              AND (ur.expires_at IS NULL OR ur.expires_at > now())
+         JOIN roles r ON r.id = ur.role_id AND r.name = 'pg_student'
+         WHERE u.institution_id = $1 AND u.department_id = $2 AND u.account_status = 'ACTIVE'
+           AND u.id <> $3
+         ORDER BY u.full_name`,
+        [institutionId, departmentId, req.user.userId]
+      ));
+    }
+
+    let assigned = [];
+    if (formId) {
+      if (isInstScope) {
+        const params = deptFilter ? [formId, year, deptFilter] : [formId, year];
+        const deptWhere = deptFilter ? `AND fa.department_id = $3::uuid` : ``;
+        const { rows } = await pool.query(
+          `SELECT fa.id, fa.assigned_to, u.full_name, u.email, fa.department_id,
+                  COALESCE(d.department_name, '') AS department_name
+           FROM form_assignments fa
+           JOIN users u ON u.id = fa.assigned_to
+           LEFT JOIN departments d ON d.department_id = fa.department_id
+           WHERE fa.form_id = $1 AND fa.academic_year = $2
+             AND fa.is_active = true AND fa.role = 'pg_student' ${deptWhere}
+           ORDER BY u.full_name`,
+          params
+        );
+        assigned = rows;
+      } else {
+        const { rows } = await pool.query(
+          `SELECT fa.id, fa.assigned_to, u.full_name, u.email
+           FROM form_assignments fa JOIN users u ON u.id = fa.assigned_to
+           WHERE fa.form_id = $1 AND fa.academic_year = $2 AND fa.department_id = $3
+             AND fa.is_active = true AND fa.role = 'pg_student'
+           ORDER BY u.full_name`,
+          [formId, year, departmentId]
+        );
+        assigned = rows;
+      }
+    }
+    return res.json({ success: true, pgStudents, assigned, departments, year, departmentId, institutionId });
+  } catch (err) {
+    logger.error("GET /api/form-assignments/pg-students", { stack: err.stack });
+    return res.status(500).json({ success: false, message: "Failed to load PG students." });
+  }
+});
+
+/* POST /api/form-assignments/pg-student  { form_id, form_name?, pg_student_ids: [], year? }
+   Assigns the form to the given PG students for the year. Year-scoped, idempotent. */
+router.post("/pg-student", requireRole(ASSIGN_ROLES), async (req, res) => {
+  const pool = req.app.locals.pool;
+  const { form_id, form_name, pg_student_ids } = req.body;
+  const year = resolveYear(req);
+  if (!form_id || !Array.isArray(pg_student_ids) || pg_student_ids.length === 0)
+    return res.status(400).json({ success: false, message: "form_id and pg_student_ids are required." });
+
+  try {
+    const { institutionId, departmentId } = await assignerContext(pool, req);
+    // departmentId may be null for institute_admin — allowed for institute-wide PG assignment
+
+    if (departmentId) {
+      const deptBlock = await getDepartmentWriteBlock(pool, { departmentId, roles: req.user.roles });
+      if (deptBlock.blocked)
+        return res.status(403).json({ success: false, message: deptBlock.message });
+    }
+
+    const { rows: tlRows } = await pool.query(
+      `SELECT form_name,
+              COALESCE(form_domain, 'academic')        AS form_domain,
+              COALESCE(institute_access, '{}'::uuid[]) AS institute_access
+         FROM table_list WHERE id = $1`,
+      [form_id]
+    );
+    if (!tlRows.length)
+      return res.status(404).json({ success: false, message: "Form not found." });
+    const fname = tlRows[0].form_name;
+
+    if (!tlRows[0].institute_access.map(String).includes(String(institutionId)))
+      return res.status(403).json({ success: false, message: "This form is not available for your institution." });
+
+    const domainCheck = await assertFormDomainAccess(pool, req, fname);
+    if (!domainCheck.allowed)
+      return res.status(domainCheck.status || 403).json({ success: false, message: domainCheck.message });
+
+    const lifecycle = await getFormLifecycleStatus(pool, institutionId, fname, year);
+    if (lifecycle !== "active")
+      return res.status(403).json({ success: false, message: "This form is not active for the selected academic year and cannot be assigned." });
+
+    const { rows: lockRows } = await pool.query(
+      `SELECT is_locked FROM form_lock_config WHERE form_name = $1 AND institution_id = $2`,
+      [fname, institutionId]
+    );
+    if (lockRows[0]?.is_locked)
+      return res.status(403).json({ success: false, message: "This form is locked. Assignment is disabled." });
+
+    // Validate PG students belong to the same institution; scope to dept only when assigner has one.
+    const { rows: valid } = await pool.query(
+      `SELECT u.id, u.department_id FROM users u
+       JOIN user_roles ur ON ur.user_id = u.id AND ur.revoked_at IS NULL
+       JOIN roles r ON r.id = ur.role_id AND r.name = 'pg_student'
+       WHERE u.id = ANY($1::uuid[]) AND u.institution_id = $2
+         AND u.account_status = 'ACTIVE' AND u.id <> $3
+         AND ($4::uuid IS NULL OR u.department_id = $4)`,
+      [pg_student_ids, institutionId, req.user.userId, departmentId || null]
+    );
+    if (valid.length === 0)
+      return res.status(400).json({ success: false, message: "No eligible PG students found." });
+
+    let created = 0;
+    for (const student of valid) {
+      // Store the assignment under the PG student's own department so their dept-scoped query finds it.
+      const studentDeptId = student.department_id;
+      await pool.query(
+        `INSERT INTO form_assignments
+           (form_id, form_name, institution_id, department_id, academic_year, assigned_by, assigned_to, role, is_active)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,'pg_student',true)
+         ON CONFLICT (form_id, assigned_to, academic_year)
+           DO UPDATE SET is_active = true, assigned_by = $6, role = 'pg_student', updated_at = now()`,
+        [form_id, fname, institutionId, studentDeptId, year, req.user.userId, student.id]
+      );
+      created += 1;
+    }
+
+    await writeAuditLog(req, {
+      actionType: "FORM_ASSIGNED",
+      entityType: "form_assignment",
+      entityId: form_id,
+      newValue: { form_id, form_name: fname, academic_year: year, department_id: departmentId, count: created, role: "pg_student" },
+      message: `Form assigned to ${created} PG student(s) — "${fname}"`,
+    });
+
+    setImmediate(async () => {
+      try {
+        const { rows: assignerRows } = await pool.query(
+          `SELECT full_name FROM users WHERE id = $1`, [req.user.userId]
+        );
+        const assignedByName = assignerRows[0]?.full_name || "Your Department Admin";
+
+        const validIds = valid.map((v) => v.id);
+        const { rows: studentRows } = await pool.query(
+          `SELECT id, full_name, email FROM users WHERE id = ANY($1::uuid[])`,
+          [validIds]
+        );
+
+        const { rows: dlRows } = await pool.query(
+          `SELECT deadline_at FROM form_year_deadlines
+           WHERE form_name = $1 AND institution_id = $2 AND academic_year = $3
+           UNION ALL
+           SELECT deadline_at FROM form_lock_config
+           WHERE form_name = $1 AND institution_id = $2
+           LIMIT 1`,
+          [fname, institutionId, year]
+        );
+        const deadline = dlRows[0]?.deadline_at
+          ? new Date(dlRows[0].deadline_at).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })
+          : null;
+
+        const academicYear = `${year}-${year + 1}`;
+        const loginUrl = process.env.APP_LOGIN_URL || "http://localhost:5173/login";
+
+        await Promise.all(studentRows.map((s) =>
+          enqueueEmail(pool, {
+            eventId:         "form_assigned",
+            recipientEmail:  s.email,
+            recipientUserId: s.id,
+            payload: {
+              full_name:        s.full_name,
+              form_name:        fname,
+              academic_year:    academicYear,
+              assigned_by_name: assignedByName,
+              deadline:         deadline,
+              login_url:        loginUrl,
+            },
+          })
+        ));
+        logger.info(`Enqueued form_assigned for ${studentRows.length} PG student(s) — form "${fname}"`);
+      } catch (err) {
+        logger.error("Failed to enqueue form_assigned email for PG students", { stack: err.stack });
+      }
+    });
+
+    return res.json({ success: true, message: `Assigned to ${created} PG student(s).`, assigned: created });
+  } catch (err) {
+    logger.error("POST /api/form-assignments/pg-student", { stack: err.stack });
+    return res.status(500).json({ success: false, message: "Failed to assign form." });
+  }
+});
+
+/* GET /api/form-assignments/dept-assignable?form_id=&role=contributor|pg_student&year=
+   Assignable users (by role) for a DEPARTMENT form + current assigned list.
+   Parallel to /contributors and /pg-students but works for department_table_list form IDs. */
+router.get("/dept-assignable", requireRole(ASSIGN_ROLES), async (req, res) => {
+  const pool = req.app.locals.pool;
+  try {
+    const { institutionId: instFromCtx, departmentId: deptFromCtx } = await assignerContext(pool, req);
+    const institutionId = instFromCtx || req.user.institutionId || null;
+    const departmentId  = deptFromCtx || req.user.departmentId  || null;
+    if (!departmentId) return res.json({ success: true, users: [], assigned: [] });
+    const year   = resolveYear(req);
+    const formId = req.query.form_id || null;
+    const role   = req.query.role || "contributor";
+    if (!["contributor", "pg_student"].includes(role))
+      return res.status(400).json({ success: false, message: "Invalid role. Must be 'contributor' or 'pg_student'." });
+
+    const { rows: users } = await pool.query(
+      `SELECT u.id, u.full_name, u.email
+       FROM users u
+       JOIN user_roles ur ON ur.user_id = u.id AND ur.revoked_at IS NULL
+            AND (ur.expires_at IS NULL OR ur.expires_at > now())
+       JOIN roles r ON r.id = ur.role_id AND r.name = $3
+       WHERE u.institution_id = $1 AND u.department_id = $2 AND u.account_status = 'ACTIVE'
+         AND u.id <> $4
+       ORDER BY u.full_name`,
+      [institutionId, departmentId, role, req.user.userId]
+    );
+
+    let assigned = [];
+    if (formId) {
+      const { rows } = await pool.query(
+        `SELECT fa.id, fa.assigned_to, u.full_name, u.email
+         FROM form_assignments fa JOIN users u ON u.id = fa.assigned_to
+         WHERE fa.form_id = $1 AND fa.academic_year = $2 AND fa.department_id = $3
+           AND fa.is_active = true AND fa.role = $4
+         ORDER BY u.full_name`,
+        [formId, year, departmentId, role]
+      );
+      assigned = rows;
+    }
+    return res.json({ success: true, users, assigned, year, departmentId, institutionId });
+  } catch (err) {
+    logger.error("GET /api/form-assignments/dept-assignable", { stack: err.stack });
+    return res.status(500).json({ success: false, message: "Failed to load users." });
+  }
+});
+
+/* POST /api/form-assignments/dept-assign  { form_id, form_name?, role, user_ids: [], year? }
+   Assigns a DEPARTMENT form (from department_table_list) to contributors or PG students.
+   Uses the same form_assignments table as institute forms; validates against department_table_list. */
+router.post("/dept-assign", requireRole(ASSIGN_ROLES), async (req, res) => {
+  const pool = req.app.locals.pool;
+  const { form_id, user_ids, role } = req.body;
+  const year = resolveYear(req);
+
+  if (!form_id || !Array.isArray(user_ids) || user_ids.length === 0)
+    return res.status(400).json({ success: false, message: "form_id and user_ids are required." });
+  if (!["contributor", "pg_student"].includes(role))
+    return res.status(400).json({ success: false, message: "Invalid role. Must be 'contributor' or 'pg_student'." });
+
+  try {
+    const { institutionId, departmentId } = await assignerContext(pool, req);
+    if (!departmentId)
+      return res.status(400).json({ success: false, message: "No department is associated with your account." });
+
+    const deptBlock = await getDepartmentWriteBlock(pool, { departmentId, roles: req.user.roles });
+    if (deptBlock.blocked)
+      return res.status(403).json({ success: false, message: deptBlock.message });
+
+    // Validate form belongs to this department
+    const { rows: formRows } = await pool.query(
+      `SELECT id, form_name FROM department_table_list WHERE id = $1 AND department_id = $2`,
+      [form_id, departmentId]
+    );
+    if (!formRows.length)
+      return res.status(404).json({ success: false, message: "Department form not found." });
+    const fname = formRows[0].form_name;
+
+    // Validate users: same institution + same department + active + correct role
+    const { rows: valid } = await pool.query(
+      `SELECT u.id FROM users u
+       JOIN user_roles ur ON ur.user_id = u.id AND ur.revoked_at IS NULL
+       JOIN roles r ON r.id = ur.role_id AND r.name = $4
+       WHERE u.id = ANY($1::uuid[]) AND u.institution_id = $2 AND u.department_id = $3
+         AND u.account_status = 'ACTIVE' AND u.id <> $5`,
+      [user_ids, institutionId, departmentId, role, req.user.userId]
+    );
+    const validIds = valid.map((v) => v.id);
+    if (validIds.length === 0)
+      return res.status(400).json({ success: false, message: `No eligible ${role === "pg_student" ? "PG students" : "contributors"} in your department.` });
+
+    let created = 0;
+    for (const uid of validIds) {
+      await pool.query(
+        `INSERT INTO form_assignments
+           (form_id, form_name, institution_id, department_id, academic_year, assigned_by, assigned_to, role, is_active)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,true)
+         ON CONFLICT (form_id, assigned_to, academic_year)
+           DO UPDATE SET is_active = true, assigned_by = $6, role = $8, updated_at = now()`,
+        [form_id, fname, institutionId, departmentId, year, req.user.userId, uid, role]
+      );
+      created += 1;
+    }
+
+    await writeAuditLog(req, {
+      actionType: "FORM_ASSIGNED",
+      entityType: "form_assignment",
+      entityId: form_id,
+      newValue: { form_id, form_name: fname, academic_year: year, department_id: departmentId, count: created, role, form_type: "department" },
+      message: `Department form assigned to ${created} ${role === "pg_student" ? "PG student(s)" : "contributor(s)"} — "${fname}"`,
+    });
+
+    setImmediate(async () => {
+      try {
+        const { rows: assignerRows } = await pool.query(`SELECT full_name FROM users WHERE id = $1`, [req.user.userId]);
+        const assignedByName = assignerRows[0]?.full_name || "Your Department Admin";
+        const { rows: userRows } = await pool.query(`SELECT id, full_name, email FROM users WHERE id = ANY($1::uuid[])`, [validIds]);
+        const loginUrl = process.env.APP_LOGIN_URL || "http://localhost:5173/login";
+        const academicYear = `${year}-${year + 1}`;
+        await Promise.all(userRows.map((u) =>
+          enqueueEmail(pool, {
+            eventId:         "form_assigned",
+            recipientEmail:  u.email,
+            recipientUserId: u.id,
+            payload: { full_name: u.full_name, form_name: fname, academic_year: academicYear, assigned_by_name: assignedByName, deadline: null, login_url: loginUrl },
+          })
+        ));
+        logger.info(`Enqueued dept form_assigned for ${userRows.length} ${role}(s) — form "${fname}"`);
+      } catch (err) {
+        logger.error("Failed to enqueue dept form_assigned email", { stack: err.stack });
+      }
+    });
+
+    return res.json({ success: true, message: `Assigned to ${created} ${role === "pg_student" ? "PG student(s)" : "contributor(s)"}.`, assigned: created });
+  } catch (err) {
+    logger.error("POST /api/form-assignments/dept-assign", { stack: err.stack });
+    return res.status(500).json({ success: false, message: "Failed to assign department form." });
+  }
+});
+
 /* GET /api/form-assignments/my?year= — the caller's own assigned form ids (year). */
 router.get("/my", async (req, res) => {
   const pool = req.app.locals.pool;
@@ -550,4 +938,5 @@ module.exports = {
   isFormAssigned,
   isFormAssignedAnyYear,
   isContributorOnly,
+  isPgStudentOnly,
 };

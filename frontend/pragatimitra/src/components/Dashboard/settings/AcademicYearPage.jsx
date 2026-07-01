@@ -552,6 +552,14 @@ function CreateYearWizard({ apiFetch, onClose, onCreated, onError }) {
     setChecked((prev) => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next; });
   }
 
+  function toggleAll(formIds, shouldSelect) {
+    setChecked((prev) => {
+      const next = new Set(prev);
+      formIds.forEach((id) => (shouldSelect ? next.add(id) : next.delete(id)));
+      return next;
+    });
+  }
+
   async function save() {
     const allForms = [...(preview.previouslyActive || []), ...(preview.previouslyArchived || [])];
     const activeFormIds   = allForms.filter((f) => checked.has(f.id)).map((f) => f.id);
@@ -680,8 +688,8 @@ function CreateYearWizard({ apiFetch, onClose, onCreated, onError }) {
                   {preview.academicYear} {t("already exists — saving will update its form classification.", lang)}
                 </div>
               )}
-              <FormChecklist title={t("Previously Active", lang)} subtitle={t("Checked → active in new year", lang)} forms={preview.previouslyActive} checked={checked} toggle={toggle} />
-              <FormChecklist title={t("Previously Archived", lang)} subtitle={t("Check to activate in new year", lang)} forms={preview.previouslyArchived} checked={checked} toggle={toggle} />
+              <FormChecklist title={t("Previously Active", lang)} subtitle={t("Checked → active in new year", lang)} forms={preview.previouslyActive} checked={checked} toggle={toggle} onToggleAll={toggleAll} />
+              <FormChecklist title={t("Previously Archived", lang)} subtitle={t("Check to activate in new year", lang)} forms={preview.previouslyArchived} checked={checked} toggle={toggle} onToggleAll={toggleAll} />
               {allForms.length === 0 && (
                 <div style={{ fontSize: 13, color: "#94a3b8", textAlign: "center", padding: "12px 0" }}>
                   {t("No accessible forms found for your institution.", lang)}
@@ -745,7 +753,21 @@ function ReviewRow({ label, value, strong, icon, last }) {
   );
 }
 
-function FormChecklist({ title, subtitle, forms, checked, toggle }) {
+function FormChecklist({ title, subtitle, forms, checked, toggle, onToggleAll }) {
+  const selectAllRef = useRef(null);
+
+  const checkedCount = forms.filter((f) => checked.has(f.id)).length;
+  const allSelected  = forms.length > 0 && checkedCount === forms.length;
+  const someSelected = checkedCount > 0 && checkedCount < forms.length;
+
+  useEffect(() => {
+    if (selectAllRef.current) selectAllRef.current.indeterminate = someSelected;
+  }, [someSelected]);
+
+  function handleSelectAll() {
+    onToggleAll(forms.map((f) => f.id), !allSelected);
+  }
+
   return (
     <div>
       <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 8 }}>
@@ -756,6 +778,11 @@ function FormChecklist({ title, subtitle, forms, checked, toggle }) {
         <div style={{ fontSize: 12.5, color: "#cbd5e1", padding: "4px 2px" }}>None</div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", borderRadius: 9, border: "1.5px solid #cbd5e1", background: "#f8fafc", cursor: "pointer" }}>
+            <input ref={selectAllRef} type="checkbox" checked={allSelected} onChange={handleSelectAll} style={{ width: 16, height: 16, accentColor: ACCENT, cursor: "pointer" }} />
+            <span style={{ fontSize: 12.5, fontWeight: 700, color: "#475569" }}>Select All</span>
+            <span style={{ fontSize: 11, color: "#94a3b8", marginLeft: "auto" }}>{checkedCount}/{forms.length} selected</span>
+          </label>
           {forms.map((f) => {
             const on = checked.has(f.id);
             return (

@@ -3,7 +3,7 @@ import { useNavigate, useLocation, Navigate } from "react-router-dom";
 import {
   FilePlus, Search, Plus, Lock, Unlock, Eye, Settings2,
   CalendarClock, MoreHorizontal, Archive, ArchiveRestore,
-  Download, FileText as FileCsv, FileSpreadsheet,
+  Download, FileText as FileCsv, FileSpreadsheet, GraduationCap,
 } from "lucide-react";
 
 const SLUG = "form-management";
@@ -13,6 +13,7 @@ import { useAcademicYear } from "../../store/AcademicYearContext";
 import { Toast, isAuthError } from "../../components/shared/formUtils";
 import DepartmentFormBuilderPage from "./DepartmentFormBuilderPage";
 import DepartmentFormRecordsPage from "./DepartmentFormRecordsPage";
+import AssignPgStudentsModal from "./AssignPgStudentsModal";
 import { DateField, TimeField } from "./DateTimePicker";
 import { color, Button, PageHeader, Badge, EmptyState, Modal, Dropdown, MenuItem, MenuLabel, DataTable, Pagination } from "../../ui";
 import { useLanguage } from "../../i18n/LanguageContext";
@@ -135,6 +136,7 @@ export default function DepartmentFormManagementPage() {
   const [toast, setToast] = useState(null);
   const [busyId, setBusyId] = useState(null);
   const [deadlineForm, setDeadlineForm] = useState(null);
+  const [assignDeptForm, setAssignDeptForm] = useState(null);
   const [tab, setTab] = useState("active");
   const [search, setSearch] = useState("");
   const [page,     setPage]     = useState(1);
@@ -229,6 +231,7 @@ export default function DepartmentFormManagementPage() {
 
     return (
       <div style={{ display: "inline-flex", alignItems: "center", gap: 6, justifyContent: "flex-end" }}>
+        <Button variant="secondary" iconOnly title={t("Assign PG Students", lang)} icon={<GraduationCap size={18} strokeWidth={STROKE} />} onClick={() => setAssignDeptForm(form)} />
         <Button variant="secondary" iconOnly title={t("View records", lang)} icon={<Eye size={18} strokeWidth={STROKE} />} onClick={() => navigate(`${listPath}/records`, { state: { entity: form } })} />
         <Button variant="secondary" iconOnly title={t("Manage deadline", lang)} icon={<CalendarClock size={18} strokeWidth={STROKE} />} onClick={() => setDeadlineForm(form)} />
         <Button variant="secondary" iconOnly title={t("Manage form", lang)} icon={<Settings2 size={18} strokeWidth={STROKE} />} onClick={() => navigate(`${listPath}/edit`, { state: { entity: form } })} />
@@ -288,7 +291,7 @@ export default function DepartmentFormManagementPage() {
           : <Badge tone="success">{t("Open", lang)}</Badge>;
       },
     },
-    { key: "actions", header: "", align: "right", width: 192, render: renderActions },
+    { key: "actions", header: "", align: "right", width: 240, render: renderActions },
   ];
 
   const tabBtn = (key, label) => {
@@ -305,6 +308,17 @@ export default function DepartmentFormManagementPage() {
     <div style={{ padding: "24px 32px", fontFamily: "'Plus Jakarta Sans', sans-serif", minHeight: "100%", maxWidth: 1600, margin: "0 auto", display: "flex", flexDirection: "column" }}>
       {toast && <Toast message={toast.message} type={toast.type} />}
       {deadlineForm && <DeadlineModal form={deadlineForm} year={selectedYear} onClose={() => setDeadlineForm(null)} onSaved={load} showToast={showToast} />}
+      {assignDeptForm && (
+        <AssignPgStudentsModal
+          form={assignDeptForm}
+          year={selectedYear}
+          scope="department"
+          formType="department"
+          onClose={() => setAssignDeptForm(null)}
+          onAssigned={() => {}}
+          showToast={showToast}
+        />
+      )}
 
       <PageHeader
         breadcrumb={[t("Home", lang), t("Department", lang), t("Department Forms", lang)]}

@@ -3,8 +3,9 @@ import { useNavigate, useLocation, Navigate } from "react-router-dom";
 import ReactDOM from "react-dom";
 
 const SLUG = "form-data";
-import { Trash2, FileText, FilePlus, Lock, Clock, Globe, SearchX, Table2, LayoutGrid, UserPlus, Eye } from "lucide-react";
+import { Trash2, FileText, FilePlus, Lock, Clock, Globe, SearchX, Table2, LayoutGrid, UserPlus, GraduationCap, Eye } from "lucide-react";
 import AssignContributorsModal from "./AssignContributorsModal";
+import AssignPgStudentsModal from "./AssignPgStudentsModal";
 import { useApi } from "../../hooks/useApi";
 import { useAuth } from "../../store/AuthContext";
 import { useAcademicYear } from "../../store/AcademicYearContext";
@@ -413,7 +414,7 @@ export function RecordEditPage({
   const editablePane = (
     <ModalPane title={
       viewOnly
-        ? (editLang === "hi" ? (lang === "hi" ? "à¤¹à¤¿à¤‚à¤¦à¥€" : "Hindi") : (lang === "hi" ? "à¤…à¤‚à¤—à¥à¤°à¥‡à¤œà¤¼à¥€" : "English"))
+        ? (editLang === "hi" ? t("Hindi", lang) : t("English", lang))
         : (editLang === "hi" ? t("Hindi (Editable)", lang) : t("English (Editable)", lang))
     }>
       {fields.length === 0 ? noFields : fields.map(field => (
@@ -526,7 +527,7 @@ function DeleteModal({ count = 1, onConfirm, onClose, deleting }) {
           <div style={{ width: 56, height: 56, borderRadius: "50%", background: "#fef2f2", border: "2px solid #fecaca", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px", color: "#dc2626" }}><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg></div>
           <div style={{ fontSize: 16, fontWeight: 700, color: "#1e293b", marginBottom: 8 }}>
             {isBulk
-              ? (lang === "hi" ? `${count} à¤°à¤¿à¤•à¥‰à¤°à¥à¤¡ à¤¹à¤Ÿà¤¾à¤à¤‚?` : `Delete ${count} Records?`)
+              ? (lang === "hi" ? `${count} रिकॉर्ड हटाएं?` : `Delete ${count} Records?`)
               : t("Delete Record?", lang)}
           </div>
           <div style={{ fontSize: 13, color: "#64748b", marginBottom: 8, lineHeight: 1.6 }}>
@@ -544,7 +545,7 @@ function DeleteModal({ count = 1, onConfirm, onClose, deleting }) {
           <div style={{ display: "flex", gap: 10, justifyContent: "center", marginTop: isBulk ? 0 : 20 }}>
             <Button variant="secondary" onClick={onClose} disabled={deleting}>{t("Cancel", lang)}</Button>
             <Button variant="danger" onClick={onConfirm} loading={deleting} disabled={deleting}>
-              {deleting ? t("Deletingâ€¦", lang) : isBulk ? (lang === "hi" ? `${count} à¤°à¤¿à¤•à¥‰à¤°à¥à¤¡ à¤¹à¤Ÿà¤¾à¤à¤‚` : `Delete ${count} Records`) : t("Delete Record", lang)}
+              {deleting ? t("Deleting…", lang) : isBulk ? (lang === "hi" ? `${count} रिकॉर्ड हटाएं` : `Delete ${count} Records`) : t("Delete Record", lang)}
             </Button>
           </div>
         </div>
@@ -1190,13 +1191,15 @@ export default function FormDataPage() {
   const canAssign =
     (user?.roles || []).some((r) => r.name === "department_admin" || r.name === "institute_admin") ||
     (user?.noaActiveYears?.length || 0) > 0;
-  const [assignForm, setAssignForm] = useState(null);
+  const pgStudentScope = (user?.roles || []).some((r) => r.name === "institute_admin") ? "institute" : "department";
+  const [assignForm, setAssignForm]               = useState(null);
+  const [assignPgStudentForm, setAssignPgStudentForm] = useState(null);
 
   /* Part 4 â€” a "pure" contributor (worker role) gets a work-focused view: the
      framing is "your assigned work", not admin/management. NOA-capable contributors
      are assigners, so they keep the standard view (canAssign covers that). */
   const isContributorOnly =
-    (user?.roles || []).some((r) => r.name === "contributor") &&
+    (user?.roles || []).some((r) => r.name === "contributor" || r.name === "pg_student") &&
     !(user?.roles || []).some((r) => ["super_admin", "institute_admin", "department_admin", "nodal_officer", "hospital_admin", "finance_admin"].includes(r.name)) &&
     !((user?.noaActiveYears?.length || 0) > 0);
 
@@ -1627,6 +1630,17 @@ export default function FormDataPage() {
             showToast={showToast}
           />
         )}
+        {assignPgStudentForm && (
+          <AssignPgStudentsModal
+            form={assignPgStudentForm}
+            year={selectedYear}
+            scope={pgStudentScope}
+            formType="institute"
+            onClose={() => setAssignPgStudentForm(null)}
+            onAssigned={loadForms}
+            showToast={showToast}
+          />
+        )}
 
         <PageHeader
           breadcrumb={[t("Home", lang), t(moduleLabel, lang), t("Forms & Data Entry", lang)]}
@@ -1723,10 +1737,11 @@ export default function FormDataPage() {
               },
             },
             {
-              key: "actions", header: "", align: "right", width: 140,
+              key: "actions", header: "", align: "right", width: 180,
               render: (form) => (
                 <div style={{ display: "inline-flex", alignItems: "center", gap: 6, justifyContent: "flex-end" }}>
-                  {canAssign && <Button variant="secondary" iconOnly title={t("Assign contributors", lang)} icon={<UserPlus size={16} strokeWidth={1.9} />} onClick={(e) => { e.stopPropagation(); setAssignForm(form); }} />}
+                  {canAssign && <Button variant="secondary" iconOnly title={t("Assign Contributors", lang)} icon={<UserPlus size={16} strokeWidth={1.9} />} onClick={(e) => { e.stopPropagation(); setAssignForm(form); }} />}
+                  {canAssign && <Button variant="secondary" iconOnly title={t("Assign PG Students", lang)} icon={<GraduationCap size={16} strokeWidth={1.9} />} onClick={(e) => { e.stopPropagation(); setAssignPgStudentForm(form); }} />}
                   <Button variant="secondary" iconOnly title={t("Open", lang)} icon={<Eye size={16} strokeWidth={1.9} />} onClick={(e) => { e.stopPropagation(); openForm(form); }} />
                 </div>
               ),
@@ -2005,8 +2020,8 @@ export default function FormDataPage() {
                       {f.label?.[lang] || f.label?.en || displayCol(f.column_name)}
                     </th>
                   ))}
-                  <th style={thStyle}>{lang === "hi" ? "à¤¬à¤¨à¤¾à¤¯à¤¾ à¤—à¤¯à¤¾" : "Created"}</th>
-                  {canEdit && <th style={{ ...thStyle, textAlign: "right" }}>{lang === "hi" ? "à¤•à¥à¤°à¤¿à¤¯à¤¾à¤à¤" : "Actions"}</th>}
+                  <th style={thStyle}>{t("Created", lang)}</th>
+                  {canEdit && <th style={{ ...thStyle, textAlign: "right" }}>{t("Actions", lang)}</th>}
                 </tr>
               </thead>
               <tbody>
@@ -2124,9 +2139,9 @@ export default function FormDataPage() {
           {totalPages > 1 && (
             <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
               <button onClick={() => { setCurrentPage(1); setSelectedIds(new Set()); }} disabled={currentPage === 1} title="First page"
-                style={{ ...pageBtn, opacity: currentPage === 1 ? 0.38 : 1, cursor: currentPage === 1 ? "default" : "pointer" }}>Â«</button>
+                style={{ ...pageBtn, opacity: currentPage === 1 ? 0.38 : 1, cursor: currentPage === 1 ? "default" : "pointer" }}>«</button>
               <button onClick={() => { setCurrentPage(p => Math.max(1, p - 1)); setSelectedIds(new Set()); }} disabled={currentPage === 1}
-                style={{ ...pageBtn, opacity: currentPage === 1 ? 0.38 : 1, cursor: currentPage === 1 ? "default" : "pointer" }}>{lang === "hi" ? "â€¹ à¤ªà¤¿à¤›à¤²à¤¾" : "â€¹ Prev"}</button>
+                style={{ ...pageBtn, opacity: currentPage === 1 ? 0.38 : 1, cursor: currentPage === 1 ? "default" : "pointer" }}>{t("← Prev", lang)}</button>
               {Array.from({ length: totalPages }, (_, i) => i + 1)
                 .filter(p => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 1)
                 .reduce((acc, p, idx, arr) => { if (idx > 0 && p - arr[idx - 1] > 1) acc.push("ellipsis-" + p); acc.push(p); return acc; }, [])
@@ -2141,9 +2156,9 @@ export default function FormDataPage() {
                   )
                 )}
               <button onClick={() => { setCurrentPage(p => Math.min(totalPages, p + 1)); setSelectedIds(new Set()); }} disabled={currentPage === totalPages}
-                style={{ ...pageBtn, opacity: currentPage === totalPages ? 0.38 : 1, cursor: currentPage === totalPages ? "default" : "pointer" }}>{lang === "hi" ? "à¤…à¤—à¤²à¤¾ â€º" : "Next â€º"}</button>
+                style={{ ...pageBtn, opacity: currentPage === totalPages ? 0.38 : 1, cursor: currentPage === totalPages ? "default" : "pointer" }}>{t("Next →", lang)}</button>
               <button onClick={() => { setCurrentPage(totalPages); setSelectedIds(new Set()); }} disabled={currentPage === totalPages} title="Last page"
-                style={{ ...pageBtn, opacity: currentPage === totalPages ? 0.38 : 1, cursor: currentPage === totalPages ? "default" : "pointer" }}>Â»</button>
+                style={{ ...pageBtn, opacity: currentPage === totalPages ? 0.38 : 1, cursor: currentPage === totalPages ? "default" : "pointer" }}>»</button>
             </div>
           )}
         </div>

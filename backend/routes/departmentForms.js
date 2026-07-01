@@ -25,6 +25,7 @@ const { getDepartmentState, DEPARTMENT_INACTIVE_MESSAGE } = require("../services
 const { assertDomainOwnerAccess, resolveUserDomain } = require("../services/domainService");
 const { ensureRecordsIndexes } = require("../services/recordsIndexService");
 const { translateSentence } = require("../services/translationService");
+const { getAssignedFormIds, isPgStudentOnly } = require("./formAssignments");
 
 const router = express.Router();
 router.use(verifyToken);
@@ -81,7 +82,7 @@ const WRITE_ROLES = ["department_admin", "nodal_officer"];
 /* Department forms are ALWAYS restricted to this fixed set of roles. The per-form
    "Roles with access" picker was removed — every form is accessible only to
    Contributors, Department Nodal Officers, and Department Admins. */
-const FIXED_FORM_ROLES = ["department_admin", "nodal_officer", "contributor"];
+const FIXED_FORM_ROLES = ["department_admin", "nodal_officer", "contributor", "pg_student"];
 
 /* Selected academic-year (start year int): ?year → X-Academic-Year header →
    body.year → institution's active year (inherited) → current calendar year.
@@ -359,13 +360,23 @@ router.get("/assigned", async (req, res) => {
       [departmentId, year, institutionId]
     );
 
-    const forms = rows.filter((f) => {
+    // PG students: build their assignment set FIRST so we can bypass department_form_roles.
+    // An explicit form_assignment entry (from dept admin assigning the student) grants access
+    // regardless of what's in department_form_roles — the two systems are orthogonal.
+    let pgAssignedIds = null;
+    if (isPgStudentOnly(req)) {
+      pgAssignedIds = new Set(await getAssignedFormIds(pool, req.user.userId, year));
+    }
+
+    let forms = rows.filter((f) => {
       // L-3 — domain isolation: a scoped user only sees forms whose creator shares
       // their domain (Academic/Hospital/Finance kept independent). Admins see all.
       if (viewerDomain != null && (f.creator_domain || "academic") !== viewerDomain) return false;
       const hasMapping = f.year_status != null;
       const isArchived = hasMapping ? f.year_archived === true : (f.academic_year !== year);
       if (isArchived) return false;                 // non-admins see only active forms
+      // PG students: explicit assignment overrides any role restriction on the form.
+      if (pgAssignedIds !== null) return pgAssignedIds.has(String(f.id));
       const allowed = f.roles || [];
       if (isManager || allowed.length === 0) return true;
       return userRoles.some((r) => allowed.includes(r));

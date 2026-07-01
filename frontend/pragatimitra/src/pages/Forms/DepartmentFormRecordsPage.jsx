@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { Plus, Pencil, Trash2, Lock, FilePlus, Download, FileText as FileCsv, FileSpreadsheet, CalendarClock } from "lucide-react";
+import { Plus, Pencil, Trash2, Lock, FilePlus, Download, FileText as FileCsv, FileSpreadsheet, CalendarClock, Upload } from "lucide-react";
+import DeptFormImportModal from "./DeptFormImportModal";
 import { useApi } from "../../hooks/useApi";
 import { useAuth } from "../../store/AuthContext";
 import { Toast, isAuthError } from "../../components/shared/formUtils";
@@ -42,12 +43,12 @@ export default function DepartmentFormRecordsPage({ form, year = null, onBack })
   const { apiFetch } = useApi();
   const { accessToken, user } = useAuth();
   const { lang } = useLanguage();
-  // Only contributors may enter/modify data. Admins & nodal officers (who reach
-  // this page via "View records") get a read-only view.
+  // Only contributors and PG students may enter/modify data. Admins & nodal officers
+  // (who reach this page via "View records") get a read-only view.
   const roleNames = (user?.roles || []).map((r) => (typeof r === "string" ? r : r?.name));
   // TEMP (testing): contributor role not provisioned yet — allow department_admin
   // to enter data too. Remove "department_admin" once contributors exist.
-  const canEnterData = roleNames.includes("contributor") || roleNames.includes("department_admin");
+  const canEnterData = roleNames.includes("contributor") || roleNames.includes("department_admin") || roleNames.includes("pg_student");
   const yq = year != null ? `&year=${year}` : "";
   const [records, setRecords] = useState([]);
   const [page, setPage] = useState(1);
@@ -60,6 +61,7 @@ export default function DepartmentFormRecordsPage({ form, year = null, onBack })
   const [editTarget, setEditTarget] = useState(null); // null = list · "new" = add · record = edit
   const [deleteId, setDeleteId] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  const [showImport, setShowImport] = useState(false);
   const [acquiringLock, setAcquiringLock] = useState(null); // record id currently being locked
   const lockedRecordRef = useRef(null); // id of the record whose lock we currently hold
   const lockUrlRef = useRef(null);       // full path for the DELETE lock endpoint currently held
@@ -321,6 +323,17 @@ export default function DepartmentFormRecordsPage({ form, year = null, onBack })
           <div style={{ fontSize: 13, color: color.muted, lineHeight: 1.6 }}>{t("This record will be permanently deleted. This cannot be undone.", lang)}</div>
         </Modal>
       )}
+      {showImport && (
+        <DeptFormImportModal
+          form={form}
+          year={year}
+          onClose={() => setShowImport(false)}
+          onSuccess={(count) => {
+            showToast(`${count} record${count !== 1 ? "s" : ""} imported successfully.`);
+            load();
+          }}
+        />
+      )}
 
       <PageHeader
         breadcrumb={[t("Home", lang), t("Department", lang), { label: t("Department Forms", lang), onClick: onBack }, titleOf(form.form_name)]}
@@ -334,6 +347,11 @@ export default function DepartmentFormRecordsPage({ form, year = null, onBack })
               <MenuItem icon={<FileCsv size={16} strokeWidth={STROKE} />} onClick={() => downloadDeptExport(form.id, "csv", accessToken, year, lang)}>{t("Download CSV", lang)}</MenuItem>
               <MenuItem icon={<FileSpreadsheet size={16} strokeWidth={STROKE} />} onClick={() => downloadDeptExport(form.id, "xlsx", accessToken, year, lang)}>{t("Download Excel", lang)}</MenuItem>
             </Dropdown>
+            {canEnterData && !readOnly && (
+              <Button variant="secondary" icon={<Upload size={18} strokeWidth={STROKE} />} onClick={() => setShowImport(true)}>
+                {t("Import", lang)}
+              </Button>
+            )}
             {canEnterData && (
               <Button
                 variant="primary" icon={<Plus size={18} strokeWidth={STROKE} />} disabled={readOnly}

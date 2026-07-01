@@ -34,7 +34,7 @@ const ROLE_COLORS = {
 /* Roles an institute admin may assign — super_admin and institute_admin
    are intentionally absent; backend enforces this independently. */
 const INST_ADMIN_ALLOWED_ROLES = new Set([
-  "department_admin", "contributor", "finance_admin", "hospital_admin",
+  "department_admin", "contributor", "pg_student", "finance_admin", "hospital_admin",
   "nodal_officer", "reviewer", "publication_cell", "directors_office",
 ]);
 

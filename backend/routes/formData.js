@@ -12,7 +12,7 @@ const { assertEquivalent } = require("../services/equivalenceGuard");
 const { assertFormDomainAccess } = require("../services/domainService");
 const { resolveEffectiveDepartment, getDepartmentWriteBlock } = require("../services/departmentContext");
 const { ensureSchemaExists } = require("../services/schemaPropagationService");
-const { isFormAssigned, isContributorOnly } = require("./formAssignments");
+const { isFormAssigned, isContributorOnly, isPgStudentOnly } = require("./formAssignments");
 const LOCK_TTL_MINUTES = 15;
 async function acquireLock(pool, { recordId, formType, formId, userId, userName, ttlMinutes = LOCK_TTL_MINUTES }) {
   const { rowCount } = await pool.query(
@@ -154,6 +154,14 @@ router.param("formName", async (req, res, next, formName) => {
     // Contributor: may only touch forms ASSIGNED to them for the selected year.
     if (isContributorOnly(req)) {
       // Fall back to the institution's active/latest DB year — never the calendar year.
+      const year = Number(req.query.year) || Number(req.get("X-Academic-Year")) || Number(req.body?.year)
+        || (Number.isInteger(req.institutionAcademicYear) ? req.institutionAcademicYear : null);
+      const ok = year != null && await isFormAssigned(pool, req.user.userId, formName, year);
+      if (!ok) return res.status(403).json({ success: false, message: "This form is not assigned to you." });
+    }
+
+    // PG Student: same assignment gate as contributor.
+    if (isPgStudentOnly(req)) {
       const year = Number(req.query.year) || Number(req.get("X-Academic-Year")) || Number(req.body?.year)
         || (Number.isInteger(req.institutionAcademicYear) ? req.institutionAcademicYear : null);
       const ok = year != null && await isFormAssigned(pool, req.user.userId, formName, year);

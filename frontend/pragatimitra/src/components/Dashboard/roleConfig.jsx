@@ -78,6 +78,9 @@ import BalanceSheetPage    from "../../pages/Roles/financeofficer/BalanceSheetPa
 /* ── Contributor & Domain-shared page imports ───────────────── */
 import ContributorDashboardPage from "../../pages/Roles/contributor/ContributorDashboardPage";
 
+/* ── PG Student page imports ────────────────────────────────── */
+import PgStudentDashboardPage from "../../pages/Roles/pgstudent/PgStudentDashboardPage";
+
 
 /* ── Re-export so existing imports of PlaceholderPage from this file still work ── */
 export { default as PlaceholderPage } from "../shared/PlaceholderPage";
@@ -634,6 +637,36 @@ export const ROLE_CONFIG = {
     },
     defaultPage: "c-overview",
     user: { name: "Contributor", initials: "CT", org: "PragatiMitra" },
+  },
+
+  /* ── PG STUDENT ─────────────────────────────────────────────────
+     Consumer role. Sees only forms ASSIGNED to them for the selected
+     academic year. No Form Management, KPI, Reports, or admin controls.
+     Kept fully independent of the contributor config so future changes
+     to one role do not affect the other. */
+  pg_student: {
+    navItems: [
+      {
+        group: "",
+        items: [
+          { id: "pgs-overview", label: "Dashboard", icon: "LayoutDashboard", permission: null, slug: "overview" },
+        ],
+      },
+      {
+        group: "Forms",
+        items: [
+          { id: "pgs-form-data",   label: "Forms & Data Entry", icon: "ClipboardList", permission: null, slug: "form-data",       subRoutes: FORM_DATA_SUB },
+          { id: "pgs-dept-forms",  label: "Department Forms",   icon: "FileStack",     permission: null, slug: "form-management", subRoutes: FORM_FILL_SUB },
+        ],
+      },
+    ],
+    pages: {
+      "pgs-overview":   <PgStudentDashboardPage />,
+      "pgs-form-data":  <FormDataPage />,
+      "pgs-dept-forms": <DepartmentFormFillPage />,
+    },
+    defaultPage: "pgs-overview",
+    user: { name: "PG Student", initials: "PG", org: "PragatiMitra" },
   },
 
   /* ── REVIEWER ────────────────────────────────────────────────── */

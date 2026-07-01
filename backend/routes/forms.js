@@ -11,7 +11,7 @@ const { resolveUserDomain, resolveListFilterDomain, assertFormDomainAccess, norm
 const { enqueueEmail } = require("../services/mailService");
 const { resolveEffectiveDepartment } = require("../services/departmentContext");
 const { ensureRecordsIndexes } = require("../services/recordsIndexService");
-const { getAssignedFormIds, isContributorOnly } = require("./formAssignments");
+const { getAssignedFormIds, isContributorOnly, isPgStudentOnly } = require("./formAssignments");
 
 /* Academic-year lock guard for form-management writes. Checks the SELECTED year
    (X-Academic-Year header), falling back to the institution's active/latest year
@@ -187,6 +187,24 @@ router.get("/institution-forms", async (req, res) => {
         );
         const contribDomain = uRows[0]?.d || "academic";
         rows = rows.filter((f) => (f.form_domain || "academic") === contribDomain);
+      }
+      const headerYear = Number(req.get("X-Academic-Year"));
+      const y = req.query.year != null ? Number(req.query.year)
+              : (Number.isInteger(headerYear) && headerYear > 0 ? headerYear
+                : await resolveOperatingYear(pool, institutionId));
+      const assignedIds = new Set(await getAssignedFormIds(pool, req.user.userId, y));
+      rows = rows.filter((f) => assignedIds.has(String(f.id)));
+    }
+
+    /* ── PG Student visibility: same assignment-scoped pattern as contributor. */
+    if (isPgStudentOnly(req)) {
+      if (!filterDomain) {
+        const { rows: uRows } = await pool.query(
+          "SELECT COALESCE(role_domain, 'academic') AS d FROM users WHERE id = $1",
+          [req.user.userId]
+        );
+        const pgDomain = uRows[0]?.d || "academic";
+        rows = rows.filter((f) => (f.form_domain || "academic") === pgDomain);
       }
       const headerYear = Number(req.get("X-Academic-Year"));
       const y = req.query.year != null ? Number(req.query.year)

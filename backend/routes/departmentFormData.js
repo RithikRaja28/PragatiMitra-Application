@@ -17,6 +17,8 @@
 
 const express = require("express");
 const ExcelJS = require("exceljs");
+const multer  = require("multer");
+const XLSX    = require("xlsx");
 const { verifyToken } = require("../middleware/auth");
 const logger = require("../utils/logger");
 const { writeAuditLog } = require("../utils/audit");
@@ -127,6 +129,15 @@ async function getPhysicalCols(pool, tableName) {
 function dbCol(col) { return col.trim().toLowerCase().replace(/\s+/g, "_"); }
 function validSlug(s) { return /^[a-z][a-z0-9_]*$/.test(s); }
 
+const handleImportUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const ok = /\.(csv|xlsx|xls)$/i.test(file.originalname);
+    cb(ok ? null : new Error("Only CSV and Excel files are allowed."), ok);
+  },
+}).single("file");
+
 /* Data entry (create / edit / delete records) is restricted to CONTRIBUTORS.
    Department Admins and Nodal Officers configure forms but cannot enter data —
    they may only view/export records. Returns true if the caller may write;
@@ -134,7 +145,7 @@ function validSlug(s) { return /^[a-z][a-z0-9_]*$/.test(s); }
 // TEMP (testing): the contributor role is not provisioned yet, so department_admin
 // is allowed to enter data for now. Remove "department_admin" below once real
 // contributors exist, to restore contributor-only data entry.
-const DATA_ENTRY_ROLES = ["contributor", "department_admin"];
+const DATA_ENTRY_ROLES = ["contributor", "department_admin", "pg_student"];
 function requireContributor(req, res) {
   if ((req.user.roles || []).some((r) => DATA_ENTRY_ROLES.includes(r))) return true;
   res.status(403).json({ success: false, message: "Only contributors can enter or modify department form data." });
@@ -192,13 +203,23 @@ async function loadForm(pool, req, id) {
   const userRoles = req.user.roles || [];
   const isManager = userRoles.includes("department_admin") || userRoles.includes("super_admin");
   if (!isManager) {
-    const { rows: rr } = await pool.query(
-      "SELECT role_name FROM department_form_roles WHERE department_form_id = $1",
-      [id]
-    );
-    const allowed = rr.map((r) => r.role_name);
-    if (allowed.length > 0 && !userRoles.some((r) => allowed.includes(r))) {
-      return { error: "You don't have access to this form." };
+    // PG students access dept forms via explicit form_assignments, not via department_form_roles.
+    // If a dept admin assigned this PG student to the form, allow access regardless of role restrictions.
+    if (userRoles.includes("pg_student")) {
+      const { rows: ar } = await pool.query(
+        "SELECT 1 FROM form_assignments WHERE form_id = $1 AND assigned_to = $2 AND role = 'pg_student' AND is_active = true",
+        [id, req.user.userId]
+      );
+      if (!ar.length) return { error: "You don't have access to this form." };
+    } else {
+      const { rows: rr } = await pool.query(
+        "SELECT role_name FROM department_form_roles WHERE department_form_id = $1",
+        [id]
+      );
+      const allowed = rr.map((r) => r.role_name);
+      if (allowed.length > 0 && !userRoles.some((r) => allowed.includes(r))) {
+        return { error: "You don't have access to this form." };
+      }
     }
   }
 
@@ -899,6 +920,166 @@ router.delete("/:id/records/:recordId", async (req, res) => {
   } catch (err) {
     logger.error("DELETE /api/department-form-data/:id/records/:recordId", { stack: err.stack });
     return res.status(500).json({ success: false, message: "Failed to delete record." });
+  }
+});
+
+/* ─────────────────────────────────────────────────────────────────────
+   GET /api/department-form-data/:id/import/sample?format=csv|xlsx
+   Returns a header-only sample file with schema column names.
+───────────────────────────────────────────────────────────────────── */
+router.get("/:id/import/sample", async (req, res) => {
+  const pool = req.app.locals.pool;
+  const { format = "csv" } = req.query;
+  try {
+    const { form, error } = await loadForm(pool, req, req.params.id);
+    if (error) return res.status(404).json({ success: false, message: error });
+    const year = resolveYear(req);
+    const effectiveSchema = await loadEffectiveSchema(pool, form, year);
+    const fields = activeFields(effectiveSchema);
+    const headers = fields.map((f) => f.label?.en || f.column_name.replace(/_/g, " "));
+
+    const baseName = `${form.form_name}_import_sample`;
+
+    if (format === "xlsx") {
+      const wb = new ExcelJS.Workbook();
+      const ws = wb.addWorksheet("Import");
+      ws.addRow(headers);
+      ws.getRow(1).font = { bold: true };
+      res.setHeader("Content-Disposition", `attachment; filename="${baseName}.xlsx"`);
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      await wb.xlsx.write(res);
+      return res.end();
+    }
+
+    const esc = (v) => `"${String(v).replace(/"/g, '""')}"`;
+    const csv = "﻿" + headers.map(esc).join(",") + "\r\n";
+    res.setHeader("Content-Disposition", `attachment; filename="${baseName}.csv"`);
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    return res.send(csv);
+  } catch (err) {
+    logger.error("GET /api/department-form-data/:id/import/sample", { stack: err.stack });
+    return res.status(500).json({ success: false, message: "Failed to generate sample file." });
+  }
+});
+
+/* ─────────────────────────────────────────────────────────────────────
+   POST /api/department-form-data/:id/import   multipart: file
+   Parses uploaded CSV/XLSX and bulk-inserts records.
+───────────────────────────────────────────────────────────────────── */
+router.post("/:id/import", (req, res, next) => {
+  handleImportUpload(req, res, (err) => {
+    if (err) return res.status(400).json({ success: false, message: err.message });
+    next();
+  });
+}, async (req, res) => {
+  const pool = req.app.locals.pool;
+  if (!requireContributor(req, res)) return;
+  if (!req.file) return res.status(400).json({ success: false, message: "No file uploaded." });
+
+  try {
+    const { form, departmentId, institutionId, error } = await loadForm(pool, req, req.params.id);
+    if (error) return res.status(404).json({ success: false, message: error });
+
+    const year = resolveYear(req);
+    const lock = await deptLockBlock(pool, form, year);
+    if (lock.locked) return res.status(403).json({ success: false, message: lock.message });
+
+    /* Parse file */
+    let wb;
+    const isCsv = /\.(csv)$/i.test(req.file.originalname);
+    if (isCsv) {
+      const text = req.file.buffer.toString("utf8");
+      wb = XLSX.read(text, { type: "string" });
+    } else {
+      wb = XLSX.read(req.file.buffer, { type: "buffer" });
+    }
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    if (!ws || !ws["!ref"]) return res.status(400).json({ success: false, message: "File is empty." });
+
+    const range = XLSX.utils.decode_range(ws["!ref"]);
+    if (range.e.r > 10000) {
+      return res.status(400).json({ success: false, message: "File exceeds 10,000 row limit. Please split and re-import." });
+    }
+
+    const fileRows = XLSX.utils.sheet_to_json(ws, { defval: "" });
+    if (!fileRows.length) return res.status(400).json({ success: false, message: "File contains no data rows." });
+
+    /* Build column map: file header → schema column name (case-insensitive) */
+    const effectiveSchema = await loadEffectiveSchema(pool, form, year);
+    const fields = activeFields(effectiveSchema);
+    const table = deptRecordsTable(form.department_id, form.form_name);
+    const physicalCols = await getPhysicalCols(pool, table);
+
+    const normalize = (s) => String(s).trim().toLowerCase().replace(/\s+/g, "_");
+    const headerMap = {};
+    for (const f of fields) {
+      const labelKey = normalize(f.label?.en || f.column_name.replace(/_/g, " "));
+      const colKey   = normalize(f.column_name);
+      headerMap[labelKey] = dbCol(f.column_name);
+      headerMap[colKey]   = dbCol(f.column_name);
+    }
+
+    const fileHeaders = Object.keys(fileRows[0]);
+    const mappedCols = fileHeaders.map((h) => ({ fileHeader: h, dbColumn: headerMap[normalize(h)] || null }));
+    const unknownHeaders = mappedCols.filter((m) => !m.dbColumn).map((m) => m.fileHeader);
+
+    const baseFieldCols = fields.map((f) => dbCol(f.column_name)).filter((c) => physicalCols.has(c));
+    const extraFieldCols = fields.map((f) => dbCol(f.column_name)).filter((c) => !physicalCols.has(c));
+    const createdBy = req.user.userId || null;
+
+    let inserted = 0;
+    const errors = [];
+
+    for (let i = 0; i < fileRows.length; i++) {
+      const row = fileRows[i];
+      try {
+        /* Build data object from file row */
+        const data = {};
+        for (const { fileHeader, dbColumn } of mappedCols) {
+          if (dbColumn) data[dbColumn] = row[fileHeader] === "" ? null : row[fileHeader];
+        }
+
+        const customFieldsJson = extraFieldCols.length > 0
+          ? JSON.stringify(Object.fromEntries(extraFieldCols.map((c) => [c, data[c] ?? null])))
+          : null;
+
+        const stdCols = ["form_name", "department_id", "institution_id", "academic_year", "role_name", "schema_id", "language", "created_by", "custom_fields"];
+        const stdVals = [form.form_name, departmentId, institutionId, year, null, form.id, "en", createdBy, customFieldsJson];
+        const allCols = [...stdCols, ...baseFieldCols.map(quoteIdent)];
+        const allVals = [...stdVals, ...baseFieldCols.map((c) => data[c] ?? null)];
+        const ph = allVals.map((_, idx) => `$${idx + 1}`).join(", ");
+
+        await pool.query(
+          `INSERT INTO ${table} (${allCols.join(", ")}) VALUES (${ph})`,
+          allVals
+        );
+        inserted++;
+      } catch (rowErr) {
+        errors.push({ row: i + 2, error: rowErr.message });
+      }
+    }
+
+    if (inserted > 0) {
+      await writeAuditLog(req, {
+        actionType: "DEPARTMENT_FORM_BULK_IMPORT",
+        entityType: "department_form_record",
+        entityId: form.id,
+        newValue: { form_name: form.form_name, form_id: form.id, academic_year: year, inserted },
+        message: `${inserted} record(s) imported into department form "${form.form_name}"`,
+      }).catch(() => {});
+    }
+
+    return res.json({
+      success: true,
+      inserted,
+      failed: errors.length,
+      errors: errors.slice(0, 20),
+      unknownHeaders: unknownHeaders.length ? unknownHeaders : undefined,
+      message: `${inserted} record(s) imported successfully${errors.length ? `, ${errors.length} failed` : ""}.`,
+    });
+  } catch (err) {
+    logger.error("POST /api/department-form-data/:id/import", { stack: err.stack });
+    return res.status(500).json({ success: false, message: "Import failed: " + err.message });
   }
 });
 
