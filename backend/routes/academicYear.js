@@ -1,0 +1,936 @@
+"use strict";
+
+/**
+ * routes/academicYear.js  →  mounted at /api/academic-years
+ * ─────────────────────────────────────────────────────────────
+ * Academic-Year-aware form lifecycle management (Phase 1).
+ *
+ * Status model (per institution + academic year), stored in
+ * academic_year_form_config:
+ *   active   → form id in active_forms_json
+ *   archived → form id in archived_forms_json
+ *   disabled → form id in disabled (jsonb array)
+ *
+ * Open / Close (submission gating) is NOT duplicated here — it reuses the
+ * existing form_lock_config (locked = Closed). The settings UI calls the
+ * existing /api/forms/:formName/lock|unlock endpoints for that.
+ *
+ * Shared forms (table_list.share_table = true): when a form's lifecycle is set
+ * for a year, the same classification is propagated to every linked institution
+ * (table_list.institute_access) for the same academic year. Forms are never
+ * duplicated — only their id is referenced.
+ */
+
+const express = require("express");
+const { verifyToken, requireRole } = require("../middleware/auth");
+const logger = require("../utils/logger");
+const { formatAcademicYear, parseStartYear, ensureFormArchivedIfUnclassified, getInstitutionStartYears } = require("../services/academicYearService");
+const { ensureSchemaExists } = require("../services/schemaPropagationService");
+const { enqueueEmail } = require("../services/mailService");
+const { writeAuditLog } = require("../utils/audit");
+
+const router = express.Router();
+router.use(verifyToken);
+
+const MANAGE_ROLES = ["super_admin", "institute_admin"];
+
+/* ── institution scope (same rule as forms.js) ── */
+async function resolveInstitutionId(pool, req) {
+  const isSuperAdmin = (req.user.roles || []).includes("super_admin");
+  if (isSuperAdmin) return req.body.institution_id || req.query.institution_id || null;
+  const { rows } = await pool.query(
+    "SELECT institution_id FROM users WHERE id = $1",
+    [req.user.userId]
+  );
+  return rows[0]?.institution_id || null;
+}
+
+/* All forms accessible to an institution (same access filter as institution-forms). */
+async function getInstitutionForms(pool, institutionId) {
+  const { rows } = await pool.query(
+    `SELECT tl.id, tl.form_name, COALESCE(tl.share_table, false) AS share_table,
+            COALESCE(tl.institute_access, '{}'::uuid[]) AS institute_access
+     FROM table_list tl
+     WHERE $1::uuid = ANY(COALESCE(tl.institute_access, '{}'::uuid[]))
+     ORDER BY tl.form_name`,
+    [institutionId]
+  );
+  return rows;
+}
+
+/* Read the form-config row for (institution, year); returns null if none. */
+async function getConfig(pool, institutionId, academicYear) {
+  const { rows } = await pool.query(
+    `SELECT * FROM academic_year_form_config
+     WHERE institution_id = $1 AND academic_year = $2`,
+    [institutionId, academicYear]
+  );
+  return rows[0] || null;
+}
+
+/* Normalise a jsonb id list to an array of strings. */
+function idList(json) {
+  if (!Array.isArray(json)) return [];
+  return json.map((x) => String(x));
+}
+
+/* ─────────────────────────────────────────────────────────────────────
+   GET /api/academic-years
+   List every academic year the institution has created (newest first),
+   each with its active flag.
+─────────────────────────────────────────────────────────────────────── */
+router.get("/", async (req, res) => {
+  const pool = req.app.locals.pool;
+  try {
+    const institutionId = await resolveInstitutionId(pool, req);
+    if (!institutionId) return res.json({ success: true, years: [] });
+
+    const { rows } = await pool.query(
+      `SELECT id, academic_year, start_year, active,
+              COALESCE(is_locked, false) AS is_locked,
+              COALESCE(is_archived, false) AS is_archived,
+              locked_at, archived_at, created_at
+       FROM academic_year_master
+       WHERE institution_id = $1
+       ORDER BY start_year DESC`,
+      [institutionId]
+    );
+    return res.json({ success: true, years: rows });
+  } catch (err) {
+    logger.error("GET /api/academic-years", { stack: err.stack });
+    return res.status(500).json({ success: false, message: "Failed to load academic years." });
+  }
+});
+
+/* ─────────────────────────────────────────────────────────────────────
+   GET /api/academic-years/current
+   The institution's currently-active academic year (or null).
+─────────────────────────────────────────────────────────────────────── */
+router.get("/current", async (req, res) => {
+  const pool = req.app.locals.pool;
+  try {
+    const institutionId = await resolveInstitutionId(pool, req);
+    if (!institutionId) return res.json({ success: true, current: null });
+
+    const { rows } = await pool.query(
+      `SELECT id, academic_year, start_year, active,
+              COALESCE(is_locked, false) AS is_locked,
+              COALESCE(is_archived, false) AS is_archived,
+              locked_at, archived_at, created_at
+       FROM academic_year_master
+       WHERE institution_id = $1 AND active = true
+       ORDER BY start_year DESC
+       LIMIT 1`,
+      [institutionId]
+    );
+    return res.json({ success: true, current: rows[0] || null });
+  } catch (err) {
+    logger.error("GET /api/academic-years/current", { stack: err.stack });
+    return res.status(500).json({ success: false, message: "Failed to load current year." });
+  }
+});
+
+/* ─────────────────────────────────────────────────────────────────────
+   GET /api/academic-years/preview?startYear=2025
+   Create-new-year review screen. Computes the label ("2025-2026") and loads
+   the PREVIOUS year's form classification so the admin can confirm/adjust:
+     previouslyActive   → checked by default  → active in the new year
+     previouslyArchived → unchecked           → archived in the new year
+   When there is no previous config (first year ever), every accessible form is
+   treated as "previously active".
+─────────────────────────────────────────────────────────────────────── */
+router.get("/preview", requireRole(MANAGE_ROLES), async (req, res) => {
+  const pool = req.app.locals.pool;
+  try {
+    const institutionId = await resolveInstitutionId(pool, req);
+    if (!institutionId)
+      return res.status(400).json({ success: false, message: "Institution ID required." });
+
+    const startYear = Number(req.query.startYear);
+    if (!Number.isInteger(startYear) || startYear < 2000 || startYear > 2100)
+      return res.status(400).json({ success: false, message: "A valid start year is required." });
+
+    const academicYear = formatAcademicYear(startYear);
+
+    const existing = await getConfig(pool, institutionId, academicYear);
+    const alreadyExists = !!existing;
+
+    const prevYear   = formatAcademicYear(startYear - 1);
+    const prevConfig = await getConfig(pool, institutionId, prevYear);
+
+    const forms = await getInstitutionForms(pool, institutionId);
+    const byId  = new Map(forms.map((f) => [String(f.id), f]));
+
+    let activeIds, archivedIds;
+    if (prevConfig) {
+      // Sequential creation (e.g. 2026 → 2027): inherit the immediately
+      // preceding year's classification — the common case.
+      activeIds   = idList(prevConfig.active_forms_json).filter((id) => byId.has(id));
+      archivedIds = idList(prevConfig.archived_forms_json).filter((id) => byId.has(id));
+
+      /* Some accessible forms may be present in NEITHER array (e.g. a shared
+         form distributed to this institution after the previous year's config
+         was last saved). The live forms list (GET /api/forms/institution-forms)
+         defaults such an unclassified form to "archived" unless it has its own
+         exact-year schema row — falling back here too keeps the wizard preview
+         and the forms list in agreement instead of silently dropping the form
+         from both checklists. */
+      const classified = new Set([...activeIds, ...archivedIds]);
+      const unclassified = forms.filter((f) => !classified.has(String(f.id)));
+      if (unclassified.length) {
+        const { rows: schemaRows } = await pool.query(
+          `SELECT DISTINCT form_name FROM custom_field_schemas
+            WHERE institution_id = $1 AND year = $2 AND is_active = true`,
+          [institutionId, startYear - 1]
+        );
+        const hasExactPrevYearSchema = new Set(schemaRows.map((r) => r.form_name));
+        for (const f of unclassified) {
+          (hasExactPrevYearSchema.has(f.form_name) ? activeIds : archivedIds).push(String(f.id));
+        }
+      }
+    } else {
+      const startYears = await getInstitutionStartYears(pool, institutionId);
+      if (startYears.length === 0) {
+        // Genuine first-ever academic year for this institution: no per-year
+        // schema signal exists yet to classify against, so fall back to a
+        // one-time heuristic — own/created forms default active; FOREIGN
+        // shared forms (snapshot-distributed from another institution) default
+        // ARCHIVED so the consumer explicitly opts in (Snapshot ownership
+        // model). "Owned" = a schema row with no provenance (source_institution_id NULL).
+        const { rows: ownedRows } = await pool.query(
+          `SELECT DISTINCT form_name FROM custom_field_schemas
+            WHERE institution_id = $1 AND source_institution_id IS NULL`,
+          [institutionId]
+        );
+        const owned = new Set(ownedRows.map((r) => r.form_name));
+        activeIds = [];
+        archivedIds = [];
+        for (const f of forms) {
+          const foreignShared = f.share_table && !owned.has(f.form_name);
+          (foreignShared ? archivedIds : activeIds).push(String(f.id));
+        }
+      } else {
+        /* The immediately preceding year was SKIPPED (other academic years
+           already exist for this institution — just not startYear-1, e.g. the
+           admin jumps from 2026 straight to 2028). There is no continuity to
+           inherit from, so classify exactly like the form-management module
+           does for a year with no config row: active only if the form has its
+           OWN schema row for THIS EXACT target year, else archived. This is
+           getFormLifecycleStatus's same fallback (hasSchemaThisYear), kept in
+           lock-step so the wizard preview and the forms list never disagree. */
+        const { rows: schemaRows } = await pool.query(
+          `SELECT DISTINCT form_name FROM custom_field_schemas
+            WHERE institution_id = $1 AND year = $2 AND is_active = true`,
+          [institutionId, startYear]
+        );
+        const hasExactYearSchema = new Set(schemaRows.map((r) => r.form_name));
+        activeIds = [];
+        archivedIds = [];
+        for (const f of forms) {
+          (hasExactYearSchema.has(f.form_name) ? activeIds : archivedIds).push(String(f.id));
+        }
+      }
+    }
+
+    const toForm = (id) => {
+      const f = byId.get(id);
+      return f ? { id: String(f.id), form_name: f.form_name, share_table: f.share_table } : null;
+    };
+
+    return res.json({
+      success: true,
+      academicYear,
+      startYear,
+      previousYear: prevConfig ? prevYear : null,
+      alreadyExists,
+      previouslyActive:   activeIds.map(toForm).filter(Boolean),
+      previouslyArchived: archivedIds.map(toForm).filter(Boolean),
+    });
+  } catch (err) {
+    logger.error("GET /api/academic-years/preview", { stack: err.stack });
+    return res.status(500).json({ success: false, message: "Failed to build preview." });
+  }
+});
+
+/* ─────────────────────────────────────────────────────────────────────
+   POST /api/academic-years
+   Body: { startYear, activeFormIds: [], archivedFormIds: [], makeCurrent? }
+   Creates the master row + form-config row for the new year, flags it as the
+   institution's current year, and propagates shared forms to linked
+   institutions for the same academic year.
+─────────────────────────────────────────────────────────────────────── */
+router.post("/", requireRole(MANAGE_ROLES), async (req, res) => {
+  const pool = req.app.locals.pool;
+  const { startYear, activeFormIds = [], archivedFormIds = [], makeCurrent = true } = req.body || {};
+
+  if (!Number.isInteger(Number(startYear)))
+    return res.status(400).json({ success: false, message: "A valid start year is required." });
+
+  const academicYear = formatAcademicYear(Number(startYear));
+  const createdBy = req.user.userId || null;
+
+  const client = await pool.connect();
+  try {
+    const institutionId = await resolveInstitutionId(pool, req);
+    if (!institutionId)
+      return res.status(400).json({ success: false, message: "Institution ID required." });
+
+    // Validate the supplied ids against forms actually accessible to this institution.
+    const forms = await getInstitutionForms(pool, institutionId);
+    const valid = new Set(forms.map((f) => String(f.id)));
+    const active   = [...new Set(activeFormIds.map(String).filter((id) => valid.has(id)))];
+    const archived = [...new Set(archivedFormIds.map(String).filter((id) => valid.has(id) && !active.includes(id)))];
+
+    await client.query("BEGIN");
+
+    // Master row — create (or reuse) and optionally make it current.
+    const { rows: masterRows } = await client.query(
+      `INSERT INTO academic_year_master (institution_id, academic_year, start_year, active, created_by)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (institution_id, academic_year)
+       DO UPDATE SET active = EXCLUDED.active OR academic_year_master.active
+       RETURNING id`,
+      [institutionId, academicYear, Number(startYear), !!makeCurrent, createdBy]
+    );
+
+    if (makeCurrent) {
+      await client.query(
+        `UPDATE academic_year_master SET active = (academic_year = $2)
+         WHERE institution_id = $1`,
+        [institutionId, academicYear]
+      );
+    }
+
+    // Form-config row for this institution + year.
+    await client.query(
+      `INSERT INTO academic_year_form_config
+         (institution_id, academic_year, active_forms_json, archived_forms_json, created_by, updated_at)
+       VALUES ($1, $2, $3::jsonb, $4::jsonb, $5, now())
+       ON CONFLICT (institution_id, academic_year)
+       DO UPDATE SET active_forms_json = EXCLUDED.active_forms_json,
+                     archived_forms_json = EXCLUDED.archived_forms_json,
+                     updated_at = now()`,
+      [institutionId, academicYear, JSON.stringify(active), JSON.stringify(archived), createdBy]
+    );
+
+    // Shared-form propagation: mirror each shared form's classification into the
+    // same academic year for every other linked institution.
+    await propagateSharedForms(client, {
+      forms, active, archived, academicYear, startYear: Number(startYear), createdBy, selfInstitution: institutionId,
+    });
+
+    await client.query("COMMIT");
+
+    await writeAuditLog(req, {
+      actionType: "ACADEMIC_YEAR_CREATED",
+      entityType: "ACADEMIC_YEAR",
+      entityId:   masterRows[0]?.id || null,
+      newValue: {
+        academic_year:  academicYear,
+        start_year:     Number(startYear),
+        active:         !!makeCurrent,
+        active_forms:   active.length,
+        archived_forms: archived.length,
+      },
+      status:  "SUCCESS",
+      message: `Academic year ${academicYear} created with ${active.length} active form(s) and ${archived.length} archived form(s)`,
+      metadata: {
+        institution_id: institutionId,
+        make_current:   !!makeCurrent,
+      },
+    });
+
+    // Enqueue activation emails to all department HODs / Nodal Officers.
+    // Returns immediately; worker delivers each email asynchronously with retry.
+    setImmediate(async () => {
+      try {
+        const { rows: instRows } = await pool.query(
+          `SELECT institution_name FROM institutions WHERE institution_id = $1`,
+          [institutionId]
+        );
+        const institutionName = instRows[0]?.institution_name || "Your Institution";
+
+        const { rows: recipients } = await pool.query(
+          `SELECT DISTINCT u.id, u.email, u.full_name
+           FROM users u
+           JOIN user_roles ur ON ur.user_id = u.id
+           JOIN roles r       ON r.id = ur.role_id
+           WHERE u.institution_id = $1
+             AND u.account_status = 'ACTIVE'
+             AND u.email IS NOT NULL
+             AND r.name IN ('nodal_officer', 'department_admin')`,
+          [institutionId]
+        );
+
+        const loginUrl = process.env.APP_LOGIN_URL || "http://localhost:5173/login";
+
+        await Promise.all(
+          recipients.map((r) =>
+            enqueueEmail(pool, {
+              eventId:         "academic_year_activated",
+              recipientEmail:  r.email,
+              recipientUserId: r.id,
+              payload: {
+                full_name:          r.full_name,
+                institution_name:   institutionName,
+                academic_year:      academicYear,
+                active_forms_count: active.length,
+                login_url:          loginUrl,
+              },
+            })
+          )
+        );
+
+        logger.info(`Enqueued ${recipients.length} academic-year activation email(s) for ${academicYear}`);
+      } catch (err) {
+        logger.error("Failed to enqueue academic-year activation emails", { stack: err.stack });
+      }
+    });
+
+    return res.json({ success: true, academicYear, masterId: masterRows[0]?.id, activeCount: active.length, archivedCount: archived.length });
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    logger.error("POST /api/academic-years", { stack: err.stack });
+    return res.status(500).json({ success: false, message: "Failed to create academic year." });
+  } finally {
+    client.release();
+  }
+});
+
+
+/* ─────────────────────────────────────────────────────────────────────
+   PATCH /api/academic-years/:academicYear/lock   Body: { locked: boolean }
+   Institution-scoped view-only toggle. Only this institution's row changes.
+─────────────────────────────────────────────────────────────────────── */
+router.patch("/:academicYear/lock", requireRole(MANAGE_ROLES), async (req, res) => {
+  const pool = req.app.locals.pool;
+  const { academicYear } = req.params;
+  const locked = req.body?.locked !== false; // default → lock
+  try {
+    const institutionId = await resolveInstitutionId(pool, req);
+    if (!institutionId)
+      return res.status(400).json({ success: false, message: "Institution ID required." });
+
+    // Pre-fetch the current state so we know the real oldValue and can skip
+    // the DB write entirely when the state is already what was requested.
+    const { rows: currentRows } = await pool.query(
+      `SELECT id, COALESCE(is_locked, false) AS is_locked
+       FROM academic_year_master
+       WHERE institution_id = $1 AND academic_year = $2`,
+      [institutionId, academicYear]
+    );
+    if (!currentRows.length)
+      return res.status(404).json({ success: false, message: "Academic year not found." });
+
+    const wasLocked = currentRows[0].is_locked;
+    const masterId  = currentRows[0].id;
+
+    // Idempotent: state already matches the request — no DB write, no audit entry.
+    if (wasLocked === locked)
+      return res.json({ success: true, academicYear, is_locked: locked });
+
+    await pool.query(
+      `UPDATE academic_year_master
+       SET is_locked = $3,
+           locked_at = CASE WHEN $3 THEN now() ELSE NULL END,
+           locked_by = CASE WHEN $3 THEN $4::uuid ELSE NULL END
+       WHERE institution_id = $1 AND academic_year = $2`,
+      [institutionId, academicYear, locked, req.user.userId || null]
+    );
+
+    await writeAuditLog(req, {
+      actionType:    locked ? "ACADEMIC_YEAR_LOCKED" : "ACADEMIC_YEAR_UNLOCKED",
+      entityType:    "ACADEMIC_YEAR",
+      entityId:      masterId,
+      oldValue:      { is_locked: wasLocked },
+      newValue:      { is_locked: locked },
+      changedFields: ["is_locked"],
+      status:        "SUCCESS",
+      message:       `Academic year ${academicYear} ${locked ? "locked" : "unlocked"}`,
+      metadata:      { institution_id: institutionId, academic_year: academicYear },
+    });
+
+    return res.json({ success: true, academicYear, is_locked: locked });
+  } catch (err) {
+    logger.error("PATCH /api/academic-years/:academicYear/lock", { stack: err.stack });
+    return res.status(500).json({ success: false, message: "Failed to update lock state." });
+  }
+});
+
+/* ─────────────────────────────────────────────────────────────────────
+   PATCH /api/academic-years/:academicYear/archive  Body: { archived: boolean }
+   Hides the year from the top bar / create / reports (records preserved).
+─────────────────────────────────────────────────────────────────────── */
+router.patch("/:academicYear/archive", requireRole(MANAGE_ROLES), async (req, res) => {
+  const pool = req.app.locals.pool;
+  const { academicYear } = req.params;
+  const archived = req.body?.archived !== false; // default → archive
+  try {
+    const institutionId = await resolveInstitutionId(pool, req);
+    if (!institutionId)
+      return res.status(400).json({ success: false, message: "Institution ID required." });
+
+    // Pre-fetch the current state so we know the real oldValue and can skip
+    // the DB write entirely when the state is already what was requested.
+    const { rows: currentRows } = await pool.query(
+      `SELECT id, COALESCE(is_archived, false) AS is_archived
+       FROM academic_year_master
+       WHERE institution_id = $1 AND academic_year = $2`,
+      [institutionId, academicYear]
+    );
+    if (!currentRows.length)
+      return res.status(404).json({ success: false, message: "Academic year not found." });
+
+    const wasArchived = currentRows[0].is_archived;
+    const masterId    = currentRows[0].id;
+
+    // Idempotent: state already matches the request — no DB write, no audit entry.
+    if (wasArchived === archived)
+      return res.json({ success: true, academicYear, is_archived: archived });
+
+    await pool.query(
+      `UPDATE academic_year_master
+       SET is_archived = $3,
+           archived_at = CASE WHEN $3 THEN now() ELSE NULL END,
+           archived_by = CASE WHEN $3 THEN $4::uuid ELSE NULL END,
+           active = CASE WHEN $3 THEN false ELSE active END
+       WHERE institution_id = $1 AND academic_year = $2`,
+      [institutionId, academicYear, archived, req.user.userId || null]
+    );
+
+    await writeAuditLog(req, {
+      actionType:    archived ? "ACADEMIC_YEAR_ARCHIVED" : "ACADEMIC_YEAR_UNARCHIVED",
+      entityType:    "ACADEMIC_YEAR",
+      entityId:      masterId,
+      oldValue:      { is_archived: wasArchived },
+      newValue:      { is_archived: archived },
+      changedFields: ["is_archived"],
+      status:        "SUCCESS",
+      message:       `Academic year ${academicYear} ${archived ? "archived" : "unarchived"}`,
+      metadata:      { institution_id: institutionId, academic_year: academicYear },
+    });
+
+    return res.json({ success: true, academicYear, is_archived: archived });
+  } catch (err) {
+    logger.error("PATCH /api/academic-years/:academicYear/archive", { stack: err.stack });
+    return res.status(500).json({ success: false, message: "Failed to update archive state." });
+  }
+});
+
+/* Distribute shared forms (share_table = true) into linked institutions for the
+   same academic year. SNAPSHOT OWNERSHIP MODEL: a consumer NEVER inherits the
+   creator's "active" — the form lands ARCHIVED and the consumer activates it
+   itself. Non-destructive: a consumer that already classified the form (active
+   OR archived) is left untouched, so its own choice is preserved. The creator
+   (selfInstitution) is excluded — it keeps the active/archived choice it just
+   made. Non-shared forms are ignored. */
+async function propagateSharedForms(client, { forms, active, archived, academicYear, startYear, createdBy, selfInstitution }) {
+  const activeSet   = new Set(active);
+  const archivedSet = new Set(archived);
+
+  for (const form of forms) {
+    if (!form.share_table) continue;
+    const fid = String(form.id);
+    // Only distribute forms the creator classified this year (in either list).
+    if (!activeSet.has(fid) && !archivedSet.has(fid)) continue;
+
+    const targets = (form.institute_access || [])
+      .map(String)
+      .filter((inst) => inst && inst !== String(selfInstitution));
+
+    for (const inst of targets) {
+      // Ensure a (inactive) master + config row exists for the linked institution.
+      await client.query(
+        `INSERT INTO academic_year_master (institution_id, academic_year, start_year, active, created_by)
+         VALUES ($1, $2, $3, false, $4)
+         ON CONFLICT (institution_id, academic_year) DO NOTHING`,
+        [inst, academicYear, startYear, createdBy]
+      );
+      await client.query(
+        `INSERT INTO academic_year_form_config (institution_id, academic_year, created_by, updated_at)
+         VALUES ($1, $2, $3, now())
+         ON CONFLICT (institution_id, academic_year) DO NOTHING`,
+        [inst, academicYear, createdBy]
+      );
+      // Archive for the consumer ONLY if it hasn't classified the form yet.
+      await ensureFormArchivedIfUnclassified(client, { institutionId: inst, academicYear, formId: fid });
+    }
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────────
+   GET /api/academic-years/:academicYear/forms
+   The lifecycle view for a single year: every accessible form resolved with
+   its status (active | archived | disabled; default archived if unseen) and
+   its current submission state (open/closed) from form_lock_config.
+─────────────────────────────────────────────────────────────────────── */
+router.get("/:academicYear/forms", async (req, res) => {
+  const pool = req.app.locals.pool;
+  const { academicYear } = req.params;
+  try {
+    const institutionId = await resolveInstitutionId(pool, req);
+    if (!institutionId)
+      return res.status(400).json({ success: false, message: "Institution ID required." });
+
+    const forms  = await getInstitutionForms(pool, institutionId);
+    const config = await getConfig(pool, institutionId, academicYear);
+
+    const activeSet   = new Set(idList(config?.active_forms_json));
+    const archivedSet = new Set(idList(config?.archived_forms_json));
+    const disabledSet = new Set(idList(config?.disabled));
+
+    // Lock state (Closed = locked) for these forms in this institution.
+    const { rows: lockRows } = await pool.query(
+      `SELECT form_name, COALESCE(is_locked, false) AS is_locked
+       FROM form_lock_config WHERE institution_id = $1`,
+      [institutionId]
+    );
+    const lockByName = new Map(lockRows.map((r) => [r.form_name, r.is_locked]));
+
+    const out = forms.map((f) => {
+      const id = String(f.id);
+      let status = "archived";
+      if (disabledSet.has(id)) status = "disabled";
+      else if (activeSet.has(id)) status = "active";
+      else if (archivedSet.has(id)) status = "archived";
+      else if (!config) status = "archived"; // no config yet → treat as archived
+      const isClosed = lockByName.get(f.form_name) === true;
+      return {
+        id,
+        form_name: f.form_name,
+        share_table: f.share_table,
+        status,
+        submission: isClosed ? "closed" : "open",
+      };
+    });
+
+    return res.json({ success: true, academicYear, hasConfig: !!config, forms: out });
+  } catch (err) {
+    logger.error("GET /api/academic-years/:academicYear/forms", { stack: err.stack });
+    return res.status(500).json({ success: false, message: "Failed to load forms for year." });
+  }
+});
+
+/* ─────────────────────────────────────────────────────────────────────
+   PATCH /api/academic-years/:academicYear/forms/:formId/status
+   Body: { status: "active" | "archived" | "disabled" }
+   Moves a form between lifecycle lists for the year (+ shared propagation).
+─────────────────────────────────────────────────────────────────────── */
+router.patch("/:academicYear/forms/:formId/status", requireRole(MANAGE_ROLES), async (req, res) => {
+  const pool = req.app.locals.pool;
+  const { academicYear, formId } = req.params;
+  const { status } = req.body || {};
+
+  if (!["active", "archived", "disabled"].includes(status))
+    return res.status(400).json({ success: false, message: "status must be active, archived or disabled." });
+
+  const client = await pool.connect();
+  try {
+    const institutionId = await resolveInstitutionId(pool, req);
+    if (!institutionId)
+      return res.status(400).json({ success: false, message: "Institution ID required." });
+
+    const forms = await getInstitutionForms(pool, institutionId);
+    const form  = forms.find((f) => String(f.id) === String(formId));
+    if (!form)
+      return res.status(404).json({ success: false, message: "Form not accessible to this institution." });
+
+    await client.query("BEGIN");
+
+    // Ensure both master + config rows exist for this year.
+    const startYear = parseStartYear(academicYear);
+    await client.query(
+      `INSERT INTO academic_year_master (institution_id, academic_year, start_year, active, created_by)
+       VALUES ($1, $2, $3, false, $4)
+       ON CONFLICT (institution_id, academic_year) DO NOTHING`,
+      [institutionId, academicYear, startYear, req.user.userId || null]
+    );
+    await client.query(
+      `INSERT INTO academic_year_form_config (institution_id, academic_year, created_by, updated_at)
+       VALUES ($1, $2, $3, now())
+       ON CONFLICT (institution_id, academic_year) DO NOTHING`,
+      [institutionId, academicYear, req.user.userId || null]
+    );
+
+    // Read the form's current classification before mutating so we can capture oldValue in the audit log.
+    const configBefore = await getConfig(pool, institutionId, academicYear);
+    const fid = String(formId);
+    let oldStatus = "archived";
+    if (configBefore) {
+      if (idList(configBefore.disabled).includes(fid))             oldStatus = "disabled";
+      else if (idList(configBefore.active_forms_json).includes(fid)) oldStatus = "active";
+      else if (idList(configBefore.archived_forms_json).includes(fid)) oldStatus = "archived";
+    }
+
+    await applyStatus(client, institutionId, academicYear, String(formId), status);
+
+    /* Materialize a custom_field_schemas row for THIS (form, institution, year)
+       when the form is being activated. Without this, a year that was just
+       switched archived→active has no row of its own and silently rides the
+       fallback chain (institution's latest row, or the shared canonical row)
+       forever — invisible in the DB and fragile if that fallback ever changes.
+       - ensureSchemaExists: guarantees the institution has AT LEAST one row
+         (clones the canonical/shared schema if it has none at all yet).
+       - Then, if this specific year still has no row of its own (it isn't the
+         institution's base/creation year), insert an EMPTY extra-fields row —
+         base fields keep coming from the physical columns via getActiveSchema's
+         merge; this row just makes the year's existence in the schema history
+         explicit and gives it a place to receive future extra-field edits. */
+    if (status === "active") {
+      try {
+        await ensureSchemaExists(pool, form.form_name);
+        // created_at ASC: the row inserted at form-creation time is the real
+        // base, regardless of its year value.
+        const { rows: baseRows } = await client.query(
+          `SELECT * FROM custom_field_schemas
+           WHERE form_name = $1 AND institution_id = $2 AND is_active = true
+           ORDER BY created_at ASC NULLS LAST LIMIT 1`,
+          [form.form_name, institutionId]
+        );
+        const baseRow = baseRows[0] || null;
+        if (baseRow && baseRow.year !== startYear) {
+          const { rows: existingYearRow } = await client.query(
+            `SELECT id FROM custom_field_schemas WHERE form_name = $1 AND institution_id = $2 AND year = $3`,
+            [form.form_name, institutionId, startYear]
+          );
+          if (!existingYearRow.length) {
+            // Snapshot the creation-year schema into the new year's row so
+            // each academic year starts with an independent copy.  Changes
+            // made to the creation year after activation will NOT propagate
+            // here — the new year owns and edits its own copy.
+            await client.query(
+              `INSERT INTO custom_field_schemas
+                 (form_name, institution_id, year, schema, is_active, created_by, used_column_names)
+               VALUES ($1, $2, $3, $4::jsonb, true, $5, $6)`,
+              [
+                form.form_name, institutionId, startYear,
+                JSON.stringify({
+                  fields: baseRow.schema?.fields || [],
+                  excluded_fixed_columns: baseRow.schema?.excluded_fixed_columns || [],
+                }),
+                req.user.userId || null,
+                baseRow.used_column_names || [],
+              ]
+            );
+          }
+        }
+      } catch (e) {
+        logger.error(`ensure year schema row failed for ${form.form_name}/${institutionId}/${startYear}`, { stack: e.stack });
+      }
+    }
+
+    // Shared distribution (Snapshot ownership model): the publisher controls ONLY
+    // its own classification. A consumer's active/archived/disabled choice for this
+    // year is NEVER overwritten by the publisher — doing so was a cross-institution
+    // leak (publisher archive flipped an active consumer to archived). We only SEED
+    // the form as archived for a consumer that has never classified it (so a brand-
+    // new linked institution still sees the form, view-only, and opts in itself).
+    if (form.share_table) {
+      const targets = (form.institute_access || [])
+        .map(String)
+        .filter((inst) => inst && inst !== String(institutionId));
+      for (const inst of targets) {
+        await client.query(
+          `INSERT INTO academic_year_form_config (institution_id, academic_year, created_by, updated_at)
+           VALUES ($1, $2, $3, now())
+           ON CONFLICT (institution_id, academic_year) DO NOTHING`,
+          [inst, academicYear, req.user.userId || null]
+        );
+        await ensureFormArchivedIfUnclassified(client, {
+          institutionId: inst, academicYear, formId: String(formId),
+        });
+      }
+    }
+
+    await client.query("COMMIT");
+
+    await writeAuditLog(req, {
+      actionType:    "FORM_LIFECYCLE_CHANGED",
+      entityType:    "FORM",
+      entityId:      formId,
+      oldValue:      { status: oldStatus },
+      newValue:      { status },
+      changedFields: ["status"],
+      status:        "SUCCESS",
+      message:       `Form "${form.form_name}" lifecycle changed from "${oldStatus}" to "${status}" for academic year ${academicYear}`,
+      metadata: {
+        institution_id: institutionId,
+        academic_year:  academicYear,
+        form_name:      form.form_name,
+        form_id:        String(formId),
+      },
+    });
+
+    return res.json({ success: true, academicYear, formId: String(formId), status });
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    logger.error("PATCH /api/academic-years/:academicYear/forms/:formId/status", { stack: err.stack });
+    return res.status(500).json({ success: false, message: "Failed to update form status." });
+  } finally {
+    client.release();
+  }
+});
+
+/* Place `formId` into the list for `status` and remove it from the other two,
+   for one (institution, year) config row. */
+async function applyStatus(client, institutionId, academicYear, formId, status) {
+  const columns = {
+    active:   "active_forms_json",
+    archived: "archived_forms_json",
+    disabled: "disabled",
+  };
+  const target = columns[status];
+  const others = Object.values(columns).filter((c) => c !== target);
+
+  // Add to target (distinct), remove from the other two.
+  await client.query(
+    `UPDATE academic_year_form_config
+     SET ${target} = (
+           SELECT COALESCE(jsonb_agg(DISTINCT e), '[]'::jsonb)
+           FROM jsonb_array_elements_text(${target} || to_jsonb($3::text)) AS e
+         ),
+         ${others[0]} = (
+           SELECT COALESCE(jsonb_agg(e), '[]'::jsonb)
+           FROM jsonb_array_elements_text(${others[0]}) AS e WHERE e <> $3::text
+         ),
+         ${others[1]} = (
+           SELECT COALESCE(jsonb_agg(e), '[]'::jsonb)
+           FROM jsonb_array_elements_text(${others[1]}) AS e WHERE e <> $3::text
+         ),
+         updated_at = now()
+     WHERE institution_id = $1 AND academic_year = $2`,
+    [institutionId, academicYear, formId]
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────────────
+   PATCH /api/academic-years/:academicYear/activate
+   Make the given year the institution's current (active) academic year.
+─────────────────────────────────────────────────────────────────────── */
+router.patch("/:academicYear/activate", requireRole(MANAGE_ROLES), async (req, res) => {
+  const pool = req.app.locals.pool;
+  const { academicYear } = req.params;
+  try {
+    const institutionId = await resolveInstitutionId(pool, req);
+    if (!institutionId)
+      return res.status(400).json({ success: false, message: "Institution ID required." });
+
+    const { rowCount } = await pool.query(
+      `UPDATE academic_year_master SET active = (academic_year = $2)
+       WHERE institution_id = $1`,
+      [institutionId, academicYear]
+    );
+    if (!rowCount)
+      return res.status(404).json({ success: false, message: "No academic years to activate." });
+
+    await writeAuditLog(req, {
+      actionType: "ACADEMIC_YEAR_ACTIVATED",
+      entityType: "ACADEMIC_YEAR",
+      entityId:   null,
+      newValue:   { active_year: academicYear },
+      status:     "SUCCESS",
+      message:    `Academic year ${academicYear} set as the current active year`,
+      metadata:   { institution_id: institutionId },
+    });
+
+    return res.json({ success: true, current: academicYear });
+  } catch (err) {
+    logger.error("PATCH /api/academic-years/:academicYear/activate", { stack: err.stack });
+    return res.status(500).json({ success: false, message: "Failed to set current year." });
+  }
+});
+
+/* ─────────────────────────────────────────────────────────────────────
+   GET /api/academic-years/:academicYear/notifications
+   Activation-email audit for this institution + year (for the Mail Status UI):
+   per-recipient status + a rollup summary, sourced from email_queue.
+─────────────────────────────────────────────────────────────────────── */
+router.get("/:academicYear/notifications", async (req, res) => {
+  const pool = req.app.locals.pool;
+  const { academicYear } = req.params;
+  try {
+    const institutionId = await resolveInstitutionId(pool, req);
+    if (!institutionId)
+      return res.status(400).json({ success: false, message: "Institution ID required." });
+
+    const { rows } = await pool.query(
+      `SELECT eq.recipient_email AS recipient,
+              eq.status,
+              eq.last_error      AS error,
+              eq.processed_at    AS sent_at,
+              eq.created_at
+       FROM   email_queue eq
+       WHERE  eq.event_id = 'academic_year_activated'
+         AND  eq.payload->>'academic_year' = $1
+         AND  eq.recipient_email IN (
+               SELECT u.email FROM users u WHERE u.institution_id = $2
+             )
+       ORDER  BY eq.created_at DESC`,
+      [academicYear, institutionId]
+    );
+    const summary = {
+      total:   rows.length,
+      sent:    rows.filter((r) => r.status === "sent").length,
+      failed:  rows.filter((r) => r.status === "failed").length,
+      pending: rows.filter((r) => r.status === "pending" || r.status === "processing").length,
+    };
+    return res.json({ success: true, academicYear, summary, logs: rows });
+  } catch (err) {
+    logger.error("GET /api/academic-years/:academicYear/notifications", { stack: err.stack });
+    return res.status(500).json({ success: false, message: "Failed to load notification status." });
+  }
+});
+
+/* ─────────────────────────────────────────────────────────────────────
+   POST /api/academic-years/:academicYear/notifications/retry
+   Resets all failed email_queue jobs for this institution + year back to
+   'pending' so the worker picks them up again. Returns a queue summary.
+─────────────────────────────────────────────────────────────────────── */
+router.post("/:academicYear/notifications/retry", requireRole(MANAGE_ROLES), async (req, res) => {
+  const pool = req.app.locals.pool;
+  const { academicYear } = req.params;
+  try {
+    const institutionId = await resolveInstitutionId(pool, req);
+    if (!institutionId)
+      return res.status(400).json({ success: false, message: "Institution ID required." });
+
+    // Reset failed queue jobs for this year back to pending (max_attempts reset).
+    const { rowCount: retried } = await pool.query(
+      `UPDATE email_queue
+       SET    status       = 'pending',
+              attempts     = 0,
+              last_error   = NULL,
+              scheduled_at = now()
+       WHERE  event_id = 'academic_year_activated'
+         AND  status   = 'failed'
+         AND  payload->>'academic_year' = $1
+         AND  recipient_email IN (
+               SELECT u.email FROM users u WHERE u.institution_id = $2
+             )`,
+      [academicYear, institutionId]
+    );
+
+    // Summary from the queue for this year.
+    const { rows: all } = await pool.query(
+      `SELECT status FROM email_queue
+       WHERE  event_id = 'academic_year_activated'
+         AND  payload->>'academic_year' = $1
+         AND  recipient_email IN (
+               SELECT u.email FROM users u WHERE u.institution_id = $2
+             )`,
+      [academicYear, institutionId]
+    );
+    const summary = {
+      total:   all.length,
+      sent:    all.filter((r) => r.status === "sent").length,
+      failed:  all.filter((r) => r.status === "failed").length,
+      pending: all.filter((r) => r.status === "pending").length,
+    };
+    return res.json({ success: true, retried, summary });
+  } catch (err) {
+    logger.error("POST /api/academic-years/:academicYear/notifications/retry", { stack: err.stack });
+    return res.status(500).json({ success: false, message: "Failed to retry notifications." });
+  }
+});
+
+module.exports = router;

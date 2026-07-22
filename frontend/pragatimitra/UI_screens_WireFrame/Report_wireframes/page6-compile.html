@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Page 6 – Compile Report | AIIA Report Portal</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+.compile-page { max-width: 1200px; margin: 0 auto; padding: 20px; }
+
+/* Format cards */
+.format-card {
+  border: 2px solid #dde1e7; border-radius: 8px; padding: 14px;
+  cursor: pointer; text-align: center; transition: border-color .15s, background .15s;
+  flex: 1;
+}
+.format-card:hover { background: #f9f9f9; }
+.format-card.selected { border-color: #4f8ef7; background: #e8f0fe; }
+.format-icon { font-size: 40px; margin-bottom: 8px; }
+.format-name { font-size: 12px; font-weight: 700; }
+.format-ext  { font-size: 10px; color: #666; }
+.format-desc { font-size: 10px; color: #666; margin-top: 6px; }
+
+/* Status check items */
+.status-check { display: flex; align-items: flex-start; gap: 8px; font-size: 11px; margin-bottom: 6px; }
+.check-ok   { color: #43a047; font-weight: 700; }
+.check-warn { color: #f57f17; font-weight: 700; }
+.check-fail { color: #e53935; font-weight: 700; }
+
+/* Preview document */
+.doc-preview {
+  border: 1px solid #dde1e7; border-radius: 6px; padding: 30px;
+  font-family: 'Times New Roman', serif;
+  background: #fff; line-height: 1.8;
+}
+.doc-title { font-size: 20px; font-weight: 700; text-align: center; margin-bottom: 4px; }
+.doc-subtitle { font-size: 13px; text-align: center; color: #555; margin-bottom: 16px; }
+.doc-rule { border: 1px solid #ccc; margin: 16px 0; }
+.toc-item { font-size: 12px; padding: 3px 0; border-bottom: 1px dotted #ddd; display: flex; justify-content: space-between; }
+.toc-sub  { padding-left: 20px; font-size: 11px; color: #555; }
+.doc-section-heading { font-size: 16px; font-weight: 700; margin: 20px 0 8px; border-bottom: 2px solid #333; padding-bottom: 4px; }
+.doc-body { font-size: 12px; color: #222; }
+
+/* Compile action box */
+.compile-action { border: 1px solid #e0e4ea; border-radius: 8px; padding: 20px; background: #f9f9f9; margin-top: 20px; }
+
+/* Progress bar */
+.compile-progress { margin-top: 16px; }
+.progress-track { background: #e0e4ea; border-radius: 99px; height: 8px; overflow: hidden; margin-bottom: 6px; }
+.progress-fill { background: #4f8ef7; height: 100%; border-radius: 99px; transition: width .5s; }
+
+/* Scope/Language checkers */
+.check-group { display: flex; flex-direction: column; gap: 8px; }
+.check-item { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.lang-sub { margin-left: 24px; display: flex; flex-direction: column; gap: 6px; }
+.lang-sub label { font-size: 12px; display: flex; align-items: center; gap: 8px; }
+</style>
+</head>
+<body>
+<nav class="page-nav">
+  <span>📄 Wireframes:</span>
+  <a href="page1-create-report.html">1. Create Report</a>
+  <a href="page2-structure.html">2. Structure</a>
+  <a href="page3-content-editor.html">3. Content Editor</a>
+  <a href="page4-assign.html">4. Assign</a>
+  <a href="page5-review.html">5. Review</a>
+  <a href="page6-compile.html">6. Compile</a>
+  <a href="page7-status.html">7. Status</a>
+</nav>
+
+<!-- Topbar -->
+<div class="topbar">
+  <div>
+    <h1 class="section-title">Compile & Export Report</h1>
+    <div class="subtitle mt-4">Generate final approved report in Word or PDF format</div>
+  </div>
+</div>
+
+<div class="compile-page">
+
+  <!-- ── 1: Pre-Compilation Status ── -->
+  <div class="info-box mb-12">
+    <div style="font-weight:700;margin-bottom:8px">Compilation Status</div>
+    <div class="status-check"><span class="check-ok">✓</span> Report structure defined</div>
+    <div class="status-check"><span class="check-ok">✓</span> All required sections assigned</div>
+    <div class="status-check"><span class="check-warn">⚠</span> 18/20 sections approved</div>
+    <div class="status-check"><span class="check-fail">✗</span> 2 sections still under review</div>
+    <div class="status-check" style="color:#555;margin-top:4px">
+      ℹ You can compile with pending sections. Only approved content will be included.
+    </div>
+  </div>
+
+  <div class="info-box info-box-warn mb-20">
+    2 sections are not yet approved. Compilation will skip these sections. Continue?
+    <div style="display:flex;gap:8px;margin-top:10px">
+      <button class="btn btn-outline btn-sm">Wait for Approvals</button>
+      <button class="btn btn-primary btn-sm">Proceed with Current Approved Sections</button>
+    </div>
+  </div>
+
+  <!-- ── 2: Configuration ── -->
+  <div class="grid-2 mb-20">
+
+    <!-- Column 1: Scope + Language -->
+    <div style="display:flex;flex-direction:column;gap:16px">
+      <div class="card">
+        <div class="label mb-12">Report Scope</div>
+        <div class="check-group">
+          <label class="check-item"><input type="checkbox" checked> Include Front Matter (Title page, TOC)</label>
+          <label class="check-item"><input type="checkbox" checked> Include Table of Contents</label>
+          <label class="check-item"><input type="checkbox" checked> Include Section Numbering (1, 1.1, 1.1.1)</label>
+          <label class="check-item"><input type="checkbox" checked> Include Page Numbers</label>
+          <label class="check-item"><input type="checkbox" checked> Include Figures & Images</label>
+          <label class="check-item"><input type="checkbox" checked> Include Appendices</label>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="label mb-12">Content Language</div>
+        <div class="check-group">
+          <label class="check-item"><input type="radio" name="lang"> English Only</label>
+          <label class="check-item"><input type="radio" name="lang"> Hindi Only</label>
+          <label class="check-item"><input type="radio" name="lang" checked> Bilingual (English & Hindi)</label>
+        </div>
+        <div class="lang-sub mt-8">
+          <label><input type="radio" name="bi" checked> Separate documents (EN + HI)</label>
+          <label><input type="radio" name="bi"> Mixed layout (EN left | HI right)</label>
+        </div>
+        <div style="margin-top:12px;background:#f7f8fa;border:1px solid #e0e4ea;border-radius:4px;padding:8px;font-size:10px;color:#888;text-align:center">
+          📄 Bilingual layout preview — side-by-side columns
+        </div>
+      </div>
+    </div>
+
+    <!-- Column 2: Format -->
+    <div style="display:flex;flex-direction:column;gap:16px">
+      <div class="card">
+        <div class="label mb-12">Export Format</div>
+        <div style="display:flex;gap:12px">
+          <div class="format-card" id="fmtDocx" onclick="selectFmt('docx')">
+            <div class="format-icon">📝</div>
+            <div class="format-name">Microsoft Word</div>
+            <div class="format-ext">.docx</div>
+            <div class="format-desc">Editable, best for sharing and further editing</div>
+          </div>
+          <div class="format-card selected" id="fmtPdf" onclick="selectFmt('pdf')">
+            <div class="format-icon">📕</div>
+            <div class="format-name">Adobe PDF</div>
+            <div class="format-ext">.pdf</div>
+            <div class="format-desc">Read-only, best for distribution and archiving</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" id="pdfOptions">
+        <div class="label mb-12">PDF-Specific Options</div>
+        <div class="check-group">
+          <label class="check-item"><input type="checkbox" checked> Embed fonts</label>
+          <label class="check-item"><input type="checkbox" checked> Create bookmarks from headings</label>
+          <label class="check-item"><input type="checkbox" checked> Compress images for file size</label>
+          <label class="check-item"><input type="checkbox"> Add watermark: CONFIDENTIAL</label>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 3: Preview ── -->
+  <div class="card mb-20">
+    <div class="tabs" style="margin:-16px -16px 16px;padding:0 16px;">
+      <div class="tab active" onclick="switchTab(this,'prev')">Preview</div>
+      <div class="tab" onclick="switchTab(this,'settings')">Settings</div>
+      <div class="tab" onclick="switchTab(this,'history')">History</div>
+    </div>
+
+    <!-- Preview tab -->
+    <div id="tab-prev" style="height:400px;overflow-y:auto">
+      <div class="doc-preview">
+        <div class="doc-title">ANNUAL REPORT 2026</div>
+        <div class="doc-subtitle">All India Institute of Ayurveda</div>
+        <div class="doc-rule"></div>
+        <div style="font-size:12px;text-align:center;color:#666;margin-bottom:16px">
+          Report Period: 01/01/2026 – 31/12/2026
+        </div>
+        <div class="doc-rule"></div>
+
+        <div style="font-size:14px;font-weight:700;margin-bottom:12px">Table of Contents</div>
+        <div class="toc-item"><span>1. Committees</span><span>3</span></div>
+        <div class="toc-item toc-sub"><span>1.1 Sub-committee A</span><span>4</span></div>
+        <div class="toc-item"><span>2. General Administration</span><span>6</span></div>
+        <div class="toc-item"><span>3. Hospital</span><span>9</span></div>
+        <div class="toc-item"><span>4. Academic</span><span>14</span></div>
+        <div class="toc-item toc-sub"><span>4.1 Research Activities</span><span>15</span></div>
+        <div class="toc-item toc-sub" style="padding-left:40px"><span>4.1.1 Publications</span><span>16</span></div>
+        <div class="toc-item toc-sub" style="padding-left:40px"><span>4.1.2 Patents</span><span>19</span></div>
+        <div class="toc-item"><span>5. Finance</span><span>22</span></div>
+
+        <div class="doc-rule"></div>
+
+        <div class="doc-section-heading">1. COMMITTEES</div>
+        <div class="doc-body">
+          <p>The AIIA Standing Committee convened 6 times during the reporting year 2026. The committee reviewed strategic initiatives and approved several policy updates...</p>
+        </div>
+
+        <div class="doc-section-heading">4.1.1 PUBLICATIONS</div>
+        <div class="doc-body">
+          <p>A total of <strong>47 publications</strong> were recorded across various journals and conferences...</p>
+          <p style="color:#aaa;font-style:italic">[Table: Publications List — 4 rows × 5 columns]</p>
+          <p style="color:#aaa;font-style:italic">Next section preview...</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Settings tab -->
+    <div id="tab-settings" style="display:none;padding:16px">
+      <div class="form-stack">
+        <div class="form-group"><label class="form-label">Document Title</label><input type="text" value="Annual Report 2026 — All India Institute of Ayurveda"></div>
+        <div class="form-group"><label class="form-label">Author</label><input type="text" value="AIIA Publication Cell"></div>
+        <div class="form-group"><label class="form-label">Subject</label><input type="text" value="AIIA Annual Report 2026"></div>
+        <div class="form-group"><label class="form-label">Keywords</label><input type="text" value="AIIA, Annual Report, Ayurveda, 2026"></div>
+      </div>
+    </div>
+
+    <!-- History tab -->
+    <div id="tab-history" style="display:none;padding:16px">
+      <table class="data-table">
+        <thead><tr><th>Version</th><th>Generated By</th><th>Date</th><th>Format</th><th>Action</th></tr></thead>
+        <tbody>
+          <tr><td>v2</td><td>Admin User</td><td>2026-11-20 09:15 AM</td><td>PDF</td><td><a href="#" style="color:#4f8ef7;font-size:11px">Download</a></td></tr>
+          <tr><td>v1</td><td>Admin User</td><td>2026-11-10 02:30 PM</td><td>DOCX</td><td><a href="#" style="color:#4f8ef7;font-size:11px">Download</a></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ── 4: Compile Action ── -->
+  <div class="compile-action">
+    <div class="card-title">Ready to Compile</div>
+    <div class="small-text mt-4">This will generate a final report with all approved sections in the selected format(s).</div>
+
+    <div style="display:flex;gap:12px;margin-top:16px;align-items:center">
+      <button class="btn btn-primary btn-lg" onclick="startCompile()">⬇ Generate & Download</button>
+      <button class="btn btn-outline btn-lg">Cancel</button>
+    </div>
+
+    <!-- Progress (hidden initially) -->
+    <div class="compile-progress" id="compileProgress" style="display:none">
+      <div class="progress-track">
+        <div class="progress-fill" id="progressFill" style="width:0%"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <span style="font-size:12px;color:#444" id="progressText">0% – Initializing...</span>
+        <span class="small-text" id="etaText">~2 minutes remaining</span>
+      </div>
+    </div>
+
+    <!-- Success (hidden initially) -->
+    <div class="info-box info-box-success mt-16" id="compileSuccess" style="display:none">
+      ✓ Report compiled successfully! Download link below.<br>
+      <div style="margin-top:8px;display:flex;gap:16px">
+        <a href="#" style="color:#1b5e20;font-size:12px;font-weight:700;text-decoration:underline">⬇ Download Report</a>
+        <a href="#" style="color:#1b5e20;font-size:12px;text-decoration:underline">View in browser</a>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+function selectFmt(fmt) {
+  document.getElementById('fmtDocx').classList.toggle('selected', fmt === 'docx');
+  document.getElementById('fmtPdf').classList.toggle('selected', fmt === 'pdf');
+  document.getElementById('pdfOptions').style.display = fmt === 'pdf' ? 'block' : 'none';
+}
+function switchTab(el, tab) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  ['prev','settings','history'].forEach(t => {
+    document.getElementById('tab-' + t).style.display = t === tab ? 'block' : 'none';
+  });
+}
+function startCompile() {
+  const prog = document.getElementById('compileProgress');
+  const fill = document.getElementById('progressFill');
+  const txt  = document.getElementById('progressText');
+  const eta  = document.getElementById('etaText');
+  prog.style.display = 'block';
+  let pct = 0;
+  const steps = ['Initializing...','Building document structure...','Processing content blocks...','Embedding images...','Generating PDF...','Finalizing...'];
+  const iv = setInterval(() => {
+    pct = Math.min(pct + Math.random() * 18, 100);
+    fill.style.width = pct + '%';
+    txt.textContent = Math.round(pct) + '% – ' + steps[Math.min(Math.floor(pct/20), steps.length-1)];
+    eta.textContent = pct < 100 ? '~' + Math.round((100-pct)/50 * 60) + ' sec remaining' : '';
+    if (pct >= 100) {
+      clearInterval(iv);
+      prog.style.display = 'none';
+      document.getElementById('compileSuccess').style.display = 'block';
+    }
+  }, 300);
+}
+</script>
+</body>
+</html>

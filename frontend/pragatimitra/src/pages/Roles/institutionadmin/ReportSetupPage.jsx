@@ -1,0 +1,740 @@
+import { useState, useRef, useEffect, useCallback } from "react";
+import { Save, FolderTree, Pencil } from "lucide-react";
+import { useLanguage } from "../../../i18n/LanguageContext";
+import { t } from "../../../i18n/translations";
+import { PageContainer, PageHeader } from "../../../ui";
+import { useApi }  from "../../../hooks/useApi";
+import { useShell } from "../../../components/Dashboard/shellContext";
+
+let _id = 0;
+const uid = () => `id_${++_id}`;
+
+const SEED = [
+  {
+    id: uid(), name: "Research Activities", expanded: true,
+    subsections: [
+      { id: uid(), name: "Publications", type: "Subsection", dataSource: "Manual" },
+      { id: uid(), name: "Patents",      type: "Subsection", dataSource: "API"    },
+    ],
+  },
+  {
+    id: uid(), name: "Financial Summary", expanded: false,
+    subsections: [
+      { id: uid(), name: "Budget Report", type: "Subsection", dataSource: "Manual" },
+    ],
+  },
+  {
+    id: uid(), name: "HR Report", expanded: false,
+    subsections: [
+      { id: uid(), name: "Staff Summary", type: "Subsection", dataSource: "Excel Import" },
+    ],
+  },
+];
+
+const YEARS    = Array.from({ length: 11 }, (_, i) => 2020 + i);
+const DATA_SRC = ["Manual", "API", "Excel Import", "Database"];
+
+/* ── Design tokens ── */
+const C = {
+  primary:    "#2563eb",
+  primaryLt:  "#dbeafe",
+  primaryMid: "#60a5fa",
+  text:       "#1e293b",
+  textMid:    "#1d4ed8",
+  textSub:    "#64748b",
+  border:     "rgba(37,99,235,0.12)",
+  borderSoft: "rgba(0,0,0,0.07)",
+  bg:         "#f8f9fb",
+  surface:    "#ffffff",
+  danger:     "#ef4444",
+  dangerLt:   "#fef2f2",
+  success:    "#10b981",
+};
+
+const card = {
+  background: C.surface,
+  border: `0.5px solid ${C.border}`,
+  borderRadius: 14,
+  overflow: "hidden",
+  boxShadow: "0 1px 6px rgba(99,102,241,0.07)",
+};
+
+const panelHead = {
+  padding: "11px 16px",
+  borderBottom: `0.5px solid ${C.border}`,
+  display: "flex", alignItems: "center", gap: 8,
+  background: "linear-gradient(135deg,#f5f3ff 0%,#ede9fe 100%)",
+};
+
+const panelBody = { padding: "14px 16px" };
+
+const inputSt = {
+  width: "100%", boxSizing: "border-box",
+  border: `0.5px solid rgba(99,102,241,0.25)`,
+  borderRadius: 8, padding: "7px 11px",
+  fontSize: 12, color: C.text, background: "#fafafa",
+  outline: "none", fontFamily: "'Plus Jakarta Sans', sans-serif",
+  transition: "border-color 0.15s",
+};
+
+const btn = (v = "ghost") => ({
+  border: "none", cursor: "pointer", borderRadius: 8,
+  fontFamily: "'Plus Jakarta Sans', sans-serif",
+  fontSize: 11, fontWeight: 600,
+  padding: "5px 11px",
+  display: "inline-flex", alignItems: "center", gap: 4,
+  transition: "opacity 0.15s",
+  ...(v === "primary"  ? { background: C.primary,  color: "#fff"       } :
+      v === "danger"   ? { background: C.dangerLt, color: C.danger     } :
+      v === "outline"  ? { background: "transparent", color: C.primary, border: `0.5px solid ${C.primary}` } :
+                         { background: C.primaryLt, color: C.textMid   }),
+});
+
+function Field({ label, children }) {
+  return (
+    <div style={{ marginBottom: 13 }}>
+      <label style={{ display: "block", fontSize: 10, fontWeight: 700, color: C.textSub,
+        textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 5 }}>
+        {label}
+      </label>
+      {children}
+    </div>
+  );
+}
+
+function Badge({ children, color = C.primary, bg = C.primaryLt }) {
+  return (
+    <span style={{ fontSize: 10, fontWeight: 600, padding: "2px 8px", borderRadius: 20, background: bg, color }}>
+      {children}
+    </span>
+  );
+}
+
+function YearScroller({ value, onChange }) {
+  const ref = useRef(null);
+  const H = 30;
+  useEffect(() => {
+    const idx = YEARS.indexOf(value);
+    if (ref.current) ref.current.scrollTop = idx * H;
+  }, [value]);
+  const onScroll = () => {
+    const idx = Math.round(ref.current.scrollTop / H);
+    onChange(YEARS[Math.min(Math.max(idx, 0), YEARS.length - 1)]);
+  };
+  return (
+    <div style={{ position: "relative", height: 90, border: `0.5px solid rgba(99,102,241,0.25)`, borderRadius: 8, overflow: "hidden", background: "#fafafa" }}>
+      <div style={{ position: "absolute", top: "50%", left: 0, right: 0, height: H,
+        transform: "translateY(-50%)", background: "rgba(99,102,241,0.08)",
+        borderTop: `1px solid rgba(99,102,241,0.2)`, borderBottom: `1px solid rgba(99,102,241,0.2)`,
+        pointerEvents: "none", zIndex: 1 }} />
+      <div ref={ref} onScroll={onScroll}
+        style={{ height: "100%", overflowY: "scroll", scrollSnapType: "y mandatory", scrollbarWidth: "none" }}>
+        <div style={{ height: H }} />
+        {YEARS.map(y => (
+          <div key={y} onClick={() => onChange(y)}
+            style={{ height: H, display: "flex", alignItems: "center", justifyContent: "center",
+              scrollSnapAlign: "center", fontSize: 13, cursor: "pointer",
+              fontWeight: y === value ? 700 : 400,
+              color: y === value ? C.primary : C.textSub }}>
+            {y}
+          </div>
+        ))}
+        <div style={{ height: H }} />
+      </div>
+    </div>
+  );
+}
+
+function Avatar({ name, size = 32 }) {
+  const colors = ["#6366f1","#8b5cf6","#a78bfa","#818cf8","#4f46e5"];
+  const bg = colors[name.charCodeAt(0) % colors.length];
+  return (
+    <div style={{ width: size, height: size, borderRadius: "50%", background: bg,
+      display: "flex", alignItems: "center", justifyContent: "center",
+      fontSize: size * 0.38, fontWeight: 700, color: "#fff", flexShrink: 0 }}>
+      {name.slice(0,2).toUpperCase()}
+    </div>
+  );
+}
+
+function SectionItem({ section, selected, onSelect, onUpdate, onDelete, onSelectSub, selectedSub }) {
+  const { lang } = useLanguage();
+  const [editName, setEditName]   = useState(false);
+  const [draft, setDraft]         = useState(section.name);
+  const [newSub, setNewSub]       = useState("");
+  const [addingSub, setAddingSub] = useState(false);
+  const [editSubId, setEditSubId] = useState(null);
+  const [editSubDraft, setEditSubDraft] = useState("");
+
+  const commitName = () => {
+    onUpdate({ ...section, name: draft.trim() || section.name });
+    setEditName(false);
+  };
+  const addSub = () => {
+    if (!newSub.trim()) return;
+    onUpdate({ ...section, subsections: [...section.subsections, { id: uid(), name: newSub.trim(), type: "Subsection", dataSource: "Manual" }] });
+    setNewSub(""); setAddingSub(false);
+  };
+  const delSub   = id  => onUpdate({ ...section, subsections: section.subsections.filter(s => s.id !== id) });
+  const commitSub = sub => {
+    onUpdate({ ...section, subsections: section.subsections.map(s => s.id === sub.id ? { ...s, name: editSubDraft.trim() || s.name } : s) });
+    setEditSubId(null);
+  };
+
+  const isSelected = selected?.id === section.id;
+
+  return (
+    <div style={{ marginBottom: 3 }}>
+      <div onClick={() => { onSelect(section); onUpdate({ ...section, expanded: !section.expanded }); }}
+        style={{ display: "flex", alignItems: "center", gap: 7, padding: "7px 10px", borderRadius: 9, cursor: "pointer",
+          background: isSelected ? C.primaryLt : "transparent",
+          border: `0.5px solid ${isSelected ? C.primaryMid : "transparent"}`,
+          transition: "background 0.15s" }}>
+        <span style={{ fontSize: 9, color: C.primary, width: 10, flexShrink: 0 }}>{section.expanded ? "▼" : "▶"}</span>
+        {editName
+          ? <input autoFocus value={draft} onChange={e => setDraft(e.target.value)}
+              onBlur={commitName} onKeyDown={e => e.key === "Enter" && commitName()}
+              onClick={e => e.stopPropagation()}
+              style={{ ...inputSt, padding: "3px 7px", fontSize: 12, flex: 1 }} />
+          : <span style={{ flex: 1, fontSize: 12, fontWeight: 600, color: C.text }}>{section.name}</span>
+        }
+        <button onClick={e => { e.stopPropagation(); setEditName(true); setDraft(section.name); }}
+          style={{ ...btn(), padding: "2px 7px", fontSize: 10, display: "inline-flex", alignItems: "center" }}><Pencil size={11} /></button>
+        <button onClick={e => { e.stopPropagation(); onDelete(section.id); }}
+          style={{ ...btn("danger"), padding: "2px 7px", fontSize: 10 }}>✕</button>
+      </div>
+
+      {section.expanded && (
+        <div style={{ paddingLeft: 18, marginTop: 2 }}>
+          {section.subsections.map(sub => (
+            <div key={sub.id} onClick={() => onSelectSub(section, sub)}
+              style={{ display: "flex", alignItems: "center", gap: 7, padding: "5px 8px", borderRadius: 7, cursor: "pointer", marginBottom: 1,
+                background: selectedSub?.id === sub.id ? "rgba(99,102,241,0.06)" : "transparent" }}>
+              <span style={{ fontSize: 10, color: C.primaryMid, flexShrink: 0 }}>├</span>
+              {editSubId === sub.id
+                ? <input autoFocus value={editSubDraft} onChange={e => setEditSubDraft(e.target.value)}
+                    onBlur={() => commitSub(sub)} onKeyDown={e => e.key === "Enter" && commitSub(sub)}
+                    onClick={e => e.stopPropagation()}
+                    style={{ ...inputSt, padding: "2px 7px", fontSize: 11, flex: 1 }} />
+                : <span style={{ flex: 1, fontSize: 11, color: "#374151" }}>{sub.name}</span>
+              }
+              <button onClick={e => { e.stopPropagation(); setEditSubId(sub.id); setEditSubDraft(sub.name); }}
+                style={{ ...btn(), padding: "2px 6px", fontSize: 10, display: "inline-flex", alignItems: "center" }}><Pencil size={11} /></button>
+              <button onClick={e => { e.stopPropagation(); delSub(sub.id); }}
+                style={{ ...btn("danger"), padding: "2px 6px", fontSize: 10 }}>✕</button>
+            </div>
+          ))}
+
+          {addingSub
+            ? <div style={{ display: "flex", gap: 5, marginTop: 5 }}>
+                <input autoFocus value={newSub} onChange={e => setNewSub(e.target.value)}
+                  onKeyDown={e => e.key === "Enter" && addSub()}
+                  placeholder="Subsection name…"
+                  style={{ ...inputSt, flex: 1, padding: "5px 8px", fontSize: 11 }} />
+                <button onClick={addSub} style={btn("primary")}>{t("Add", lang)}</button>
+                <button onClick={() => setAddingSub(false)} style={btn()}>✕</button>
+              </div>
+            : <button onClick={e => { e.stopPropagation(); setAddingSub(true); }}
+                style={{ ...btn("outline"), marginTop: 4, fontSize: 10, width: "100%", justifyContent: "flex-start", borderRadius: 7 }}>
+                + {t("Add Subsection", lang)}
+              </button>
+          }
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function ReportSetupPage() {
+  const { lang }         = useLanguage();
+  const { apiFetch }     = useApi();
+  const shell            = useShell();
+
+  const [sections, setSections]     = useState(SEED);
+  const [selected, setSelected]     = useState(SEED[0]);
+  const [selectedSub, setSelectedSub] = useState(null);
+  const [newSecName, setNewSecName] = useState("");
+  const [addingTop, setAddingTop]   = useState(false);
+
+  const [reportName,   setReportName]   = useState("Annual Report 2026");
+  const [year,         setYear]         = useState(2026);
+  const [startDate,    setStartDate]    = useState("2026-01-01");
+  const [endDate,      setEndDate]      = useState("2026-12-31");
+  const [submissionDL, setSubmissionDL] = useState("2026-11-30");
+  const [reviewStart,  setReviewStart]  = useState("2026-12-01");
+  const [reviewEnd,    setReviewEnd]    = useState("2026-12-15");
+  const [workflow,     setWorkflow]     = useState("");
+
+  /* ── Workflow templates (live) ── */
+  const [wfTemplates,   setWfTemplates]   = useState([]);
+  const [wfLoading,     setWfLoading]     = useState(true);
+
+  const fetchWorkflows = useCallback(async () => {
+    setWfLoading(true);
+    try {
+      const res  = await apiFetch("/api/builder/workflows");
+      const data = await res.json();
+      if (data.success) {
+        const list = data.data || [];
+        setWfTemplates(list);
+        // Auto-select the default template if nothing chosen yet
+        if (!workflow) {
+          const def = list.find(t => t.is_default) || list[0];
+          if (def) setWorkflow(def.id);
+        }
+      }
+    } catch { /* silently ignore — static UI still functional */ }
+    finally { setWfLoading(false); }
+  }, [apiFetch]);   // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => { fetchWorkflows(); }, [fetchWorkflows]);
+
+  const [secName,    setSecName]    = useState(selected?.name || "");
+  const [secType,    setSecType]    = useState("Section");
+  const [secDataSrc, setSecDataSrc] = useState("Manual");
+
+  /* ── Document Branding ── */
+  const [coverImageUrl, setCoverImageUrl] = useState("");
+  const [logoUrl,       setLogoUrl]       = useState("");
+  const [bgImageUrl,    setBgImageUrl]    = useState("");
+  const [brandingAssignments, setBrandingAssignments] = useState([
+    { id: "cover", label: "Cover Page Image", url: "", assignee: "Unassigned" },
+    { id: "logo",  label: "Institution Logo",  url: "", assignee: "Unassigned" },
+    { id: "bg",    label: "Background Image",  url: "", assignee: "Unassigned" },
+  ]);
+  const [brandingOpen, setBrandingOpen] = useState(false);
+  const DEMO_USERS = ["Unassigned", "Dr. Sharma", "R. Patel", "M. Nair", "S. Kumar"];
+  const updateBrandingUrl = (id, url) => {
+    setBrandingAssignments(p => p.map(b => b.id === id ? { ...b, url } : b));
+    if (id === "cover") setCoverImageUrl(url);
+    if (id === "logo")  setLogoUrl(url);
+    if (id === "bg")    setBgImageUrl(url);
+  };
+  const updateBrandingAssignee = (id, assignee) =>
+    setBrandingAssignments(p => p.map(b => b.id === id ? { ...b, assignee } : b));
+
+  useEffect(() => {
+    if (selectedSub) { setSecName(selectedSub.name); setSecType(selectedSub.type); setSecDataSrc(selectedSub.dataSource); }
+    else if (selected) { setSecName(selected.name); setSecType("Section"); setSecDataSrc("Manual"); }
+  }, [selected, selectedSub]);
+
+  const updateSection = (u) => {
+    setSections(p => p.map(s => s.id === u.id ? u : s));
+    if (selected?.id === u.id) setSelected(u);
+  };
+  const deleteSection = (id) => {
+    setSections(p => p.filter(s => s.id !== id));
+    if (selected?.id === id) { setSelected(null); setSelectedSub(null); }
+  };
+  const addSection = () => {
+    if (!newSecName.trim()) return;
+    const s = { id: uid(), name: newSecName.trim(), expanded: true, subsections: [] };
+    setSections(p => [...p, s]); setSelected(s); setSelectedSub(null);
+    setNewSecName(""); setAddingTop(false);
+  };
+  const handleSelectSub = (sec, sub) => { setSelected(sec); setSelectedSub(sub); };
+  const saveSectionConfig = () => {
+    if (selectedSub) {
+      const u = { ...selected, subsections: selected.subsections.map(s => s.id === selectedSub.id ? { ...s, name: secName, type: secType, dataSource: secDataSrc } : s) };
+      updateSection(u); setSelectedSub({ ...selectedSub, name: secName, type: secType, dataSource: secDataSrc });
+    } else if (selected) {
+      updateSection({ ...selected, name: secName });
+    }
+  };
+
+  return (
+    <PageContainer style={{ gap: 18 }}>
+
+      {/* Header */}
+      <PageHeader
+        breadcrumb={[t("Home", lang), t("Reports", lang), t("Report Setup", lang)]}
+        title={t("Report Configuration", lang)}
+        description="Configure sections, deadlines, and the approval workflow for this report."
+        actions={
+          <button style={{ ...btn("primary"), display: "inline-flex", alignItems: "center", gap: 7, padding: "10px 20px", fontSize: 12, borderRadius: 9,
+            boxShadow: "0 2px 8px rgba(99,102,241,0.3)" }}>
+            <Save size={14} strokeWidth={2} /> {t("Save Report", lang)}
+          </button>
+        }
+      />
+
+      {/* Summary pills */}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+        {[
+          { label: "Report", value: reportName },
+          { label: "Year",   value: year },
+          { label: "Deadline", value: submissionDL },
+          { label: "Workflow", value: workflow },
+          { label: "Sections", value: sections.length },
+        ].map(p => (
+          <div key={p.label} style={{ background: C.surface, border: `0.5px solid ${C.border}`,
+            borderRadius: 20, padding: "5px 14px", display: "flex", gap: 7, alignItems: "center",
+            boxShadow: "0 1px 3px rgba(99,102,241,0.07)" }}>
+            <span style={{ fontSize: 10, color: C.textSub, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>{t(p.label, lang)}</span>
+            <span style={{ fontSize: 11, color: C.text, fontWeight: 700 }}>{p.value}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* 3-column grid */}
+      <div style={{ display: "grid", gridTemplateColumns: "230px 1fr 1fr", gap: 14, alignItems: "start" }}>
+
+        {/* Col 1 — Section Tree */}
+        <div style={{ ...card, display: "flex", flexDirection: "column" }}>
+          <div style={panelHead}>
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><rect x="1" y="1" width="6" height="6" rx="1.5" stroke={C.primary} strokeWidth="1.5"/><rect x="9" y="1" width="6" height="6" rx="1.5" stroke={C.primary} strokeWidth="1.5"/><rect x="1" y="9" width="6" height="6" rx="1.5" stroke={C.primary} strokeWidth="1.5"/><rect x="9" y="9" width="6" height="6" rx="1.5" stroke={C.primary} strokeWidth="1.5"/></svg>
+            <span style={{ fontSize: 12, fontWeight: 700, color: C.text }}>{t("Section Tree", lang)}</span>
+            <span style={{ marginLeft: "auto", fontSize: 10, background: C.primaryLt, color: C.primary,
+              fontWeight: 700, padding: "2px 8px", borderRadius: 10 }}>{sections.length}</span>
+          </div>
+          <div style={{ ...panelBody, flex: 1 }}>
+            {sections.map(sec => (
+              <SectionItem key={sec.id} section={sec}
+                selected={selected} selectedSub={selectedSub}
+                onSelect={s => { setSelected(s); setSelectedSub(null); }}
+                onUpdate={updateSection} onDelete={deleteSection}
+                onSelectSub={handleSelectSub} />
+            ))}
+            {addingTop
+              ? <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+                  <input autoFocus value={newSecName} onChange={e => setNewSecName(e.target.value)}
+                    onKeyDown={e => e.key === "Enter" && addSection()}
+                    placeholder="Section name…"
+                    style={{ ...inputSt, flex: 1, padding: "6px 9px", fontSize: 12 }} />
+                  <button onClick={addSection} style={btn("primary")}>{t("Add", lang)}</button>
+                  <button onClick={() => setAddingTop(false)} style={btn()}>✕</button>
+                </div>
+              : <button onClick={() => setAddingTop(true)}
+                  style={{ ...btn("primary"), marginTop: 10, width: "100%", justifyContent: "center",
+                    borderRadius: 8, padding: "8px 10px", boxShadow: "0 2px 6px rgba(99,102,241,0.25)" }}>
+                  + {t("Add Section", lang)}
+                </button>
+            }
+          </div>
+        </div>
+
+        {/* Col 2 — Report Settings */}
+        <div style={{ ...card }}>
+          <div style={panelHead}>
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><rect x="2" y="1" width="12" height="14" rx="2" stroke={C.primary} strokeWidth="1.5"/><path d="M5 5h6M5 8h6M5 11h4" stroke={C.primary} strokeWidth="1.5" strokeLinecap="round"/></svg>
+            <span style={{ fontSize: 12, fontWeight: 700, color: C.text }}>{t("Report Settings", lang)}</span>
+          </div>
+          <div style={panelBody}>
+
+            <Field label={t("Report Name", lang)}>
+              <input value={reportName} onChange={e => setReportName(e.target.value)} style={inputSt} />
+            </Field>
+
+            <Field label={t("Year", lang)}>
+              <YearScroller value={year} onChange={setYear} />
+            </Field>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <Field label={t("Start Date", lang)}>
+                <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} style={inputSt} />
+              </Field>
+              <Field label={t("End Date", lang)}>
+                <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} style={inputSt} />
+              </Field>
+            </div>
+
+            <Field label={t("Submission Deadline", lang)}>
+              <input type="date" value={submissionDL} onChange={e => setSubmissionDL(e.target.value)} style={inputSt} />
+            </Field>
+
+            <Field label={t("Review Window", lang)}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                <input type="date" value={reviewStart} onChange={e => setReviewStart(e.target.value)} style={inputSt} />
+                <input type="date" value={reviewEnd} onChange={e => setReviewEnd(e.target.value)} style={inputSt} />
+              </div>
+            </Field>
+
+            <Field label={t("Workflow Template", lang)}>
+              <select
+                value={workflow}
+                onChange={e => setWorkflow(e.target.value)}
+                disabled={wfLoading}
+                style={{ ...inputSt, cursor: "pointer" }}
+              >
+                {wfLoading
+                  ? <option value="">Loading…</option>
+                  : wfTemplates.length === 0
+                    ? <option value="">No templates yet</option>
+                    : <>
+                        <option value="">— Select a workflow —</option>
+                        {wfTemplates.map(w => (
+                          <option key={w.id} value={w.id}>
+                            {w.name}
+                            {w.is_default ? " (Default)" : ""}
+                            {" "}({w.step_count} step{Number(w.step_count) !== 1 ? "s" : ""})
+                          </option>
+                        ))}
+                      </>
+                }
+              </select>
+
+              {/* Selected template step summary */}
+              {workflow && wfTemplates.length > 0 && (() => {
+                const tpl = wfTemplates.find(w => w.id === workflow);
+                if (!tpl || !tpl.steps?.length) return null;
+                return (
+                  <div style={{
+                    marginTop: 7, padding: "7px 10px",
+                    background: "rgba(37,99,235,0.06)", borderRadius: 7,
+                    fontSize: 10, color: C.textMid, lineHeight: 1.7,
+                  }}>
+                    {tpl.steps.map((s, i) => (
+                      <span key={s.id}>
+                        {i > 0 && <span style={{ color: "#94a3b8", margin: "0 4px" }}>→</span>}
+                        <strong>{s.step_order || i + 1}.</strong> {s.step_name}
+                        {s.approver_role && (
+                          <span style={{ color: "#94a3b8" }}>
+                            {" "}[{s.approver_role.replace(/_/g, " ")}
+                            {s.approver_department_name ? ` @ ${s.approver_department_name}` : ""}]
+                          </span>
+                        )}
+                        {s.approver_name && <span style={{ color: "#94a3b8", display: "inline-flex", alignItems: "center", gap: 3 }}> [<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>{s.approver_name}]</span>}
+                      </span>
+                    ))}
+                  </div>
+                );
+              })()}
+
+              {/* Create new template link */}
+              <button
+                type="button"
+                onClick={() => shell?.setActiveId("ia-workflow-templates")}
+                style={{
+                  marginTop: 7, display: "flex", alignItems: "center", gap: 5,
+                  background: "none", border: "none", padding: 0,
+                  fontSize: 11, fontWeight: 600, color: C.primary, cursor: "pointer",
+                  textDecoration: "underline", textUnderlineOffset: 2,
+                }}
+              >
+                ＋ Create a new workflow template
+              </button>
+            </Field>
+
+            {/* Timeline visual */}
+            <div style={{ marginTop: 4, padding: "12px 14px", background: C.primaryLt,
+              borderRadius: 10, border: `0.5px solid ${C.border}` }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: C.textMid, textTransform: "uppercase",
+                letterSpacing: "0.07em", marginBottom: 10 }}>{t("Timeline", lang)}</div>
+              <div style={{ position: "relative", height: 6, background: "rgba(99,102,241,0.2)", borderRadius: 3 }}>
+                <div style={{ position: "absolute", left: "0%", right: "8%", top: 0, bottom: 0,
+                  background: C.primary, borderRadius: 3 }} />
+                {[{ pos: "0%", label: "Start" }, { pos: "76%", label: "Deadline" }, { pos: "92%", label: "Review" }].map((m) => (
+                  <div key={m.label} style={{ position: "absolute", left: m.pos, top: -2, width: 10, height: 10,
+                    borderRadius: "50%", background: "#fff", border: `2px solid ${C.primary}`, transform: "translateX(-50%)" }} />
+                ))}
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6 }}>
+                {["Start", "Deadline", "Review End"].map(l => (
+                  <span key={l} style={{ fontSize: 10, color: C.primary, fontWeight: 600 }}>{t(l, lang)}</span>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Col 3 — Section Config + Assignments */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+
+          <div style={card}>
+            <div style={{ ...panelHead }}>
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6.5" stroke={C.primary} strokeWidth="1.5"/><path d="M8 5v3l2 2" stroke={C.primary} strokeWidth="1.5" strokeLinecap="round"/></svg>
+              <span style={{ fontSize: 12, fontWeight: 700, color: C.text }}>{t("Section Config", lang)}</span>
+              {selected && (
+                <span style={{ marginLeft: "auto", fontSize: 10, color: C.textSub, maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {selectedSub ? `${selected.name} › ${selectedSub.name}` : selected.name}
+                </span>
+              )}
+            </div>
+            <div style={panelBody}>
+              {selected ? (
+                <>
+                  {/* Breadcrumb */}
+                  <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 14,
+                    padding: "6px 10px", background: C.primaryLt, borderRadius: 7 }}>
+                    <span style={{ fontSize: 11, color: C.primary, fontWeight: 600 }}>{selected.name}</span>
+                    {selectedSub && <>
+                      <span style={{ fontSize: 10, color: C.textSub }}>›</span>
+                      <span style={{ fontSize: 11, color: C.textMid, fontWeight: 600 }}>{selectedSub.name}</span>
+                    </>}
+                  </div>
+
+                  <Field label={t("Name", lang)}>
+                    <input value={secName} onChange={e => setSecName(e.target.value)} style={inputSt} />
+                  </Field>
+                  <Field label={t("Type", lang)}>
+                    <select value={secType} onChange={e => setSecType(e.target.value)} style={{ ...inputSt, cursor: "pointer" }}>
+                      {["Section", "Subsection", "Chapter", "Annex"].map(t => <option key={t}>{t}</option>)}
+                    </select>
+                  </Field>
+                  <Field label={t("Data Source", lang)}>
+                    <select value={secDataSrc} onChange={e => setSecDataSrc(e.target.value)} style={{ ...inputSt, cursor: "pointer" }}>
+                      {DATA_SRC.map(s => <option key={s}>{s}</option>)}
+                    </select>
+                  </Field>
+
+                  {!selectedSub && selected.subsections.length > 0 && (
+                    <Field label={`Subsections (${selected.subsections.length})`}>
+                      <div style={{ border: `0.5px solid ${C.border}`, borderRadius: 8, overflow: "hidden" }}>
+                        {selected.subsections.map((sub, i) => (
+                          <div key={sub.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between",
+                            padding: "7px 11px", borderTop: i > 0 ? `0.5px solid ${C.border}` : "none", fontSize: 11 }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                              <span style={{ width: 6, height: 6, borderRadius: "50%", background: C.primaryMid }} />
+                              <span style={{ color: "#374151" }}>{sub.name}</span>
+                            </div>
+                            <Badge color={C.textMid} bg={C.primaryLt}>{sub.dataSource}</Badge>
+                          </div>
+                        ))}
+                      </div>
+                    </Field>
+                  )}
+
+                  <button onClick={saveSectionConfig}
+                    style={{ ...btn("primary"), width: "100%", justifyContent: "center", padding: "10px",
+                      borderRadius: 9, fontSize: 12, boxShadow: "0 2px 8px rgba(99,102,241,0.25)" }}>
+                    ✓ {t("Apply Changes", lang)}
+                  </button>
+                </>
+              ) : (
+                <div style={{ textAlign: "center", padding: "36px 0" }}>
+                  <FolderTree size={28} strokeWidth={1.5} color={C.textSub} style={{ marginBottom: 10 }} />
+                  <div style={{ fontSize: 13, color: C.textSub }}>{t("Select a section from the tree", lang)}</div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Assignments */}
+          <div style={card}>
+            <div style={panelHead}>
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><circle cx="6" cy="5" r="2.5" stroke={C.primary} strokeWidth="1.5"/><path d="M1 14c0-2.761 2.239-5 5-5s5 2.239 5 5" stroke={C.primary} strokeWidth="1.5" strokeLinecap="round"/><circle cx="12" cy="5" r="2" stroke={C.primary} strokeWidth="1.5"/><path d="M14 14c0-2.209-1.343-4-3-4" stroke={C.primary} strokeWidth="1.5" strokeLinecap="round"/></svg>
+              <span style={{ fontSize: 12, fontWeight: 700, color: C.text }}>Assignments</span>
+              <span style={{ marginLeft: "auto", fontSize: 10, background: C.primaryLt, color: C.primary,
+                fontWeight: 700, padding: "2px 8px", borderRadius: 10 }}>
+                {sections.flatMap(s => s.subsections).length} items
+              </span>
+            </div>
+            <div style={panelBody}>
+              {sections.flatMap(s => s.subsections).length === 0
+                ? <p style={{ fontSize: 12, color: C.textSub, textAlign: "center", padding: "14px 0" }}>No subsections yet.</p>
+                : sections.flatMap(s => s.subsections).slice(0, 5).map((sub, i) => (
+                    <div key={sub.id} style={{ display: "flex", alignItems: "center", gap: 10,
+                      padding: "7px 0", borderBottom: i < 4 ? `0.5px solid ${C.border}` : "none" }}>
+                      <Avatar name={sub.name} size={28} />
+                      <span style={{ flex: 1, fontSize: 11, color: "#374151", fontWeight: 500 }}>{sub.name}</span>
+                      <select style={{ ...inputSt, width: "auto", padding: "3px 8px", fontSize: 11 }}>
+                        <option>Unassigned</option>
+                        <option>Dr. Sharma</option>
+                        <option>R. Patel</option>
+                        <option>M. Nair</option>
+                        <option>S. Kumar</option>
+                      </select>
+                    </div>
+                  ))
+              }
+            </div>
+          </div>
+
+        </div>
+
+        {/* ── Document Design / Branding ── */}
+        <div style={card}>
+          <div
+            onClick={() => setBrandingOpen(o => !o)}
+            style={{ ...panelHead, cursor: "pointer", userSelect: "none" }}
+          >
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+              <rect x="1" y="1" width="14" height="14" rx="2.5" stroke={C.primary} strokeWidth="1.5"/>
+              <circle cx="5.5" cy="5.5" r="1.5" stroke={C.primary} strokeWidth="1.2"/>
+              <path d="M1 11l4-4 3 3 2-2 5 5" stroke={C.primary} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            <span style={{ fontSize: 12, fontWeight: 700, color: C.text }}>Document Design &amp; Branding</span>
+            <span style={{ marginLeft: "auto", fontSize: 10, color: C.primary, fontWeight: 600 }}>
+              {brandingOpen ? "▲ Collapse" : "▼ Expand"}
+            </span>
+          </div>
+
+          {brandingOpen && (
+            <div style={panelBody}>
+              <p style={{ fontSize: 12, color: C.textSub, marginBottom: 16, lineHeight: 1.6 }}>
+                Set report-level visual assets. Assign each item to a team member who will supply the final asset.
+              </p>
+
+              {/* Live preview strip */}
+              <div style={{ display: "flex", gap: 12, marginBottom: 20, flexWrap: "wrap" }}>
+                <div style={{ flex: "1 1 140px", border: `0.5px solid ${C.border}`, borderRadius: 10, overflow: "hidden" }}>
+                  <div style={{ height: 90, background: coverImageUrl ? `url(${coverImageUrl}) center/cover no-repeat` : C.bg,
+                    display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    {!coverImageUrl && <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke={C.border} strokeWidth="1.4" style={{ opacity: 0.6 }}><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>}
+                  </div>
+                  <div style={{ padding: "6px 10px", fontSize: 10, color: C.textSub, textAlign: "center", fontWeight: 600 }}>Cover Page</div>
+                </div>
+                <div style={{ flex: "1 1 100px", border: `0.5px solid ${C.border}`, borderRadius: 10, overflow: "hidden" }}>
+                  <div style={{ height: 90, background: C.bg, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    {logoUrl
+                      ? <img src={logoUrl} alt="Logo" style={{ maxHeight: 70, maxWidth: "90%", objectFit: "contain" }}
+                          onError={(e) => { e.currentTarget.style.display = "none"; }} />
+                      : <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke={C.border} strokeWidth="1.4" style={{ opacity: 0.6 }}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>}
+                  </div>
+                  <div style={{ padding: "6px 10px", fontSize: 10, color: C.textSub, textAlign: "center", fontWeight: 600 }}>Logo</div>
+                </div>
+                <div style={{ flex: "1 1 140px", border: `0.5px solid ${C.border}`, borderRadius: 10, overflow: "hidden" }}>
+                  <div style={{ height: 90, background: bgImageUrl ? `url(${bgImageUrl}) center/cover no-repeat` : C.bg,
+                    display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    {!bgImageUrl && <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke={C.border} strokeWidth="1.4" style={{ opacity: 0.6 }}><circle cx="13.5" cy="6.5" r="2.5"/><path d="M15.83 11.67l1.42-1.42"/><circle cx="18.5" cy="8.5" r="2"/><path d="M19.07 3.07a10 10 0 0 1-15.14 13.21"/><path d="M2 22l7-7"/></svg>}
+                  </div>
+                  <div style={{ padding: "6px 10px", fontSize: 10, color: C.textSub, textAlign: "center", fontWeight: 600 }}>Page Background</div>
+                </div>
+              </div>
+
+              {/* Asset rows */}
+              <div style={{ border: `0.5px solid ${C.border}`, borderRadius: 10, overflow: "hidden" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "170px 1fr 170px",
+                  background: C.bg, borderBottom: `0.5px solid ${C.border}`, padding: "7px 14px" }}>
+                  {["Asset", "URL / Link", "Assigned To"].map(h => (
+                    <span key={h} style={{ fontSize: 10, fontWeight: 700, color: C.textSub, textTransform: "uppercase", letterSpacing: "0.06em" }}>{h}</span>
+                  ))}
+                </div>
+                {brandingAssignments.map((b, i) => (
+                  <div key={b.id} style={{ display: "grid", gridTemplateColumns: "170px 1fr 170px",
+                    alignItems: "center", padding: "10px 14px", background: "#fff",
+                    borderBottom: i < brandingAssignments.length - 1 ? `0.5px solid ${C.border}` : "none" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      {b.id === "cover"
+                        ? <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={C.primary} strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                        : b.id === "logo"
+                          ? <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={C.primary} strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                          : <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={C.primary} strokeWidth="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>
+                      }
+                      <div>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: C.text }}>{b.label}</div>
+                        {b.assignee !== "Unassigned" && <div style={{ fontSize: 10, color: C.primary, fontWeight: 600 }}>Assigned ✓</div>}
+                      </div>
+                    </div>
+                    <input value={b.url} onChange={e => updateBrandingUrl(b.id, e.target.value)}
+                      placeholder="Paste image URL…"
+                      style={{ ...inputSt, margin: "0 10px", fontSize: 11, padding: "6px 10px" }} />
+                    <select value={b.assignee} onChange={e => updateBrandingAssignee(b.id, e.target.value)}
+                      style={{ ...inputSt, cursor: "pointer", fontSize: 11, padding: "6px 10px" }}>
+                      {DEMO_USERS.map(u => <option key={u}>{u}</option>)}
+                    </select>
+                  </div>
+                ))}
+              </div>
+
+              <button style={{ ...btn("primary"), marginTop: 14, padding: "9px 22px", fontSize: 12, borderRadius: 9 }}>
+                ✓ Save Branding
+              </button>
+            </div>
+          )}
+        </div>
+
+      </div>
+    </PageContainer>
+  );
+}

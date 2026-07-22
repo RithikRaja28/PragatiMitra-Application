@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{{HEADER_TITLE}} — {{APP_NAME}}</title>
+</head>
+<body style="margin:0;padding:0;background-color:#eef2f7;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;">
+
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#eef2f7;padding:32px 16px;">
+    <tr>
+      <td align="center">
+
+        <p style="font-size:12px;font-weight:700;color:#64748b;letter-spacing:2px;text-transform:uppercase;margin-bottom:12px;">
+          {{APP_NAME}}
+        </p>
+
+        <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:20px;overflow:hidden;box-shadow:0 8px 40px rgba(0,0,0,0.10);">
+
+          <!-- ── HEADER ── -->
+          <tr>
+            <td style="background:linear-gradient(135deg,#1e3a8a 0%,#2563eb 60%,#3b82f6 100%);padding:48px 40px 40px;text-align:center;">
+              <span style="display:inline-block;background:rgba(255,255,255,0.18);color:#ffffff;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;padding:4px 16px;border-radius:20px;border:1px solid rgba(255,255,255,0.25);margin-bottom:20px;">
+                {{HEADER_BADGE}}
+              </span>
+              <br/>
+              <span style="font-size:26px;font-weight:800;color:#ffffff;letter-spacing:-0.5px;display:block;margin-bottom:8px;">
+                {{HEADER_TITLE}}
+              </span>
+              <span style="font-size:14px;color:rgba(255,255,255,0.78);">
+                {{HEADER_SUBTITLE}}
+              </span>
+            </td>
+          </tr>
+
+          <!-- ── BODY ── -->
+          <tr>
+            <td style="padding:40px 40px 32px;">
+
+              <p style="font-size:18px;font-weight:700;color:#1e293b;margin:0 0 10px;">
+                Hi {{FULL_NAME}},
+              </p>
+
+              <div style="font-size:14px;color:#64748b;line-height:1.75;margin:0 0 28px;white-space:pre-line;">{{INTRO_TEXT}}</div>
+
+              {{DETAILS_HTML}}
+
+              {{CTA_HTML}}
+
+              <!-- Divider -->
+              <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">
+                <tr>
+                  <td style="border-top:1px solid #e2e8f0;font-size:0;">&nbsp;</td>
+                </tr>
+              </table>
+
+              <!-- Help text -->
+              <p style="font-size:13px;color:#64748b;line-height:1.7;text-align:center;margin:0;">
+                Having trouble? Contact us at
+                <a href="mailto:{{SUPPORT_EMAIL}}" style="color:#2563eb;text-decoration:none;font-weight:600;">{{SUPPORT_EMAIL}}</a><br/>
+                If you did not expect this email, please ignore it or contact support.
+              </p>
+
+            </td>
+          </tr>
+
+          <!-- ── FOOTER ── -->
+          <tr>
+            <td style="background:#f8fafc;border-top:1px solid #e2e8f0;padding:24px 40px;text-align:center;">
+              <p style="font-size:12px;color:#94a3b8;line-height:1.8;margin:0;">
+                <strong style="color:#475569;">{{APP_NAME}}</strong><br/>
+                This is an automated message &mdash; please do not reply directly to this email.<br/>
+                &copy; 2025 {{APP_NAME}}. All rights reserved.
+              </p>
+            </td>
+          </tr>
+
+        </table>
+
+      </td>
+    </tr>
+  </table>
+
+</body>
+</html>

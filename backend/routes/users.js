@@ -1,0 +1,1721 @@
+"use strict";
+
+const express        = require("express");
+const multer         = require("multer");
+const XLSX           = require("xlsx");
+const bcrypt         = require("bcrypt");
+const { randomUUID } = require("crypto");
+const { verifyToken, requireRole } = require("../middleware/auth");
+const { writeAuditLog }            = require("../utils/audit");
+const { enqueueEmail }             = require("../services/mailService");
+const { domainForUser }            = require("../services/domainService");
+
+const logger            = require("../utils/logger");
+const { getLogContext } = logger;
+
+const router = express.Router();
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   SCHEMA CONFIG
+   Centralises which columns are excluded from import, which are FK lookups,
+   which are always required, any column aliases, and virtual import fields.
+   Adjust to match your actual DB schema / business rules.
+───────────────────────────────────────────────────────────────────────────── */
+const SCHEMA_CONFIG = {
+  // Columns that should never appear in the import field list
+  EXCLUDED: [
+    "id", "password_hash", "created_at", "updated_at", "deleted_at",
+    "last_login_at", "created_by", "must_change_password", "is_temporary_password",
+  ],
+
+  // Foreign-key columns: maps DB column name → { importKey, label }
+  FK: {
+    institution_id: { importKey: "institution_name", label: "Institution" },
+    department_id:  { importKey: "department_name",  label: "Department"  },
+  },
+
+  // Fields that must always be present, regardless of DB nullability
+  FORCE_REQUIRED: ["full_name", "email", "institution_name"],
+
+  // Alternative header names accepted for each field key
+  ALIASES: {
+    full_name:        ["name", "full name", "fullname"],
+    email:            ["email address", "e-mail"],
+    institution_name: ["institution", "college", "university", "school"],
+    department_name:  ["department", "dept"],
+    role_name:        ["role", "user role"],
+    account_status:   ["status"],
+    password:         ["pass", "initial password"],
+  },
+
+  // Fields that exist in the import sheet but have no direct DB column
+  VIRTUAL_IMPORT: [
+    { key: "password",  label: "Password",  required: false },
+    { key: "role_name", label: "Role",      required: false },
+  ],
+};
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   MULTER — memory storage, 10 MB limit
+───────────────────────────────────────────────────────────────────────────── */
+const upload      = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+const handleUpload = upload.single("file");
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   ROLE HELPERS
+───────────────────────────────────────────────────────────────────────────── */
+function isOnlyInstAdmin(req) {
+  const roles = req.user.roles || [];
+  return roles.includes("institute_admin") && !roles.includes("super_admin");
+}
+
+function isDeptAdmin(req) {
+  const roles = req.user.roles || [];
+  return roles.includes("department_admin")
+    && !roles.includes("super_admin")
+    && !roles.includes("institute_admin");
+}
+
+/* RBAC TIER GUARD (C-2) — which role NAMES a caller may grant via create/import.
+   Rules:
+   - super_admin:     can grant anything
+   - institute_admin: can grant all roles EXCEPT super_admin and institute_admin;
+                      may also directly assign nodal_officer
+   - department_admin: cannot grant super_admin, institute_admin, or nodal_officer
+                       (nodal_officer is assigned exclusively via the NOA module) */
+function canAssignRole(req, roleName) {
+  const roles = req.user.roles || [];
+  if (roles.includes("super_admin")) return true;
+  const rn = String(roleName || "").trim().toLowerCase();
+  if (rn === "super_admin")     return false;   // only super_admin may grant
+  if (rn === "institute_admin") return false;   // only super_admin may grant
+  // institute_admin may grant all remaining roles, including nodal_officer
+  if (roles.includes("institute_admin")) return true;
+  // department_admin: nodal_officer is managed exclusively via the NOA module
+  if (rn === "nodal_officer") return false;
+  return true;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   INSTITUTION EMAIL-DOMAIN OWNERSHIP
+   A user's email must belong to its institution's configured email_domain
+   (institutions.email_domain — the single source of truth; no separate storage).
+   Returns a professional error message if the email's domain does not match,
+   else null. An institution with no domain configured imposes no restriction
+   (backward compatible). Mirrors the guard already enforced in the bulk-import
+   validate/execute flows so single create + edit behave identically.
+───────────────────────────────────────────────────────────────────────────── */
+async function emailDomainError(pool, institutionId, email) {
+  if (!institutionId || !email) return null;
+  const { rows } = await pool.query(
+    "SELECT LOWER(COALESCE(email_domain, '')) AS domain FROM institutions WHERE institution_id = $1",
+    [institutionId]
+  );
+  const instDomain = (rows[0]?.domain || "").trim();
+  if (!instDomain) return null; // no domain configured → unrestricted
+  const emailDomain = String(email).split("@")[1]?.toLowerCase().trim() || "";
+  if (emailDomain !== instDomain)
+    return `Email domain must match the institution domain. Allowed: @${instDomain}`;
+  return null;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   IMPORT HELPERS
+───────────────────────────────────────────────────────────────────────────── */
+
+/** Normalise a string for fuzzy header matching: lowercase, strip spaces/underscores/hyphens */
+function normalize(str) {
+  return String(str).toLowerCase().replace(/[\s_\-]+/g, "");
+}
+
+/** Convert a snake_case column name to a human-readable label */
+function toLabel(col) {
+  return col.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+/** Build the list of importable fields by introspecting the users table */
+async function getImportSchema(pool) {
+  const { rows: cols } = await pool.query(`
+    SELECT column_name, is_nullable, column_default
+    FROM information_schema.columns
+    WHERE table_name = 'users' AND table_schema = 'public'
+    ORDER BY ordinal_position
+  `);
+
+  const fields = [];
+
+  for (const col of cols) {
+    const name = col.column_name;
+    if (SCHEMA_CONFIG.EXCLUDED.includes(name)) continue;
+
+    if (SCHEMA_CONFIG.FK[name]) {
+      const fk = SCHEMA_CONFIG.FK[name];
+      fields.push({
+        key:      fk.importKey,
+        label:    fk.label,
+        dbColumn: name,
+        required: SCHEMA_CONFIG.FORCE_REQUIRED.includes(fk.importKey),
+        isFk:     true,
+        isVirtual: false,
+        aliases:  SCHEMA_CONFIG.ALIASES[fk.importKey] || [],
+      });
+      continue;
+    }
+
+    const required = SCHEMA_CONFIG.FORCE_REQUIRED.includes(name)
+      ? true
+      : (col.is_nullable === "NO" && !col.column_default);
+
+    fields.push({
+      key:      name,
+      label:    toLabel(name),
+      dbColumn: name,
+      required,
+      isFk:     false,
+      isVirtual: false,
+      aliases:  SCHEMA_CONFIG.ALIASES[name] || [],
+    });
+  }
+
+  for (const vf of SCHEMA_CONFIG.VIRTUAL_IMPORT) {
+    fields.push({
+      ...vf,
+      dbColumn:  null,
+      isFk:      false,
+      isVirtual: true,
+      aliases:   SCHEMA_CONFIG.ALIASES[vf.key] || [],
+    });
+  }
+
+  // Required fields first
+  fields.sort((a, b) => (b.required ? 1 : 0) - (a.required ? 1 : 0));
+  return fields;
+}
+
+/** Auto-map spreadsheet columns to import field keys using name/alias matching */
+function buildAutoMapping(fields, cols) {
+  const mapping = {};
+  for (const field of fields) {
+    const needles = new Set([
+      normalize(field.key),
+      normalize(field.label),
+      ...field.aliases.map(normalize),
+    ]);
+    const matched = cols.find((c) => needles.has(normalize(c)));
+    mapping[field.key] = matched || "";
+  }
+  return mapping;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   GET /api/users/import/schema
+───────────────────────────────────────────────────────────────────────────── */
+router.get(
+  "/import/schema",
+  verifyToken,
+  requireRole(["super_admin", "institute_admin", "department_admin"]),
+  async (req, res) => {
+    try {
+      const fields = await getImportSchema(req.app.locals.pool);
+      return res.json({ success: true, fields });
+    } catch (err) {
+      logger.error("import/schema failed", { ...getLogContext(req), stack: err.stack });
+      return res.status(500).json({ success: false, message: "Failed to load schema." });
+    }
+  }
+);
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   POST /api/users/import/parse
+───────────────────────────────────────────────────────────────────────────── */
+router.post(
+  "/import/parse",
+  verifyToken,
+  requireRole(["super_admin", "institute_admin", "department_admin"]),
+  handleUpload,
+  async (req, res) => {
+    if (!req.file)
+      return res.status(400).json({ success: false, message: "No file uploaded." });
+
+    try {
+      const fields    = await getImportSchema(req.app.locals.pool);
+      const ext       = req.file.originalname.toLowerCase().split(".").pop();
+      const encoding  = (req.body.encoding  || "UTF-8").replace("-", "");
+      const delimiter = req.body.delimiter  || ",";
+
+      let wb;
+      if (ext === "csv") {
+        const text = req.file.buffer.toString(encoding.toLowerCase());
+        wb = XLSX.read(text, { type: "string", FS: delimiter });
+      } else {
+        wb = XLSX.read(req.file.buffer, { type: "buffer" });
+      }
+
+      const ws   = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, { defval: "" });
+
+      if (!rows.length)
+        return res.status(400).json({ success: false, message: "File is empty or has no data rows." });
+      if (rows.length > 10000)
+        return res.status(400).json({ success: false, message: "File exceeds 10,000 rows. Split into smaller batches." });
+
+      const columns   = Object.keys(rows[0]);
+      const sessionId = randomUUID();
+
+      req.app.locals.importSessions.set(sessionId, {
+        rows,
+        expiresAt: Date.now() + 3_600_000,
+      });
+
+      return res.json({
+        success:     true,
+        sessionId,
+        columns,
+        totalRows:   rows.length,
+        preview:     rows.slice(0, 5),
+        autoMapping: buildAutoMapping(fields, columns),
+      });
+    } catch (err) {
+      logger.error("Import parse failed", { ...getLogContext(req), stack: err.stack });
+      return res.status(400).json({ success: false, message: `File parsing failed: ${err.message}` });
+    }
+  }
+);
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   POST /api/users/import/validate
+───────────────────────────────────────────────────────────────────────────── */
+router.post(
+  "/import/validate",
+  verifyToken,
+  requireRole(["super_admin", "institute_admin", "department_admin"]),
+  async (req, res) => {
+    const pool = req.app.locals.pool;
+    const {
+      mapping,
+      sessionId,
+      defaultInstitutionId = null,
+    } = req.body;
+
+    if (!mapping || !sessionId)
+      return res.status(400).json({ success: false, message: "mapping and sessionId are required." });
+
+    const session = req.app.locals.importSessions.get(sessionId);
+    if (!session || !session.rows.length)
+      return res.status(400).json({ success: false, message: "Import session expired. Please re-upload your file." });
+
+    const data = session.rows;
+
+    try {
+      const [{ rows: institutions }, { rows: departments }, { rows: roles }] = await Promise.all([
+        pool.query("SELECT institution_id, LOWER(institution_name) AS name_lower, LOWER(COALESCE(email_domain,'')) AS email_domain FROM institutions WHERE status = 'ACTIVE'"),
+        pool.query("SELECT department_id, LOWER(name) AS name_lower, institution_id FROM departments WHERE status = 'ACTIVE'"),
+        pool.query("SELECT id, LOWER(name) AS name_lower FROM roles"),
+      ]);
+
+      const instByName = new Map(institutions.map((i) => [i.name_lower, { id: i.institution_id, domain: i.email_domain.trim() }]));
+      const instById   = new Map(institutions.map((i) => [i.institution_id, i.email_domain.trim()]));
+      const deptMap    = new Map(departments.map((d) => [`${d.institution_id}::${d.name_lower}`, d.department_id]));
+      const roleMap    = new Map(roles.map((r) => [r.name_lower, r.id]));
+
+      const fieldToCol = {};
+      for (const [dbField, fileCol] of Object.entries(mapping)) {
+        if (fileCol) fieldToCol[dbField] = fileCol;
+      }
+
+      const get = (row, field) => {
+        const col = fieldToCol[field];
+        return col !== undefined ? String(row[col] ?? "").trim() : "";
+      };
+
+      const errors  = [];
+      let   ready   = 0;
+      let   skipped = 0;
+
+      for (let i = 0; i < data.length; i++) {
+        const row       = data[i];
+        const rowNum    = i + 1;
+        const rowErrors = [];
+
+        const full_name = get(row, "full_name");
+        const email     = get(row, "email");
+        const inst_name = get(row, "institution_name");
+        const dept_name = get(row, "department_name");
+        const role_str  = get(row, "role_name");
+
+        if (!full_name)
+          rowErrors.push({ field: "full_name", reason: "Full name is required" });
+
+        if (!email)
+          rowErrors.push({ field: "email", reason: "Email is required" });
+        else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+          rowErrors.push({ field: "email", reason: "Invalid email format" });
+
+        let institution_id = defaultInstitutionId || null;
+        if (inst_name) {
+          const resolved = instByName.get(inst_name.toLowerCase());
+          if (!resolved)
+            rowErrors.push({ field: "institution_name", reason: `Institution "${inst_name}" not found` });
+          else
+            institution_id = resolved.id;
+        }
+        if (!institution_id && !rowErrors.some((e) => e.field === "institution_name"))
+          rowErrors.push({ field: "institution_name", reason: "Institution is required" });
+
+        if (institution_id && email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+          const instDomain  = instById.get(institution_id) || "";
+          const emailDomain = email.split("@")[1]?.toLowerCase() || "";
+          if (instDomain && emailDomain !== instDomain)
+            rowErrors.push({ field: "email", reason: `Email must use @${instDomain} for this institution` });
+        }
+
+        if (dept_name && institution_id) {
+          if (!deptMap.has(`${institution_id}::${dept_name.toLowerCase()}`))
+            rowErrors.push({ field: "department_name", reason: `Department "${dept_name}" not found in this institution` });
+        }
+
+        if (role_str && !roleMap.has(role_str.toLowerCase()))
+          rowErrors.push({ field: "role_name", reason: `Role "${role_str}" not found` });
+
+        if (rowErrors.length) {
+          skipped++;
+          errors.push({ row: rowNum, errors: rowErrors });
+        } else {
+          ready++;
+        }
+      }
+
+      const unmappedRequired = ["full_name", "email", "institution_name"]
+        .filter((f) => !fieldToCol[f]).length;
+
+      return res.json({
+        success: true,
+        total:   data.length,
+        ready,
+        skipped,
+        unmappedRequired,
+        errors,
+      });
+    } catch (err) {
+      logger.error("Import validate failed", { ...getLogContext(req), stack: err.stack });
+      return res.status(500).json({ success: false, message: "Validation failed." });
+    }
+  }
+);
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   POST /api/users/import/execute
+───────────────────────────────────────────────────────────────────────────── */
+router.post(
+  "/import/execute",
+  verifyToken,
+  requireRole(["super_admin", "institute_admin", "department_admin"]),
+  async (req, res) => {
+    const pool = req.app.locals.pool;
+    const {
+      mapping,
+      sessionId,
+      duplicateHandling    = "skip",
+      defaultInstitutionId = null,
+      defaultRoleName      = "",
+    } = req.body;
+
+    if (!mapping || !sessionId)
+      return res.status(400).json({ success: false, message: "mapping and sessionId are required." });
+
+    const session = req.app.locals.importSessions.get(sessionId);
+    if (!session || !session.rows.length)
+      return res.status(400).json({ success: false, message: "Import session expired. Please re-upload your file." });
+
+    const data = session.rows;
+
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.setHeader("X-Accel-Buffering", "no");
+    res.flushHeaders();
+
+    const send = (payload) => {
+      try { res.write(`data: ${JSON.stringify(payload)}\n\n`); } catch (_) {}
+    };
+
+    try {
+      const [{ rows: insts }, { rows: depts }, { rows: roles }] = await Promise.all([
+        pool.query("SELECT institution_id, LOWER(institution_name) AS name_lower, LOWER(COALESCE(email_domain,'')) AS email_domain FROM institutions WHERE status = 'ACTIVE'"),
+        pool.query("SELECT department_id, LOWER(name) AS name_lower, institution_id FROM departments WHERE status = 'ACTIVE'"),
+        pool.query("SELECT id, LOWER(name) AS name_lower FROM roles"),
+      ]);
+
+      const instByName = new Map(insts.map((i) => [i.name_lower, { id: i.institution_id, domain: i.email_domain.trim() }]));
+      const instById   = new Map(insts.map((i) => [i.institution_id, i.email_domain.trim()]));
+      const deptMap    = new Map(depts.map((d) => [`${d.institution_id}::${d.name_lower}`, d.department_id]));
+      const roleMap    = new Map(roles.map((r) => [r.name_lower, r.id]));
+
+      /* C-1 — tenant scope for the importer. A non-super-admin may only import
+         into their OWN institution (and dept admins only into their OWN dept);
+         the file's Institution/Department columns and defaultInstitutionId can
+         never redirect the import to another tenant. super_admin is unscoped. */
+      const deptAdmin = isDeptAdmin(req);
+      const instAdmin = isOnlyInstAdmin(req);
+      const scopedInst = (deptAdmin || instAdmin) ? req.user.institutionId : null;
+      const scopedDept = deptAdmin ? req.user.departmentId : null;
+
+      const fieldToCol = {};
+      for (const [f, c] of Object.entries(mapping)) if (c) fieldToCol[f] = c;
+
+      const get = (row, field) => {
+        const col = fieldToCol[field];
+        return col !== undefined ? String(row[col] ?? "").trim() : "";
+      };
+
+      const DEFAULT_PASS = "Welcome@123";
+      const defaultHash  = await bcrypt.hash(DEFAULT_PASS, 10);
+
+      const errorRows = [];
+      const prepared  = [];
+
+      for (let i = 0; i < data.length; i++) {
+        const row    = data[i];
+        const rowNum = i + 1;
+
+        const full_name  = get(row, "full_name");
+        const email      = get(row, "email");
+        const password   = get(row, "password");
+        const inst_name  = get(row, "institution_name");
+        const dept_name  = get(row, "department_name");
+        const role_str   = get(row, "role_name");
+        const status_str = get(row, "account_status");
+
+        if (!full_name)
+          { errorRows.push({ row: rowNum, error: "Full name is required" }); continue; }
+        if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+          { errorRows.push({ row: rowNum, error: "Valid email is required" }); continue; }
+
+        let institution_id = defaultInstitutionId || null;
+        if (inst_name) {
+          const r = instByName.get(inst_name.toLowerCase());
+          if (!r) { errorRows.push({ row: rowNum, error: `Institution "${inst_name}" not found` }); continue; }
+          institution_id = r.id;
+        }
+        // Scoped admins default to (and are pinned to) their own institution.
+        if (!institution_id && scopedInst) institution_id = scopedInst;
+        if (!institution_id)
+          { errorRows.push({ row: rowNum, error: "Institution is required — map the column or set a default" }); continue; }
+        // C-1 — reject any attempt to import into another institution.
+        if (scopedInst && String(institution_id) !== String(scopedInst))
+          { errorRows.push({ row: rowNum, error: "You can only import users into your own institution." }); continue; }
+
+        const instDomain  = instById.get(institution_id) || "";
+        const emailDomain = email.split("@")[1]?.toLowerCase() || "";
+        if (instDomain && emailDomain !== instDomain)
+          { errorRows.push({ row: rowNum, error: `Email must use @${instDomain} for this institution` }); continue; }
+
+        let department_id = null;
+        if (dept_name)
+          department_id = deptMap.get(`${institution_id}::${dept_name.toLowerCase()}`) || null;
+        // C-1 — a department admin can only import into their own department.
+        if (deptAdmin) department_id = scopedDept;
+
+        const role_lookup    = role_str || defaultRoleName || "";
+        const role_id        = role_lookup ? (roleMap.get(role_lookup.toLowerCase()) || null) : null;
+        // C-2 — cannot import a user with a role above the caller's tier.
+        if (role_lookup && !canAssignRole(req, role_lookup))
+          { errorRows.push({ row: rowNum, error: `You are not permitted to assign the role "${role_lookup}".` }); continue; }
+        const VALID_STATUSES = ["ACTIVE", "INACTIVE", "SUSPENDED"];
+        const account_status = VALID_STATUSES.includes(status_str?.toUpperCase())
+          ? status_str.toUpperCase()
+          : "ACTIVE";
+        const rawPassword = password || DEFAULT_PASS;
+
+        prepared.push({
+          full_name, email: email.toLowerCase(), rawPassword,
+          institution_id, department_id, role_id, account_status,
+        });
+      }
+
+      const HASH_CONCURRENCY = 20;
+      for (let i = 0; i < prepared.length; i += HASH_CONCURRENCY) {
+        await Promise.all(
+          prepared.slice(i, i + HASH_CONCURRENCY).map(async (u) => {
+            u.password_hash = (u.rawPassword === DEFAULT_PASS)
+              ? defaultHash
+              : await bcrypt.hash(u.rawPassword, 10);
+          })
+        );
+      }
+
+      const { rows: existing } = await pool.query(
+        `SELECT email, id, institution_id, department_id
+           FROM users WHERE email = ANY($1::text[]) AND account_status != 'DELETED'`,
+        [prepared.map((p) => p.email)]
+      );
+      const existingMap = new Map(existing.map((r) => [r.email, r]));
+
+      const toInsert = [];
+      const toUpdate = [];
+      let   skipped  = 0;
+
+      for (const u of prepared) {
+        const ex = existingMap.get(u.email);
+        if (ex) {
+          if (duplicateHandling === "skip") { skipped++; continue; }
+          /* C-1 — a non-super-admin may only overwrite an existing user that is
+             already inside their own scope; never reach across tenants/departments. */
+          if (scopedInst && String(ex.institution_id) !== String(scopedInst)) {
+            errorRows.push({ row: null, error: `"${u.email}" belongs to another institution and was not overwritten.` });
+            continue;
+          }
+          if (scopedDept && String(ex.department_id) !== String(scopedDept)) {
+            errorRows.push({ row: null, error: `"${u.email}" belongs to another department and was not overwritten.` });
+            continue;
+          }
+          toUpdate.push({ ...u, id: ex.id });
+        } else {
+          toInsert.push(u);
+        }
+      }
+
+      const CHUNK = 500;
+      const total = toInsert.length + toUpdate.length;
+      let   done  = 0;
+
+      for (let i = 0; i < toInsert.length; i += CHUNK) {
+        const chunk  = toInsert.slice(i, i + CHUNK);
+        const vals   = [];
+        const tuples = chunk.map((u, idx) => {
+          const b = idx * 7;
+          vals.push(
+            u.full_name, u.email, u.password_hash,
+            u.institution_id, u.department_id, u.account_status,
+            req.user.userId
+          );
+          return `($${b+1},$${b+2},$${b+3},$${b+4}::uuid,$${b+5}::uuid,$${b+6},true,true,$${b+7}::uuid)`;
+        });
+
+        const { rows: ins } = await pool.query(
+          `INSERT INTO users
+             (full_name, email, password_hash, institution_id, department_id, account_status,
+              must_change_password, is_temporary_password, created_by)
+           VALUES ${tuples.join(",")}
+           RETURNING id, email`,
+          vals
+        );
+
+        const idByEmail = new Map(ins.map((r) => [r.email, r.id]));
+
+        const roleInserts = chunk
+          .filter((u) => u.role_id)
+          .map((u) => ({ userId: idByEmail.get(u.email), roleId: u.role_id }))
+          .filter((r) => r.userId);
+
+        if (roleInserts.length) {
+          const rv = [];
+          const rt = roleInserts.map((r, idx) => {
+            const b = idx * 3;
+            rv.push(r.userId, r.roleId, req.user.userId);
+            return `($${b+1}::uuid,$${b+2}::uuid,$${b+3}::uuid)`;
+          });
+          await pool.query(
+            `INSERT INTO user_roles (user_id, role_id, assigned_by)
+             VALUES ${rt.join(",")} ON CONFLICT DO NOTHING`,
+            rv
+          );
+        }
+
+        // Enqueue welcome email for each newly created user (fire-and-forget).
+        for (const row of ins) {
+          const userData = chunk.find((u) => u.email === row.email);
+          if (userData) {
+            enqueueEmail(pool, {
+              eventId:         "user_created",
+              recipientEmail:  row.email,
+              recipientUserId: row.id,
+              payload: {
+                full_name: userData.full_name,
+                password:  userData.rawPassword,
+                login_url: process.env.APP_LOGIN_URL || "http://localhost:5173/login",
+              },
+            }).catch((err) =>
+              logger.error("Failed to enqueue import welcome email", { email: row.email, error: err.message })
+            );
+          }
+        }
+
+        done += ins.length;
+        send({ phase: "importing", done, total });
+      }
+
+      for (let i = 0; i < toUpdate.length; i += CHUNK) {
+        const chunk = toUpdate.slice(i, i + CHUNK);
+
+        await pool.query(
+          `UPDATE users SET
+             full_name      = v.full_name,
+             institution_id = v.institution_id::uuid,
+             department_id  = v.department_id::uuid,
+             account_status = v.account_status,
+             updated_at     = now()
+           FROM unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::text[])
+             AS v(id_match, full_name, institution_id, department_id, account_status)
+           WHERE users.id = v.id_match::uuid`,
+          [
+            chunk.map((u) => u.id),
+            chunk.map((u) => u.full_name),
+            chunk.map((u) => u.institution_id),
+            chunk.map((u) => u.department_id),
+            chunk.map((u) => u.account_status),
+          ]
+        );
+
+        const usersWithRoles = chunk.filter((u) => u.role_id);
+        if (usersWithRoles.length) {
+          await pool.query(
+            `UPDATE user_roles SET revoked_at = now()
+             WHERE user_id = ANY($1::uuid[]) AND revoked_at IS NULL`,
+            [usersWithRoles.map((u) => u.id)]
+          );
+          const rv = [];
+          const rt = usersWithRoles.map((u, idx) => {
+            const b = idx * 3;
+            rv.push(u.id, u.role_id, req.user.userId);
+            return `($${b+1}::uuid,$${b+2}::uuid,$${b+3}::uuid)`;
+          });
+          await pool.query(
+            `INSERT INTO user_roles (user_id, role_id, assigned_by)
+             VALUES ${rt.join(",")} ON CONFLICT DO NOTHING`,
+            rv
+          );
+          /* Role changes take effect immediately via the per-request role refresh
+             in verifyToken (Bug 5) — no session kill / forced re-login needed. */
+        }
+
+        done += chunk.length;
+        send({ phase: "importing", done, total });
+      }
+
+      await writeAuditLog(req, {
+        actionType: "USERS_BULK_IMPORTED",
+        entityType: "USER",
+        entityId:   null,
+        newValue:   { total: data.length, imported: done, skipped, failed: errorRows.length },
+        status:     "SUCCESS",
+        message:    `Bulk import: ${done} created/updated, ${skipped} skipped, ${errorRows.length} failed`,
+      });
+
+      // Notify the admin who triggered the import with a summary email.
+      pool.query(`SELECT full_name, email FROM users WHERE id = $1`, [req.user.userId])
+        .then(({ rows: adminRows }) => {
+          if (!adminRows.length) return;
+          return enqueueEmail(pool, {
+            eventId:         "import_completed",
+            recipientEmail:  adminRows[0].email,
+            recipientUserId: req.user.userId,
+            payload: {
+              full_name: adminRows[0].full_name,
+              imported:  done,
+              skipped,
+              failed:    errorRows.length,
+              total:     data.length,
+              login_url: process.env.APP_LOGIN_URL || "http://localhost:5173/login",
+            },
+          });
+        })
+        .catch((err) =>
+          logger.error("Failed to enqueue import_completed email", { error: err.message })
+        );
+
+      send({
+        complete: true,
+        imported: done,
+        skipped,
+        total:    data.length,
+        failed:   errorRows.length,
+        errors:   errorRows.slice(0, 50),
+      });
+      res.end();
+    } catch (err) {
+      logger.error("Import execute failed", { ...getLogContext(req), stack: err.stack });
+      send({ error: true, message: `Import failed: ${err.message}` });
+      res.end();
+    }
+  }
+);
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   GET /api/users/export
+───────────────────────────────────────────────────────────────────────────── */
+router.get(
+  "/export",
+  verifyToken,
+  requireRole(["super_admin", "institute_admin", "department_admin"]),
+  async (req, res) => {
+    const pool   = req.app.locals.pool;
+    const format = req.query.format === "xlsx" ? "xlsx" : "csv";
+
+    try {
+      const conditions = ["u.account_status != 'DELETED'"];
+      const params     = [];
+
+      if (isDeptAdmin(req)) {
+        params.push(req.user.institutionId, req.user.departmentId);
+        conditions.push(`u.institution_id = $${params.length - 1}`);
+        conditions.push(`u.department_id  = $${params.length}`);
+        conditions.push(`NOT EXISTS (
+          SELECT 1 FROM user_roles ur_inst
+          JOIN roles r_inst ON r_inst.id = ur_inst.role_id
+          WHERE ur_inst.user_id = u.id
+            AND r_inst.name IN ('super_admin', 'institute_admin', 'publication_cell', 'directors_office', 'finance_officer')
+            AND ur_inst.revoked_at IS NULL
+            AND (ur_inst.expires_at IS NULL OR ur_inst.expires_at > now())
+        )`);
+      } else if (isOnlyInstAdmin(req)) {
+        params.push(req.user.institutionId);
+        conditions.push(`u.institution_id = $${params.length}`);
+      }
+
+      const whereClause = conditions.join(" AND ");
+
+      const { rows } = await pool.query(`
+        SELECT
+          u.id, u.full_name, u.email, u.account_status,
+          u.last_login_at, u.created_at, u.institution_id, u.department_id,
+          COALESCE(u.role_domain, 'academic') AS role_domain,
+          i.institution_name, d.name AS department_name,
+          COALESCE(
+            (SELECT json_agg(json_build_object('name', r.name, 'display_name', r.display_name))
+             FROM user_roles ur JOIN roles r ON r.id = ur.role_id
+             WHERE ur.user_id = u.id AND ur.revoked_at IS NULL
+               AND (ur.expires_at IS NULL OR ur.expires_at > now())
+            ), '[]'::json
+          ) AS roles
+        FROM users u
+        LEFT JOIN institutions i ON i.institution_id = u.institution_id
+        LEFT JOIN departments  d ON d.department_id  = u.department_id
+        WHERE ${whereClause}
+        ORDER BY u.created_at DESC
+      `, params);
+
+      const ws = XLSX.utils.json_to_sheet(rows.length ? rows : [{}]);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Users");
+      const ts = new Date().toISOString().slice(0, 10);
+
+      writeAuditLog(req, {
+        actionType: "USERS_EXPORTED",
+        entityType: "USER",
+        status:     "SUCCESS",
+        message:    `User data exported as ${format.toUpperCase()} — ${rows.length} records`,
+        metadata:   { format, record_count: rows.length, exported_on: ts },
+      }).catch(() => {});
+
+      if (format === "xlsx") {
+        const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+        res.setHeader("Content-Disposition", `attachment; filename="users_${ts}.xlsx"`);
+        res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        return res.send(buf);
+      }
+
+      const csv = XLSX.utils.sheet_to_csv(ws);
+      res.setHeader("Content-Disposition", `attachment; filename="users_${ts}.csv"`);
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      return res.send(csv);
+    } catch (err) {
+      logger.error("Export failed", { ...getLogContext(req), stack: err.stack });
+      return res.status(500).json({ success: false, message: "Export failed." });
+    }
+  }
+);
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   GET /api/users/export/sample
+───────────────────────────────────────────────────────────────────────────── */
+router.get(
+  "/export/sample",
+  verifyToken,
+  requireRole(["super_admin", "institute_admin", "department_admin"]),
+  async (req, res) => {
+    const pool   = req.app.locals.pool;
+    const format = req.query.format === "xlsx" ? "xlsx" : "csv";
+
+    try {
+      const [{ rows: institutions }, { rows: departments }, { rows: roles }] = await Promise.all([
+        pool.query("SELECT institution_name FROM institutions WHERE status = 'ACTIVE' ORDER BY institution_name LIMIT 50"),
+        pool.query("SELECT name FROM departments WHERE status = 'ACTIVE' ORDER BY name LIMIT 50"),
+        pool.query("SELECT display_name FROM roles ORDER BY display_name LIMIT 50"),
+      ]);
+
+      const instNames = institutions.map((r) => r.institution_name);
+      const deptNames = departments.map((r) => r.name);
+      const roleNames = roles.map((r) => r.display_name);
+
+      const sampleData = [
+        {
+          full_name: "Arun Kumar",  email: "arun@example.com",
+          password:  "TempPass@123", institution_name: instNames[0] || "Example College",
+          department_name: deptNames[0] || "Computer Science",
+          role_name: roleNames[0] || "contributor", account_status: "ACTIVE",
+        },
+        {
+          full_name: "Priya Singh", email: "priya@example.com",
+          password:  "TempPass@123", institution_name: instNames[0] || "Example College",
+          department_name: deptNames[1] || "Electronics",
+          role_name: roleNames[1] || "reviewer", account_status: "ACTIVE",
+        },
+        {
+          full_name: "Vikram Nair", email: "vikram@example.com",
+          password:  "TempPass@123", institution_name: instNames[0] || "Example College",
+          department_name: "", role_name: roleNames[0] || "contributor", account_status: "ACTIVE",
+        },
+      ];
+
+      if (format === "csv") {
+        const ws  = XLSX.utils.json_to_sheet(sampleData);
+        const csv = XLSX.utils.sheet_to_csv(ws);
+        res.setHeader("Content-Disposition", 'attachment; filename="users_import_sample.csv"');
+        res.setHeader("Content-Type", "text/csv; charset=utf-8");
+        return res.send(csv);
+      }
+
+      let ExcelJS;
+      try { ExcelJS = require("exceljs"); } catch (_) { ExcelJS = null; }
+
+      if (!ExcelJS) {
+        const ws = XLSX.utils.json_to_sheet(sampleData);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Users Import Sample");
+        const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+        res.setHeader("Content-Disposition", 'attachment; filename="users_import_sample.xlsx"');
+        res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        return res.send(buf);
+      }
+
+      const workbook  = new ExcelJS.Workbook();
+      const mainSheet = workbook.addWorksheet("Users Import Sample");
+      const lookups   = workbook.addWorksheet("_Lookups");
+      lookups.state   = "veryHidden";
+
+      instNames.forEach((v, i) => { lookups.getCell(i + 1, 1).value = v; });
+      deptNames.forEach((v, i) => { lookups.getCell(i + 1, 2).value = v; });
+      roleNames.forEach((v, i) => { lookups.getCell(i + 1, 3).value = v; });
+      ["ACTIVE", "INACTIVE", "SUSPENDED"].forEach((v, i) => { lookups.getCell(i + 1, 4).value = v; });
+
+      if (instNames.length) workbook.definedNames.add(`_Lookups!$A$1:$A$${instNames.length}`, "InstList");
+      if (deptNames.length) workbook.definedNames.add(`_Lookups!$B$1:$B$${deptNames.length}`, "DeptList");
+      if (roleNames.length) workbook.definedNames.add(`_Lookups!$C$1:$C$${roleNames.length}`, "RoleList");
+      workbook.definedNames.add("_Lookups!$D$1:$D$3", "StatusList");
+
+      mainSheet.columns = [
+        { header: "Full Name",      key: "full_name",        width: 22 },
+        { header: "Email",          key: "email",            width: 28 },
+        { header: "Password",       key: "password",         width: 18 },
+        { header: "Institution",    key: "institution_name", width: 24 },
+        { header: "Department",     key: "department_name",  width: 22 },
+        { header: "Role",           key: "role_name",        width: 20 },
+        { header: "Account Status", key: "account_status",   width: 16 },
+      ];
+
+      mainSheet.getRow(1).eachCell((cell) => {
+        cell.font      = { bold: true, color: { argb: "FFFFFFFF" } };
+        cell.fill      = { type: "pattern", pattern: "solid", fgColor: { argb: "FF2563EB" } };
+        cell.alignment = { vertical: "middle", horizontal: "center" };
+      });
+
+      sampleData.forEach((row) => mainSheet.addRow(row));
+
+      const validations = [
+        { col: "D", range: "InstList",   label: "institution" },
+        { col: "E", range: "DeptList",   label: "department"  },
+        { col: "F", range: "RoleList",   label: "role"        },
+        { col: "G", range: "StatusList", label: "status"      },
+      ];
+      for (const { col, range, label } of validations) {
+        mainSheet.dataValidations.add(`${col}2:${col}101`, {
+          type: "list", allowBlank: true, formulae: [range],
+          showErrorMessage: true,
+          errorTitle: "Invalid value",
+          error: `Please select a valid ${label} from the dropdown.`,
+        });
+      }
+
+      const buf = await workbook.xlsx.writeBuffer();
+      res.setHeader("Content-Disposition", 'attachment; filename="users_import_sample.xlsx"');
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      return res.send(buf);
+    } catch (err) {
+      logger.error("Export sample failed", { ...getLogContext(req), stack: err.stack });
+      return res.status(500).json({ success: false, message: "Sample export failed." });
+    }
+  }
+);
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   GET /api/users/check-email?email=xxx&excludeId=uuid
+   Lightweight existence check used by the frontend before form submission.
+   Pass excludeId (the user's own id) when checking during edit so the user's
+   own current email doesn't falsely trigger a conflict.
+   Scoped by the caller's role — same institution scope as POST /api/users.
+───────────────────────────────────────────────────────────────────────────── */
+router.get(
+  "/check-email",
+  verifyToken,
+  requireRole(["super_admin", "institute_admin", "department_admin"]),
+  async (req, res) => {
+    const pool      = req.app.locals.pool;
+    const email     = (req.query.email     || "").trim().toLowerCase();
+    const excludeId = (req.query.excludeId || "").trim();  // own user id when editing
+
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+      return res.status(400).json({ success: false, message: "Valid email is required." });
+
+    try {
+      const conditions = ["email = $1", "account_status != 'DELETED'"];
+      const params     = [email];
+
+      // Exclude the user's own record when checking during edit
+      if (excludeId) {
+        params.push(excludeId);
+        conditions.push(`id != $${params.length}`);
+      }
+
+      if (isDeptAdmin(req) || isOnlyInstAdmin(req)) {
+        params.push(req.user.institutionId);
+        conditions.push(`institution_id = $${params.length}`);
+      }
+
+      const { rows } = await pool.query(
+        `SELECT 1 FROM users WHERE ${conditions.join(" AND ")} LIMIT 1`,
+        params
+      );
+
+      return res.json({ success: true, exists: rows.length > 0 });
+    } catch (err) {
+      logger.error("GET /api/users/check-email failed", { ...getLogContext(req), stack: err.stack });
+      return res.status(500).json({ success: false, message: "Internal server error." });
+    }
+  }
+);
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   GET /api/users
+───────────────────────────────────────────────────────────────────────────── */
+router.get("/", verifyToken, requireRole(["super_admin", "institute_admin", "department_admin"]), async (req, res) => {
+  const pool = req.app.locals.pool;
+  try {
+    let rows;
+
+    if (isDeptAdmin(req)) {
+      const includeDeleted = req.query.includeDeleted === "true";
+      const conditions = [
+        ...(includeDeleted ? [] : ["u.account_status != 'DELETED'"]),
+        `u.institution_id = $1`,
+        `u.department_id  = $2`,
+        `NOT EXISTS (
+          SELECT 1 FROM user_roles ur_inst
+          JOIN roles r_inst ON r_inst.id = ur_inst.role_id
+          WHERE ur_inst.user_id = u.id
+            AND r_inst.name IN ('super_admin', 'institute_admin', 'publication_cell', 'directors_office', 'finance_officer')
+            AND ur_inst.revoked_at IS NULL
+            AND (ur_inst.expires_at IS NULL OR ur_inst.expires_at > now())
+        )`,
+      ];
+      const params = [req.user.institutionId, req.user.departmentId];
+
+      ({ rows } = await pool.query(`
+        SELECT
+          u.id, u.full_name, u.email, u.account_status,
+          u.last_login_at, u.created_at, u.institution_id, u.department_id,
+          COALESCE(u.role_domain, 'academic') AS role_domain,
+          i.institution_name, d.name AS department_name,
+          COALESCE(
+            (SELECT json_agg(json_build_object('name', r.name, 'display_name', r.display_name))
+             FROM user_roles ur JOIN roles r ON r.id = ur.role_id
+             WHERE ur.user_id = u.id AND ur.revoked_at IS NULL
+               AND (ur.expires_at IS NULL OR ur.expires_at > now())
+            ), '[]'::json
+          ) AS roles
+        FROM users u
+        LEFT JOIN institutions i ON i.institution_id = u.institution_id
+        LEFT JOIN departments  d ON d.department_id  = u.department_id
+        WHERE ${conditions.join(" AND ")}
+        ORDER BY u.created_at DESC
+      `, params));
+
+    } else if (isOnlyInstAdmin(req)) {
+      const includeDeleted = req.query.includeDeleted === "true";
+      const { role, department_id } = req.query;
+      const conditions = [
+        ...(includeDeleted ? [] : ["u.account_status != 'DELETED'"]),
+        `u.institution_id = $1`,
+        /* Never surface super_admin or institute_admin users to an institute admin —
+           they must not appear in the Users list or be editable from this module. */
+        `NOT EXISTS (
+          SELECT 1 FROM user_roles ur_priv
+          JOIN roles r_priv ON r_priv.id = ur_priv.role_id
+          WHERE ur_priv.user_id = u.id
+            AND r_priv.name IN ('super_admin', 'institute_admin')
+            AND ur_priv.revoked_at IS NULL
+            AND (ur_priv.expires_at IS NULL OR ur_priv.expires_at > now())
+        )`,
+      ];
+      const params = [req.user.institutionId];
+
+      if (department_id) {
+        params.push(department_id);
+        conditions.push(`u.department_id = $${params.length}`);
+      }
+      if (role) {
+        params.push(role);
+        conditions.push(`EXISTS (
+          SELECT 1 FROM user_roles ur2
+          JOIN roles r2 ON r2.id = ur2.role_id
+          WHERE ur2.user_id = u.id
+            AND r2.name = $${params.length}
+            AND ur2.revoked_at IS NULL
+            AND (ur2.expires_at IS NULL OR ur2.expires_at > now())
+        )`);
+      }
+
+      ({ rows } = await pool.query(`
+        SELECT
+          u.id, u.full_name, u.email, u.account_status,
+          u.last_login_at, u.created_at, u.institution_id, u.department_id,
+          COALESCE(u.role_domain, 'academic') AS role_domain,
+          i.institution_name, d.name AS department_name,
+          COALESCE(
+            (SELECT json_agg(json_build_object('name', r.name, 'display_name', r.display_name))
+             FROM user_roles ur JOIN roles r ON r.id = ur.role_id
+             WHERE ur.user_id = u.id AND ur.revoked_at IS NULL
+               AND (ur.expires_at IS NULL OR ur.expires_at > now())
+            ), '[]'::json
+          ) AS roles
+        FROM users u
+        LEFT JOIN institutions i ON i.institution_id = u.institution_id
+        LEFT JOIN departments  d ON d.department_id  = u.department_id
+        WHERE ${conditions.join(" AND ")}
+        ORDER BY u.created_at DESC
+      `, params));
+
+    } else {
+      const { institution_id, role, department_id } = req.query;
+      const includeDeleted = req.query.includeDeleted === "true" && !isDeptAdmin(req) && !isOnlyInstAdmin(req);
+      const conditions = includeDeleted ? [] : ["u.account_status != 'DELETED'"];
+      const params     = [];
+
+      if (institution_id) {
+        params.push(institution_id);
+        conditions.push(`u.institution_id = $${params.length}`);
+      }
+      if (department_id) {
+        params.push(department_id);
+        conditions.push(`u.department_id = $${params.length}`);
+      }
+      if (role) {
+        params.push(role);
+        conditions.push(`EXISTS (
+          SELECT 1 FROM user_roles ur2
+          JOIN roles r2 ON r2.id = ur2.role_id
+          WHERE ur2.user_id = u.id
+            AND r2.name = $${params.length}
+            AND ur2.revoked_at IS NULL
+            AND (ur2.expires_at IS NULL OR ur2.expires_at > now())
+        )`);
+      }
+
+      ({ rows } = await pool.query(`
+        SELECT
+          u.id, u.full_name, u.email, u.account_status,
+          u.last_login_at, u.created_at, u.institution_id, u.department_id,
+          COALESCE(u.role_domain, 'academic') AS role_domain,
+          i.institution_name, d.name AS department_name,
+          COALESCE(
+            (SELECT json_agg(json_build_object('name', r.name, 'display_name', r.display_name))
+             FROM user_roles ur JOIN roles r ON r.id = ur.role_id
+             WHERE ur.user_id = u.id AND ur.revoked_at IS NULL
+               AND (ur.expires_at IS NULL OR ur.expires_at > now())
+            ), '[]'::json
+          ) AS roles
+        FROM users u
+        LEFT JOIN institutions i ON i.institution_id = u.institution_id
+        LEFT JOIN departments  d ON d.department_id  = u.department_id
+        ${conditions.length ? `WHERE ${conditions.join(" AND ")}` : ""}
+        ORDER BY u.created_at DESC
+      `, params));
+    }
+
+    return res.json({ success: true, users: rows });
+  } catch (err) {
+    logger.error("GET /api/users failed", { ...getLogContext(req), stack: err.stack });
+    return res.status(500).json({ success: false, message: "Internal server error." });
+  }
+});
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   GET /api/users/:id
+   Single-user fetch for the edit page — required so /user-management/:userId/edit
+   can load its data directly (refresh / deep link), not just via in-app state.
+───────────────────────────────────────────────────────────────────────────── */
+router.get("/:id", verifyToken, requireRole(["super_admin", "institute_admin", "department_admin"]), async (req, res) => {
+  const pool = req.app.locals.pool;
+  const { id } = req.params;
+
+  try {
+    const conditions = ["u.id = $1", "u.account_status != 'DELETED'"];
+    const params = [id];
+
+    if (isDeptAdmin(req)) {
+      params.push(req.user.institutionId, req.user.departmentId);
+      conditions.push(`u.institution_id = $${params.length - 1}`);
+      conditions.push(`u.department_id  = $${params.length}`);
+    } else if (isOnlyInstAdmin(req)) {
+      params.push(req.user.institutionId);
+      conditions.push(`u.institution_id = $${params.length}`);
+      // Block access to super_admin / institute_admin users even via direct URL
+      conditions.push(`NOT EXISTS (
+        SELECT 1 FROM user_roles ur_priv
+        JOIN roles r_priv ON r_priv.id = ur_priv.role_id
+        WHERE ur_priv.user_id = u.id
+          AND r_priv.name IN ('super_admin', 'institute_admin')
+          AND ur_priv.revoked_at IS NULL
+          AND (ur_priv.expires_at IS NULL OR ur_priv.expires_at > now())
+      )`);
+    }
+
+    const { rows } = await pool.query(`
+      SELECT
+        u.id, u.full_name, u.email, u.account_status,
+        u.last_login_at, u.created_at, u.institution_id, u.department_id,
+        COALESCE(u.role_domain, 'academic') AS role_domain,
+        i.institution_name, d.name AS department_name,
+        COALESCE(
+          (SELECT json_agg(json_build_object('name', r.name, 'display_name', r.display_name))
+           FROM user_roles ur JOIN roles r ON r.id = ur.role_id
+           WHERE ur.user_id = u.id AND ur.revoked_at IS NULL
+             AND (ur.expires_at IS NULL OR ur.expires_at > now())
+          ), '[]'::json
+        ) AS roles
+      FROM users u
+      LEFT JOIN institutions i ON i.institution_id = u.institution_id
+      LEFT JOIN departments  d ON d.department_id  = u.department_id
+      WHERE ${conditions.join(" AND ")}
+    `, params);
+
+    if (!rows.length)
+      return res.status(404).json({ success: false, message: "User not found." });
+
+    return res.json({ success: true, user: rows[0] });
+  } catch (err) {
+    logger.error("GET /api/users/:id failed", { ...getLogContext(req), stack: err.stack });
+    return res.status(500).json({ success: false, message: "Internal server error." });
+  }
+});
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   POST /api/users/:id/reset-password
+   Sets a new temporary password and forces a change on next login.
+   Available to super_admin and institute_admin (scoped to own institution).
+───────────────────────────────────────────────────────────────────────────── */
+router.post("/:id/reset-password", verifyToken, requireRole(["super_admin", "institute_admin"]), async (req, res) => {
+  const pool = req.app.locals.pool;
+  const { id } = req.params;
+  const { new_password } = req.body;
+
+  if (!new_password || new_password.length < 8)
+    return res.status(400).json({ success: false, message: "Password must be at least 8 characters." });
+
+  try {
+    const { rows: existingRows } = await pool.query(
+      `SELECT id, full_name, email, institution_id FROM users WHERE id = $1 AND account_status != 'DELETED'`,
+      [id]
+    );
+    if (!existingRows.length)
+      return res.status(404).json({ success: false, message: "User not found." });
+
+    const target = existingRows[0];
+
+    if (isOnlyInstAdmin(req)) {
+      if (target.institution_id !== req.user.institutionId)
+        return res.status(403).json({ success: false, message: "You can only manage users from your own institution." });
+
+      // Block resetting password for super_admin / institute_admin users
+      const { rows: privRows } = await pool.query(
+        `SELECT 1 FROM user_roles ur
+         JOIN roles r ON r.id = ur.role_id
+         WHERE ur.user_id = $1
+           AND r.name IN ('super_admin', 'institute_admin')
+           AND ur.revoked_at IS NULL
+           AND (ur.expires_at IS NULL OR ur.expires_at > now())
+         LIMIT 1`,
+        [id]
+      );
+      if (privRows.length)
+        return res.status(403).json({ success: false, message: "You cannot reset the password of this user." });
+    }
+
+    const passwordHash = await bcrypt.hash(new_password, 10);
+    await pool.query(
+      `UPDATE users SET password_hash=$1, must_change_password=true, is_temporary_password=true, updated_at=now() WHERE id=$2`,
+      [passwordHash, id]
+    );
+
+    await pool.query("DELETE FROM sessions WHERE user_id = $1", [id]).catch(() => {});
+
+    await writeAuditLog(req, {
+      actionType: "USER_PASSWORD_RESET",
+      entityType: "USER",
+      entityId:   id,
+      status:     "SUCCESS",
+      message:    `Password reset for user "${target.full_name}" (${target.email})`,
+    });
+
+    return res.json({ success: true, message: "Password reset successfully." });
+  } catch (err) {
+    logger.error("POST /api/users/:id/reset-password failed", { ...getLogContext(req), stack: err.stack });
+    return res.status(500).json({ success: false, message: "Internal server error." });
+  }
+});
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   PUT /api/users/:id
+   Explicit email-uniqueness pre-check (excludes self) before doing any work.
+───────────────────────────────────────────────────────────────────────────── */
+router.put("/:id", verifyToken, requireRole(["super_admin", "institute_admin", "department_admin"]), async (req, res) => {
+  const pool = req.app.locals.pool;
+  const { id } = req.params;
+  let { full_name, email, institution_id, department_id, account_status, role_domain } = req.body;
+
+  if (!full_name?.trim() || !email?.trim())
+    return res.status(400).json({ success: false, message: "Name and email are required." });
+
+  // Domain (academic|hospital|finance). Only updated when a valid value is sent;
+  // otherwise the existing value is preserved (COALESCE below) → backward compatible.
+  const VALID_DOMAINS = ["academic", "hospital", "finance"];
+  const roleDomain = VALID_DOMAINS.includes(String(role_domain).toLowerCase())
+    ? String(role_domain).toLowerCase()
+    : null;
+
+  const validStatuses = ["ACTIVE", "INACTIVE", "SUSPENDED"];
+  if (account_status && !validStatuses.includes(account_status))
+    return res.status(400).json({ success: false, message: "Invalid account status." });
+
+  try {
+    // 1. Confirm the user being edited actually exists
+    const { rows: existingRows } = await pool.query(
+      `SELECT full_name, email, account_status, institution_id, department_id
+       FROM users WHERE id = $1 AND account_status != 'DELETED'`,
+      [id]
+    );
+    if (!existingRows.length)
+      return res.status(404).json({ success: false, message: "User not found." });
+
+    const existing = existingRows[0];
+
+    // 2. Explicit email uniqueness check — exclude the user being edited (id != $2)
+    //    Runs before bcrypt / heavy work so we fail fast with a clear message.
+    const normalizedEmail = email.trim().toLowerCase();
+    const { rows: emailConflict } = await pool.query(
+      `SELECT id FROM users
+       WHERE email = $1
+         AND id != $2
+         AND account_status != 'DELETED'`,
+      [normalizedEmail, id]
+    );
+    if (emailConflict.length)
+      return res.status(409).json({
+        success: false,
+        field:   "email",
+        message: "This email is already in use by another account.",
+      });
+
+    // 3. Scope guard — dept/inst admins can only touch users in their own scope
+    if (isDeptAdmin(req)) {
+      if (
+        existing.institution_id !== req.user.institutionId ||
+        existing.department_id  !== req.user.departmentId
+      ) {
+        return res.status(403).json({
+          success: false,
+          message: "You can only manage users from your own department.",
+        });
+      }
+      institution_id = req.user.institutionId;
+      department_id  = req.user.departmentId;
+    } else if (isOnlyInstAdmin(req)) {
+      if (existing.institution_id !== req.user.institutionId)
+        return res.status(403).json({ success: false, message: "You can only manage users from your own institution." });
+      institution_id = req.user.institutionId;
+    }
+
+    // 3b. Institution email-domain ownership — revalidate ONLY when the email is
+    //     actually changing, against the institution the user will belong to.
+    //     A legacy user whose email is left untouched is never blocked
+    //     (existing users are not modified/deactivated by this rule).
+    if (normalizedEmail !== String(existing.email || "").toLowerCase()) {
+      const domainErr = await emailDomainError(pool, institution_id || existing.institution_id, normalizedEmail);
+      if (domainErr)
+        return res.status(400).json({ success: false, field: "email", message: domainErr });
+    }
+
+    // 4. Perform the update
+    const { rows } = await pool.query(
+      `UPDATE users
+       SET full_name=$1, email=$2, institution_id=$3, department_id=$4, account_status=$5,
+           role_domain=COALESCE($7, role_domain)
+       WHERE id=$6
+       RETURNING id, full_name, email, account_status, institution_id, department_id, role_domain`,
+      [full_name.trim(), normalizedEmail, institution_id || null, department_id || null, account_status, id, roleDomain]
+    );
+
+    if (!rows.length)
+      return res.status(404).json({ success: false, message: "User not found." });
+
+    const updated = rows[0];
+
+    // Enqueue status-change emails when account_status actually changed.
+    if (account_status && existing.account_status !== account_status) {
+      if (account_status === "SUSPENDED") {
+        enqueueEmail(pool, {
+          eventId:         "account_suspended",
+          recipientEmail:  updated.email,
+          recipientUserId: updated.id,
+          payload: { full_name: updated.full_name },
+        }).catch((err) =>
+          logger.error("Failed to enqueue account_suspended email", { userId: updated.id, error: err.message })
+        );
+      } else if (account_status === "ACTIVE") {
+        enqueueEmail(pool, {
+          eventId:         "account_reactivated",
+          recipientEmail:  updated.email,
+          recipientUserId: updated.id,
+          payload: {
+            full_name: updated.full_name,
+            login_url: process.env.APP_LOGIN_URL || "http://localhost:5173/login",
+          },
+        }).catch((err) =>
+          logger.error("Failed to enqueue account_reactivated email", { userId: updated.id, error: err.message })
+        );
+      }
+    }
+
+    /* Account lifecycle: when a user is disabled / suspended / deleted, kill all
+       their active sessions immediately so the refresh-token flow can no longer
+       mint new access tokens (the per-request middleware already rejects the
+       short-lived access token). Best-effort — never block the update response. */
+    if (updated.account_status && updated.account_status !== "ACTIVE") {
+      await pool.query("DELETE FROM sessions WHERE user_id = $1", [updated.id]).catch(() => {});
+    }
+
+    const changedFields = ["full_name", "email", "account_status", "institution_id", "department_id"]
+      .filter((f) => String(existing[f] ?? "") !== String(updated[f] ?? ""));
+
+    await writeAuditLog(req, {
+      actionType:    "USER_UPDATED",
+      entityType:    "USER",
+      entityId:      updated.id,
+      oldValue:      existing,
+      newValue:      {
+        full_name:      updated.full_name,
+        email:          updated.email,
+        account_status: updated.account_status,
+        institution_id: updated.institution_id,
+        department_id:  updated.department_id,
+      },
+      changedFields,
+      status:  "SUCCESS",
+      message: `User "${updated.full_name}" updated`,
+    });
+
+    return res.json({ success: true, user: updated });
+  } catch (err) {
+    // Belt-and-suspenders: DB unique constraint still catches any race condition
+    if (err.code === "23505")
+      return res.status(409).json({
+        success: false,
+        field:   "email",
+        message: "This email is already in use by another account.",
+      });
+    logger.error("PUT /api/users/:id failed", { ...getLogContext(req), stack: err.stack });
+    return res.status(500).json({ success: false, message: "Internal server error." });
+  }
+});
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   DELETE /api/users/:id
+   Soft-deletes a user by setting account_status = 'DELETED'.
+   Kills all active sessions immediately and writes a USER_DELETED audit log
+   with a full snapshot of the user record before removal.
+───────────────────────────────────────────────────────────────────────────── */
+router.delete("/:id", verifyToken, requireRole(["super_admin", "institute_admin", "department_admin"]), async (req, res) => {
+  const pool = req.app.locals.pool;
+  const { id } = req.params;
+
+  try {
+    const { rows: existingRows } = await pool.query(
+      `SELECT
+         u.id, u.full_name, u.email, u.account_status,
+         u.institution_id, u.department_id, u.role_domain,
+         i.institution_name,
+         d.name AS department_name,
+         COALESCE(
+           (SELECT json_agg(r.name ORDER BY r.name)
+            FROM user_roles ur
+            JOIN roles r ON r.id = ur.role_id
+            WHERE ur.user_id = u.id AND ur.revoked_at IS NULL),
+           '[]'::json
+         ) AS role_names
+       FROM users u
+       LEFT JOIN institutions i ON i.institution_id = u.institution_id
+       LEFT JOIN departments  d ON d.department_id  = u.department_id
+       WHERE u.id = $1 AND u.account_status != 'DELETED'`,
+      [id]
+    );
+    if (!existingRows.length)
+      return res.status(404).json({ success: false, message: "User not found." });
+
+    const existing = existingRows[0];
+
+    // Scope guard — inst/dept admins cannot delete privileged users or users outside their scope
+    if (isOnlyInstAdmin(req)) {
+      if (existing.institution_id !== req.user.institutionId)
+        return res.status(403).json({ success: false, message: "You can only manage users from your own institution." });
+      const targetRoles = (existing.role_names || []);
+      if (targetRoles.includes("super_admin") || targetRoles.includes("institute_admin"))
+        return res.status(403).json({ success: false, message: "You cannot delete admin-level accounts." });
+    } else if (isDeptAdmin(req)) {
+      if (existing.institution_id !== req.user.institutionId || existing.department_id !== req.user.departmentId)
+        return res.status(403).json({ success: false, message: "You can only manage users from your own department." });
+      const targetRoles = (existing.role_names || []);
+      if (targetRoles.includes("super_admin") || targetRoles.includes("institute_admin"))
+        return res.status(403).json({ success: false, message: "You cannot delete admin-level accounts." });
+    }
+
+    await pool.query(
+      "UPDATE users SET account_status = 'DELETED' WHERE id = $1",
+      [id]
+    );
+
+    // Kill all active sessions so no existing tokens can be refreshed.
+    await pool.query("DELETE FROM sessions WHERE user_id = $1", [id]).catch(() => {});
+
+    await writeAuditLog(req, {
+      actionType:    "USER_DELETED",
+      entityType:    "USER",
+      entityId:      existing.id,
+      oldValue: {
+        full_name:        existing.full_name,
+        email:            existing.email,
+        account_status:   existing.account_status,
+        institution_id:   existing.institution_id,
+        institution_name: existing.institution_name,
+        department_id:    existing.department_id,
+        department_name:  existing.department_name,
+        role_domain:      existing.role_domain,
+        roles:            existing.role_names,
+      },
+      newValue:      { account_status: "DELETED" },
+      changedFields: ["account_status"],
+      status:        "SUCCESS",
+      message:       `User "${existing.full_name}" (${existing.email}) deleted`,
+      metadata:      { deleted_by: req.user.userId },
+    });
+
+    return res.json({ success: true, message: `User "${existing.full_name}" has been deleted.` });
+  } catch (err) {
+    logger.error("DELETE /api/users/:id failed", { ...getLogContext(req), stack: err.stack });
+    return res.status(500).json({ success: false, message: "Internal server error." });
+  }
+});
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   POST /api/users/:id/restore  — restore a soft-deleted user (super_admin only)
+───────────────────────────────────────────────────────────────────────────── */
+router.post("/:id/restore", verifyToken, requireRole(["super_admin", "institute_admin", "department_admin"]), async (req, res) => {
+  const pool = req.app.locals.pool;
+  const { id } = req.params;
+
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, full_name, email, institution_id, department_id FROM users WHERE id = $1 AND account_status = 'DELETED'`,
+      [id]
+    );
+    if (!rows.length)
+      return res.status(404).json({ success: false, message: "Deleted user not found." });
+
+    const existing = rows[0];
+
+    // Scope guard
+    if (isOnlyInstAdmin(req)) {
+      if (existing.institution_id !== req.user.institutionId)
+        return res.status(403).json({ success: false, message: "You can only manage users from your own institution." });
+    } else if (isDeptAdmin(req)) {
+      if (existing.institution_id !== req.user.institutionId || existing.department_id !== req.user.departmentId)
+        return res.status(403).json({ success: false, message: "You can only manage users from your own department." });
+    }
+
+    await pool.query(
+      `UPDATE users SET account_status = 'ACTIVE' WHERE id = $1`,
+      [id]
+    );
+
+    await writeAuditLog(req, {
+      actionType:    "USER_RESTORED",
+      entityType:    "USER",
+      entityId:      id,
+      oldValue:      { account_status: "DELETED" },
+      newValue:      { account_status: "ACTIVE" },
+      changedFields: ["account_status"],
+      status:        "SUCCESS",
+      message:       `User "${existing.full_name}" (${existing.email}) restored`,
+    });
+
+    return res.json({ success: true, message: `User "${existing.full_name}" has been restored.` });
+  } catch (err) {
+    logger.error("POST /api/users/:id/restore failed", { ...getLogContext(req), stack: err.stack });
+    return res.status(500).json({ success: false, message: "Internal server error." });
+  }
+});
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   POST /api/users
+   Explicit email-uniqueness pre-check before bcrypt hashing.
+───────────────────────────────────────────────────────────────────────────── */
+router.post("/", verifyToken, requireRole(["super_admin", "institute_admin", "department_admin"]), async (req, res) => {
+  const pool = req.app.locals.pool;
+  let { full_name, email, password, institution_id, department_id, role_name, role_domain } = req.body;
+
+  // Domain (academic|hospital|finance). A domain-admin role (hospital_admin /
+  // finance_admin) pins the domain; otherwise the explicit selection wins.
+  // Default academic → existing behavior.
+  const roleDomain = domainForUser(role_name, role_domain);
+
+  if (isDeptAdmin(req)) {
+    institution_id = req.user.institutionId;
+    department_id  = req.user.departmentId;
+  } else if (isOnlyInstAdmin(req)) {
+    institution_id = req.user.institutionId;
+  }
+
+  if (!full_name?.trim() || !email?.trim() || !password || !institution_id || !role_name)
+    return res.status(400).json({ success: false, message: "Name, email, password, institution, and role are required." });
+
+  if (password.length < 8)
+    return res.status(400).json({ success: false, message: "Password must be at least 8 characters." });
+
+  try {
+    // 1. Explicit email uniqueness check — runs before bcrypt so we fail fast
+    const normalizedEmail = email.trim().toLowerCase();
+
+    // 1a. Email domain validation (all callers) — enforced server-side so it cannot be
+    //     bypassed by crafting a direct API request. Skipped when the institution has
+    //     no email_domain configured (empty string → allow any domain).
+    const { rows: instDomainRows } = await pool.query(
+      `SELECT LOWER(COALESCE(email_domain, '')) AS email_domain
+       FROM institutions WHERE institution_id = $1`,
+      [institution_id]
+    );
+    const instDomain = instDomainRows[0]?.email_domain?.trim() || "";
+    if (instDomain) {
+      const emailDomain = normalizedEmail.split("@")[1] || "";
+      if (emailDomain !== instDomain) {
+        return res.status(400).json({
+          success: false,
+          field:   "email",
+          message: `Invalid email domain. Please use your institution domain (@${instDomain}).`,
+        });
+      }
+    }
+
+    const { rows: emailConflict } = await pool.query(
+      `SELECT id FROM users
+       WHERE email = $1
+         AND account_status != 'DELETED'`,
+      [normalizedEmail]
+    );
+    if (emailConflict.length)
+      return res.status(409).json({
+        success: false,
+        field:   "email",
+        message: "An account with this email already exists.",
+      });
+
+    // 1b. Institution email-domain ownership — the email must belong to the
+    //     institution's configured domain. Fails fast, before bcrypt.
+    const domainErr = await emailDomainError(pool, institution_id, normalizedEmail);
+    if (domainErr)
+      return res.status(400).json({ success: false, field: "email", message: domainErr });
+
+    // 2. Validate role
+    const { rows: roleRows } = await pool.query("SELECT id FROM roles WHERE name = $1", [role_name]);
+    if (!roleRows.length)
+      return res.status(400).json({ success: false, message: "Invalid role." });
+
+    // 2b. RBAC tier guard (C-2) — cannot grant a role above the caller's tier.
+    if (!canAssignRole(req, role_name))
+      return res.status(403).json({ success: false, message: "You are not permitted to assign this role." });
+
+    // 3. Hash password and insert — bcrypt only runs if email is confirmed unique
+    const passwordHash = await bcrypt.hash(password, 10);
+
+    const { rows } = await pool.query(
+      `INSERT INTO users
+         (full_name, email, password_hash, institution_id, department_id,
+          role_domain, must_change_password, is_temporary_password, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,true,true,$7)
+       RETURNING id, full_name, email, account_status, role_domain`,
+      [full_name.trim(), normalizedEmail, passwordHash, institution_id, department_id || null, roleDomain, req.user.userId]
+    );
+
+    await pool.query(
+      "INSERT INTO user_roles (user_id, role_id, assigned_by) VALUES ($1,$2,$3)",
+      [rows[0].id, roleRows[0].id, req.user.userId]
+    );
+
+    await writeAuditLog(req, {
+      actionType: "USER_CREATED",
+      entityType: "USER",
+      entityId:   rows[0].id,
+      newValue:   {
+        full_name:      rows[0].full_name,
+        email:          rows[0].email,
+        account_status: rows[0].account_status,
+        role:           role_name,
+        institution_id,
+        department_id:  department_id || null,
+      },
+      status:  "SUCCESS",
+      message: `User "${rows[0].full_name}" created`,
+    });
+
+    // Enqueue welcome email — returns immediately; worker delivers asynchronously.
+    const newUser = rows[0];
+    enqueueEmail(pool, {
+      eventId:         "user_created",
+      recipientEmail:  newUser.email,
+      recipientUserId: newUser.id,
+      payload: {
+        full_name: newUser.full_name,
+        password,
+        login_url: process.env.APP_LOGIN_URL || "http://localhost:5173/login",
+      },
+    }).catch((err) =>
+      logger.error("Failed to enqueue welcome email (user still created)", {
+        userId:    newUser.id,
+        recipient: newUser.email,
+        error:     err.message,
+      })
+    );
+
+    return res.status(201).json({ success: true, user: rows[0] });
+  } catch (err) {
+    // Belt-and-suspenders: DB unique constraint still catches any race condition
+    if (err.code === "23505")
+      return res.status(409).json({
+        success: false,
+        field:   "email",
+        message: "An account with this email already exists.",
+      });
+    logger.error("POST /api/users failed", { ...getLogContext(req), stack: err.stack });
+    return res.status(500).json({ success: false, message: "Internal server error." });
+  }
+});
+
+module.exports = router;

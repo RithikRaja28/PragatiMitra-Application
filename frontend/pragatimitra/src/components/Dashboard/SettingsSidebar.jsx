@@ -1,0 +1,226 @@
+/**
+ * SettingsSidebar.jsx
+ * src/components/Dashboard/SettingsSidebar.jsx
+ *
+ * Uses the EXACT same CSS classes as the dashboard sidebar in AppShell:
+ *   .sh-sidebar, .sh-sidebar.col, .sh-nav, .sh-nav-group,
+ *   .sh-nav-group-label, .sh-nav-item, .sh-nav-item.on,
+ *   .sh-nav-label, .sh-sidebar-footer, .sh-collapse-btn
+ *
+ * This means it is pixel-identical to the dashboard sidebar —
+ * same font, same colors, same hover, same active bar, same collapse.
+ * No extra CSS needed.
+ */
+
+import { useState } from "react";
+import * as Icons from "lucide-react";
+import NotificationsPage          from "./settings/NotificationsPage";
+import AcademicYearPage           from "./settings/AcademicYearPage";
+import NodalOfficerPage           from "./settings/NodalOfficerPage";
+import InstituteNodalOfficerPage  from "./settings/InstituteNodalOfficerPage";
+import CompressionSettingsPage    from "./settings/CompressionSettingsPage";
+import { useAuth }                from "../../store/AuthContext";
+import { useLanguage }            from "../../i18n/LanguageContext";
+import { t }                      from "../../i18n/translations";
+
+/* ── Icon resolver — same as AppShell ── */
+function DynIcon({ name, size = 17 }) {
+  if (!name) return null;
+  const Comp = Icons[name] || Icons.Circle;
+  return <Comp size={size} />;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   SETTINGS NAV — flat, one click per page, no sub-items
+══════════════════════════════════════════════════════════════ */
+export function buildSettingsNav(role) {
+  const nav = [];
+
+  // ── Institution group (institute_admin only) ──────────────────────────────
+  if (role === "institute_admin") {
+    nav.push({
+      group: "Institution",
+      items: [
+        { id: "academic-year", label: "Academic Year Management", icon: "CalendarRange", renderPage: () => <AcademicYearPage /> },
+      ],
+    });
+  }
+
+  // ── Communication: Notification Templates (super_admin only) ─────────────
+  // Other roles see no useful data there and currently get a restricted message.
+  if (role === "super_admin") {
+    nav.push({
+      group: "Communication",
+      items: [
+        { id: "notifications", label: "Notification Templates", icon: "Bell", renderPage: () => <NotificationsPage /> },
+      ],
+    });
+  }
+
+  // ── Upload: File Compression Settings (super_admin only) ──────────────────
+  if (role === "super_admin") {
+    nav.push({
+      group: "Upload",
+      items: [
+        { id: "file-compression", label: "File Compression Settings", icon: "FileArchive", renderPage: () => <CompressionSettingsPage /> },
+      ],
+    });
+  }
+
+  // ── Administration: Nodal Officer ─────────────────────────────────────────
+  if (role === "institute_admin") {
+    nav.push({
+      group: "Administration",
+      items: [
+        { id: "nodal-officer", label: "Nodal Officer", icon: "UserCheck", renderPage: () => <InstituteNodalOfficerPage /> },
+      ],
+    });
+  }
+  if (role === "department_admin") {
+    nav.push({
+      group: "Administration",
+      items: [
+        { id: "nodal-officer", label: "Nodal Officer", icon: "UserCheck", renderPage: () => <NodalOfficerPage /> },
+      ],
+    });
+  }
+
+  return nav;
+}
+
+/* Exported so RootLayout can look up the active page — pass the current role */
+export function flatSettingsItems(role) {
+  return buildSettingsNav(role).flatMap(g => g.items);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   SettingsEmptyPage
+   Shown at /dashboard/<role>/settings for roles that have no
+   settings items (buildSettingsNav returns []), instead of the old
+   "No page registered" fallback.
+══════════════════════════════════════════════════════════════ */
+export function SettingsEmptyPage() {
+  const { lang } = useLanguage();
+  return (
+    <div style={{
+      display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+      height: "100%", minHeight: 320, gap: 10, textAlign: "center",
+      fontFamily: "'Plus Jakarta Sans', sans-serif", color: "#94a3b8",
+    }}>
+      <Icons.Settings size={28} style={{ opacity: 0.5 }} />
+      <div style={{ fontSize: 15, fontWeight: 600, color: "#475569" }}>{t("No settings available", lang)}</div>
+      <div style={{ fontSize: 13 }}>{t("There are no configurable settings for your role yet.", lang)}</div>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════
+   MAIN EXPORT
+   Uses .sh-sidebar / .sh-nav-item / .sh-collapse-btn etc.
+   directly — the exact same classes AppShell already has in CSS.
+══════════════════════════════════════════════════════════════ */
+export default function SettingsSidebar({ activeId, onSelect, onBack }) {
+  const [collapsed, setCollapsed] = useState(false);
+  const { user } = useAuth();
+  const { lang } = useLanguage();
+  const role = user?.roles?.[0]?.name;
+  const settingsNav = buildSettingsNav(role);
+
+  const cls = ["sh-sidebar", collapsed ? "col" : ""].filter(Boolean).join(" ");
+
+  return (
+    <aside className={cls}>
+
+      {/* ── Header — back button + "Settings" title ── */}
+      <div style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 9,
+        padding: "0 12px",
+        height: 48,
+        borderBottom: "1px solid var(--sh-side-border)",
+        flexShrink: 0,
+        overflow: "hidden",
+      }}>
+        {/* Back button — dark-theme tokens so it matches the dashboard sidebar */}
+        <button
+          onClick={onBack}
+          title={t("Back to dashboard", lang)}
+          style={{
+            display: "flex", alignItems: "center", justifyContent: "center",
+            width: 26, height: 26, borderRadius: 6,
+            border: "1px solid var(--sh-side-border)",
+            background: "transparent", cursor: "pointer",
+            color: "var(--sh-side-text)", flexShrink: 0,
+            transition: "background var(--sh-ease), color var(--sh-ease)",
+          }}
+          onMouseEnter={e => { e.currentTarget.style.background = "var(--sh-side-hover)"; e.currentTarget.style.color = "var(--sh-side-text-hi)"; }}
+          onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "var(--sh-side-text)"; }}
+        >
+          <Icons.ArrowLeft size={13} />
+        </button>
+
+        {/* Settings icon */}
+        <Icons.Settings size={14} color="var(--sh-side-text)" style={{ flexShrink: 0 }} />
+
+        {/* Title — hidden when collapsed, same as .sh-nav-label */}
+        <span className="sh-nav-label" style={{
+          fontSize: "13.5px",
+          fontWeight: 700,
+          color: "var(--sh-side-text-hi)",
+          whiteSpace: "nowrap",
+          letterSpacing: "-0.2px",
+        }}>
+          {t("Settings", lang)}
+        </span>
+      </div>
+
+      {/* ── Nav — uses exact .sh-nav / .sh-nav-group / .sh-nav-item ── */}
+      <nav className="sh-nav">
+        {settingsNav.map((group) => (
+          <div key={group.group} className="sh-nav-group">
+            {/* Group label — uses .sh-nav-group-label */}
+            <div className="sh-nav-group-label">{t(group.group, lang)}</div>
+
+            {group.items.map((item) => (
+              <button
+                key={item.id}
+                className={`sh-nav-item${activeId === item.id ? " on" : ""}`}
+                onClick={() => onSelect(item.id)}
+                data-tip={collapsed ? t(item.label, lang) : undefined}
+                aria-label={t(item.label, lang)}
+              >
+                <span style={{ flexShrink: 0 }}>
+                  <DynIcon name={item.icon} size={17} />
+                </span>
+                {/* Label — uses .sh-nav-label so it fades on collapse */}
+                <span className="sh-nav-label">{t(item.label, lang)}</span>
+              </button>
+            ))}
+          </div>
+        ))}
+      </nav>
+
+      {/* ── Footer — uses .sh-sidebar-footer / .sh-collapse-btn ── */}
+      <div className="sh-sidebar-footer">
+        <button
+          className="sh-collapse-btn"
+          onClick={() => setCollapsed(c => !c)}
+          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+        >
+          {collapsed ? (
+            <Icons.PanelLeftOpen size={16} />
+          ) : (
+            <>
+              <Icons.PanelLeftClose size={16} />
+              <span style={{ fontSize: 12, marginLeft: 6, fontFamily: "var(--sh-font)" }}>
+                {t("Collapse", lang)}
+              </span>
+            </>
+          )}
+        </button>
+      </div>
+
+    </aside>
+  );
+}

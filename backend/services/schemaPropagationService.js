@@ -1,0 +1,328 @@
+"use strict";
+
+/**
+ * schemaPropagationService.js
+ * ─────────────────────────────────────────────────────────────────────────
+ * SAFE, INSERT-ONLY fix for shared forms that an institution can access
+ * (it's in table_list.institute_access) but for which it has no active
+ * custom_field_schemas row — which made the form 404 with
+ * "No active schema found for this form."
+ *
+ * This module ONLY INSERTS missing schema rows by cloning the form's existing
+ * active schema (the shared template). It NEVER updates/deletes/replaces an
+ * existing schema, never touches records, translation, deadlines, academic
+ * years, locks, exports, reports, permissions, or institution mappings.
+ *
+ * Idempotent: re-running skips institutions that already have a schema, so it
+ * doubles as the one-time repair AND the "ensure on future events" hook.
+ * ───────────────────────────────────────────────────────────────────────── */
+
+const logger = require("../utils/logger");
+const { getCanonicalSchema } = require("./schemaResolver");
+const { assertEquivalent } = require("./equivalenceGuard");
+
+/* Provenance columns (Rule 8) on custom_field_schemas — additive, idempotent.
+   A row created BY its institution leaves these NULL (it IS the source). A row
+   distributed TO a consumer records where it came from. Reference only — never
+   used to sync/overwrite the consumer's schema. */
+async function ensureSchemaProvenanceColumns(pool) {
+  await pool.query(`ALTER TABLE custom_field_schemas ADD COLUMN IF NOT EXISTS source_form_id        uuid`);
+  await pool.query(`ALTER TABLE custom_field_schemas ADD COLUMN IF NOT EXISTS source_institution_id uuid`);
+  await pool.query(`ALTER TABLE custom_field_schemas ADD COLUMN IF NOT EXISTS published_at          timestamptz`);
+  // Which immutable snapshot version a consumer clone was minted from (NULL =
+  // legacy clone, predates snapshot mode). Reference only; never used to sync.
+  await pool.query(`ALTER TABLE custom_field_schemas ADD COLUMN IF NOT EXISTS schema_snapshot_version int`);
+}
+
+/* Immutable publish-snapshot store for shared forms. A shared form's schema is
+   frozen here AT PUBLISH TIME (version 1). Later creator edits (PUT /schema) only
+   touch the creator's own custom_field_schemas row — they NEVER write here — so a
+   consumer (including an institution created long after) always clones the ORIGINAL
+   published structure, not the creator's drifted-live schema. Append-only; rows
+   are never updated or deleted. */
+async function ensureSharedFormSnapshotTable(pool) {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS shared_form_snapshots (
+      id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      source_form_id     UUID NOT NULL,
+      version            INT  NOT NULL DEFAULT 1,
+      form_name          TEXT NOT NULL,
+      schema             JSONB NOT NULL,
+      used_column_names  TEXT[],
+      created_by         UUID,
+      published_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+      UNIQUE (source_form_id, version)
+    )
+  `);
+}
+
+/* Freeze the published schema for a shared form as version 1, ONCE. Idempotent:
+   re-publishing the same form (or editing it later) never adds a version, so the
+   original snapshot is permanent. Accepts a pool or a transaction client. */
+async function publishSchemaSnapshot(db, { sourceFormId, formName, schema, usedColumnNames = null, createdBy = null }) {
+  if (!sourceFormId || !formName || !schema) return;
+  await db.query(
+    `INSERT INTO shared_form_snapshots (source_form_id, version, form_name, schema, used_column_names, created_by)
+     SELECT $1, 1, $2, $3::jsonb, $4, $5
+     WHERE NOT EXISTS (SELECT 1 FROM shared_form_snapshots WHERE source_form_id = $1)`,
+    [sourceFormId, formName, JSON.stringify(schema), usedColumnNames, createdBy]
+  );
+}
+
+/* The ORIGINAL (lowest-version) published snapshot for a form, or null when the
+   form has none (legacy form created before snapshot mode → caller falls back to
+   the canonical row, preserving existing behavior). */
+async function getOriginalSnapshot(db, sourceFormId) {
+  if (!sourceFormId) return null;
+  try {
+    const { rows } = await db.query(
+      `SELECT version, schema, used_column_names
+       FROM shared_form_snapshots
+       WHERE source_form_id = $1
+       ORDER BY version ASC
+       LIMIT 1`,
+      [sourceFormId]
+    );
+    return rows[0] || null;
+  } catch {
+    return null;
+  }
+}
+
+/* Audit log of inserted schema rows (created only; never modified). */
+async function ensureSchemaPropagationLog(pool) {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS schema_propagation_log (
+      id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      form_name      TEXT NOT NULL,
+      institution_id UUID NOT NULL,
+      academic_year  INT,
+      action         TEXT NOT NULL,
+      created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `);
+}
+
+/* Ensure every institution in a form's institute_access has an active schema.
+   INSERT-ONLY: clones the form's existing active schema for any institution
+   that is missing one. Returns { created }. Wrapped in a transaction. */
+async function ensureSchemaExists(pool, formName) {
+  if (!formName || !/^[a-z][a-z0-9_]*$/.test(formName)) return { created: 0 };
+
+  // 1. Form + its access list.
+  const { rows: tl } = await pool.query(
+    `SELECT id, COALESCE(institute_access, '{}') AS institute_access, share_table
+       FROM table_list WHERE form_name = $1`,
+    [formName]
+  );
+  if (!tl.length) return { created: 0 };
+  const sourceFormId = tl[0].id;                     // provenance: source_form_id
+  const access = (tl[0].institute_access || []).map(String).filter(Boolean);
+  if (access.length === 0) return { created: 0 };
+
+  // 2. Template = the form's CANONICAL schema (single source of truth — the
+  //    creator/earliest active row). Resolved via schemaResolver so "canonical"
+  //    has one definition shared with every reader.
+  //    Phase-1 shadow: assert the resolver picks the SAME row the legacy inline
+  //    query did (identical SELECT → never fires); legacy id is authoritative.
+  const { rows: legacyTmpl } = await pool.query(
+    `SELECT * FROM custom_field_schemas
+      WHERE form_name = $1 AND is_active = true
+      ORDER BY created_at ASC NULLS LAST, year ASC
+      LIMIT 1`,
+    [formName]
+  );
+  const t = legacyTmpl[0] || null;
+  const canonical = await getCanonicalSchema(pool, formName);
+  assertEquivalent(
+    "schemaPropagation.canonicalTemplate",
+    t ? String(t.id) : null,
+    canonical ? String(canonical.id) : null
+  );
+  if (!t) return { created: 0 }; // nothing to clone from — leave untouched
+
+  // 2b. Snapshot mode: if this form has a frozen publish snapshot, clone consumers
+  //     from the ORIGINAL snapshot (immune to later creator edits) instead of the
+  //     live canonical row. Legacy forms (no snapshot) keep cloning from canonical,
+  //     so existing behavior is byte-identical for them.
+  const snapshot      = await getOriginalSnapshot(pool, sourceFormId);
+  const cloneSchema   = snapshot ? snapshot.schema            : t.schema;
+  const cloneUsedCols = snapshot ? snapshot.used_column_names : t.used_column_names;
+  const cloneVersion  = snapshot ? snapshot.version           : null;
+
+  // 3. Institutions that ALREADY have any active schema for this form.
+  const { rows: have } = await pool.query(
+    `SELECT DISTINCT institution_id FROM custom_field_schemas
+      WHERE form_name = $1 AND is_active = true`,
+    [formName]
+  );
+  const haveSet = new Set(have.map((r) => String(r.institution_id)));
+
+  const missing = access.filter((id) => !haveSet.has(id));
+  if (missing.length === 0) return { created: 0 };
+
+  // 4. Insert ONLY the missing rows (clone structure), with a per-row dedupe
+  //    guard on (form_name, institution_id, year). Transactional.
+  const client = await pool.connect();
+  let created = 0;
+  try {
+    await client.query("BEGIN");
+    for (const inst of missing) {
+      const { rows: dup } = await client.query(
+        `SELECT 1 FROM custom_field_schemas
+          WHERE form_name = $1 AND institution_id = $2 AND year = $3 LIMIT 1`,
+        [formName, inst, t.year]
+      );
+      if (dup.length) continue; // never create a duplicate
+
+      // Snapshot distribution (Rule 8): record provenance on the consumer clone —
+      // source_form_id (the shared form), source_institution_id (the creator =
+      // canonical row's institution), published_at (now). Reference only; no sync.
+      await client.query(
+        `INSERT INTO custom_field_schemas
+           (form_name, institution_id, year, schema, is_active, created_by, used_column_names,
+            source_form_id, source_institution_id, published_at, schema_snapshot_version)
+         VALUES ($1, $2, $3, $4::jsonb, true, $5, $6, $7, $8, now(), $9)`,
+        [formName, inst, t.year, JSON.stringify(cloneSchema), t.created_by ?? null, cloneUsedCols ?? null,
+         sourceFormId ?? null, t.institution_id ?? null, cloneVersion]
+      );
+      await client.query(
+        `INSERT INTO schema_propagation_log (form_name, institution_id, academic_year, action)
+         VALUES ($1, $2, $3, 'inserted_missing_schema')`,
+        [formName, inst, t.year]
+      );
+      created += 1;
+    }
+    await client.query("COMMIT");
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
+
+  if (created) logger.info(`schema propagation: inserted ${created} missing schema row(s) for "${formName}"`);
+  return { created };
+}
+
+/* One-time backfill: create v1 publish snapshots for shared forms that predate the
+   snapshot feature (i.e. were created before publishSchemaSnapshot was called on
+   POST /api/forms). Without this, late-onboarding institutions would clone the
+   creator's current (possibly drifted) schema instead of the original published one.
+
+   Uses DISTINCT ON to select the CANONICAL (oldest) schema row per form — the same
+   row that ensureSchemaExists uses as its clone source — and freezes it as version 1.
+   publishSchemaSnapshot's INSERT WHERE NOT EXISTS guard makes this fully idempotent. */
+async function backfillLegacySnapshots(pool) {
+  try {
+    const { rows: legacy } = await pool.query(`
+      SELECT DISTINCT ON (tl.id)
+        tl.id         AS source_form_id,
+        tl.form_name,
+        cfs.schema,
+        cfs.used_column_names,
+        cfs.created_by
+      FROM table_list tl
+      JOIN custom_field_schemas cfs
+        ON cfs.form_name = tl.form_name AND cfs.is_active = true
+      WHERE tl.share_table = true
+        AND NOT EXISTS (
+          SELECT 1 FROM shared_form_snapshots sfs
+          WHERE sfs.source_form_id = tl.id
+        )
+      ORDER BY tl.id, cfs.created_at ASC NULLS LAST
+    `);
+
+    let created = 0;
+    for (const row of legacy) {
+      await publishSchemaSnapshot(pool, {
+        sourceFormId:    row.source_form_id,
+        formName:        row.form_name,
+        schema:          row.schema,
+        usedColumnNames: row.used_column_names,
+        createdBy:       row.created_by,
+      });
+      created++;
+    }
+    if (created) logger.info(`schema propagation: backfilled v1 snapshot(s) for ${created} legacy shared form(s)`);
+    return created;
+  } catch (e) {
+    logger.error("backfillLegacySnapshots failed", { stack: e.stack });
+    return 0;
+  }
+}
+
+/* One-time / on-boot repair across all forms that have multiple institutions in
+   institute_access. Idempotent — skips anything already present. */
+async function propagateAllSharedSchemas(pool) {
+  try {
+    await ensureSchemaPropagationLog(pool);
+    await ensureSchemaProvenanceColumns(pool); // clones below write provenance
+    await ensureSharedFormSnapshotTable(pool); // immutable publish snapshots
+    await backfillLegacySnapshots(pool);       // freeze legacy forms before propagating
+    const { rows } = await pool.query(
+      `SELECT form_name FROM table_list
+        WHERE COALESCE(array_length(institute_access, 1), 0) > 1
+        ORDER BY form_name`
+    );
+    let total = 0;
+    for (const r of rows) {
+      try {
+        const { created } = await ensureSchemaExists(pool, r.form_name);
+        total += created;
+      } catch (e) {
+        logger.error(`schema propagation failed for "${r.form_name}"`, { stack: e.stack });
+      }
+    }
+    logger.info(`schema propagation repair complete — ${total} schema row(s) inserted across ${rows.length} multi-institution form(s)`);
+    return total;
+  } catch (e) {
+    logger.error("propagateAllSharedSchemas failed", { stack: e.stack });
+    return 0;
+  }
+}
+
+/* ISSUE 19 — deterministic shared-form onboarding for ONE institution. The single
+   source of truth, so late onboarding always produces the SAME result whether it
+   runs from institution create or restore:
+     1. attach the institution to every shared form's institute_access,
+     2. give it a lock-config row per shared form (deadline mgmt works day one),
+     3. materialize its consumer schema rows — a clone of the immutable publish
+        snapshot, classified ARCHIVED for every academic year (never auto-activated;
+        the institution admin activates manually).
+   Idempotent and never throws — safe to call repeatedly. */
+async function resolveInstitutionSharedForms(pool, institutionId) {
+  if (!institutionId) return 0;
+  try {
+    await pool.query(
+      `UPDATE table_list
+          SET institute_access = array_append(COALESCE(institute_access,'{}'), $1::uuid),
+              updated_at = now()
+        WHERE share_table = true
+          AND NOT ($1::uuid = ANY(COALESCE(institute_access, '{}'::uuid[])))`,
+      [institutionId]
+    );
+    await pool.query(
+      `INSERT INTO form_lock_config (form_name, institution_id, is_locked, deadline_at, auto_locked)
+       SELECT form_name, $1, false, NULL, false FROM table_list WHERE share_table = true
+       ON CONFLICT (form_name, institution_id) DO NOTHING`,
+      [institutionId]
+    );
+    return await propagateAllSharedSchemas(pool);
+  } catch (e) {
+    logger.error(`resolveInstitutionSharedForms failed for ${institutionId}`, { stack: e.stack });
+    return 0;
+  }
+}
+
+module.exports = {
+  ensureSchemaPropagationLog,
+  ensureSchemaProvenanceColumns,
+  ensureSharedFormSnapshotTable,
+  publishSchemaSnapshot,
+  getOriginalSnapshot,
+  backfillLegacySnapshots,
+  ensureSchemaExists,
+  propagateAllSharedSchemas,
+  resolveInstitutionSharedForms,
+};

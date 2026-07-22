@@ -1,0 +1,118 @@
+/**
+ * AcademicYearContext.jsx
+ * ─────────────────────────────────────────────────────────────
+ * The institution's "current academic year context". The top-bar year selector
+ * writes here; everything below (form creation, form visibility, …) reads here.
+ *
+ *   selectedYear  → integer START year (e.g. 2025) — this is the value stored on
+ *                   custom_field_schemas.year / *_records.year.
+ *   academicYear  → display string "2025-2026" (canonical YYYY-YYYY format,
+ *                   shared with reporting_year — see RootLayout's toReportingYear).
+ *   options       → dynamic list from academic_year_master (falls back to a
+ *                   generated range when the institution has no years yet).
+ *
+ * Selection is INSTITUTION-SCOPED and persisted in sessionStorage (not local
+ * component state, not localStorage) so it survives navigation within a session
+ * but never leaks across logins/institutions.
+ */
+
+import { createContext, useContext, useState, useEffect, useCallback, useMemo } from "react";
+import { useAuth } from "./AuthContext";
+import { useApi } from "../hooks/useApi";
+
+const AcademicYearContext = createContext(null);
+export const useAcademicYear = () => useContext(AcademicYearContext);
+
+/* Canonical "YYYY-YYYY" format (plain hyphen, 4-digit end year) — must match
+   backend's formatAcademicYear in academicYearService.js exactly. */
+const fmt = (y) => `${y}-${y + 1}`;
+const sessionKey = (inst) => `pm_academic_year_${inst || "none"}`;
+
+export function AcademicYearProvider({ children }) {
+  const { user } = useAuth();
+  const { apiFetch } = useApi();
+  const institutionId = user?.institutionId || null;
+
+  const [years, setYears]               = useState([]);   // [{ academic_year, start_year, active }]
+  const [selectedYear, setSelected]     = useState(null); // integer start year
+  const [loading, setLoading]           = useState(false);
+
+  /* Load the institution's academic years + current. The selected year is
+     resolved ONCE (session → DB current → most-recent → calendar year) and then
+     left alone: re-running load (navigation, token refresh, etc.) must NOT change
+     a year the user already has. It only re-resolves if there is no valid
+     selection yet, or the current selection is no longer valid. */
+  const load = useCallback(async () => {
+    if (!institutionId) { setYears([]); setSelected(null); return; }
+    setLoading(true);
+    try {
+      const [yRes, cRes] = await Promise.all([
+        apiFetch("/api/academic-years").then((r) => r.json()).catch(() => ({})),
+        apiFetch("/api/academic-years/current").then((r) => r.json()).catch(() => ({})),
+      ]);
+      const list = yRes?.success ? yRes.years : [];
+      setYears(list);
+
+      // Archived years are never selectable in the top bar.
+      const visible = list.filter((y) => !y.is_archived);
+      // If we couldn't load a usable list (failed/racing request), leave the
+      // current selection untouched — never reset it to the calendar year.
+      if (visible.length === 0) return;
+
+      setSelected((prev) => {
+        // Keep the user's current selection if it is still valid.
+        if (prev != null && visible.some((y) => y.start_year === prev)) return prev;
+        // Otherwise resolve a default: session → DB current → most-recent year.
+        const saved      = Number(sessionStorage.getItem(sessionKey(institutionId)));
+        const savedValid = visible.some((y) => y.start_year === saved);
+        const current    = cRes?.success ? cRes.current : null;
+        const latest     = visible.reduce((m, y) => Math.max(m, y.start_year), -Infinity);
+        const fallback   = current?.start_year ?? (Number.isFinite(latest) ? latest : null);
+        const resolved   = savedValid ? saved : fallback;
+        // Persist so every API request can carry the year (backend enforces locks).
+        if (resolved != null) sessionStorage.setItem(sessionKey(institutionId), String(resolved));
+        return resolved;
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, [apiFetch, institutionId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const setYear = useCallback((y) => {
+    const yr = Number(y);
+    if (!Number.isInteger(yr)) return;
+    setSelected(yr);
+    if (institutionId) sessionStorage.setItem(sessionKey(institutionId), String(yr));
+  }, [institutionId]);
+
+  /* Dropdown options — dynamic from the institution's created years; when none
+     exist yet, offer a sensible range so the selector is still usable. */
+  const options = useMemo(() => {
+    const visible = years.filter((y) => !y.is_archived);
+    return visible.map((y) => ({ value: y.start_year, label: y.academic_year, active: !!y.active, locked: !!y.is_locked }));
+  }, [years]);
+
+  const academicYear = selectedYear != null ? fmt(selectedYear) : null;
+  // Is the currently-selected year locked? Drives the top-bar LOCKED badge.
+  const selectedYearLocked = years.some((y) => y.start_year === selectedYear && y.is_locked);
+
+  const value = useMemo(() => ({
+    institutionId,
+    selectedYear,
+    academicYear,
+    selectedYearLocked,
+    options,
+    years,
+    loading,
+    setYear,
+    reload: load,
+  }), [institutionId, selectedYear, academicYear, selectedYearLocked, options, years, loading, setYear, load]);
+
+  return (
+    <AcademicYearContext.Provider value={value}>
+      {children}
+    </AcademicYearContext.Provider>
+  );
+}
