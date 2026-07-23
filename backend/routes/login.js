@@ -329,7 +329,7 @@ router.post("/login", loginLimiter, async (req, res) => {
     }
 
     // Single session: wipe all previous sessions for this user
-    await pool.query("DELETE FROM sessions WHERE user_id = $1", [user.id]);
+    // await pool.query("DELETE FROM sessions WHERE user_id = $1", [user.id]);
 
     const rawRefreshToken = generateRefreshToken();
     const expiresAt       = new Date(Date.now() + REFRESH_TOKEN_TTL_MS);
@@ -549,7 +549,7 @@ router.post("/super-admin/login", superAdminLoginLimiter, async (req, res) => {
     }
 
     // Single session: wipe all previous sessions for this user
-    await pool.query("DELETE FROM sessions WHERE user_id = $1", [user.id]);
+    // await pool.query("DELETE FROM sessions WHERE user_id = $1", [user.id]);
 
     const rawRefreshToken = generateRefreshToken();
     const expiresAt       = new Date(Date.now() + REFRESH_TOKEN_TTL_MS);
