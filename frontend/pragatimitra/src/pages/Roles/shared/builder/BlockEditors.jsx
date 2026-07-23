@@ -111,7 +111,7 @@ function TranslateButton({ apiFetch, getSource, onTranslated, label = "Translate
 }
 
 /* ── Image upload helper ──────────────────────────────────────────────── */
-async function uploadImageFile(file, apiFetch, purpose, compressionSettings) {
+async function uploadImageFile(file, apiFetch, purpose, compressionSettings, scope = {}) {
   if (!file) throw new Error("No file selected");
   const ALLOWED = ["image/jpeg", "image/png", "image/webp", "image/gif", "image/bmp", "image/tiff", "image/svg+xml"];
   if (!ALLOWED.includes(file.type)) throw new Error("Only JPEG, PNG, WebP, GIF, BMP, TIFF and SVG images are allowed");
@@ -128,6 +128,8 @@ async function uploadImageFile(file, apiFetch, purpose, compressionSettings) {
   const fd = new FormData();
   fd.append("file", file);
   fd.append("purpose", purpose || "report-image");
+  if (scope.reportId) fd.append("reportId", scope.reportId);
+  if (scope.templateId) fd.append("templateId", scope.templateId);
 
   const uploadRes = await apiFetch("/api/upload/image", { method: "POST", body: fd });
   const uploadData = await uploadRes.json();
@@ -135,7 +137,7 @@ async function uploadImageFile(file, apiFetch, purpose, compressionSettings) {
   return uploadData.publicUrl;
 }
 
-function UploadImageBtn({ onUploaded, apiFetch, purpose, disabled }) {
+function UploadImageBtn({ onUploaded, apiFetch, purpose, disabled, reportId, templateId }) {
   const fileRef  = useRef(null);
   const [uploading,    setUploading]    = useState(false);
   const [err,          setErr]          = useState("");
@@ -153,7 +155,7 @@ function UploadImageBtn({ onUploaded, apiFetch, purpose, disabled }) {
     if (!file) return;
     setUploading(true); setErr(""); setUploadResult(null);
     try {
-      onUploaded(await uploadImageFile(file, apiFetch, purpose, compressionSettings));
+      onUploaded(await uploadImageFile(file, apiFetch, purpose, compressionSettings, { reportId, templateId }));
       setUploadResult("success");
       showToast("Upload Successful");
       setTimeout(() => setUploadResult(null), 2500);
@@ -559,7 +561,7 @@ export function HeadingBlock({ content, onChange, readOnly, lang = "en", apiFetc
 }
 
 /* ── Enhanced Image Block ─────────────────────────────────────────────── */
-export function ImageBlock({ content, onChange, readOnly, lang = "en", translations, onSaveTranslation }) {
+export function ImageBlock({ content, onChange, readOnly, lang = "en", translations, onSaveTranslation, reportId, templateId }) {
   const { apiFetch } = useApi();
   const widthPct = content.widthPct ?? 100;
   const align    = content.align || "center";
@@ -579,7 +581,7 @@ export function ImageBlock({ content, onChange, readOnly, lang = "en", translati
         <div style={{ marginBottom: 8 }}>
           <div style={{ display: "flex", gap: 6, marginBottom: 8, alignItems: "flex-start" }}>
             <input key={content.url} defaultValue={content.url || ""} onBlur={(e) => onChange({ ...content, url: e.target.value })} placeholder="Paste image URL…" style={{ flex: 1, padding: "7px 11px", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 12, outline: "none", boxSizing: "border-box" }} />
-            <UploadImageBtn apiFetch={apiFetch} purpose="report-image" onUploaded={(url) => onChange({ ...content, url })} />
+            <UploadImageBtn apiFetch={apiFetch} purpose="report-image" reportId={reportId} templateId={templateId} onUploaded={(url) => onChange({ ...content, url })} />
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             <span style={{ fontSize: 11, color: "#64748b" }}>Width</span>
@@ -638,7 +640,7 @@ export function ImageBlock({ content, onChange, readOnly, lang = "en", translati
 }
 
 /* ── Image Grid ───────────────────────────────────────────────────────── */
-export function ImageGridBlock({ content, onChange, readOnly, lang = "en", translations, onSaveTranslation }) {
+export function ImageGridBlock({ content, onChange, readOnly, lang = "en", translations, onSaveTranslation, reportId, templateId }) {
   const { apiFetch } = useApi();
   const cols   = content.cols || [{ url: "", caption: "", alt: "" }, { url: "", caption: "", alt: "" }];
   const isHi   = lang === "hi";
@@ -670,7 +672,7 @@ export function ImageGridBlock({ content, onChange, readOnly, lang = "en", trans
                     {cols.length > 1 && <button onClick={() => removeCol(i)} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: "#ef4444", fontSize: 12 }}>X</button>}
                   </div>
                   <input key={"url-" + i + "-" + col.url} defaultValue={col.url || ""} onBlur={(e) => update(i, { url: e.target.value })} placeholder="Image URL…" style={{ width: "100%", padding: "5px 8px", border: "1px solid #e2e8f0", borderRadius: 6, fontSize: 11, outline: "none", boxSizing: "border-box", marginBottom: 4 }} />
-                  <UploadImageBtn apiFetch={apiFetch} purpose="report-image" onUploaded={(url) => update(i, { url })} />
+                  <UploadImageBtn apiFetch={apiFetch} purpose="report-image" reportId={reportId} templateId={templateId} onUploaded={(url) => update(i, { url })} />
                   <input
                     key={"cap-" + (isHi ? "hi" : "en") + "-" + i + "-" + caption}
                     defaultValue={caption}
@@ -1716,13 +1718,13 @@ export function KpiImportBlock({ blockId, content, onChange, onRefetched, readOn
 // kpiScope: "institute" | "department" — controls which KPIs appear in the KPI picker.
 // Pass this from the report builder so the picker only shows KPIs belonging to the
 // same scope as the report being authored.
-export function BlockEditor({ block, onChange, onRefetched, readOnly, kpiScope = "department", blockId, apiFetch, lang = "en", onSaveTranslation }) {
+export function BlockEditor({ block, onChange, onRefetched, readOnly, kpiScope = "department", blockId, apiFetch, lang = "en", onSaveTranslation, reportId, templateId }) {
   const p = { content: block.content, onChange, readOnly, lang, translations: block.translations, onSaveTranslation };
   switch (block.block_type) {
     case "PARAGRAPH":  return <RichTextBlock  {...p} apiFetch={apiFetch} />;
     case "HEADING":    return <HeadingBlock   {...p} apiFetch={apiFetch} />;
-    case "IMAGE":      return <ImageBlock     {...p} />;
-    case "IMAGE_GRID": return <ImageGridBlock {...p} />;
+    case "IMAGE":      return <ImageBlock     {...p} reportId={reportId} templateId={templateId} />;
+    case "IMAGE_GRID": return <ImageGridBlock {...p} reportId={reportId} templateId={templateId} />;
     case "TABLE":      return <TableBlock     {...p} onRefetched={onRefetched} blockId={blockId || block.id} apiFetch={apiFetch} />;
     case "LIST":       return <ListBlock      {...p} apiFetch={apiFetch} />;
     case "DIVIDER":    return <DividerBlock />;

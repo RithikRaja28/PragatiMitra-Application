@@ -552,6 +552,7 @@ export default function CreateReportWizardPage({ onCreated, onCancel, initialRep
           const fd = new FormData();
           fd.append("file", file);
           fd.append("purpose", BRANDING_PURPOSE[assetType] || "report-image");
+          fd.append("reportId", reportId);
           const uploaded = await apj(apiFetch, "/api/upload/image", { method: "POST", body: fd });
           uploadedUrls[assetType] = uploaded.publicUrl;
           setBrandingUrls(p => ({ ...p, [assetType]: uploaded.publicUrl }));

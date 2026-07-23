@@ -3,14 +3,21 @@ const { v4: uuidv4 } = require("uuid");
 const {
   saveBuffer, deleteFile: deleteLocalFile, signReadUrl, verifyReadToken,
   extInfo, resolveSafePath,
+  reportBrandingKey, reportSubmissionKey, templateImageKey,
+  instituteFormKey, departmentFormKey,
 } = require("../utils/localStorage");
 const { verifyToken } = require("../middleware/auth");
+const { resolveEffectiveDepartment } = require("../services/departmentContext");
 const logger = require("../utils/logger");
 const multer = require("multer");
 const path   = require("path");
 const fs     = require("fs");
 
 const router = express.Router();
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const isUUID  = (v) => typeof v === "string" && UUID_RE.test(v);
+const validateFormName = (name) => typeof name === "string" && /^[a-z][a-z0-9_]*$/.test(name);
 
 /* ── Allow-lists ──────────────────────────────────────────────────────────
    Image flow (report-builder images / branding) is image-only. Document flow
@@ -33,25 +40,21 @@ const MAX_FILE_SIZE = 10 * 1024 * 1024;
    subfolder for a document-flow upload — one source of truth for both. */
 function categoryOf(mimetype) {
   if (IMAGE_MIME_TYPES.includes(mimetype)) return "images";
-  return "documents";
+  return "files";
 }
-const CATEGORY_LIMITS = { images: MAX_FILE_SIZE, documents: MAX_FILE_SIZE };
+const CATEGORY_LIMITS = { images: MAX_FILE_SIZE, files: MAX_FILE_SIZE };
 function categoryLimit(mimetype) {
   return CATEGORY_LIMITS[categoryOf(mimetype)];
 }
 
-/* Fixed, server-controlled destinations for the image-upload flow — the
-   caller picks a purpose, never a raw path, so there is no client-influenced
-   folder segment at all (stronger than merely sanitizing a free-text folder). */
-const IMAGE_PURPOSE_FOLDERS = {
-  "branding-logo":       "public/branding/logos",
-  "branding-cover":      "public/branding/cover-images",
-  "branding-background": "public/branding/background-images",
-  "report-image":        "public/report-images",
+/* Branding purpose → leaf subfolder name. The full destination path is always
+   built server-side from a validated report/template scope — the caller picks
+   a purpose + a report/template id, never a raw path segment. */
+const BRANDING_SUBFOLDER = {
+  "branding-logo":       "logos",
+  "branding-cover":      "cover-images",
+  "branding-background": "background-images",
 };
-function folderForPurpose(purpose) {
-  return IMAGE_PURPOSE_FOLDERS[purpose] || IMAGE_PURPOSE_FOLDERS["report-image"];
-}
 
 const uploadDocument = multer({
   storage: multer.memoryStorage(),
@@ -75,9 +78,89 @@ function baseUrlFor(req) {
   return `${req.protocol}://${req.get("host")}`;
 }
 
+/* ── Scope resolvers ──────────────────────────────────────────────────────
+   Each resolves + authorizes a client-supplied id/name against the DB and
+   returns a plain { institutionId, institutionName, ... } object used to
+   build the storage key — never trust the client for institution/department
+   identity, only for WHICH report/form/template it's uploading into. */
+
+async function resolveReportScope(pool, req, reportId) {
+  if (!isUUID(reportId)) return null;
+  const { rows } = await pool.query(
+    `SELECT r.id, r.title, r.institution_id, i.institution_name
+       FROM public.reports r
+       JOIN public.institutions i ON i.institution_id = r.institution_id
+      WHERE r.id = $1 AND r.deleted_at IS NULL`,
+    [reportId]
+  );
+  if (!rows.length) return null;
+  const row = rows[0];
+  const roles = req.user.roles || [];
+  if (!roles.includes("super_admin") && String(row.institution_id) !== String(req.user.institutionId)) return null;
+  return { id: row.id, title: row.title, institutionId: row.institution_id, institutionName: row.institution_name };
+}
+
+async function resolveTemplateScope(pool, req, templateId) {
+  if (!isUUID(templateId)) return null;
+  const { rows } = await pool.query(
+    `SELECT t.id, t.name, t.institution_id, i.institution_name
+       FROM public.report_templates t
+       JOIN public.institutions i ON i.institution_id = t.institution_id
+      WHERE t.id = $1`,
+    [templateId]
+  );
+  if (!rows.length) return null;
+  const row = rows[0];
+  const roles = req.user.roles || [];
+  if (!roles.includes("super_admin") && String(row.institution_id) !== String(req.user.institutionId)) return null;
+  return { id: row.id, name: row.name, institutionId: row.institution_id, institutionName: row.institution_name };
+}
+
+async function resolveInstituteFormScope(pool, req, formName) {
+  if (!validateFormName(formName)) return null;
+  const exists = await pool.query(`SELECT 1 FROM public.table_list WHERE form_name = $1`, [formName]);
+  if (!exists.rowCount) return null;
+  const { institutionId } = await resolveEffectiveDepartment(pool, req);
+  if (!institutionId) return null;
+  const { rows } = await pool.query(
+    `SELECT institution_name FROM public.institutions WHERE institution_id = $1`,
+    [institutionId]
+  );
+  if (!rows.length) return null;
+  return { institutionId, institutionName: rows[0].institution_name, formName };
+}
+
+async function resolveDepartmentFormScope(pool, req, departmentFormId) {
+  if (!isUUID(departmentFormId)) return null;
+  const { rows } = await pool.query(
+    `SELECT dtl.form_name, dtl.department_id, dtl.institution_id,
+            d.name AS department_name, i.institution_name
+       FROM public.department_table_list dtl
+       JOIN public.departments d  ON d.department_id  = dtl.department_id
+       JOIN public.institutions i ON i.institution_id = dtl.institution_id
+      WHERE dtl.id = $1`,
+    [departmentFormId]
+  );
+  if (!rows.length) return null;
+  const row = rows[0];
+  const roles = req.user.roles || [];
+  if (!roles.includes("super_admin")) {
+    const { departmentId } = await resolveEffectiveDepartment(pool, req);
+    if (!departmentId || String(row.department_id) !== String(departmentId)) return null;
+  }
+  return {
+    formName:        row.form_name,
+    departmentId:    row.department_id,
+    institutionId:   row.institution_id,
+    departmentName:  row.department_name,
+    institutionName: row.institution_name,
+  };
+}
+
 /**
  * POST /api/upload/document
- * Multipart: field name "file"
+ * Multipart: field "file" + "context" (report_submission | institute_form | department_form)
+ *   + one of "reportId" / "formName" / "departmentFormId" matching the context.
  * Returns: { success, fileKey }
  */
 router.post("/document", verifyToken, (req, res) => {
@@ -101,9 +184,37 @@ router.post("/document", verifyToken, (req, res) => {
     }
 
     try {
-      const ext     = path.extname(req.file.originalname).toLowerCase();
-      const category = categoryOf(req.file.mimetype);
-      const fileKey = `submissions/${category}/${uuidv4()}${ext}`;
+      const pool = req.app.locals.pool;
+      const { context } = req.body;
+
+      let scope = null;
+      if (context === "report_submission")    scope = await resolveReportScope(pool, req, req.body.reportId);
+      else if (context === "institute_form")  scope = await resolveInstituteFormScope(pool, req, req.body.formName);
+      else if (context === "department_form") scope = await resolveDepartmentFormScope(pool, req, req.body.departmentFormId);
+
+      if (!scope) {
+        return res.status(400).json({ success: false, error: "Invalid or unauthorized upload context." });
+      }
+
+      const ext      = path.extname(req.file.originalname).toLowerCase();
+      const kind     = categoryOf(req.file.mimetype);
+      const filename = `${uuidv4()}${ext}`;
+
+      const fileKey =
+        context === "report_submission"
+          ? reportSubmissionKey({
+              institutionName: scope.institutionName, institutionId: scope.institutionId,
+              reportTitle: scope.title, reportId: scope.id, kind, filename,
+            })
+          : context === "institute_form"
+          ? instituteFormKey({
+              institutionName: scope.institutionName, institutionId: scope.institutionId,
+              formName: scope.formName, kind, filename,
+            })
+          : departmentFormKey({
+              institutionName: scope.institutionName, institutionId: scope.institutionId,
+              departmentName: scope.departmentName, formName: scope.formName, kind, filename,
+            });
 
       await saveBuffer(fileKey, req.file.buffer);
 
@@ -117,15 +228,17 @@ router.post("/document", verifyToken, (req, res) => {
 
 /**
  * POST /api/upload/image
- * Multipart: field name "file", optional "purpose"
+ * Multipart: field "file", optional "purpose"
  *   purpose ∈ branding-logo | branding-cover | branding-background | report-image
  *   (defaults to report-image; unrecognized values fall back to report-image)
+ * Plus exactly one of "reportId" or "templateId". Branding purposes require
+ * "reportId" (templates have no branding assets).
  * Returns: { success, publicUrl }
  *
  * For report-builder images and branding assets — publicly readable, served
- * directly from disk via the static /uploads/public mount. The destination
- * folder is chosen entirely server-side from `purpose`, never from a raw
- * client-supplied path segment.
+ * via the dynamic /uploads route (routes/publicFiles.js). The destination
+ * folder is chosen entirely server-side from a validated report/template
+ * scope + purpose, never from a raw client-supplied path segment.
  */
 router.post("/image", verifyToken, (req, res) => {
   uploadImage.single("file")(req, res, async (err) => {
@@ -140,9 +253,42 @@ router.post("/image", verifyToken, (req, res) => {
     }
 
     try {
-      const ext     = path.extname(req.file.originalname).toLowerCase();
-      const folder  = folderForPurpose(req.body.purpose);
-      const fileKey = `${folder}/${uuidv4()}${ext}`;
+      const pool = req.app.locals.pool;
+      const { purpose, reportId, templateId } = req.body;
+      const isBranding = Object.prototype.hasOwnProperty.call(BRANDING_SUBFOLDER, purpose);
+
+      if (isBranding && templateId) {
+        return res.status(400).json({ success: false, error: "Branding uploads must be scoped to a report, not a template." });
+      }
+      if (!reportId && !templateId) {
+        return res.status(400).json({ success: false, error: "reportId or templateId is required." });
+      }
+
+      const ext      = path.extname(req.file.originalname).toLowerCase();
+      const filename = `${uuidv4()}${ext}`;
+      let fileKey;
+
+      if (templateId) {
+        const scope = await resolveTemplateScope(pool, req, templateId);
+        if (!scope) return res.status(400).json({ success: false, error: "Invalid or unauthorized template." });
+        fileKey = templateImageKey({
+          institutionName: scope.institutionName, institutionId: scope.institutionId,
+          templateName: scope.name, templateId: scope.id, filename,
+        });
+      } else {
+        const scope = await resolveReportScope(pool, req, reportId);
+        if (!scope) return res.status(400).json({ success: false, error: "Invalid or unauthorized report." });
+        fileKey = isBranding
+          ? reportBrandingKey({
+              institutionName: scope.institutionName, institutionId: scope.institutionId,
+              reportTitle: scope.title, reportId: scope.id,
+              assetFolder: BRANDING_SUBFOLDER[purpose], filename,
+            })
+          : reportSubmissionKey({
+              institutionName: scope.institutionName, institutionId: scope.institutionId,
+              reportTitle: scope.title, reportId: scope.id, kind: "images", filename,
+            });
+      }
 
       await saveBuffer(fileKey, req.file.buffer);
 

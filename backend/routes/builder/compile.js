@@ -18,7 +18,7 @@ const https   = require("https");
 
 const { verifyToken, requireRole } = require("../../middleware/auth");
 const { writeAuditLog }            = require("../../utils/audit");
-const { UPLOAD_ROOT }               = require("../../utils/localStorage");
+const { UPLOAD_ROOT, instituteDir, reportDir } = require("../../utils/localStorage");
 const logger                       = require("../../utils/logger");
 const { getLogContext }            = logger;
 const { translateSentence }        = require("../../services/translationService");
@@ -31,11 +31,12 @@ const isUUID  = v => typeof v === "string" && UUID_RE.test(v);
 
 const BACKEND_ROOT = path.join(__dirname, "../../");
 
-/* Generated reports live under uploads/reports/generated/<fmt>/ — private
-   (never statically mounted; only reachable via the authenticated download
-   route below), split by format for a clean, browsable disk layout. */
-function generatedDirFor(fmt) {
-  const dir = path.join(UPLOAD_ROOT, "reports", "generated", fmt.toLowerCase());
+/* Generated reports live under uploads/[institute]/reports/[report]/generated/<fmt>/
+   — private (never statically mounted; only reachable via the authenticated
+   download route below), split by format for a clean, browsable disk layout. */
+function generatedDirFor(institutionName, institutionId, reportTitle, reportId, fmt) {
+  const dir = path.join(UPLOAD_ROOT, instituteDir(institutionName, institutionId),
+    "reports", reportDir(reportTitle, reportId), "generated", fmt.toLowerCase());
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   return dir;
 }
@@ -301,7 +302,10 @@ router.post(
       const safeName = report.title.replace(/[^a-zA-Z0-9]/g, "_").slice(0, 60);
       const ext      = fmt === "DOCX" ? "docx" : "pdf";
       const fileName = `${safeName}_${ts}.${ext}`;
-      const outPath  = path.join(generatedDirFor(fmt), fileName);
+      const outPath  = path.join(
+        generatedDirFor(report.institution_name, report.institution_id, report.title, report.id, fmt),
+        fileName
+      );
 
       let fileSize = 0;
       if (fmt === "DOCX") {

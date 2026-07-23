@@ -2672,6 +2672,7 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
                       blockId={block.id}
                       apiFetch={apiFetch}
                       lang={contentLang}
+                      reportId={section?.report_id}
                     />
                   </div>
 

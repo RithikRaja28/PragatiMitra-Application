@@ -84,7 +84,7 @@ const AUDIO_MAX   = 50  * 1024 * 1024;
 const VIDEO_MAX   = 200 * 1024 * 1024;
 const DOC_LABEL_STYLE = { display: "block", fontSize: 13, fontWeight: 500, color: "#334155", marginBottom: 6 };
 
-export function DocumentUploadField({ label, required, value, onChange, getToken, labelStyle = DOC_LABEL_STYLE }) {
+export function DocumentUploadField({ label, required, value, onChange, getToken, labelStyle = DOC_LABEL_STYLE, formName }) {
   const fileRef = useRef(null);
   const [status,   setStatus]   = useState("idle");
   const [errMsg,   setErrMsg]   = useState("");
@@ -134,6 +134,8 @@ export function DocumentUploadField({ label, required, value, onChange, getToken
     try {
       const token = getToken();
       const fd = new FormData(); fd.append("file", file);
+      fd.append("context", "institute_form");
+      fd.append("formName", formName);
       const res = await api.post("/api/upload/document", { token, body: fd });
       const data = await res.json();
       if (!data.success) throw new Error(data.error || "Upload failed.");
@@ -240,7 +242,7 @@ export function DocumentCell({ fileKey, getToken, lang = "en" }) {
 }
 
 /* â”€â”€ Record edit sub-components â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
-export function FieldInput({ field, value, onChange, getToken, lang = "en" }) {
+export function FieldInput({ field, value, onChange, getToken, lang = "en", formName }) {
   const col = dbCol(field.column_name);
   const label = field.label?.[lang] || field.label?.en || displayCol(field.column_name);
   const type = field.type;
@@ -266,7 +268,7 @@ export function FieldInput({ field, value, onChange, getToken, lang = "en" }) {
   );
   if (type === "document") return (
     <DocumentUploadField label={label} required={field.required} value={value}
-      onChange={url => onChange(col, url)} getToken={getToken} />
+      onChange={url => onChange(col, url)} getToken={getToken} formName={formName} />
   );
   const inputType = type === "number" ? "number" : type === "date" ? "date" : type === "email" ? "email" : type === "phone" ? "tel" : "text";
   return (
@@ -438,7 +440,7 @@ export function RecordEditPage({
       {fields.length === 0 ? noFields : fields.map(field => (
         viewOnly
           ? <ReadOnlyField key={dbCol(field.column_name)} field={field} value={formData[dbCol(field.column_name)]} lang={editLang} getToken={getToken} />
-          : <FieldInput key={dbCol(field.column_name)} field={field} value={formData[dbCol(field.column_name)]} onChange={handleChange} getToken={getToken} lang={editLang} />
+          : <FieldInput key={dbCol(field.column_name)} field={field} value={formData[dbCol(field.column_name)]} onChange={handleChange} getToken={getToken} lang={editLang} formName={formName} />
       ))}
     </ModalPane>
   );

@@ -1,6 +1,7 @@
 const fs   = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const { slugify, slugWithId } = require("./slug");
 
 const UPLOAD_ROOT = path.join(__dirname, "..", "uploads");
 
@@ -94,6 +95,60 @@ function verifyReadToken(key, exp, sig) {
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
+/* ─── Tenant-scoped storage-key builders ────────────────────────────────
+   Pure path construction only — no DB queries here. Callers resolve the
+   institute/report/template name + id (and permission to use it) first,
+   then hand the already-resolved strings to these builders. Folder layout:
+
+     [institute]/reports/[report]/branding/{logos,cover-images,background-images}/
+     [institute]/reports/[report]/generated/{pdf,docx}/
+     [institute]/reports/[report]/submissions/{images,files}/
+     [institute]/templates/[template]/images/
+     [institute]/institute_forms/[form_name]/{images,files}/
+     [institute]/department_forms/dept_[dept_name]/[form_name]/{images,files}/
+
+   Institute/report/template segments carry a short id suffix (slugWithId)
+   since institution_name/report.title/template.name have no DB uniqueness
+   constraint; department names and form_name slugs are already unique
+   (per-institution / regex-validated), so those use a plain slug. ───────── */
+
+function instituteDir(institutionName, institutionId) {
+  return slugWithId(institutionName, institutionId);
+}
+function reportDir(reportTitle, reportId) {
+  return slugWithId(reportTitle, reportId);
+}
+function templateDir(templateName, templateId) {
+  return slugWithId(templateName, templateId);
+}
+function deptDir(departmentName) {
+  return `dept_${slugify(departmentName)}`;
+}
+
+function reportBrandingKey({ institutionName, institutionId, reportTitle, reportId, assetFolder, filename }) {
+  return [instituteDir(institutionName, institutionId), "reports", reportDir(reportTitle, reportId),
+          "branding", assetFolder, filename].join("/");
+}
+
+function reportSubmissionKey({ institutionName, institutionId, reportTitle, reportId, kind, filename }) {
+  return [instituteDir(institutionName, institutionId), "reports", reportDir(reportTitle, reportId),
+          "submissions", kind, filename].join("/");
+}
+
+function templateImageKey({ institutionName, institutionId, templateName, templateId, filename }) {
+  return [instituteDir(institutionName, institutionId), "templates", templateDir(templateName, templateId),
+          "images", filename].join("/");
+}
+
+function instituteFormKey({ institutionName, institutionId, formName, kind, filename }) {
+  return [instituteDir(institutionName, institutionId), "institute_forms", formName, kind, filename].join("/");
+}
+
+function departmentFormKey({ institutionName, institutionId, departmentName, formName, kind, filename }) {
+  return [instituteDir(institutionName, institutionId), "department_forms", deptDir(departmentName),
+          formName, kind, filename].join("/");
+}
+
 module.exports = {
   UPLOAD_ROOT,
   extInfo,
@@ -102,4 +157,13 @@ module.exports = {
   deleteFile,
   signReadUrl,
   verifyReadToken,
+  instituteDir,
+  reportDir,
+  templateDir,
+  deptDir,
+  reportBrandingKey,
+  reportSubmissionKey,
+  templateImageKey,
+  instituteFormKey,
+  departmentFormKey,
 };

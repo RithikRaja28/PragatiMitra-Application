@@ -430,12 +430,15 @@ setInterval(() => {
   }
 }, 30 * 60 * 1000).unref();
 
-/* ─── Static: serve public uploads only (report images, branding) ───
-   submissions/ and reports/ are intentionally NOT mounted here — those are
-   private, accessible only via the signed GET /api/upload/file route (or,
-   for compiled reports, the authenticated compile.js download route). ─── */
-const path = require("path");
-app.use("/uploads/public", express.static(path.join(__dirname, "uploads", "public")));
+/* ─── Public uploads: branding, report-image submissions, template images ───
+   Everything else under uploads/ (generated reports, submission files,
+   institute/department form uploads) is intentionally NOT served here — those
+   are private, accessible only via the signed GET /api/upload/file route (or,
+   for compiled reports, the authenticated compile.js download route). Uses a
+   dynamic route (not express.static) since public assets now nest under
+   per-institute/per-report folders rather than one flat "public/" prefix —
+   see routes/publicFiles.js for the allowlist logic. ─── */
+app.use("/uploads", require("./routes/publicFiles"));
 
 /* ─── Routes ────────────────────────────────────────────────── */
 app.get("/", (_req, res) => {
