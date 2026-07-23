@@ -18,7 +18,7 @@ const https   = require("https");
 
 const { verifyToken, requireRole } = require("../../middleware/auth");
 const { writeAuditLog }            = require("../../utils/audit");
-const { uploadBuffer, getReadUrl, deleteFile: deleteS3File } = require("../../utils/s3");
+const { uploadBuffer, getReadUrl, deleteFile } = require("../../utils/s3");
 const logger                       = require("../../utils/logger");
 const { getLogContext }            = logger;
 const { translateSentence }        = require("../../services/translationService");
@@ -303,21 +303,21 @@ router.post(
         fileSize = await generatePdf(report, sections, outPath, opts);
       }
 
-      // Upload to S3 (compiled-reports folder) — fall back to local file on S3 failure
+      // Store the compiled artifact under the local uploads directory.
       const mimeType = fmt === "DOCX"
         ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         : "application/pdf";
-      const s3Key = `compiled-reports/${reportId}/${fileName}`;
+      const localKey = `compiled-reports/${reportId}/${fileName}`;
       let storePath = outPath;
       let storeOpts = opts;
       try {
         const buffer = fs.readFileSync(outPath);
-        await uploadBuffer(s3Key, buffer, mimeType);
-        storeOpts = { ...opts, s3_key: s3Key };
-        storePath = s3Key;
-        fs.unlink(outPath, () => {}); // clean up local file after successful S3 upload
-      } catch (s3Err) {
-        logger.warn("compile: S3 upload failed, keeping local file", { err: s3Err.message });
+        await uploadBuffer(localKey, buffer, mimeType);
+        storeOpts = { ...opts, local_key: localKey };
+        storePath = localKey;
+        fs.unlink(outPath, () => {}); // remove the temporary compile output
+      } catch (storageErr) {
+        logger.warn("compile: local artifact storage failed, keeping temporary file", { err: storageErr.message });
       }
 
       const { rows: compRows } = await pool.query(
@@ -379,11 +379,11 @@ router.get("/report/:reportId/:compileId/download", async (req, res) => {
     );
     if (!rows.length) return res.status(404).json({ success: false, message: "Artifact not found" });
     const artifact = rows[0];
-    const s3Key    = artifact.compile_options?.s3_key;
+    const localKey = artifact.compile_options?.local_key;
 
-    // S3-stored file: redirect to presigned URL (1-hour window)
-    if (s3Key) {
-      const url = await getReadUrl(s3Key, 3600);
+    // Locally stored file: redirect to its local server URL.
+    if (localKey) {
+      const url = await getReadUrl(localKey, 3600);
       return res.redirect(url);
     }
 
@@ -419,12 +419,12 @@ router.delete(
       );
       if (!rows.length) return res.status(404).json({ success: false, message: "Compiled report not found" });
       const artifact = rows[0];
-      const s3Key    = artifact.compile_options?.s3_key;
+      const localKey = artifact.compile_options?.local_key;
 
-      // Remove from S3 if stored there
-      if (s3Key) {
-        await deleteS3File(s3Key).catch((e) =>
-          logger.warn("compile DELETE: S3 delete failed (continuing)", { key: s3Key, err: e.message })
+      // Remove the local stored artifact, if present.
+      if (localKey) {
+        await deleteFile(localKey).catch((e) =>
+          logger.warn("compile DELETE: local file delete failed (continuing)", { key: localKey, err: e.message })
         );
       } else if (artifact.storage_path && fs.existsSync(artifact.storage_path)) {
         fs.unlink(artifact.storage_path, () => {});

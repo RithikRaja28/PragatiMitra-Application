@@ -1,60 +1,69 @@
-const { S3Client, GetObjectCommand, DeleteObjectCommand, PutObjectCommand } = require("@aws-sdk/client-s3");
-const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
+const fs = require("fs/promises");
+const path = require("path");
+const LOCAL_BUFFER_UPLOAD_DIR = path.resolve(__dirname, "..", "uploads", "buffer-uploads");
+const LOCAL_STORAGE_BASE_URL = (process.env.LOCAL_STORAGE_BASE_URL || `http://localhost:${process.env.PORT || 3000}`)
+  .replace(/\/+$/, "");
 
-const s3 = new S3Client({
-  region: process.env.AWS_REGION,
-  credentials: {
-    accessKeyId:     process.env.AWS_ACCESS_KEY_ID,
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-  },
-});
+function getLocalBufferUploadPath(key) {
+  // Keys originate on the server, but keep the local destination inside the
+  // upload directory if this helper is ever called with untrusted input.
+  const normalizedKey = String(key).replace(/\\/g, "/");
+  const localPath = path.resolve(LOCAL_BUFFER_UPLOAD_DIR, normalizedKey);
+  const localRoot = `${LOCAL_BUFFER_UPLOAD_DIR}${path.sep}`;
 
-const BUCKET = process.env.AWS_BUCKET_NAME;
+  if (!localPath.startsWith(localRoot)) {
+    throw new Error("Invalid local upload key");
+  }
 
-/**
- * Presigned URL for uploading — frontend PUTs the file directly to S3.
- * Expires in 5 minutes by default.
- */
-async function getUploadUrl(key, mimeType, expiresIn = 300) {
-  const command = new PutObjectCommand({
-    Bucket:      BUCKET,
-    Key:         key,
-    ContentType: mimeType,
-  });
-  return getSignedUrl(s3, command, { expiresIn });
+  return localPath;
+}
+
+function getLocalBufferUploadUrl(key) {
+  const encodedKey = String(key)
+    .replace(/\\/g, "/")
+    .split("/")
+    .map(encodeURIComponent)
+    .join("/");
+  return `${LOCAL_STORAGE_BASE_URL}/uploads/buffer-uploads/${encodedKey}`;
 }
 
 /**
- * Presigned URL for reading/downloading a private file.
- * Expires in 15 minutes by default.
+ * Local upload endpoint. The frontend sends the file through the authenticated API.
+ * The unused parameters retain the existing caller interface.
  */
-async function getReadUrl(key, expiresIn = 900) {
-  const command = new GetObjectCommand({ Bucket: BUCKET, Key: key });
-  return getSignedUrl(s3, command, { expiresIn });
+async function getUploadUrl(key, _mimeType, _expiresIn = 300) {
+  const encodedKey = String(key)
+    .replace(/\\/g, "/")
+    .split("/")
+    .map(encodeURIComponent)
+    .join("/");
+  return `/api/upload/local-upload/${encodedKey}`;
 }
 
 /**
- * Upload a Buffer directly to S3 from the server side.
+ * Local URL for reading/downloading a backend-buffer upload.
+ * `expiresIn` remains accepted so existing callers keep the same interface.
+ */
+async function getReadUrl(key, _expiresIn = 900) {
+  return getLocalBufferUploadUrl(key);
+}
+
+/**
+ * Upload a Buffer directly to local server storage.
  * Used by the /api/upload/document route to proxy files through the backend.
- * ContentLength is required by AWS SDK v3 when using a Buffer body.
  */
 async function uploadBuffer(key, buffer, mimeType) {
-  const command = new PutObjectCommand({
-    Bucket:        BUCKET,
-    Key:           key,
-    Body:          buffer,
-    ContentType:   mimeType,
-    ContentLength: buffer.length,
-  });
-  return s3.send(command);
+  const localPath = getLocalBufferUploadPath(key);
+  await fs.mkdir(path.dirname(localPath), { recursive: true });
+  await fs.writeFile(localPath, buffer);
+  return { key, mimeType, storage: "local" };
 }
 
 /**
- * Delete a file from S3 by its key.
+ * Delete a backend-buffer upload from local server storage by its key.
  */
 async function deleteFile(key) {
-  const command = new DeleteObjectCommand({ Bucket: BUCKET, Key: key });
-  return s3.send(command);
+  await fs.rm(getLocalBufferUploadPath(key), { force: true });
 }
 
 module.exports = { getUploadUrl, getReadUrl, uploadBuffer, deleteFile };

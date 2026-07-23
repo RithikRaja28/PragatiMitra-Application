@@ -111,7 +111,7 @@ function TranslateButton({ apiFetch, getSource, onTranslated, label = "Translate
 }
 
 /* ── S3 upload helper ─────────────────────────────────────────────────── */
-async function uploadToS3(file, apiFetch, folder, compressionSettings) {
+async function uploadToLocalStorage(file, apiFetch, folder, compressionSettings) {
   if (!file) throw new Error("No file selected");
   const ALLOWED = ["image/jpeg", "image/png", "image/webp"];
   if (!ALLOWED.includes(file.type)) throw new Error("Only JPEG, PNG and WebP images are allowed");
@@ -132,10 +132,10 @@ async function uploadToS3(file, apiFetch, folder, compressionSettings) {
   const presignData = await presignRes.json();
   if (!presignRes.ok) throw new Error(presignData.error || "Failed to get upload URL");
 
-  const s3Res = await fetch(presignData.uploadUrl, {
+  const uploadRes = await apiFetch(presignData.uploadUrl, {
     method: "PUT", body: file, headers: { "Content-Type": file.type },
   });
-  if (!s3Res.ok) throw new Error("S3 upload failed");
+  if (!uploadRes.ok) throw new Error("Local image upload failed");
   return presignData.publicUrl;
 }
 
@@ -157,7 +157,7 @@ function UploadImageBtn({ onUploaded, apiFetch, folder, disabled }) {
     if (!file) return;
     setUploading(true); setErr(""); setUploadResult(null);
     try {
-      onUploaded(await uploadToS3(file, apiFetch, folder, compressionSettings));
+      onUploaded(await uploadToLocalStorage(file, apiFetch, folder, compressionSettings));
       setUploadResult("success");
       showToast("Upload Successful");
       setTimeout(() => setUploadResult(null), 2500);

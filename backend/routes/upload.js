@@ -34,8 +34,8 @@ const upload = multer({
  * Body: { fileName, fileType, fileSize, folder? }
  * Returns: { uploadUrl, fileKey }
  *
- * Frontend uses uploadUrl to PUT the file directly to S3.
- * Store fileKey in your DB — use it later to get a read URL.
+ * Frontend uses uploadUrl to PUT the file through the backend into local storage.
+ * Store fileKey in your DB — use it later to get a local read URL.
  */
 router.post("/presign", verifyToken, async (req, res) => {
   const { fileName, fileType, fileSize, folder = "general" } = req.body;
@@ -57,11 +57,32 @@ router.post("/presign", verifyToken, async (req, res) => {
 
   try {
     const uploadUrl = await getUploadUrl(fileKey, fileType);
-    const publicUrl = `https://${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${fileKey}`;
+    const publicUrl = await getReadUrl(fileKey);
     res.json({ uploadUrl, fileKey, publicUrl });
   } catch (err) {
-    logger.error("[upload/presign] Failed to generate presigned URL", { message: err.message, code: err?.Code || err?.code });
-    res.status(500).json({ error: "Failed to generate upload URL. Check S3 configuration." });
+    logger.error("[upload/presign] Failed to generate local upload URL", { message: err.message, code: err?.Code || err?.code });
+    res.status(500).json({ error: "Failed to generate local upload URL." });
+  }
+});
+
+router.put("/local-upload/*fileKey", verifyToken, express.raw({ type: () => true, limit: MAX_FILE_SIZE }), async (req, res) => {
+  const rawKey = Array.isArray(req.params.fileKey) ? req.params.fileKey.join("/") : req.params.fileKey;
+  const fileKey = String(rawKey || "");
+  const mimeType = String(req.headers["content-type"] || "").split(";")[0].trim();
+
+  if (!fileKey || !ALLOWED_MIME_TYPES.includes(mimeType)) {
+    return res.status(400).json({ error: "Invalid file key or file type." });
+  }
+  if (!Buffer.isBuffer(req.body) || !req.body.length) {
+    return res.status(400).json({ error: "No file received." });
+  }
+
+  try {
+    await uploadBuffer(fileKey, req.body, mimeType);
+    return res.json({ success: true, fileKey });
+  } catch (err) {
+    logger.error("[upload/local-upload] Local upload failed", { message: err.message });
+    return res.status(500).json({ error: "Unable to save file locally." });
   }
 });
 
@@ -117,18 +138,11 @@ router.post("/document", verifyToken, (req, res) => {
       await uploadBuffer(fileKey, req.file.buffer, req.file.mimetype);
 
       return res.json({ success: true, fileKey });
-    } catch (s3Err) {
-      logger.error("[upload/document] S3 upload failed", {
-        name: s3Err?.name, code: s3Err?.Code || s3Err?.code, message: s3Err?.message,
+    } catch (storageErr) {
+      logger.error("[upload/document] Local upload failed", {
+        name: storageErr?.name, code: storageErr?.Code || storageErr?.code, message: storageErr?.message,
       });
-      const code = s3Err?.Code || s3Err?.code || s3Err?.name || "";
-      const friendly =
-        code === "NoSuchBucket"
-          ? `S3 bucket "${process.env.AWS_BUCKET_NAME}" does not exist. Create it in the AWS console (region: ${process.env.AWS_REGION}).`
-          : code === "AccessDenied"
-          ? "S3 access denied. Ensure the IAM user has s3:PutObject permission on this bucket."
-          : `Storage error: ${s3Err?.message || code}`;
-      return res.status(500).json({ success: false, error: friendly });
+      return res.status(500).json({ success: false, error: `Storage error: ${storageErr?.message || "Unable to save file locally"}` });
     }
   });
 });

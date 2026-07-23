@@ -552,7 +552,10 @@ export default function CreateReportWizardPage({ onCreated, onCancel, initialRep
             method: "POST", headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ fileName: file.name, fileType: file.type, fileSize: file.size, folder: "branding" }),
           });
-          await fetch(presign.uploadUrl, { method: "PUT", body: file, headers: { "Content-Type": file.type } });
+          const uploadRes = await apiFetch(presign.uploadUrl, {
+            method: "PUT", body: file, headers: { "Content-Type": file.type },
+          });
+          if (!uploadRes.ok) throw new Error("Local image upload failed");
           uploadedUrls[assetType] = presign.publicUrl;
           setBrandingUrls(p => ({ ...p, [assetType]: presign.publicUrl }));
         } catch { /* best-effort */ }
