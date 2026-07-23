@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { Check, X, Info, AlertTriangle } from "lucide-react";
 
 const ToastContext = createContext(null);
@@ -88,7 +89,7 @@ export function useToast() {
 function Toast({ type = "success", message, onClose }) {
   if (!message) return null;
   const s = TYPE_STYLE[type] || TYPE_STYLE.info;
-  return (
+  return createPortal(
     <div style={{
       position: "fixed", top: 20, right: 20, zIndex: 99999,
       display: "flex", alignItems: "flex-start", gap: 12,
@@ -121,7 +122,8 @@ function Toast({ type = "success", message, onClose }) {
           color: "#94a3b8", fontSize: 15, lineHeight: 1, padding: "0 2px", flexShrink: 0,
         }}>✕</button>
       )}
-    </div>
+    </div>,
+    document.body
   );
 }
 
