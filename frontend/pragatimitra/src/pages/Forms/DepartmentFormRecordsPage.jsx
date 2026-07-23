@@ -284,6 +284,7 @@ export default function DepartmentFormRecordsPage({ form, year = null, onBack })
         <RecordEditPage
           fields={fields}
           record={editing}
+          departmentFormId={form.id}
           formTitle={titleOf(form.form_name)}
           counterpartPath={editing?.id ? `/api/department-form-data/${form.id}/records/${editing.id}/counterpart` : null}
           apiFetch={apiFetch}

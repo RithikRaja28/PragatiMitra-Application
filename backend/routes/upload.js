@@ -10,13 +10,13 @@ const { verifyToken } = require("../middleware/auth");
 const { resolveEffectiveDepartment } = require("../services/departmentContext");
 const logger = require("../utils/logger");
 const multer = require("multer");
-const path   = require("path");
-const fs     = require("fs");
+const path = require("path");
+const fs = require("fs");
 
 const router = express.Router();
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const isUUID  = (v) => typeof v === "string" && UUID_RE.test(v);
+const isUUID = (v) => typeof v === "string" && UUID_RE.test(v);
 const validateFormName = (name) => typeof name === "string" && /^[a-z][a-z0-9_]*$/.test(name);
 
 /* ── Allow-lists ──────────────────────────────────────────────────────────
@@ -51,14 +51,14 @@ function categoryLimit(mimetype) {
    built server-side from a validated report/template scope — the caller picks
    a purpose + a report/template id, never a raw path segment. */
 const BRANDING_SUBFOLDER = {
-  "branding-logo":       "logos",
-  "branding-cover":      "cover-images",
+  "branding-logo": "logos",
+  "branding-cover": "cover-images",
   "branding-background": "background-images",
 };
 
 const uploadDocument = multer({
   storage: multer.memoryStorage(),
-  limits:  { fileSize: MAX_FILE_SIZE },
+  limits: { fileSize: MAX_FILE_SIZE },
   fileFilter: (_req, file, cb) => {
     if (DOCUMENT_ALLOWED_TYPES.includes(file.mimetype)) cb(null, true);
     else cb(new Error("File type not allowed."));
@@ -67,7 +67,7 @@ const uploadDocument = multer({
 
 const uploadImage = multer({
   storage: multer.memoryStorage(),
-  limits:  { fileSize: MAX_FILE_SIZE },
+  limits: { fileSize: MAX_FILE_SIZE },
   fileFilter: (_req, file, cb) => {
     if (IMAGE_MIME_TYPES.includes(file.mimetype)) cb(null, true);
     else cb(new Error("File type not allowed."));
@@ -149,10 +149,10 @@ async function resolveDepartmentFormScope(pool, req, departmentFormId) {
     if (!departmentId || String(row.department_id) !== String(departmentId)) return null;
   }
   return {
-    formName:        row.form_name,
-    departmentId:    row.department_id,
-    institutionId:   row.institution_id,
-    departmentName:  row.department_name,
+    formName: row.form_name,
+    departmentId: row.department_id,
+    institutionId: row.institution_id,
+    departmentName: row.department_name,
     institutionName: row.institution_name,
   };
 }
@@ -188,30 +188,30 @@ router.post("/document", verifyToken, (req, res) => {
       const { context } = req.body;
 
       let scope = null;
-      if (context === "report_submission")    scope = await resolveReportScope(pool, req, req.body.reportId);
-      else if (context === "institute_form")  scope = await resolveInstituteFormScope(pool, req, req.body.formName);
+      if (context === "report_submission") scope = await resolveReportScope(pool, req, req.body.reportId);
+      else if (context === "institute_form") scope = await resolveInstituteFormScope(pool, req, req.body.formName);
       else if (context === "department_form") scope = await resolveDepartmentFormScope(pool, req, req.body.departmentFormId);
 
       if (!scope) {
         return res.status(400).json({ success: false, error: "Invalid or unauthorized upload context." });
       }
 
-      const ext      = path.extname(req.file.originalname).toLowerCase();
-      const kind     = categoryOf(req.file.mimetype);
+      const ext = path.extname(req.file.originalname).toLowerCase();
+      const kind = categoryOf(req.file.mimetype);
       const filename = `${uuidv4()}${ext}`;
 
       const fileKey =
         context === "report_submission"
           ? reportSubmissionKey({
-              institutionName: scope.institutionName, institutionId: scope.institutionId,
-              reportTitle: scope.title, reportId: scope.id, kind, filename,
-            })
+            institutionName: scope.institutionName, institutionId: scope.institutionId,
+            reportTitle: scope.title, reportId: scope.id, kind, filename,
+          })
           : context === "institute_form"
-          ? instituteFormKey({
+            ? instituteFormKey({
               institutionName: scope.institutionName, institutionId: scope.institutionId,
               formName: scope.formName, kind, filename,
             })
-          : departmentFormKey({
+            : departmentFormKey({
               institutionName: scope.institutionName, institutionId: scope.institutionId,
               departmentName: scope.departmentName, formName: scope.formName, kind, filename,
             });
@@ -264,7 +264,7 @@ router.post("/image", verifyToken, (req, res) => {
         return res.status(400).json({ success: false, error: "reportId or templateId is required." });
       }
 
-      const ext      = path.extname(req.file.originalname).toLowerCase();
+      const ext = path.extname(req.file.originalname).toLowerCase();
       const filename = `${uuidv4()}${ext}`;
       let fileKey;
 
@@ -280,20 +280,21 @@ router.post("/image", verifyToken, (req, res) => {
         if (!scope) return res.status(400).json({ success: false, error: "Invalid or unauthorized report." });
         fileKey = isBranding
           ? reportBrandingKey({
-              institutionName: scope.institutionName, institutionId: scope.institutionId,
-              reportTitle: scope.title, reportId: scope.id,
-              assetFolder: BRANDING_SUBFOLDER[purpose], filename,
-            })
+            institutionName: scope.institutionName, institutionId: scope.institutionId,
+            reportTitle: scope.title, reportId: scope.id,
+            assetFolder: BRANDING_SUBFOLDER[purpose], filename,
+          })
           : reportSubmissionKey({
-              institutionName: scope.institutionName, institutionId: scope.institutionId,
-              reportTitle: scope.title, reportId: scope.id, kind: "images", filename,
-            });
+            institutionName: scope.institutionName, institutionId: scope.institutionId,
+            reportTitle: scope.title, reportId: scope.id, kind: "images", filename,
+          });
       }
 
       await saveBuffer(fileKey, req.file.buffer);
 
       const publicUrl = `${baseUrlFor(req)}/uploads/${fileKey}`;
       return res.json({ success: true, publicUrl });
+
     } catch (storageErr) {
       logger.error("[upload/image] Local storage write failed", { message: storageErr.message });
       return res.status(500).json({ success: false, error: `Storage error: ${storageErr.message}` });

@@ -50,6 +50,16 @@ export function AuthProvider({ children }) {
   const logout = useCallback((message = "") => {
     localStorage.removeItem("pm_user");
     sessionStorage.removeItem("pm_noa_role");
+    // The academic-year selector (AcademicYearContext) persists its pick in
+    // sessionStorage keyed only by institution, not by user, so it survives
+    // a logout by design (page refresh). But that means logging in as a
+    // DIFFERENT user of the SAME institution in the same tab inherits
+    // whatever year the previous user last had selected, instead of
+    // re-resolving to that user's own default — clear it on every logout so
+    // the next login always starts from a fresh (DB-current) year.
+    Object.keys(sessionStorage)
+      .filter((k) => k.startsWith("pm_academic_year_"))
+      .forEach((k) => sessionStorage.removeItem(k));
     _setNoaSelectedRole(null);
     setUser(null);
     setAccess(null);

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback } from "react";
+import { createContext, useContext, useState, useCallback, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { Check, X, Info, AlertTriangle } from "lucide-react";
 
@@ -85,13 +85,26 @@ export function useToast() {
   return ctx;
 }
 
-/* Simple inline Toast for pages that manage their own toast state */
+/* Simple inline Toast for pages that manage their own toast state.
+   Positioned below the dashboard topbar (--sh-topbar-h: 64px in Appshell.jsx)
+   so it never overlaps the topbar's own controls, and auto-hides after 10s. */
 function Toast({ type = "success", message, onClose }) {
+  // Only `message` restarts the clock — `onClose` is typically a fresh inline
+  // function on every parent render, and must not reset the 10s timer itself.
+  const onCloseRef = useRef(onClose);
+  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
+
+  useEffect(() => {
+    if (!message) return;
+    const timer = setTimeout(() => onCloseRef.current?.(), 10000);
+    return () => clearTimeout(timer);
+  }, [message]);
+
   if (!message) return null;
   const s = TYPE_STYLE[type] || TYPE_STYLE.info;
   return createPortal(
     <div style={{
-      position: "fixed", top: 20, right: 20, zIndex: 99999,
+      position: "fixed", top: 84, right: 20, zIndex: 99999,
       display: "flex", alignItems: "flex-start", gap: 12,
       padding: "14px 16px", borderRadius: 12,
       background: s.bg, border: `1px solid ${s.border}`,
