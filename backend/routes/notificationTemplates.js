@@ -21,19 +21,19 @@ router.get("/inbox", verifyToken, async (req, res) => {
     const { rows } = await pool.query(
       `SELECT * FROM (
          (SELECT id, type, title, body, entity_type, entity_id,
-                 (read_at IS NULL) AS is_unread, read_at, created_at
+                 (read_at IS NOT NULL) AS is_read, read_at, created_at
           FROM public.notifications
           WHERE user_id = $1 AND read_at IS NULL
           ORDER BY created_at DESC)
          UNION ALL
          (SELECT id, type, title, body, entity_type, entity_id,
-                 (read_at IS NULL) AS is_unread, read_at, created_at
+                 (read_at IS NOT NULL) AS is_read, read_at, created_at
           FROM public.notifications
           WHERE user_id = $1 AND read_at IS NOT NULL
           ORDER BY created_at DESC
           LIMIT 3)
        ) n
-       ORDER BY is_unread DESC, created_at DESC`,
+       ORDER BY is_read ASC, created_at DESC`,
       [userId]
     );
     return res.json({ success: true, notifications: rows });

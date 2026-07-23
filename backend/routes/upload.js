@@ -16,8 +16,7 @@ const router = express.Router();
    Image flow (report-builder images / branding) is image-only. Document flow
    (record attachments) accepts everything, including all image types. */
 const IMAGE_MIME_TYPES = [
-  "image/jpeg", "image/png", "image/webp", "image/gif", "image/bmp",
-  "image/tiff", "image/svg+xml",
+  "image/jpeg", "image/png", "image/webp",
 ];
 const DOC_MIME_TYPES = [
   "application/pdf",
@@ -25,34 +24,18 @@ const DOC_MIME_TYPES = [
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   "application/vnd.ms-excel",
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  "application/vnd.ms-powerpoint",
-  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-  "text/plain", "text/csv",
-  "application/json",
-  "application/xml", "text/xml",
-  "application/zip", "application/x-zip-compressed",
-  "application/vnd.rar", "application/x-rar-compressed",
-  "audio/mpeg", "audio/wav", "audio/x-wav", "audio/ogg", "audio/mp4",
-  "video/mp4", "video/webm", "video/quicktime",
 ];
 const DOCUMENT_ALLOWED_TYPES = [...IMAGE_MIME_TYPES, ...DOC_MIME_TYPES];
 
-const IMAGE_MAX   = 10  * 1024 * 1024;
-const DOC_MAX      = 25  * 1024 * 1024;
-const ARCHIVE_MAX = 50  * 1024 * 1024;
-const AUDIO_MAX    = 50  * 1024 * 1024;
-const VIDEO_MAX    = 200 * 1024 * 1024;
+const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
 /* Category classification drives both the size limit and the storage
    subfolder for a document-flow upload — one source of truth for both. */
 function categoryOf(mimetype) {
   if (IMAGE_MIME_TYPES.includes(mimetype)) return "images";
-  if (mimetype.startsWith("video/")) return "video";
-  if (mimetype.startsWith("audio/")) return "audio";
-  if (mimetype.includes("zip") || mimetype.includes("rar")) return "archives";
   return "documents";
 }
-const CATEGORY_LIMITS = { images: IMAGE_MAX, video: VIDEO_MAX, audio: AUDIO_MAX, archives: ARCHIVE_MAX, documents: DOC_MAX };
+const CATEGORY_LIMITS = { images: MAX_FILE_SIZE, documents: MAX_FILE_SIZE };
 function categoryLimit(mimetype) {
   return CATEGORY_LIMITS[categoryOf(mimetype)];
 }
@@ -72,7 +55,7 @@ function folderForPurpose(purpose) {
 
 const uploadDocument = multer({
   storage: multer.memoryStorage(),
-  limits:  { fileSize: VIDEO_MAX },
+  limits:  { fileSize: MAX_FILE_SIZE },
   fileFilter: (_req, file, cb) => {
     if (DOCUMENT_ALLOWED_TYPES.includes(file.mimetype)) cb(null, true);
     else cb(new Error("File type not allowed."));
@@ -81,7 +64,7 @@ const uploadDocument = multer({
 
 const uploadImage = multer({
   storage: multer.memoryStorage(),
-  limits:  { fileSize: IMAGE_MAX },
+  limits:  { fileSize: MAX_FILE_SIZE },
   fileFilter: (_req, file, cb) => {
     if (IMAGE_MIME_TYPES.includes(file.mimetype)) cb(null, true);
     else cb(new Error("File type not allowed."));
