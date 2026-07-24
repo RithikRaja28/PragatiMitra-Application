@@ -1187,7 +1187,7 @@ export default function CreateReportWizardPage({ onCreated, onCancel, initialRep
                 display: "flex", alignItems: "center", gap: 10 }}>
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={C.primary} strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
                 <span style={{ fontSize: 13, fontWeight: 700, color: C.text }}>Branding Assets</span>
-                <span style={{ fontSize: 11, color: C.textMuted, marginLeft: 4 }}>(optional — uploaded to S3 on save)</span>
+                <span style={{ fontSize: 11, color: C.textMuted, marginLeft: 4 }}>(optional)</span>
               </div>
               <div style={{ padding: "16px 18px", display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14 }}>
                 {[

@@ -441,7 +441,7 @@ function UserList({ apiFetch, onEdit }) {
     const matchSearch =
       (u.full_name || "").toLowerCase().includes(q) ||
       (u.email || "").toLowerCase().includes(q);
-    const matchStatus = filterStatus === "all" || (u.account_status || "") === filterStatus;
+    const matchStatus = filterStatus === "all" || (u.account_status || "").toUpperCase() === filterStatus.toUpperCase();
     return matchSearch && matchStatus;
   });
 
@@ -612,6 +612,7 @@ export default function DepartmentAdminUserManagementPage() {
   const entity   = isEdit ? (location.state?.entity ?? null) : null;
 
   const [toast, setToast] = useState(location.state?.toast ?? null);
+  const clearToast = () => setToast(null);
 
   const institutionId   = user?.institutionId   || "";
   const institutionName = user?.institutionName || "Your Institution";
@@ -623,7 +624,7 @@ export default function DepartmentAdminUserManagementPage() {
   if (isCreate || isEdit) {
     return (
       <>
-        {toast && <Toast message={toast.message} type={toast.type} />}
+        {toast && <Toast message={toast.message} type={toast.type} onClose={clearToast} />}
         <UserForm
           mode={isEdit ? "edit" : "create"}
           entity={entity}
@@ -642,7 +643,7 @@ export default function DepartmentAdminUserManagementPage() {
 
   return (
     <PageContainer>
-      {toast && <Toast message={toast.message} type={toast.type} />}
+      {toast && <Toast message={toast.message} type={toast.type} onClose={clearToast} />}
 
       <PageHeader
         breadcrumb={[t("Home", lang), t("Department", lang), t("Users", lang)]}

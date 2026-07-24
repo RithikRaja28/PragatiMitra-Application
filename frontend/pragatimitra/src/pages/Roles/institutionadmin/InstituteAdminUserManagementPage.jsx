@@ -517,7 +517,7 @@ function UserList({ apiFetch, onEdit, institutionId, onToast }) {
       (u.full_name || "").toLowerCase().includes(q) ||
       (u.email || "").toLowerCase().includes(q);
     const matchStatus =
-      filterStatus === "all" || (u.account_status || "").toUpperCase() === filterStatus;
+      filterStatus === "all" || (u.account_status || "").toUpperCase() === filterStatus.toUpperCase();
     return matchSearch && matchStatus;
   });
 
@@ -716,7 +716,7 @@ export default function InstituteAdminUserManagementPage() {
 
   const showToast = (message, type = "success") => {
     setToast({ message, type });
-    setTimeout(() => setToast(null), 3500);
+    setTimeout(() => setToast(null), 10000);
   };
 
   if (isEdit && !entity) return <Navigate to={listPath} replace />;
@@ -724,7 +724,7 @@ export default function InstituteAdminUserManagementPage() {
   if (isCreate || isEdit) {
     return (
       <>
-        {toast && <Toast message={toast.message} type={toast.type} />}
+        {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
         <UserForm
           key={isEdit ? "edit" : "create"}
           mode={isEdit ? "edit" : "create"}
@@ -742,7 +742,7 @@ export default function InstituteAdminUserManagementPage() {
 
   return (
     <PageContainer>
-      {toast && <Toast message={toast.message} type={toast.type} />}
+      {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
 
       <PageHeader
         breadcrumb={[t("Home", lang), t("Institute", lang), t("Users", lang)]}
