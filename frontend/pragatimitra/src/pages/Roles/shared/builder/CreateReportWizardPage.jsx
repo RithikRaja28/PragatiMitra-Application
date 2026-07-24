@@ -502,7 +502,8 @@ export default function CreateReportWizardPage({ onCreated, onCancel, initialRep
     if (!reportId) return true;
     setBusy(true);
     try {
-      const allSecs = sections.flatMap(s => [s, ...(s.subsections || [])]);
+      const flatten = (arr) => arr.flatMap(s => [s, ...flatten(s.subsections || [])]);
+      const allSecs = flatten(sections);
       const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
       const isUUID = v => typeof v === "string" && UUID_RE.test(v);
 

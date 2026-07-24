@@ -380,16 +380,18 @@ router.patch("/:id/dept-delegate", requireRole(["department_admin"]), async (req
 router.post("/", async (req, res) => {
   const pool = req.app.locals.pool;
   try {
-    const { report_id, parent_id, title, description, order_index, title_translations } = req.body;
+    const { report_id, parent_id, title, description, order_index, title_translations, workflow_template_id } = req.body;
     if (!isUUID(report_id)) return res.status(400).json({ success: false, message: "report_id (UUID) required" });
     if (!title?.trim())     return res.status(400).json({ success: false, message: "title required" });
 
-    // Verify report exists
+    // Verify report exists and get default workflow if needed
     const { rows: rr } = await pool.query(
-      `SELECT id FROM public.reports WHERE id = $1 AND deleted_at IS NULL`,
+      `SELECT id, default_workflow_id FROM public.reports WHERE id = $1 AND deleted_at IS NULL`,
       [report_id]
     );
     if (!rr.length) return res.status(404).json({ success: false, message: "Report not found" });
+
+    let finalWfId = workflow_template_id || rr[0].default_workflow_id || null;
 
     if (parent_id && !isUUID(parent_id))
       return res.status(400).json({ success: false, message: "parent_id must be a UUID" });
@@ -409,10 +411,10 @@ router.post("/", async (req, res) => {
 
     const { rows } = await pool.query(
       `INSERT INTO public.report_sections
-         (report_id, parent_id, title, description, order_index, created_by, updated_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$6)
+         (report_id, parent_id, title, description, order_index, workflow_template_id, created_by, updated_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$7)
        RETURNING *`,
-      [report_id, parent_id || null, title.trim(), description || null, oi, req.user.userId]
+      [report_id, parent_id || null, title.trim(), description || null, oi, finalWfId, req.user.userId]
     );
     const section = rows[0];
 
