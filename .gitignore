@@ -25,3 +25,6 @@ Thumbs.db
 *.pem
 npm-debug.log*
 yarn-error.log
+
+#───────────────────────────────────────────────────
+uploads/
