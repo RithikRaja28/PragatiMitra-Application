@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
+import ReactDOM from "react-dom";
 import { User, Building, Landmark, Shield, FileText, Lock } from "lucide-react";
 import { useAuth } from "../../../store/AuthContext";
 import { PageContainer, PageHeader, Toolbar, SearchInput, FilterChip, Button, Card, EmptyState, ErrorState } from "../../../ui";
@@ -616,6 +617,12 @@ function AuditDetailModal({ log, onClose }) {
   const { lang } = useLanguage();
   if (!log) return null;
 
+  // Lock body scroll while modal is open
+  useEffect(() => {
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = ""; };
+  }, []);
+
   const typeMeta = TYPE_META[log.entity_type] || { label: log.entity_type, bg: "#f1f5f9", color: "#64748b" };
   const EntIcon  = ENTITY_ICON[log.entity_type] || FileText;
 
@@ -642,9 +649,9 @@ function AuditDetailModal({ log, onClose }) {
     }
   }
 
-  return (
+  const modal = (
     <div
-      style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}
+      style={{ position: "fixed", top: "var(--sh-topbar-h, 64px)", left: "var(--sh-side-open, 280px)", width: "calc(100vw - var(--sh-side-open, 280px))", height: "calc(100vh - var(--sh-topbar-h, 64px))", background: "rgba(0,0,0,0.45)", zIndex: 99999, display: "flex", alignItems: "center", justifyContent: "center", padding: 24, boxSizing: "border-box" }}
       onClick={onClose}
     >
       <div
@@ -705,6 +712,9 @@ function AuditDetailModal({ log, onClose }) {
       </div>
     </div>
   );
+
+  // Portal to document.body so position:fixed is always relative to the viewport
+  return ReactDOM.createPortal(modal, document.body);
 }
 
 /* ═══════════════════════════════════════════════════════════════
