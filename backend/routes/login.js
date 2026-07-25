@@ -19,7 +19,7 @@ const REFRESH_TOKEN_TTL_MS = 1 * 24 * 60 * 60 * 1000; // 1 day
 /* ── Rate limiters ── */
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 100,
+  max: 10,
   message: { success: false, message: "Too many login attempts. Try again after 15 minutes." },
   standardHeaders: true,
   legacyHeaders: false,

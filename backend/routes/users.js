@@ -1005,6 +1005,7 @@ router.get("/", verifyToken, requireRole(["super_admin", "institute_admin", "dep
 
     if (isDeptAdmin(req)) {
       const includeDeleted = req.query.includeDeleted === "true";
+      const { role } = req.query;
       const conditions = [
         ...(includeDeleted ? [] : ["u.account_status != 'DELETED'"]),
         `u.institution_id = $1`,
@@ -1019,6 +1020,18 @@ router.get("/", verifyToken, requireRole(["super_admin", "institute_admin", "dep
         )`,
       ];
       const params = [req.user.institutionId, req.user.departmentId];
+
+      if (role) {
+        params.push(role);
+        conditions.push(`EXISTS (
+          SELECT 1 FROM user_roles ur2
+          JOIN roles r2 ON r2.id = ur2.role_id
+          WHERE ur2.user_id = u.id
+            AND r2.name = $${params.length}
+            AND ur2.revoked_at IS NULL
+            AND (ur2.expires_at IS NULL OR ur2.expires_at > now())
+        )`);
+      }
 
       ({ rows } = await pool.query(`
         SELECT
