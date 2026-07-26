@@ -299,10 +299,24 @@ router.get("/dept-users", requireRole(["department_admin"]), async (req, res) =>
     if (!deptId) return res.json({ success: true, data: [] });
 
     const { rows } = await pool.query(`
-      SELECT id, full_name, email
-      FROM public.users
-      WHERE department_id = $1 AND account_status = 'ACTIVE' AND id != $2
-      ORDER BY full_name
+      SELECT u.id, u.full_name, u.email
+      FROM public.users u
+      WHERE u.department_id = $1 
+        AND u.account_status = 'ACTIVE' 
+        AND u.id != $2
+        AND NOT (
+          EXISTS (
+            SELECT 1 FROM public.user_roles ur 
+            JOIN public.roles r ON r.id = ur.role_id 
+            WHERE ur.user_id = u.id AND r.name = 'pg_student' AND ur.revoked_at IS NULL
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM public.user_roles ur 
+            JOIN public.roles r ON r.id = ur.role_id 
+            WHERE ur.user_id = u.id AND r.name = 'contributor' AND ur.revoked_at IS NULL
+          )
+        )
+      ORDER BY u.full_name
     `, [deptId, req.user.userId]);
     return res.json({ success: true, data: rows });
   } catch (err) {
