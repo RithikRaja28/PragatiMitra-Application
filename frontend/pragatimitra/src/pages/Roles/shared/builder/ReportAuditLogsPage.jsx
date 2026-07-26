@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import ReactDOM from "react-dom";
+import { useLanguage } from "../../../../i18n/LanguageContext";
+import { useShell } from "../../../../components/Dashboard/shellContext";
 import { useApi } from "../../../../hooks/useApi";
 import { PageContainer, PageHeader, Toolbar, SearchInput, FilterChip, Button, Card, EmptyState, ErrorState } from "../../../../ui";
 
@@ -95,6 +97,7 @@ function EntityBadge({ entityType }) {
 
 /* ── LogDetailModal ─────────────────────────────────────────────────────── */
 function LogDetailModal({ log, onClose }) {
+  const { collapsed } = useShell();
   if (!log) return null;
 
   // Lock body scroll while modal is open
@@ -105,8 +108,8 @@ function LogDetailModal({ log, onClose }) {
 
   const modal = (
     <div style={{
-      position: "fixed", top: "var(--sh-topbar-h, 64px)", left: "var(--sh-side-open, 280px)", width: "calc(100vw - var(--sh-side-open, 280px))", height: "calc(100vh - var(--sh-topbar-h, 64px))", background: "rgba(0,0,0,0.45)", zIndex: 99999,
-      display: "flex", alignItems: "center", justifyContent: "center", padding: 24, boxSizing: "border-box",
+      position: "fixed", top: "var(--sh-topbar-h, 64px)", left: collapsed ? "var(--sh-side-col, 64px)" : "var(--sh-side-open, 280px)", width: collapsed ? "calc(100vw - var(--sh-side-col, 64px))" : "calc(100vw - var(--sh-side-open, 280px))", height: "calc(100vh - var(--sh-topbar-h, 64px))", background: "rgba(0,0,0,0.45)", zIndex: 99999,
+      display: "flex", alignItems: "center", justifyContent: "center", padding: 24, boxSizing: "border-box", transition: "left var(--sh-ease, 0.22s ease), width var(--sh-ease, 0.22s ease)"
     }} onClick={onClose}>
       <div style={{
         background: "#fff", borderRadius: 14, width: "100%", maxWidth: 600,
