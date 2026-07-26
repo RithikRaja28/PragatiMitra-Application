@@ -64,13 +64,17 @@ router.get("/review-queue", async (req, res) => {
        JOIN public.reports r ON r.id = s.report_id AND r.deleted_at IS NULL
        LEFT JOIN public.workflow_steps ws ON ws.id = s.current_step_id
        LEFT JOIN public.users u ON u.id = s.updated_by
+       LEFT JOIN public.users u_caller ON u_caller.id = $2
        WHERE s.status IN ('SUBMITTED','UNDER_REVIEW')
          AND s.deleted_at IS NULL
          AND ($1::uuid IS NULL OR r.institution_id = $1)
          AND (
            /* Step explicitly designates this user or their role */
            ws.approver_user_id = $2
-           OR ws.approver_role = ANY($3::text[])
+           OR (
+               ws.approver_role = ANY($3::text[])
+               AND (ws.approver_department_id IS NULL OR ws.approver_department_id = u_caller.department_id)
+           )
            /* Admins see stepless sections as fallback oversight — NOT director-approval ones */
            OR ($4 AND s.current_step_id IS NULL AND NOT COALESCE(s.needs_director_approval, FALSE))
            /* Directors office see all sections pending their final approval */
@@ -142,8 +146,10 @@ router.get("/assigned", async (req, res) => {
        JOIN public.reports r         ON r.id = s.report_id    AND r.deleted_at IS NULL
        JOIN public.user_roles ur     ON ur.user_id = $1 AND ur.revoked_at IS NULL
        JOIN public.roles ro          ON ro.id = ur.role_id AND ro.name = swa.role_name
+       JOIN public.users u           ON u.id = $1
        WHERE swa.assignee_type = 'ROLE'
          AND swa.workflow_step_id IS NULL
+         AND (swa.department_id IS NULL OR swa.department_id = u.department_id)
          AND NOT EXISTS (
            SELECT 1 FROM public.section_assignments sa2
            WHERE sa2.section_id = swa.section_id AND sa2.user_id = $1
