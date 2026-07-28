@@ -149,6 +149,78 @@ function departmentFormKey({ institutionName, institutionId, departmentName, for
           formName, kind, filename].join("/");
 }
 
+async function deleteReportFolder(institutionName, institutionId, reportTitle, reportId) {
+  try {
+    const key = [instituteDir(institutionName, institutionId), "reports", reportDir(reportTitle, reportId)].join("/");
+    const dirPath = resolveSafePath(key);
+    await fs.promises.rm(dirPath, { recursive: true, force: true }).catch(err => {
+      if (err.code !== "ENOENT") throw err;
+    });
+  } catch (err) {
+    // Ignore safe path resolution errors if dir doesn't exist
+  }
+}
+
+async function deleteTemplateFolder(institutionName, institutionId, templateName, templateId) {
+  try {
+    const key = [instituteDir(institutionName, institutionId), "templates", templateDir(templateName, templateId)].join("/");
+    const dirPath = resolveSafePath(key);
+    await fs.promises.rm(dirPath, { recursive: true, force: true }).catch(err => {
+      if (err.code !== "ENOENT") throw err;
+    });
+  } catch (err) {
+    // Ignore safe path resolution errors if dir doesn't exist
+  }
+}
+
+async function renameFolder(oldKeyPrefix, newKeyPrefix) {
+  try {
+    const oldPath = resolveSafePath(oldKeyPrefix);
+    const newPath = resolveSafePath(newKeyPrefix);
+    if (fs.existsSync(oldPath)) {
+      await fs.promises.rename(oldPath, newPath);
+    }
+  } catch (err) {
+    if (err.code !== "ENOENT") throw err;
+  }
+}
+
+/**
+ * Recursively extract storage keys from any object (DB row, form data, JSON content).
+ *
+ * Handles two storage formats used across the app:
+ *   1. Full URLs:  "http://host/uploads/aiims-3c8a6547/.../file.png"  → extracts the part after /uploads/
+ *   2. Raw keys:   "aiims-3c8a6547/department_forms/.../file.jpg"     → used as-is
+ *
+ * Skips non-upload strings (UUIDs, timestamps, plain text, etc.) by requiring
+ * the value to either contain "/uploads/" or look like a storage path (has a
+ * slash and ends with a known file extension).
+ */
+const UPLOAD_EXTENSIONS = new Set(Object.keys(EXT_INFO));
+
+function extractUploadKeys(obj) {
+  const keys = [];
+  if (typeof obj === 'string') {
+    // Format 1: full URL with /uploads/ prefix
+    const urlMatch = obj.match(/\/uploads\/(.+)$/);
+    if (urlMatch) {
+      keys.push(urlMatch[1]);
+    } else {
+      // Format 2: raw storage key (e.g. "aiims-xxx/department_forms/.../file.jpg")
+      // Must contain a "/" and end with a known file extension
+      const ext = obj.split('.').pop()?.toLowerCase();
+      if (obj.includes('/') && ext && UPLOAD_EXTENSIONS.has(ext)) {
+        keys.push(obj);
+      }
+    }
+  } else if (Array.isArray(obj)) {
+    for (const item of obj) keys.push(...extractUploadKeys(item));
+  } else if (obj !== null && typeof obj === 'object') {
+    for (const val of Object.values(obj)) keys.push(...extractUploadKeys(val));
+  }
+  return keys;
+}
+
 module.exports = {
   UPLOAD_ROOT,
   extInfo,
@@ -166,4 +238,8 @@ module.exports = {
   templateImageKey,
   instituteFormKey,
   departmentFormKey,
+  deleteReportFolder,
+  deleteTemplateFolder,
+  extractUploadKeys,
+  renameFolder,
 };

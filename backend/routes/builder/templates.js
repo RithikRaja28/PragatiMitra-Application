@@ -18,12 +18,12 @@
  * DELETE /:id/sections/:secId/blocks/:blkId  remove block
  * POST   /:id/stamp                 stamp template onto report
  */
-
-const express           = require("express");
+const express = require("express");
 const { verifyToken, requireRole } = require("../../middleware/auth");
 const { writeAuditLog } = require("../../utils/audit");
 const logger            = require("../../utils/logger");
 const { getLogContext } = logger;
+const { extractUploadKeys, deleteFile, deleteTemplateFolder, renameFolder, templateDir, instituteDir } = require("../../utils/localStorage");
 
 const router = express.Router();
 router.use(verifyToken);
@@ -148,11 +148,18 @@ router.put("/:id", requireRole(["super_admin", "institute_admin", "publication_c
     const { id } = req.params;
     if (!isUUID(id)) return res.status(400).json({ success: false, message: "Invalid id" });
 
-    // Fetch current version to auto-bump it
+    // Fetch current version and metadata to check for rename
     const { rows: cur } = await pool.query(
-      `SELECT version FROM public.report_templates WHERE id = $1`, [id]
+      `SELECT rt.version, rt.name, i.institution_id, i.institution_name 
+       FROM public.report_templates rt
+       JOIN public.institutions i ON i.institution_id = rt.institution_id
+       WHERE rt.id = $1`, [id]
     );
     if (!cur.length) return res.status(404).json({ success: false, message: "Template not found" });
+
+    const oldName = cur[0].name;
+    const institutionId = cur[0].institution_id;
+    const institutionName = cur[0].institution_name;
 
     const [maj, min] = (cur[0].version || "1.0").split(".").map(n => parseInt(n, 10) || 0);
     const nextVersion = `${maj}.${min + 1}`;
@@ -172,6 +179,27 @@ router.put("/:id", requireRole(["super_admin", "institute_admin", "publication_c
       `UPDATE public.report_templates SET ${sets.join(", ")} WHERE id = $${params.length} RETURNING *`,
       params
     );
+
+    // If name changed, rename the storage folder and cascade URLs in DB
+    if (req.body.name && req.body.name !== oldName) {
+      const oldSlug = templateDir(oldName, id);
+      const newSlug = templateDir(req.body.name, id);
+      if (oldSlug !== newSlug) {
+        const instPart = instituteDir(institutionName, institutionId);
+        const oldPrefix = `${instPart}/templates/${oldSlug}`;
+        const newPrefix = `${instPart}/templates/${newSlug}`;
+        
+        await renameFolder(oldPrefix, newPrefix);
+        
+        // Update all related template_blocks URLs
+        await pool.query(
+          `UPDATE public.template_blocks 
+           SET default_content = (REPLACE(default_content::text, $1, $2))::jsonb 
+           WHERE template_section_id IN (SELECT id FROM public.template_sections WHERE template_id = $3)`,
+          [`/uploads/${oldPrefix}/`, `/uploads/${newPrefix}/`, id]
+        );
+      }
+    }
 
     return res.json({ success: true, data: rows[0] });
   } catch (err) {
@@ -367,11 +395,25 @@ router.put("/:id/sections/:secId/blocks/:blkId", requireRole(["super_admin", "in
     if (req.body.order_index      !== undefined) { params.push(Number(req.body.order_index));             sets.push(`order_index = $${params.length}`); }
     if (!sets.length) return res.status(400).json({ success: false, message: "Nothing to update" });
     params.push(blkId); params.push(secId);
+    const { rows: oldBlock } = await pool.query(
+      `SELECT default_content FROM public.template_blocks WHERE id = $1 AND template_section_id = $2`, [blkId, secId]
+    );
+
     const { rows } = await pool.query(
       `UPDATE public.template_blocks SET ${sets.join(", ")} WHERE id = $${params.length - 1} AND template_section_id = $${params.length} RETURNING *`,
       params
     );
     if (!rows.length) return res.status(404).json({ success: false, message: "Block not found" });
+
+    if (req.body.default_content !== undefined && oldBlock.length > 0) {
+      const oldKeys = extractUploadKeys(oldBlock[0].default_content);
+      const newKeys = extractUploadKeys(req.body.default_content);
+      const toDelete = oldKeys.filter(k => !newKeys.includes(k));
+      for (const key of toDelete) {
+        await deleteFile(key).catch(() => {});
+      }
+    }
+
     return res.json({ success: true, data: rows[0] });
   } catch (err) {
     logger.error("templates PUT block", { ...getLogContext(req), err: err.message });
@@ -385,11 +427,18 @@ router.delete("/:id/sections/:secId/blocks/:blkId", requireRole(["super_admin", 
   try {
     const { secId, blkId } = req.params;
     const { rows: chk } = await pool.query(
-      `SELECT is_required FROM public.template_blocks WHERE id = $1 AND template_section_id = $2`, [blkId, secId]
+      `SELECT is_required, default_content FROM public.template_blocks WHERE id = $1 AND template_section_id = $2`, [blkId, secId]
     );
     if (!chk.length) return res.status(404).json({ success: false, message: "Block not found" });
     if (chk[0].is_required) return res.status(409).json({ success: false, message: "Cannot delete a required block" });
+    
     await pool.query(`DELETE FROM public.template_blocks WHERE id = $1`, [blkId]);
+    
+    const keys = extractUploadKeys(chk[0].default_content);
+    for (const key of keys) {
+      await deleteFile(key).catch(() => {});
+    }
+
     return res.json({ success: true, message: "Block removed" });
   } catch (err) {
     logger.error("templates DELETE block", { ...getLogContext(req), err: err.message });
@@ -405,7 +454,10 @@ router.delete("/:id", requireRole(["super_admin", "institute_admin", "publicatio
     if (!isUUID(id)) return res.status(400).json({ success: false, message: "Invalid id" });
 
     const { rows: tmpl } = await pool.query(
-      `SELECT name FROM public.report_templates WHERE id = $1`, [id]
+      `SELECT rt.name, rt.institution_id, i.name AS institution_name 
+       FROM public.report_templates rt
+       LEFT JOIN public.institutions i ON rt.institution_id = i.id
+       WHERE rt.id = $1`, [id]
     );
     if (!tmpl.length) return res.status(404).json({ success: false, message: "Template not found" });
 
@@ -421,6 +473,10 @@ router.delete("/:id", requireRole(["super_admin", "institute_admin", "publicatio
     }
 
     await pool.query(`DELETE FROM public.report_templates WHERE id = $1`, [id]);
+
+    if (tmpl[0].institution_name) {
+      await deleteTemplateFolder(tmpl[0].institution_name, tmpl[0].institution_id, tmpl[0].name, id);
+    }
 
     await writeAuditLog(req, {
       actionType: "TEMPLATE_DELETED", entityType: "TEMPLATE", entityId: id,

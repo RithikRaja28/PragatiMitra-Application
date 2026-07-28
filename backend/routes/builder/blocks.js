@@ -18,6 +18,7 @@ const { verifyToken }   = require("../../middleware/auth");
 const { writeAuditLog } = require("../../utils/audit");
 const { createSectionSnapshot } = require("../../utils/snapshotHelper");
 const logger            = require("../../utils/logger");
+const { extractUploadKeys, deleteFile } = require("../../utils/localStorage");
 const { getLogContext } = logger;
 
 const router = express.Router();
@@ -130,7 +131,7 @@ router.put("/:id", async (req, res) => {
 
     // Fetch block to get section_id
     const { rows: bRows } = await pool.query(
-      `SELECT b.section_id, rs.version_lock AS current_lock,
+      `SELECT b.section_id, b.content, rs.version_lock AS current_lock,
               rs.locked_by, rs.locked_at, rs.status
        FROM public.section_blocks b
        JOIN public.report_sections rs ON rs.id = b.section_id
@@ -217,6 +218,16 @@ router.put("/:id", async (req, res) => {
 
     await client.query("COMMIT");
 
+    // Clean up replaced files in content
+    if (content !== undefined) {
+      const oldKeys = extractUploadKeys(bRows[0].content);
+      const newKeys = extractUploadKeys(content);
+      const toDelete = oldKeys.filter(k => !newKeys.includes(k));
+      for (const key of toDelete) {
+        await deleteFile(key).catch(() => {});
+      }
+    }
+
     // Audit log if status changed
     if (statusChanged) {
       await writeAuditLog(req, {
@@ -266,10 +277,16 @@ router.delete("/:id", async (req, res) => {
 
     const { rows } = await pool.query(
       `UPDATE public.section_blocks SET deleted_at = NOW()
-       WHERE id = $1 AND deleted_at IS NULL RETURNING id`,
+       WHERE id = $1 AND deleted_at IS NULL RETURNING id, content`,
       [id]
     );
     if (!rows.length) return res.status(404).json({ success: false, message: "Block not found" });
+
+    // Clean up all files in deleted block
+    const keys = extractUploadKeys(rows[0].content);
+    for (const key of keys) {
+      await deleteFile(key).catch(() => {});
+    }
 
     return res.json({ success: true, message: "Block deleted" });
   } catch (err) {

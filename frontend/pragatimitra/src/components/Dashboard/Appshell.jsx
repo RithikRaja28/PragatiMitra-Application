@@ -1015,6 +1015,13 @@ export default function AppShell({
     return () => window.removeEventListener("resize", fn);
   }, []);
 
+  // Update CSS variable on the body for full-screen modals to position correctly
+  useEffect(() => {
+    const width = mobileOpen ? "0px" : collapsed ? "var(--sh-side-col, 64px)" : "var(--sh-side-open, 280px)";
+    document.body.style.setProperty("--sidebar-width", width);
+    return () => document.body.style.removeProperty("--sidebar-width");
+  }, [collapsed, mobileOpen]);
+
   // The active nav item is derived from the URL — a flat, role-agnostic
   // path (e.g. "user-management", "user-management/edit", or
   // "settings/academic-year") matches an item whose `slug` is that path

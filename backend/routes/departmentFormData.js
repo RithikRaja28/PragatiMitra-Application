@@ -23,6 +23,8 @@ const { verifyToken } = require("../middleware/auth");
 const logger = require("../utils/logger");
 const { writeAuditLog } = require("../utils/audit");
 const { resolveDeptContext, deptRecordsTable, quoteIdent } = require("../services/departmentFormService");
+const { translateRow, resolveTranslationMode, enrichSchemaLabels } = require("../services/translationService");
+const { extractUploadKeys, deleteFile } = require("../utils/localStorage");
 const { getEffectiveState, STATE } = require("../services/stateResolver");
 const { resolveOperatingYear } = require("../services/academicYearService");
 const { assertEquivalent } = require("../services/equivalenceGuard");
@@ -61,7 +63,6 @@ async function releaseLock(pool, { recordId, userId }) {
     [recordId, userId]
   );
 }
-const { enrichSchemaLabels, translateRow, resolveTranslationMode } = require("../services/translationService");
 
 const router = express.Router();
 router.use(verifyToken);
@@ -600,11 +601,25 @@ router.put("/:id/records/:recordId", async (req, res) => {
       req.params.recordId,
     ];
 
+    const { rows: oldRows } = await pool.query(
+      `SELECT * FROM ${table} WHERE id = $1 AND department_id = $2`,
+      [req.params.recordId, departmentId]
+    );
+
     const { rows } = await pool.query(
       `UPDATE ${table} SET ${setClauses.join(", ")} WHERE ${whereClause} RETURNING *`,
       vals
     );
     if (!rows.length) return res.status(404).json({ success: false, message: "Record not found." });
+
+    if (oldRows.length > 0) {
+      const oldKeys = extractUploadKeys(oldRows[0]);
+      const newKeys = extractUploadKeys(data);
+      const toDelete = oldKeys.filter(k => !newKeys.includes(k));
+      for (const key of toDelete) {
+        await deleteFile(key).catch(() => {});
+      }
+    }
 
     const record = rows[0];
     if (record.custom_fields && typeof record.custom_fields === "object") {
@@ -751,20 +766,38 @@ router.delete("/:id/records/bulk-delete", async (req, res) => {
     if (lock.locked) return res.status(403).json({ success: false, message: lock.message });
 
     await ensureSourceRowIdColumn(pool, table);
-    /* Bug 12 — resolve each selected id to its English source (a Hindi row → its
-       source_row_id), then delete the whole pair. So a Hindi row can never be
-       deleted on its own, and selecting either side removes both. */
-    const { rows: sel } = await pool.query(
-      `SELECT id, source_row_id FROM ${table} WHERE id = ANY($1::uuid[]) AND department_id = $2`,
+    
+    const { rows: deletedRows, rowCount } = await pool.query(
+      `DELETE FROM ${table} WHERE id = ANY($1::uuid[]) AND department_id = $2 RETURNING *`,
       [ids, departmentId]
     );
-    const rootIds = [...new Set(sel.map((r) => r.source_row_id || r.id))];
-    const { rowCount } = rootIds.length
-      ? await pool.query(
-          `DELETE FROM ${table} WHERE (id = ANY($1::uuid[]) OR source_row_id = ANY($1::uuid[])) AND department_id = $2`,
-          [rootIds, departmentId]
-        )
-      : { rowCount: 0 };
+    
+    if (deletedRows.length > 0) {
+      for (const row of deletedRows) {
+        const keys = extractUploadKeys(row);
+        for (const key of keys) {
+          await deleteFile(key).catch(() => {});
+        }
+      }
+      
+      const cascadeIds = [...new Set([
+        ...deletedRows.filter((r) => r.language !== "hi").map((r) => r.id),
+        ...deletedRows.filter((r) => r.language === "hi" && r.source_row_id).map((r) => r.source_row_id),
+      ])];
+      if (cascadeIds.length) {
+        const { rows: cascadeDeletedRows } = await pool.query(
+          `DELETE FROM ${table} WHERE (source_row_id = ANY($1::uuid[]) OR id = ANY($1::uuid[])) AND department_id = $2 RETURNING *`,
+          [cascadeIds, departmentId]
+        );
+        for (const row of cascadeDeletedRows) {
+          const keys = extractUploadKeys(row);
+          for (const key of keys) {
+            await deleteFile(key).catch(() => {});
+          }
+        }
+      }
+    }
+
     const deleted = rowCount ?? 0;
 
     await writeAuditLog(req, {
@@ -783,7 +816,7 @@ router.delete("/:id/records/bulk-delete", async (req, res) => {
 });
 
 /* ─────────────────────────────────────────────────────────────────────
-   GET /api/department-form-data/:id/export?format=csv|xlsx&language=
+   GET /api/department-form-data/:id/export?format=csv&language=
    Exports the department's records for the selected year.
    Supports language=hi to export translated values with Hindi headers.
 ───────────────────────────────────────────────────────────────────── */
@@ -902,11 +935,20 @@ router.delete("/:id/records/:recordId", async (req, res) => {
       [req.params.recordId, departmentId]
     );
     const rootId = tgt[0]?.source_row_id || req.params.recordId;
-    const { rowCount } = await pool.query(
-      `DELETE FROM ${table} WHERE (id = $1 OR source_row_id = $1) AND department_id = $2`,
+    const { rows: deletedRows, rowCount } = await pool.query(
+      `DELETE FROM ${table} WHERE (id = $1 OR source_row_id = $1) AND department_id = $2 RETURNING *`,
       [rootId, departmentId]
     );
     if (!rowCount) return res.status(404).json({ success: false, message: "Record not found." });
+
+    if (deletedRows.length > 0) {
+      for (const row of deletedRows) {
+        const keys = extractUploadKeys(row);
+        for (const key of keys) {
+          await deleteFile(key).catch(() => {});
+        }
+      }
+    }
 
     await writeAuditLog(req, {
       actionType: "DEPARTMENT_FORM_RECORD_DELETED",

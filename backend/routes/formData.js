@@ -13,6 +13,7 @@ const { assertFormDomainAccess } = require("../services/domainService");
 const { resolveEffectiveDepartment, getDepartmentWriteBlock } = require("../services/departmentContext");
 const { ensureSchemaExists } = require("../services/schemaPropagationService");
 const { isFormAssigned, isContributorOnly, isPgStudentOnly } = require("./formAssignments");
+const { extractUploadKeys, deleteFile } = require("../utils/localStorage");
 const LOCK_TTL_MINUTES = 15;
 async function acquireLock(pool, { recordId, formType, formId, userId, userName, ttlMinutes = LOCK_TTL_MINUTES }) {
   const { rowCount } = await pool.query(
@@ -997,7 +998,7 @@ router.put("/:formName/records/:id", async (req, res) => {
        A 2023 record must be validated/saved against the 2023 schema (a,b,c),
        not the latest schema (which may be 2024: a,b,c,d). */
     const { rows: targetRows } = await pool.query(
-      `SELECT language, year, updated_at FROM ${formName}_records WHERE id = $1 AND institution_id = $2`,
+      `SELECT * FROM ${formName}_records WHERE id = $1 AND institution_id = $2`,
       [id, ctx.institutionId]
     );
     if (!targetRows.length)
@@ -1087,6 +1088,14 @@ router.put("/:formName/records/:id", async (req, res) => {
       if (still.length)
         return res.status(403).json({ success: false, message: "You do not have permission to edit this record." });
       return res.status(404).json({ success: false, message: "Record not found." });
+    }
+
+    // Clean up replaced files
+    const oldKeys = extractUploadKeys(targetRows[0]);
+    const newKeys = extractUploadKeys(data);
+    const toDelete = oldKeys.filter(k => !newKeys.includes(k));
+    for (const key of toDelete) {
+      await deleteFile(key).catch(() => {});
     }
 
     await writeAuditLog(req, {
@@ -1240,7 +1249,7 @@ router.delete("/:formName/records/bulk-delete", async (req, res) => {
     }
 
     const { rows: deletedRows, rowCount } = await pool.query(
-      `DELETE FROM ${formName}_records WHERE ${whereClause} RETURNING id, source_row_id, language`,
+      `DELETE FROM ${formName}_records WHERE ${whereClause} RETURNING *`,
       queryParams
     );
 
@@ -1249,16 +1258,29 @@ router.delete("/:formName/records/bulk-delete", async (req, res) => {
        English rows (source_row_id = deletedEnglishId) AND the English sources of any
        deleted Hindi rows (id = deletedHindiRow.source_row_id). */
     if (deletedRows.length > 0) {
+      for (const row of deletedRows) {
+        const keys = extractUploadKeys(row);
+        for (const key of keys) {
+          await deleteFile(key).catch(() => {});
+        }
+      }
+
       const cascadeIds = [...new Set([
         ...deletedRows.filter((r) => r.language !== "hi").map((r) => r.id),
         ...deletedRows.filter((r) => r.language === "hi" && r.source_row_id).map((r) => r.source_row_id),
       ])];
       if (cascadeIds.length) {
-        await pool.query(
+        const { rows: cascadeDeletedRows } = await pool.query(
           `DELETE FROM ${formName}_records
-           WHERE (source_row_id = ANY($1::uuid[]) OR id = ANY($1::uuid[])) AND institution_id = $2`,
+           WHERE (source_row_id = ANY($1::uuid[]) OR id = ANY($1::uuid[])) AND institution_id = $2 RETURNING *`,
           [cascadeIds, ctx.institutionId]
         );
+        for (const row of cascadeDeletedRows) {
+          const keys = extractUploadKeys(row);
+          for (const key of keys) {
+            await deleteFile(key).catch(() => {});
+          }
+        }
       }
     }
 
@@ -1362,13 +1384,22 @@ router.delete("/:formName/records/:id", async (req, res) => {
       whereVals.push(ctx.departmentId);
     }
 
-    const { rowCount } = await pool.query(
-      `DELETE FROM ${formName}_records WHERE ${whereClause}`,
+    const { rows: deletedRows, rowCount } = await pool.query(
+      `DELETE FROM ${formName}_records WHERE ${whereClause} RETURNING *`,
       whereVals
     );
 
     if (!rowCount)
       return res.status(404).json({ success: false, message: "Record not found." });
+
+    if (deletedRows.length > 0) {
+      for (const row of deletedRows) {
+        const keys = extractUploadKeys(row);
+        for (const key of keys) {
+          await deleteFile(key).catch(() => {});
+        }
+      }
+    }
 
     await writeAuditLog(req, {
       actionType: "FORM_DATA_DELETED",
