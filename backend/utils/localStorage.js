@@ -130,6 +130,36 @@ function verifyAndDecodeFileToken(token) {
   }
 }
 
+/**
+ * Decrypts the token to extract the key, ignoring expiration.
+ * Used for extracting keys from stored DB fields or old payloads, 
+ * where the token might have expired.
+ */
+function decodeFileTokenWithoutVerification(token) {
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return false;
+    
+    const [ivStr, encrypted, authTagStr] = parts;
+    const secret = process.env.JWT_SECRET;
+    const cipherKey = crypto.createHash('sha256').update(secret).digest();
+    
+    const iv = Buffer.from(ivStr, 'base64url');
+    const authTag = Buffer.from(authTagStr, 'base64url');
+    
+    const decipher = crypto.createDecipheriv('aes-256-gcm', cipherKey, iv);
+    decipher.setAuthTag(authTag);
+    
+    let decrypted = decipher.update(encrypted, 'base64url', 'utf8');
+    decrypted += decipher.final('utf8');
+    
+    const { k: key } = JSON.parse(decrypted);
+    return key ? { key } : false;
+  } catch (err) {
+    return false;
+  }
+}
+
 // Keep the old verification for backward compatibility with existing links
 function verifyReadToken(key, exp, sig) {
   const expNum = Number(exp);
@@ -184,6 +214,11 @@ function reportSubmissionKey({ institutionName, institutionId, reportTitle, repo
 function templateImageKey({ institutionName, institutionId, templateName, templateId, filename }) {
   return [instituteDir(institutionName, institutionId), "templates", templateDir(templateName, templateId),
     "images", filename].join("/");
+}
+
+function templateFileKey({ institutionName, institutionId, templateName, templateId, filename }) {
+  return [instituteDir(institutionName, institutionId), "templates", templateDir(templateName, templateId),
+    "files", filename].join("/");
 }
 
 function instituteFormKey({ institutionName, institutionId, formName, kind, filename }) {
@@ -247,16 +282,24 @@ const UPLOAD_EXTENSIONS = new Set(Object.keys(EXT_INFO));
 function extractUploadKeys(obj) {
   const keys = [];
   if (typeof obj === 'string') {
-    // Format 1: full URL with /uploads/ prefix
+    // Format 1: full URL with /uploads/ prefix (legacy/public)
     const urlMatch = obj.match(/\/uploads\/(.+)$/);
     if (urlMatch) {
       keys.push(urlMatch[1]);
     } else {
-      // Format 2: raw storage key (e.g. "aiims-xxx/department_forms/.../file.jpg")
-      // Must contain a "/" and end with a known file extension
-      const ext = obj.split('.').pop()?.toLowerCase();
-      if (obj.includes('/') && ext && UPLOAD_EXTENSIONS.has(ext)) {
-        keys.push(obj);
+      // Format 2: clean private URL (/api/file/<token>)
+      const fileMatch = obj.match(/\/api\/file\/(.+)$/);
+      if (fileMatch) {
+        const decoded = decodeFileTokenWithoutVerification(fileMatch[1]);
+        if (decoded && decoded.key) {
+          keys.push(decoded.key);
+        }
+      } else {
+        // Format 3: raw storage key (e.g. "aiims-xxx/department_forms/.../file.jpg")
+        const ext = obj.split('.').pop()?.toLowerCase();
+        if (obj.includes('/') && ext && UPLOAD_EXTENSIONS.has(ext)) {
+          keys.push(obj);
+        }
       }
     }
   } else if (Array.isArray(obj)) {
@@ -276,6 +319,7 @@ module.exports = {
   signReadUrl,
   verifyAndDecodeFileToken,
   verifyReadToken,
+  decodeFileTokenWithoutVerification,
   instituteDir,
   reportDir,
   templateDir,
@@ -283,6 +327,7 @@ module.exports = {
   reportBrandingKey,
   reportSubmissionKey,
   templateImageKey,
+  templateFileKey,
   instituteFormKey,
   departmentFormKey,
   deleteReportFolder,

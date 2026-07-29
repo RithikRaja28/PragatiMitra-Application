@@ -13,7 +13,7 @@ const { assertFormDomainAccess } = require("../services/domainService");
 const { resolveEffectiveDepartment, getDepartmentWriteBlock } = require("../services/departmentContext");
 const { ensureSchemaExists } = require("../services/schemaPropagationService");
 const { isFormAssigned, isContributorOnly, isPgStudentOnly } = require("./formAssignments");
-const { extractUploadKeys, deleteFile } = require("../utils/localStorage");
+const { extractUploadKeys, deleteFile, decodeFileTokenWithoutVerification, signReadUrl } = require("../utils/localStorage");
 const LOCK_TTL_MINUTES = 15;
 async function acquireLock(pool, { recordId, formType, formId, userId, userName, ttlMinutes = LOCK_TTL_MINUTES }) {
   const { rowCount } = await pool.query(
@@ -838,6 +838,18 @@ router.post("/:formName/records", async (req, res) => {
     if (archiveBlock.blocked)
       return res.status(403).json({ success: false, message: archiveBlock.message });
 
+    for (const f of fields) {
+      if (["IMAGE", "FILE"].includes(f.field_type) && data[f.name]) {
+        if (typeof data[f.name] === "string") {
+          const match = data[f.name].match(/\/api\/file\/(.+)$/);
+          if (match) {
+            const key = decodeFileTokenWithoutVerification(match[1]);
+            if (key) data[f.name] = key;
+          }
+        }
+      }
+    }
+
     /* Split schema fields: those with a physical column go to real DB columns;
        extra fields (added after creation via schema edit in a new year) are
        stored in the custom_fields JSONB column — no ALTER TABLE ever runs. */
@@ -1023,6 +1035,18 @@ router.put("/:formName/records/:id", async (req, res) => {
     const fields    = activeFields(schema);
     const fieldCols = fields.map((f) => dbCol(f.column_name));
     const fieldModes = buildFieldModes(fields);
+
+    for (const f of fields) {
+      if (["IMAGE", "FILE"].includes(f.field_type) && data[f.name]) {
+        if (typeof data[f.name] === "string") {
+          const match = data[f.name].match(/\/api\/file\/(.+)$/);
+          if (match) {
+            const key = decodeFileTokenWithoutVerification(match[1]);
+            if (key) data[f.name] = key;
+          }
+        }
+      }
+    }
 
     /* Split fields: base fields (physical columns) vs extra fields (JSONB). */
     const physicalCols   = await getPhysicalCols(pool, `${formName}_records`);

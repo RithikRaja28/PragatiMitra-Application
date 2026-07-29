@@ -222,7 +222,8 @@ router.put("/:id", async (req, res) => {
     if (content !== undefined) {
       const oldKeys = extractUploadKeys(bRows[0].content);
       const newKeys = extractUploadKeys(content);
-      const toDelete = oldKeys.filter(k => !newKeys.includes(k));
+      // Only delete files that belong to this report submission
+      const toDelete = oldKeys.filter(k => !newKeys.includes(k) && k.includes("/submissions/"));
       for (const key of toDelete) {
         await deleteFile(key).catch(() => {});
       }

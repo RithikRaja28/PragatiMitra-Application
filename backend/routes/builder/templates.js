@@ -408,7 +408,8 @@ router.put("/:id/sections/:secId/blocks/:blkId", requireRole(["super_admin", "in
     if (req.body.default_content !== undefined && oldBlock.length > 0) {
       const oldKeys = extractUploadKeys(oldBlock[0].default_content);
       const newKeys = extractUploadKeys(req.body.default_content);
-      const toDelete = oldKeys.filter(k => !newKeys.includes(k));
+      // Only delete files that belong to this template
+      const toDelete = oldKeys.filter(k => !newKeys.includes(k) && k.includes("/templates/"));
       for (const key of toDelete) {
         await deleteFile(key).catch(() => {});
       }
@@ -454,15 +455,15 @@ router.delete("/:id", requireRole(["super_admin", "institute_admin", "publicatio
     if (!isUUID(id)) return res.status(400).json({ success: false, message: "Invalid id" });
 
     const { rows: tmpl } = await pool.query(
-      `SELECT rt.name, rt.institution_id, i.name AS institution_name 
+      `SELECT rt.name, rt.institution_id, i.institution_name
        FROM public.report_templates rt
-       LEFT JOIN public.institutions i ON rt.institution_id = i.id
+       LEFT JOIN public.institutions i ON rt.institution_id = i.institution_id
        WHERE rt.id = $1`, [id]
     );
     if (!tmpl.length) return res.status(404).json({ success: false, message: "Template not found" });
 
     const { rows: reports } = await pool.query(
-      `SELECT id, title FROM public.reports WHERE template_id = $1 ORDER BY title LIMIT 20`, [id]
+      `SELECT id, title FROM public.reports WHERE template_id = $1 AND deleted_at IS NULL ORDER BY title LIMIT 20`, [id]
     );
     if (reports.length) {
       return res.status(409).json({

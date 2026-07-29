@@ -24,7 +24,7 @@ const logger = require("../utils/logger");
 const { writeAuditLog } = require("../utils/audit");
 const { resolveDeptContext, deptRecordsTable, quoteIdent } = require("../services/departmentFormService");
 const { translateRow, resolveTranslationMode, enrichSchemaLabels } = require("../services/translationService");
-const { extractUploadKeys, deleteFile } = require("../utils/localStorage");
+const { extractUploadKeys, deleteFile, decodeFileTokenWithoutVerification, signReadUrl } = require("../utils/localStorage");
 const { getEffectiveState, STATE } = require("../services/stateResolver");
 const { resolveOperatingYear } = require("../services/academicYearService");
 const { assertEquivalent } = require("../services/equivalenceGuard");
@@ -498,6 +498,19 @@ router.post("/:id/records", async (req, res) => {
     const effectiveSchema = await loadEffectiveSchema(pool, form, year);
     const fields = activeFields(effectiveSchema);
     const fieldCols = fields.map((f) => dbCol(f.column_name));
+    
+    for (const f of fields) {
+      if (["IMAGE", "FILE"].includes(f.field_type) && data[f.name]) {
+        if (typeof data[f.name] === "string") {
+          const match = data[f.name].match(/\/api\/file\/(.+)$/);
+          if (match) {
+            const key = decodeFileTokenWithoutVerification(match[1]);
+            if (key) data[f.name] = key;
+          }
+        }
+      }
+    }
+
     const createdBy = req.user.userId || null;
 
     // Split: physical columns (creation-year) go directly; extra fields go to custom_fields JSONB.
@@ -578,6 +591,18 @@ router.put("/:id/records/:recordId", async (req, res) => {
     const effectiveSchema = await loadEffectiveSchema(pool, form, year);
     const fields = activeFields(effectiveSchema);
     const fieldCols = fields.map((f) => dbCol(f.column_name));
+
+    for (const f of fields) {
+      if (["IMAGE", "FILE"].includes(f.field_type) && data[f.name]) {
+        if (typeof data[f.name] === "string") {
+          const match = data[f.name].match(/\/api\/file\/(.+)$/);
+          if (match) {
+            const key = decodeFileTokenWithoutVerification(match[1]);
+            if (key) data[f.name] = key;
+          }
+        }
+      }
+    }
 
     // Split: physical vs extra fields.
     const physicalCols = await getPhysicalCols(pool, table);
