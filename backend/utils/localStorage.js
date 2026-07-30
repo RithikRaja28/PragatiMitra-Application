@@ -1,4 +1,4 @@
-const fs   = require("fs");
+const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const { slugify, slugWithId } = require("./slug");
@@ -10,36 +10,36 @@ const UPLOAD_ROOT = path.join(__dirname, "..", "uploads");
    execution risk (raster images, PDF) are served inline; everything else
    (including SVG, which can carry embedded scripts) forces a download. */
 const EXT_INFO = {
-  jpg:  { mime: "image/jpeg", inline: true },
+  jpg: { mime: "image/jpeg", inline: true },
   jpeg: { mime: "image/jpeg", inline: true },
-  png:  { mime: "image/png", inline: true },
+  png: { mime: "image/png", inline: true },
   webp: { mime: "image/webp", inline: true },
-  gif:  { mime: "image/gif", inline: true },
-  bmp:  { mime: "image/bmp", inline: true },
+  gif: { mime: "image/gif", inline: true },
+  bmp: { mime: "image/bmp", inline: true },
   tiff: { mime: "image/tiff", inline: true },
-  tif:  { mime: "image/tiff", inline: true },
-  pdf:  { mime: "application/pdf", inline: true },
+  tif: { mime: "image/tiff", inline: true },
+  pdf: { mime: "application/pdf", inline: true },
 
-  svg:  { mime: "image/svg+xml", inline: false },
-  doc:  { mime: "application/msword", inline: false },
+  svg: { mime: "image/svg+xml", inline: false },
+  doc: { mime: "application/msword", inline: false },
   docx: { mime: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", inline: false },
-  xls:  { mime: "application/vnd.ms-excel", inline: false },
+  xls: { mime: "application/vnd.ms-excel", inline: false },
   xlsx: { mime: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", inline: false },
-  ppt:  { mime: "application/vnd.ms-powerpoint", inline: false },
+  ppt: { mime: "application/vnd.ms-powerpoint", inline: false },
   pptx: { mime: "application/vnd.openxmlformats-officedocument.presentationml.presentation", inline: false },
-  txt:  { mime: "text/plain", inline: false },
-  csv:  { mime: "text/csv", inline: false },
+  txt: { mime: "text/plain", inline: false },
+  csv: { mime: "text/csv", inline: false },
   json: { mime: "application/json", inline: false },
-  xml:  { mime: "application/xml", inline: false },
-  zip:  { mime: "application/zip", inline: false },
-  rar:  { mime: "application/vnd.rar", inline: false },
-  mp3:  { mime: "audio/mpeg", inline: false },
-  wav:  { mime: "audio/wav", inline: false },
-  ogg:  { mime: "audio/ogg", inline: false },
-  m4a:  { mime: "audio/mp4", inline: false },
-  mp4:  { mime: "video/mp4", inline: false },
+  xml: { mime: "application/xml", inline: false },
+  zip: { mime: "application/zip", inline: false },
+  rar: { mime: "application/vnd.rar", inline: false },
+  mp3: { mime: "audio/mpeg", inline: false },
+  wav: { mime: "audio/wav", inline: false },
+  ogg: { mime: "audio/ogg", inline: false },
+  m4a: { mime: "audio/mp4", inline: false },
+  mp4: { mime: "video/mp4", inline: false },
   webm: { mime: "video/webm", inline: false },
-  mov:  { mime: "video/quicktime", inline: false },
+  mov: { mime: "video/quicktime", inline: false },
 };
 
 function extInfo(key) {
@@ -75,16 +75,92 @@ function sign(key, exp) {
   return crypto.createHmac("sha256", secret).update(`${key}:${exp}`).digest("hex");
 }
 
-/* Signed, time-limited download URL — the local equivalent of an S3
-   presigned GET URL. baseUrl must be supplied by the caller (derived from
-   the incoming request) so this works correctly in any environment. */
+/* Signed, time-limited download URL via an opaque encrypted token.
+   baseUrl must be supplied by the caller (derived from the incoming request)
+   so this works correctly in any environment. */
 function signReadUrl(key, expiresInSeconds, baseUrl) {
   const exp = Date.now() + expiresInSeconds * 1000;
-  const sig = sign(key, exp);
-  const qs = new URLSearchParams({ key, exp: String(exp), sig });
-  return `${baseUrl}/api/upload/file?${qs.toString()}`;
+  
+  const secret = process.env.JWT_SECRET;
+  // Ensure we have a 32-byte key for AES-256
+  const cipherKey = crypto.createHash('sha256').update(secret).digest();
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', cipherKey, iv);
+  
+  const payload = JSON.stringify({ k: key, e: exp });
+  let encrypted = cipher.update(payload, 'utf8', 'base64url');
+  encrypted += cipher.final('base64url');
+  const authTag = cipher.getAuthTag().toString('base64url');
+  
+  const token = `${iv.toString('base64url')}.${encrypted}.${authTag}`;
+  return `${baseUrl}/api/file/${token}`;
 }
 
+/**
+ * Decrypts the short-id token back into { key, exp }.
+ * Returns false if the token is invalid, tampered with, or expired.
+ */
+function verifyAndDecodeFileToken(token) {
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return false;
+    
+    const [ivStr, encrypted, authTagStr] = parts;
+    const secret = process.env.JWT_SECRET;
+    const cipherKey = crypto.createHash('sha256').update(secret).digest();
+    
+    const iv = Buffer.from(ivStr, 'base64url');
+    const authTag = Buffer.from(authTagStr, 'base64url');
+    
+    const decipher = crypto.createDecipheriv('aes-256-gcm', cipherKey, iv);
+    decipher.setAuthTag(authTag);
+    
+    let decrypted = decipher.update(encrypted, 'base64url', 'utf8');
+    decrypted += decipher.final('utf8');
+    
+    const { k: key, e: exp } = JSON.parse(decrypted);
+    
+    const expNum = Number(exp);
+    if (!key || !Number.isFinite(expNum)) return false;
+    if (Date.now() > expNum) return false;
+    
+    return { key, exp: expNum };
+  } catch (err) {
+    return false;
+  }
+}
+
+/**
+ * Decrypts the token to extract the key, ignoring expiration.
+ * Used for extracting keys from stored DB fields or old payloads, 
+ * where the token might have expired.
+ */
+function decodeFileTokenWithoutVerification(token) {
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return false;
+    
+    const [ivStr, encrypted, authTagStr] = parts;
+    const secret = process.env.JWT_SECRET;
+    const cipherKey = crypto.createHash('sha256').update(secret).digest();
+    
+    const iv = Buffer.from(ivStr, 'base64url');
+    const authTag = Buffer.from(authTagStr, 'base64url');
+    
+    const decipher = crypto.createDecipheriv('aes-256-gcm', cipherKey, iv);
+    decipher.setAuthTag(authTag);
+    
+    let decrypted = decipher.update(encrypted, 'base64url', 'utf8');
+    decrypted += decipher.final('utf8');
+    
+    const { k: key } = JSON.parse(decrypted);
+    return key ? { key } : false;
+  } catch (err) {
+    return false;
+  }
+}
+
+// Keep the old verification for backward compatibility with existing links
 function verifyReadToken(key, exp, sig) {
   const expNum = Number(exp);
   if (!key || !Number.isFinite(expNum) || !sig) return false;
@@ -127,17 +203,22 @@ function deptDir(departmentName) {
 
 function reportBrandingKey({ institutionName, institutionId, reportTitle, reportId, assetFolder, filename }) {
   return [instituteDir(institutionName, institutionId), "reports", reportDir(reportTitle, reportId),
-          "branding", assetFolder, filename].join("/");
+    "branding", assetFolder, filename].join("/");
 }
 
 function reportSubmissionKey({ institutionName, institutionId, reportTitle, reportId, kind, filename }) {
   return [instituteDir(institutionName, institutionId), "reports", reportDir(reportTitle, reportId),
-          "submissions", kind, filename].join("/");
+    "submissions", kind, filename].join("/");
 }
 
 function templateImageKey({ institutionName, institutionId, templateName, templateId, filename }) {
   return [instituteDir(institutionName, institutionId), "templates", templateDir(templateName, templateId),
-          "images", filename].join("/");
+    "images", filename].join("/");
+}
+
+function templateFileKey({ institutionName, institutionId, templateName, templateId, filename }) {
+  return [instituteDir(institutionName, institutionId), "templates", templateDir(templateName, templateId),
+    "files", filename].join("/");
 }
 
 function instituteFormKey({ institutionName, institutionId, formName, kind, filename }) {
@@ -146,7 +227,7 @@ function instituteFormKey({ institutionName, institutionId, formName, kind, file
 
 function departmentFormKey({ institutionName, institutionId, departmentName, formName, kind, filename }) {
   return [instituteDir(institutionName, institutionId), "department_forms", deptDir(departmentName),
-          formName, kind, filename].join("/");
+    formName, kind, filename].join("/");
 }
 
 async function deleteReportFolder(institutionName, institutionId, reportTitle, reportId) {
@@ -201,16 +282,24 @@ const UPLOAD_EXTENSIONS = new Set(Object.keys(EXT_INFO));
 function extractUploadKeys(obj) {
   const keys = [];
   if (typeof obj === 'string') {
-    // Format 1: full URL with /uploads/ prefix
+    // Format 1: full URL with /uploads/ prefix (legacy/public)
     const urlMatch = obj.match(/\/uploads\/(.+)$/);
     if (urlMatch) {
       keys.push(urlMatch[1]);
     } else {
-      // Format 2: raw storage key (e.g. "aiims-xxx/department_forms/.../file.jpg")
-      // Must contain a "/" and end with a known file extension
-      const ext = obj.split('.').pop()?.toLowerCase();
-      if (obj.includes('/') && ext && UPLOAD_EXTENSIONS.has(ext)) {
-        keys.push(obj);
+      // Format 2: clean private URL (/api/file/<token>)
+      const fileMatch = obj.match(/\/api\/file\/(.+)$/);
+      if (fileMatch) {
+        const decoded = decodeFileTokenWithoutVerification(fileMatch[1]);
+        if (decoded && decoded.key) {
+          keys.push(decoded.key);
+        }
+      } else {
+        // Format 3: raw storage key (e.g. "aiims-xxx/department_forms/.../file.jpg")
+        const ext = obj.split('.').pop()?.toLowerCase();
+        if (obj.includes('/') && ext && UPLOAD_EXTENSIONS.has(ext)) {
+          keys.push(obj);
+        }
       }
     }
   } else if (Array.isArray(obj)) {
@@ -228,7 +317,9 @@ module.exports = {
   saveBuffer,
   deleteFile,
   signReadUrl,
+  verifyAndDecodeFileToken,
   verifyReadToken,
+  decodeFileTokenWithoutVerification,
   instituteDir,
   reportDir,
   templateDir,
@@ -236,6 +327,7 @@ module.exports = {
   reportBrandingKey,
   reportSubmissionKey,
   templateImageKey,
+  templateFileKey,
   instituteFormKey,
   departmentFormKey,
   deleteReportFolder,

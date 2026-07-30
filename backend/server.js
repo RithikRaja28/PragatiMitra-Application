@@ -1,16 +1,16 @@
 require("dotenv").config();
 
-const express       = require("express");
-const helmet        = require("helmet");
-const cors          = require("cors");
-const cookies       = require("cookie-parser");
-const rateLimit     = require("express-rate-limit");
-const { Pool }      = require("pg");
+const express = require("express");
+const helmet = require("helmet");
+const cors = require("cors");
+const cookies = require("cookie-parser");
+const rateLimit = require("express-rate-limit");
+const { Pool } = require("pg");
 
-const logger        = require("./utils/logger");
-const requestId     = require("./middleware/requestId");
+const logger = require("./utils/logger");
+const requestId = require("./middleware/requestId");
 const requestLogger = require("./middleware/requestLogger");
-const errorHandler  = require("./middleware/errorHandler");
+const errorHandler = require("./middleware/errorHandler");
 
 /* ─── Uncaught / unhandled errors ──────────────────────────── */
 process.on("uncaughtException", (err) => {
@@ -23,31 +23,31 @@ process.on("unhandledRejection", (reason) => {
 });
 
 /* ─── Route imports ─────────────────────────────────────────── */
-const authRoutes                  = require("./routes/login");
-const departmentRoutes            = require("./routes/departments");
-const institutionRoutes           = require("./routes/institutions");
-const userRoutes                  = require("./routes/users");
-const lookupRoutes                = require("./routes/lookup");
-const auditLogRoutes              = require("./routes/auditLogs");
+const authRoutes = require("./routes/login");
+const departmentRoutes = require("./routes/departments");
+const institutionRoutes = require("./routes/institutions");
+const userRoutes = require("./routes/users");
+const lookupRoutes = require("./routes/lookup");
+const auditLogRoutes = require("./routes/auditLogs");
 const notificationTemplatesRouter = require("./routes/notificationTemplates");
 const nodalOfficerAssignmentsRouter = require("./routes/nodalOfficerAssignments");
 
 // Collaborative Report Builder
-const builderReportsRoutes       = require("./routes/builder/reports");
-const builderSectionsRoutes      = require("./routes/builder/sections");
-const builderBlocksRoutes        = require("./routes/builder/blocks");
-const builderAssignmentsRoutes   = require("./routes/builder/assignments");
-const builderApprovalsRoutes     = require("./routes/builder/approvals");
-const builderVersionsRoutes      = require("./routes/builder/versions");
-const builderCyclesRoutes        = require("./routes/builder/cycles");
-const builderWorkflowsRoutes     = require("./routes/builder/workflows");
-const builderTemplatesRoutes     = require("./routes/builder/templates");
-const builderCommentsRoutes          = require("./routes/builder/comments");
-const builderCompileRoutes           = require("./routes/builder/compile");
-const builderNotificationsRoutes     = require("./routes/builder/notifications");
+const builderReportsRoutes = require("./routes/builder/reports");
+const builderSectionsRoutes = require("./routes/builder/sections");
+const builderBlocksRoutes = require("./routes/builder/blocks");
+const builderAssignmentsRoutes = require("./routes/builder/assignments");
+const builderApprovalsRoutes = require("./routes/builder/approvals");
+const builderVersionsRoutes = require("./routes/builder/versions");
+const builderCyclesRoutes = require("./routes/builder/cycles");
+const builderWorkflowsRoutes = require("./routes/builder/workflows");
+const builderTemplatesRoutes = require("./routes/builder/templates");
+const builderCommentsRoutes = require("./routes/builder/comments");
+const builderCompileRoutes = require("./routes/builder/compile");
+const builderNotificationsRoutes = require("./routes/builder/notifications");
 const builderReportIntegrationRoutes = require("./routes/builder/reportIntegration");
 
-const app  = express();
+const app = express();
 const PORT = process.env.PORT || 3000;
 
 /* Behind a reverse proxy in production (most hosts), so secure cookies, HTTPS
@@ -74,8 +74,8 @@ const ALLOWED_ORIGINS = [
 ];
 
 app.use(cors({
-  origin:      ALLOWED_ORIGINS,
-  methods:     ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  origin: ALLOWED_ORIGINS,
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   credentials: true,
 }));
 
@@ -93,8 +93,8 @@ const RATE_LIMIT_MAX = Number(process.env.RATE_LIMIT_MAX)
   || (process.env.NODE_ENV === "production" ? 1000 : 100000);
 app.use(rateLimit({
   windowMs: 15 * 60 * 1000,
-  max:      process.env.NODE_ENV === "production" ? 500 : 5000,
-  message:  "Too many requests, try again later.",
+  max: process.env.NODE_ENV === "production" ? 500 : 5000,
+  message: "Too many requests, try again later.",
 }));
 
 app.use(express.json({ limit: "50mb" }));
@@ -118,15 +118,15 @@ pgTypes.setTypeParser(1082, (val) => val); // DATE → keep as "YYYY-MM-DD" stri
 
 /* ─── PostgreSQL pool ───────────────────────────────────────── */
 const pool = new Pool({
-  user:     process.env.DB_USER,
-  host:     process.env.DB_HOST,
+  user: process.env.DB_USER,
+  host: process.env.DB_HOST,
   database: process.env.DB_NAME,
   password: process.env.DB_PASSWORD,
-  port:     Number(process.env.DB_PORT) || 5432,
+  port: Number(process.env.DB_PORT) || 5432,
   // Pool sizing is env-tunable; defaults preserve the previous hardcoded values.
-  max:                     Number(process.env.DB_POOL_MAX)           || 30,
-  min:                     Number(process.env.DB_POOL_MIN)           || 0,
-  idleTimeoutMillis:       Number(process.env.DB_IDLE_TIMEOUT)       || 30_000,
+  max: Number(process.env.DB_POOL_MAX) || 30,
+  min: Number(process.env.DB_POOL_MIN) || 0,
+  idleTimeoutMillis: Number(process.env.DB_IDLE_TIMEOUT) || 30_000,
   connectionTimeoutMillis: Number(process.env.DB_CONNECTION_TIMEOUT) || 5_000,
   ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false,
 });
@@ -445,41 +445,42 @@ app.get("/", (_req, res) => {
   res.json({ success: true, message: "Pragatimitra API running." });
 });
 const uploadRoutes = require("./routes/upload");
-app.use("/api/auth",         authRoutes);
-app.use("/api/users",        userRoutes);
-app.use("/api/lookup",       lookupRoutes);
-app.use("/api/roles",        require("./routes/roles"));
-app.use("/api/departments",  departmentRoutes);
+app.use("/api/auth", authRoutes);
+app.use("/api/users", userRoutes);
+app.use("/api/lookup", lookupRoutes);
+app.use("/api/roles", require("./routes/roles"));
+app.use("/api/departments", departmentRoutes);
 app.use("/api/institutions", institutionRoutes);
-app.use("/api/audit-logs",   auditLogRoutes);
+app.use("/api/audit-logs", auditLogRoutes);
 app.use("/api/upload",       uploadRoutes);
+app.use("/api/file",         require("./routes/file"));
 app.use("/api/notification-templates", notificationTemplatesRouter);
-app.use("/api/compression-settings",  require("./routes/compressionSettings"));
-app.use("/api/kpi",                    require("./routes/kpi"));
-app.use("/api/forms",                  require("./routes/forms"));
-app.use("/api/department-forms",       require("./routes/departmentForms"));
-app.use("/api/department-form-data",   require("./routes/departmentFormData"));
-app.use("/api/academic-years",         require("./routes/academicYear"));
-app.use("/api/form-data",              require("./routes/formData"));
-app.use("/api/form-data",              require("./routes/formimportexport"));
-app.use("/api/dashboard",              require("./routes/dashboard"));
+app.use("/api/compression-settings", require("./routes/compressionSettings"));
+app.use("/api/kpi", require("./routes/kpi"));
+app.use("/api/forms", require("./routes/forms"));
+app.use("/api/department-forms", require("./routes/departmentForms"));
+app.use("/api/department-form-data", require("./routes/departmentFormData"));
+app.use("/api/academic-years", require("./routes/academicYear"));
+app.use("/api/form-data", require("./routes/formData"));
+app.use("/api/form-data", require("./routes/formimportexport"));
+app.use("/api/dashboard", require("./routes/dashboard"));
 app.use("/api/nodal-officer-assignments", nodalOfficerAssignmentsRouter);
-app.use("/api/form-assignments",       require("./routes/formAssignments").router);
+app.use("/api/form-assignments", require("./routes/formAssignments").router);
 
 // Collaborative Report Builder — /api/builder/*
-app.use("/api/builder/reports",       builderReportsRoutes);
-app.use("/api/builder/sections",      builderSectionsRoutes);
-app.use("/api/builder/blocks",        builderBlocksRoutes);
-app.use("/api/builder/assignments",   builderAssignmentsRoutes);
-app.use("/api/builder/approvals",     builderApprovalsRoutes);
-app.use("/api/builder/versions",      builderVersionsRoutes);
-app.use("/api/builder/cycles",        builderCyclesRoutes);
-app.use("/api/builder/workflows",     builderWorkflowsRoutes);
-app.use("/api/builder/templates",     builderTemplatesRoutes);
-app.use("/api/builder/comments",      builderCommentsRoutes);
-app.use("/api/builder/compile",       builderCompileRoutes);
-app.use("/api/builder/notifications",      builderNotificationsRoutes);
-app.use("/api/report-integration",         builderReportIntegrationRoutes);
+app.use("/api/builder/reports", builderReportsRoutes);
+app.use("/api/builder/sections", builderSectionsRoutes);
+app.use("/api/builder/blocks", builderBlocksRoutes);
+app.use("/api/builder/assignments", builderAssignmentsRoutes);
+app.use("/api/builder/approvals", builderApprovalsRoutes);
+app.use("/api/builder/versions", builderVersionsRoutes);
+app.use("/api/builder/cycles", builderCyclesRoutes);
+app.use("/api/builder/workflows", builderWorkflowsRoutes);
+app.use("/api/builder/templates", builderTemplatesRoutes);
+app.use("/api/builder/comments", builderCommentsRoutes);
+app.use("/api/builder/compile", builderCompileRoutes);
+app.use("/api/builder/notifications", builderNotificationsRoutes);
+app.use("/api/report-integration", builderReportIntegrationRoutes);
 
 /* ─── Global error handler (must be last) ───────────────────── */
 app.use(errorHandler);
@@ -504,8 +505,8 @@ async function bootCriticalSchema() {
     ADD COLUMN IF NOT EXISTS entity_type VARCHAR(50),
     ADD COLUMN IF NOT EXISTS entity_id   UUID,
     ADD COLUMN IF NOT EXISTS read_at     TIMESTAMPTZ`);
-  await pool.query(`ALTER TABLE public.notifications ALTER COLUMN event_id DROP NOT NULL`).catch(() => {});
-  await pool.query(`ALTER TABLE public.notifications ALTER COLUMN message  DROP NOT NULL`).catch(() => {});
+  await pool.query(`ALTER TABLE public.notifications ALTER COLUMN event_id DROP NOT NULL`).catch(() => { });
+  await pool.query(`ALTER TABLE public.notifications ALTER COLUMN message  DROP NOT NULL`).catch(() => { });
 }
 
 bootCriticalSchema()

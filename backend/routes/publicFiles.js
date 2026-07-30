@@ -27,7 +27,7 @@ const router = express.Router();
 function isPublicKey(key) {
   return key.includes("/branding/")
     || key.includes("/submissions/images/")
-    || (key.includes("/templates/") && key.includes("/images/"));
+    || (key.includes("/templates/") && (key.includes("/images/") || key.includes("/files/")));
 }
 
 router.get("/*splat", (req, res) => {
