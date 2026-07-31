@@ -517,7 +517,7 @@ router.get("/pg-students", requireRole(ASSIGN_ROLES), async (req, res) => {
         const deptWhere = deptFilter ? `AND fa.department_id = $3::uuid` : ``;
         const { rows } = await pool.query(
           `SELECT fa.id, fa.assigned_to, u.full_name, u.email, fa.department_id,
-                  COALESCE(d.department_name, '') AS department_name
+                  COALESCE(d.name, '') AS department_name
            FROM form_assignments fa
            JOIN users u ON u.id = fa.assigned_to
            LEFT JOIN departments d ON d.department_id = fa.department_id
