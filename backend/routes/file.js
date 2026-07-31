@@ -53,6 +53,10 @@ router.get("/:token", async (req, res) => {
     res.setHeader("Content-Type", mime);
     res.setHeader("Content-Length", stat.size);
     res.setHeader("Content-Disposition", `${inline ? "inline" : "attachment"}; filename="${filename}"`);
+    // Override helmet's default same-origin CORP: this route is meant to be loaded
+    // directly by <img>/<a> tags from a frontend on a different origin — the token
+    // itself is the access control.
+    res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
     fs.createReadStream(filePath).pipe(res);
   });
 });

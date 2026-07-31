@@ -18,7 +18,7 @@ const https   = require("https");
 
 const { verifyToken, requireRole } = require("../../middleware/auth");
 const { writeAuditLog }            = require("../../utils/audit");
-const { UPLOAD_ROOT, instituteDir, reportDir } = require("../../utils/localStorage");
+const { UPLOAD_ROOT, instituteDir, reportDir, resolveSafePath } = require("../../utils/localStorage");
 const logger                       = require("../../utils/logger");
 const { getLogContext }            = logger;
 const { translateSentence }        = require("../../services/translationService");
@@ -29,7 +29,24 @@ router.use(verifyToken);
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const isUUID  = v => typeof v === "string" && UUID_RE.test(v);
 
-const BACKEND_ROOT = path.join(__dirname, "../../");
+/* Loads a report's title + institution_id and enforces the same tenant
+   isolation rule used elsewhere (e.g. resolveReportScope in upload.js):
+   super_admin may access any report, everyone else only their own
+   institution's. Returns null for both "not found" and "not authorized" —
+   callers respond 404 either way so the two cases aren't distinguishable. */
+async function loadReportForAccess(pool, req, reportId) {
+  const { rows } = await pool.query(
+    `SELECT id, title, institution_id FROM public.reports WHERE id = $1 AND deleted_at IS NULL`,
+    [reportId]
+  );
+  if (!rows.length) return null;
+  const report = rows[0];
+  const roles  = req.user.roles || [];
+  if (!roles.includes("super_admin") && String(report.institution_id) !== String(req.user.institutionId)) {
+    return null;
+  }
+  return report;
+}
 
 /* Generated reports live under uploads/[institute]/reports/[report]/generated/<fmt>/
    — private (never statically mounted; only reachable via the authenticated
@@ -110,11 +127,23 @@ function decodeEntities(s) {
     .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, " ");
 }
 
+/* Extracts the raw storage key if `url` points at our own /uploads/ tree —
+   whether given as a bare path or a full absolute URL back to this same host
+   (the actual format /api/upload/image returns) — so it can be read straight
+   off disk via the traversal-safe resolver instead of round-tripping over
+   HTTP to ourselves. Returns null for anything else (a genuinely external
+   URL), which falls through to the network fetch below. */
+function localUploadKey(url) {
+  const match = url.match(/\/uploads\/(.+)$/);
+  return match ? match[1] : null;
+}
+
 async function fetchImageBuffer(url) {
   if (!url) return null;
   try {
-    if (url.startsWith("/uploads/")) {
-      const p = path.join(BACKEND_ROOT, url);
+    const key = localUploadKey(url);
+    if (key) {
+      const p = resolveSafePath(key);
       return fs.existsSync(p) ? fs.readFileSync(p) : null;
     }
     if (!url.startsWith("http")) return null;
@@ -163,11 +192,8 @@ router.get("/report/:reportId/status", async (req, res) => {
     const { reportId } = req.params;
     if (!isUUID(reportId)) return res.status(400).json({ success: false, message: "Invalid report id" });
 
-    const reportRes = await pool.query(
-      `SELECT title FROM public.reports WHERE id = $1 AND deleted_at IS NULL`,
-      [reportId]
-    );
-    if (!reportRes.rows.length) return res.status(404).json({ success: false, message: "Report not found" });
+    const report = await loadReportForAccess(pool, req, reportId);
+    if (!report) return res.status(404).json({ success: false, message: "Report not found" });
 
     const sectRes = await pool.query(
       `SELECT s.id, s.title, s.status, s.parent_id, s.order_index, p.title AS parent_title
@@ -185,7 +211,7 @@ router.get("/report/:reportId/status", async (req, res) => {
     return res.json({
       success: true,
       data: {
-        report_title:       reportRes.rows[0].title,
+        report_title:       report.title,
         can_compile:        notReady.length === 0 && all.length > 0,
         total_count:        all.length,
         ready_count:        ready.length,
@@ -235,6 +261,11 @@ router.post(
       );
       if (!reportRes.rows.length) return res.status(404).json({ success: false, message: "Report not found" });
       const report = reportRes.rows[0];
+
+      const roles = req.user.roles || [];
+      if (!roles.includes("super_admin") && String(report.institution_id) !== String(req.user.institutionId)) {
+        return res.status(404).json({ success: false, message: "Report not found" });
+      }
 
       // Pre-compile readiness check
       if (approved_only) {
@@ -347,6 +378,10 @@ router.get("/report/:reportId/history", async (req, res) => {
   try {
     const { reportId } = req.params;
     if (!isUUID(reportId)) return res.status(400).json({ success: false, message: "Invalid report id" });
+
+    const report = await loadReportForAccess(pool, req, reportId);
+    if (!report) return res.status(404).json({ success: false, message: "Report not found" });
+
     const { rows } = await pool.query(
       `SELECT cr.*, u.full_name AS compiled_by_name
        FROM public.compiled_reports cr
@@ -367,6 +402,12 @@ router.get("/report/:reportId/:compileId/download", async (req, res) => {
   const pool = req.app.locals.pool;
   try {
     const { reportId, compileId } = req.params;
+    if (!isUUID(reportId) || !isUUID(compileId))
+      return res.status(400).json({ success: false, message: "Invalid id" });
+
+    const report = await loadReportForAccess(pool, req, reportId);
+    if (!report) return res.status(404).json({ success: false, message: "Artifact not found" });
+
     const { rows } = await pool.query(
       `SELECT * FROM public.compiled_reports WHERE id = $1 AND report_id = $2`,
       [compileId, reportId]
@@ -399,6 +440,12 @@ router.delete(
     const pool = req.app.locals.pool;
     try {
       const { reportId, compileId } = req.params;
+      if (!isUUID(reportId) || !isUUID(compileId))
+        return res.status(400).json({ success: false, message: "Invalid id" });
+
+      const report = await loadReportForAccess(pool, req, reportId);
+      if (!report) return res.status(404).json({ success: false, message: "Compiled report not found" });
+
       const { rows } = await pool.query(
         `SELECT * FROM public.compiled_reports WHERE id = $1 AND report_id = $2`,
         [compileId, reportId]

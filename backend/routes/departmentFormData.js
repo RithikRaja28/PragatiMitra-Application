@@ -500,13 +500,12 @@ router.post("/:id/records", async (req, res) => {
     const fieldCols = fields.map((f) => dbCol(f.column_name));
     
     for (const f of fields) {
-      if (["IMAGE", "FILE"].includes(f.field_type) && data[f.name]) {
-        if (typeof data[f.name] === "string") {
-          const match = data[f.name].match(/\/api\/file\/(.+)$/);
-          if (match) {
-            const key = decodeFileTokenWithoutVerification(match[1]);
-            if (key) data[f.name] = key;
-          }
+      const col = dbCol(f.column_name);
+      if (f.type === "document" && typeof data[col] === "string") {
+        const match = data[col].match(/\/api\/file\/(.+)$/);
+        if (match) {
+          const key = decodeFileTokenWithoutVerification(match[1]);
+          if (key) data[col] = key;
         }
       }
     }
@@ -593,13 +592,12 @@ router.put("/:id/records/:recordId", async (req, res) => {
     const fieldCols = fields.map((f) => dbCol(f.column_name));
 
     for (const f of fields) {
-      if (["IMAGE", "FILE"].includes(f.field_type) && data[f.name]) {
-        if (typeof data[f.name] === "string") {
-          const match = data[f.name].match(/\/api\/file\/(.+)$/);
-          if (match) {
-            const key = decodeFileTokenWithoutVerification(match[1]);
-            if (key) data[f.name] = key;
-          }
+      const col = dbCol(f.column_name);
+      if (f.type === "document" && typeof data[col] === "string") {
+        const match = data[col].match(/\/api\/file\/(.+)$/);
+        if (match) {
+          const key = decodeFileTokenWithoutVerification(match[1]);
+          if (key) data[col] = key;
         }
       }
     }

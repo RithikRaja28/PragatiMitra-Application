@@ -519,25 +519,41 @@ router.put(
           const newPrefix = `${instPart}/reports/${newSlug}`;
           
           await renameFolder(oldPrefix, newPrefix);
-          
-          // 1) Update all related report_blocks URLs
-          await pool.query(
-            `UPDATE public.report_blocks 
-             SET content = (REPLACE(content::text, $1, $2))::jsonb 
-             WHERE report_id = $3`,
-            [`/uploads/${oldPrefix}/`, `/uploads/${newPrefix}/`, id]
-          );
 
-          // 2) Update report's own branding URLs
-          await pool.query(
-            `UPDATE public.reports
-             SET logo_url = REPLACE(logo_url, $1, $2),
-                 cover_image_url = REPLACE(cover_image_url, $1, $2),
-                 bg_image_url = REPLACE(bg_image_url, $1, $2)
-             WHERE id = $3`,
-            [`/uploads/${oldPrefix}/`, `/uploads/${newPrefix}/`, id]
-          );
-          
+          // Cascade the URL rename into section_blocks (joined via report_sections —
+          // section_blocks has no direct report_id column) and the report's own
+          // branding URLs, atomically so one can't succeed while the other is stale.
+          const cascadeClient = await pool.connect();
+          try {
+            await cascadeClient.query("BEGIN");
+
+            // 1) Update all related section_blocks URLs
+            await cascadeClient.query(
+              `UPDATE public.section_blocks sb
+               SET content = (REPLACE(content::text, $1, $2))::jsonb
+               FROM public.report_sections rs
+               WHERE sb.section_id = rs.id AND rs.report_id = $3`,
+              [`/uploads/${oldPrefix}/`, `/uploads/${newPrefix}/`, id]
+            );
+
+            // 2) Update report's own branding URLs
+            await cascadeClient.query(
+              `UPDATE public.reports
+               SET logo_url = REPLACE(logo_url, $1, $2),
+                   cover_image_url = REPLACE(cover_image_url, $1, $2),
+                   bg_image_url = REPLACE(bg_image_url, $1, $2)
+               WHERE id = $3`,
+              [`/uploads/${oldPrefix}/`, `/uploads/${newPrefix}/`, id]
+            );
+
+            await cascadeClient.query("COMMIT");
+          } catch (e) {
+            await cascadeClient.query("ROLLBACK");
+            throw e;
+          } finally {
+            cascadeClient.release();
+          }
+
           // Re-fetch the row to return the updated branding URLs
           const { rows: updatedBranding } = await pool.query(
             `SELECT * FROM public.reports WHERE id = $1`, [id]

@@ -218,6 +218,15 @@ function dbCol(col) {
    - institute_admin → departmentId = null  (sees ALL dept records)
    - department_admin → departmentId = theirs (sees ONLY their dept)
    - super_admin     → reads from body/query
+
+   "department_admin" as a returned `role` value means "department-scoped",
+   not literally the department_admin DB role — nodal officers (via their NOA
+   capability), plain contributors, and PG students all get the identical
+   treatment (scoped to their own department, not the whole institute), same
+   as departmentFormData.js's loadForm() already does for pg_student. Every
+   call site below only branches on `ctx.role === "department_admin"` to
+   decide whether to apply the departmentId filter, so reusing this label
+   keeps all of them correct without touching each one individually.
 ════════════════════════════════════════════════════════════════════ */
 async function resolveUserContext(pool, req) {
   const roles = req.user.roles || [];
@@ -231,7 +240,8 @@ async function resolveUserContext(pool, req) {
     };
   }
 
-  const isDeptAdmin = roles.includes("department_admin") || roles.includes("nodal_officer");
+  const isDeptScoped = roles.includes("department_admin") || roles.includes("nodal_officer")
+    || isContributorOnly(req) || isPgStudentOnly(req);
 
   // EFFECTIVE (nodal-aware) institution + department — a Nodal Officer scopes to
   // their NODAL department, not their home department (Bug 4). Read via the single
@@ -240,8 +250,8 @@ async function resolveUserContext(pool, req) {
 
   return {
     institutionId: institutionId || null,
-    departmentId:  isDeptAdmin ? (departmentId || null) : null,
-    role: isDeptAdmin ? "department_admin" : "institute_admin",
+    departmentId:  isDeptScoped ? (departmentId || null) : null,
+    role: isDeptScoped ? "department_admin" : "institute_admin",
   };
 }
 
@@ -839,13 +849,12 @@ router.post("/:formName/records", async (req, res) => {
       return res.status(403).json({ success: false, message: archiveBlock.message });
 
     for (const f of fields) {
-      if (["IMAGE", "FILE"].includes(f.field_type) && data[f.name]) {
-        if (typeof data[f.name] === "string") {
-          const match = data[f.name].match(/\/api\/file\/(.+)$/);
-          if (match) {
-            const key = decodeFileTokenWithoutVerification(match[1]);
-            if (key) data[f.name] = key;
-          }
+      const col = dbCol(f.column_name);
+      if (f.type === "document" && typeof data[col] === "string") {
+        const match = data[col].match(/\/api\/file\/(.+)$/);
+        if (match) {
+          const key = decodeFileTokenWithoutVerification(match[1]);
+          if (key) data[col] = key;
         }
       }
     }
@@ -1037,13 +1046,12 @@ router.put("/:formName/records/:id", async (req, res) => {
     const fieldModes = buildFieldModes(fields);
 
     for (const f of fields) {
-      if (["IMAGE", "FILE"].includes(f.field_type) && data[f.name]) {
-        if (typeof data[f.name] === "string") {
-          const match = data[f.name].match(/\/api\/file\/(.+)$/);
-          if (match) {
-            const key = decodeFileTokenWithoutVerification(match[1]);
-            if (key) data[f.name] = key;
-          }
+      const col = dbCol(f.column_name);
+      if (f.type === "document" && typeof data[col] === "string") {
+        const match = data[col].match(/\/api\/file\/(.+)$/);
+        if (match) {
+          const key = decodeFileTokenWithoutVerification(match[1]);
+          if (key) data[col] = key;
         }
       }
     }
