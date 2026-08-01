@@ -3,7 +3,7 @@ const { v4: uuidv4 } = require("uuid");
 const {
   saveBuffer, deleteFile: deleteLocalFile, signReadUrl, verifyReadToken,
   extInfo, resolveSafePath,
-  reportBrandingKey, reportSubmissionKey, templateImageKey,
+  reportBrandingKey, reportSubmissionKey,
   instituteFormKey, departmentFormKey,
 } = require("../utils/localStorage");
 const { verifyToken } = require("../middleware/auth");
@@ -98,22 +98,6 @@ async function resolveReportScope(pool, req, reportId) {
   const roles = req.user.roles || [];
   if (!roles.includes("super_admin") && String(row.institution_id) !== String(req.user.institutionId)) return null;
   return { id: row.id, title: row.title, institutionId: row.institution_id, institutionName: row.institution_name };
-}
-
-async function resolveTemplateScope(pool, req, templateId) {
-  if (!isUUID(templateId)) return null;
-  const { rows } = await pool.query(
-    `SELECT t.id, t.name, t.institution_id, i.institution_name
-       FROM public.report_templates t
-       JOIN public.institutions i ON i.institution_id = t.institution_id
-      WHERE t.id = $1`,
-    [templateId]
-  );
-  if (!rows.length) return null;
-  const row = rows[0];
-  const roles = req.user.roles || [];
-  if (!roles.includes("super_admin") && String(row.institution_id) !== String(req.user.institutionId)) return null;
-  return { id: row.id, name: row.name, institutionId: row.institution_id, institutionName: row.institution_name };
 }
 
 async function resolveInstituteFormScope(pool, req, formName) {
@@ -227,65 +211,19 @@ router.post("/document", verifyToken, (req, res) => {
 });
 
 /**
- * POST /api/upload/template-file
- * Multipart: field "file" + "templateId"
- * Returns: { success, publicUrl }
- * Saves to public templates/.../files/ directory.
- */
-router.post("/template-file", verifyToken, (req, res) => {
-  uploadDocument.single("file")(req, res, async (err) => {
-    if (err instanceof multer.MulterError && err.code === "LIMIT_FILE_SIZE") {
-      return res.status(400).json({ success: false, error: "File exceeds the 10 MB limit." });
-    }
-    if (err) return res.status(400).json({ success: false, error: err.message });
-    if (!req.file) return res.status(400).json({ success: false, error: "No file received." });
-
-    const limit = categoryLimit(req.file.mimetype);
-    if (req.file.size > limit) {
-      return res.status(400).json({ success: false, error: `File exceeds the ${Math.round(limit / (1024 * 1024))} MB limit.` });
-    }
-
-    try {
-      const pool = req.app.locals.pool;
-      const { templateId } = req.body;
-      if (!templateId) return res.status(400).json({ success: false, error: "templateId is required." });
-
-      const scope = await resolveTemplateScope(pool, req, templateId);
-      if (!scope) return res.status(400).json({ success: false, error: "Invalid or unauthorized template." });
-
-      const ext = path.extname(req.file.originalname).toLowerCase();
-      const filename = `${uuidv4()}${ext}`;
-
-      const { templateFileKey } = require("../utils/localStorage");
-      const fileKey = templateFileKey({
-        institutionName: scope.institutionName, institutionId: scope.institutionId,
-        templateName: scope.name, templateId: scope.id, filename,
-      });
-
-      await saveBuffer(fileKey, req.file.buffer);
-
-      const publicUrl = `${baseUrlFor(req)}/uploads/${fileKey}`;
-      return res.json({ success: true, publicUrl });
-    } catch (storageErr) {
-      logger.error("[upload/template-file] Local storage write failed", { message: storageErr.message });
-      return res.status(500).json({ success: false, error: `Storage error: ${storageErr.message}` });
-    }
-  });
-});
-
-/**
  * POST /api/upload/image
  * Multipart: field "file", optional "purpose"
  *   purpose ∈ branding-logo | branding-cover | branding-background | report-image
  *   (defaults to report-image; unrecognized values fall back to report-image)
- * Plus exactly one of "reportId" or "templateId". Branding purposes require
- * "reportId" (templates have no branding assets).
+ * Plus "reportId". Templates never hold real files — they're structure-only
+ * (block_type, required flag, captions); a report's blocks are the only place
+ * uploaded content ever lives.
  * Returns: { success, publicUrl }
  *
  * For report-builder images and branding assets — publicly readable, served
  * via the dynamic /uploads route (routes/publicFiles.js). The destination
- * folder is chosen entirely server-side from a validated report/template
- * scope + purpose, never from a raw client-supplied path segment.
+ * folder is chosen entirely server-side from a validated report scope +
+ * purpose, never from a raw client-supplied path segment.
  */
 router.post("/image", verifyToken, (req, res) => {
   uploadImage.single("file")(req, res, async (err) => {
@@ -301,41 +239,28 @@ router.post("/image", verifyToken, (req, res) => {
 
     try {
       const pool = req.app.locals.pool;
-      const { purpose, reportId, templateId } = req.body;
+      const { purpose, reportId } = req.body;
       const isBranding = Object.prototype.hasOwnProperty.call(BRANDING_SUBFOLDER, purpose);
 
-      if (isBranding && templateId) {
-        return res.status(400).json({ success: false, error: "Branding uploads must be scoped to a report, not a template." });
-      }
-      if (!reportId && !templateId) {
-        return res.status(400).json({ success: false, error: "reportId or templateId is required." });
+      if (!reportId) {
+        return res.status(400).json({ success: false, error: "reportId is required." });
       }
 
       const ext = path.extname(req.file.originalname).toLowerCase();
       const filename = `${uuidv4()}${ext}`;
-      let fileKey;
 
-      if (templateId) {
-        const scope = await resolveTemplateScope(pool, req, templateId);
-        if (!scope) return res.status(400).json({ success: false, error: "Invalid or unauthorized template." });
-        fileKey = templateImageKey({
+      const scope = await resolveReportScope(pool, req, reportId);
+      if (!scope) return res.status(400).json({ success: false, error: "Invalid or unauthorized report." });
+      const fileKey = isBranding
+        ? reportBrandingKey({
           institutionName: scope.institutionName, institutionId: scope.institutionId,
-          templateName: scope.name, templateId: scope.id, filename,
+          reportTitle: scope.title, reportId: scope.id,
+          assetFolder: BRANDING_SUBFOLDER[purpose], filename,
+        })
+        : reportSubmissionKey({
+          institutionName: scope.institutionName, institutionId: scope.institutionId,
+          reportTitle: scope.title, reportId: scope.id, kind: "images", filename,
         });
-      } else {
-        const scope = await resolveReportScope(pool, req, reportId);
-        if (!scope) return res.status(400).json({ success: false, error: "Invalid or unauthorized report." });
-        fileKey = isBranding
-          ? reportBrandingKey({
-            institutionName: scope.institutionName, institutionId: scope.institutionId,
-            reportTitle: scope.title, reportId: scope.id,
-            assetFolder: BRANDING_SUBFOLDER[purpose], filename,
-          })
-          : reportSubmissionKey({
-            institutionName: scope.institutionName, institutionId: scope.institutionId,
-            reportTitle: scope.title, reportId: scope.id, kind: "images", filename,
-          });
-      }
 
       await saveBuffer(fileKey, req.file.buffer);
 

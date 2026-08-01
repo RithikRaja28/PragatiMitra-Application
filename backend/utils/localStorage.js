@@ -179,23 +179,23 @@ function verifyReadToken(key, exp, sig) {
      [institute]/reports/[report]/branding/{logos,cover-images,background-images}/
      [institute]/reports/[report]/generated/{pdf,docx}/
      [institute]/reports/[report]/submissions/{images,files}/
-     [institute]/templates/[template]/images/
      [institute]/institute_forms/[form_name]/{images,files}/
      [institute]/department_forms/dept_[dept_name]/[form_name]/{images,files}/
 
-   Institute/report/template segments carry a short id suffix (slugWithId)
-   since institution_name/report.title/template.name have no DB uniqueness
-   constraint; department names and form_name slugs are already unique
-   (per-institution / regex-validated), so those use a plain slug. ───────── */
+   Templates hold no files of their own — they're structure-only (block
+   type + required flag + captions); real uploads only ever live under a
+   report.
+
+   Institute/report segments carry a short id suffix (slugWithId) since
+   institution_name/report.title have no DB uniqueness constraint;
+   department names and form_name slugs are already unique (per-institution
+   / regex-validated), so those use a plain slug. ───────── */
 
 function instituteDir(institutionName, institutionId) {
   return slugWithId(institutionName, institutionId);
 }
 function reportDir(reportTitle, reportId) {
   return slugWithId(reportTitle, reportId);
-}
-function templateDir(templateName, templateId) {
-  return slugWithId(templateName, templateId);
 }
 function deptDir(departmentName) {
   return `dept_${slugify(departmentName)}`;
@@ -211,16 +211,6 @@ function reportSubmissionKey({ institutionName, institutionId, reportTitle, repo
     "submissions", kind, filename].join("/");
 }
 
-function templateImageKey({ institutionName, institutionId, templateName, templateId, filename }) {
-  return [instituteDir(institutionName, institutionId), "templates", templateDir(templateName, templateId),
-    "images", filename].join("/");
-}
-
-function templateFileKey({ institutionName, institutionId, templateName, templateId, filename }) {
-  return [instituteDir(institutionName, institutionId), "templates", templateDir(templateName, templateId),
-    "files", filename].join("/");
-}
-
 function instituteFormKey({ institutionName, institutionId, formName, kind, filename }) {
   return [instituteDir(institutionName, institutionId), "institute_forms", formName, kind, filename].join("/");
 }
@@ -233,18 +223,6 @@ function departmentFormKey({ institutionName, institutionId, departmentName, for
 async function deleteReportFolder(institutionName, institutionId, reportTitle, reportId) {
   try {
     const key = [instituteDir(institutionName, institutionId), "reports", reportDir(reportTitle, reportId)].join("/");
-    const dirPath = resolveSafePath(key);
-    await fs.promises.rm(dirPath, { recursive: true, force: true }).catch(err => {
-      if (err.code !== "ENOENT") throw err;
-    });
-  } catch (err) {
-    // Ignore safe path resolution errors if dir doesn't exist
-  }
-}
-
-async function deleteTemplateFolder(institutionName, institutionId, templateName, templateId) {
-  try {
-    const key = [instituteDir(institutionName, institutionId), "templates", templateDir(templateName, templateId)].join("/");
     const dirPath = resolveSafePath(key);
     await fs.promises.rm(dirPath, { recursive: true, force: true }).catch(err => {
       if (err.code !== "ENOENT") throw err;
@@ -322,16 +300,12 @@ module.exports = {
   decodeFileTokenWithoutVerification,
   instituteDir,
   reportDir,
-  templateDir,
   deptDir,
   reportBrandingKey,
   reportSubmissionKey,
-  templateImageKey,
-  templateFileKey,
   instituteFormKey,
   departmentFormKey,
   deleteReportFolder,
-  deleteTemplateFolder,
   extractUploadKeys,
   renameFolder,
 };
