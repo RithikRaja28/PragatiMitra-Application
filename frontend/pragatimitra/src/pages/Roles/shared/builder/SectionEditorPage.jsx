@@ -1164,7 +1164,7 @@ function IconChip({ type, size = 30 }) {
   );
 }
 
-const ADD_BLOCK_TYPES = ["PARAGRAPH", "HEADING", "TABLE", "IMAGE", "IMAGE_GRID", "LIST", "FILE", "KPI", "DIVIDER"];
+const ADD_BLOCK_TYPES = ["PARAGRAPH", "HEADING", "TABLE", "IMAGE", "IMAGE_GRID", "LIST", "KPI", "DIVIDER"];
 
 /* ── Block-type picker list, shared by InlineAdder's dropdown and the big
    "+ Add Block" button below. ────────────────────────────────────────────── */

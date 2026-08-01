@@ -1919,7 +1919,6 @@ const BLOCK_MENU = [
   { type: "IMAGE",      icon: "Img", label: "Image",      hint: "A single image — upload or paste a URL, set width/alignment, add a caption." },
   { type: "IMAGE_GRID", icon: "Grd", label: "Image Grid", hint: "Multiple images side by side — upload up to 4 images, each with its own caption." },
   { type: "DIVIDER",    icon: "--",  label: "Divider",    hint: "A plain horizontal line used to visually separate content — no data to fill in." },
-  { type: "FILE",       icon: "Fil", label: "File",       hint: "A downloadable file attachment — provide a file name/label and its URL or path." },
 ];
 
 export function AddBlockMenu({ onAdd }) {
