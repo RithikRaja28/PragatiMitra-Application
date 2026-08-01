@@ -710,6 +710,110 @@ router.put("/:id/records/:recordId", async (req, res) => {
 });
 
 /* ─────────────────────────────────────────────────────────────────────
+   PATCH /api/department-form-data/:id/records/:recordId/file-field
+   Body: { column, value }
+   Mirrors formData.js's twin route: called right after a successful
+   document/image upload for one existing record's document field,
+   independent of that record's own Save/Submit. Reads the old value and
+   writes the new one in a single atomic statement, then deletes the old
+   file if superseded — regardless of whether the record edit has been
+   submitted yet. Only ever touches a column the record's own effective
+   schema actually declares as a "document" field, and syncs the record's
+   Hindi mirror row (if one exists) to the same value.
+───────────────────────────────────────────────────────────────────── */
+router.patch("/:id/records/:recordId/file-field", async (req, res) => {
+  const pool = req.app.locals.pool;
+  if (!requireContributor(req, res)) return;
+  const { column, value } = req.body;
+  if (typeof value !== "string")
+    return res.status(400).json({ success: false, message: "value must be a string." });
+
+  try {
+    const { form, departmentId, error } = await loadForm(pool, req, req.params.id);
+    if (error) return res.status(404).json({ success: false, message: error });
+    const table = deptRecordsTable(form.department_id, form.form_name);
+    const year = resolveYear(req);
+
+    const lock = await deptLockBlock(pool, form, year);
+    if (lock.locked) return res.status(403).json({ success: false, message: lock.message });
+
+    const { rows: targetRows } = await pool.query(
+      `SELECT * FROM ${table} WHERE id = $1 AND department_id = $2`,
+      [req.params.recordId, departmentId]
+    );
+    if (!targetRows.length)
+      return res.status(404).json({ success: false, message: "Record not found." });
+
+    const effectiveSchema = await loadEffectiveSchema(pool, form, year);
+    const col = dbCol(String(column || ""));
+    const field = activeFields(effectiveSchema).find((f) => dbCol(f.column_name) === col && f.type === "document");
+    if (!field)
+      return res.status(400).json({ success: false, message: "Not a document field on this form." });
+
+    const physicalCols = await getPhysicalCols(pool, table);
+    let oldValue;
+
+    if (physicalCols.has(col)) {
+      const { rows } = await pool.query(
+        `WITH old AS (
+           SELECT ${quoteIdent(col)} AS old_value FROM ${table} WHERE id = $1 AND department_id = $2
+         )
+         UPDATE ${table} SET ${quoteIdent(col)} = $3, updated_at = now()
+         WHERE id = $1 AND department_id = $2
+         RETURNING (SELECT old_value FROM old) AS old_value`,
+        [req.params.recordId, departmentId, value]
+      );
+      oldValue = rows[0]?.old_value;
+    } else {
+      const { rows } = await pool.query(
+        `WITH old AS (
+           SELECT custom_fields ->> $3 AS old_value FROM ${table} WHERE id = $1 AND department_id = $2
+         )
+         UPDATE ${table}
+         SET custom_fields = jsonb_set(COALESCE(custom_fields, '{}'::jsonb), ARRAY[$3::text], to_jsonb($4::text), true),
+             updated_at = now()
+         WHERE id = $1 AND department_id = $2
+         RETURNING (SELECT old_value FROM old) AS old_value`,
+        [req.params.recordId, departmentId, col, value]
+      );
+      oldValue = rows[0]?.old_value;
+    }
+
+    if (oldValue && oldValue !== value) {
+      const [oldKey] = extractUploadKeys(oldValue);
+      if (oldKey) await deleteFile(oldKey).catch(() => {});
+    }
+
+    // Sync Hindi mirror row, best-effort.
+    try {
+      await ensureSourceRowIdColumn(pool, table);
+      if (physicalCols.has(col)) {
+        await pool.query(
+          `UPDATE ${table} SET ${quoteIdent(col)} = $1, updated_at = now()
+           WHERE source_row_id = $2 AND department_id = $3`,
+          [value, req.params.recordId, departmentId]
+        );
+      } else {
+        await pool.query(
+          `UPDATE ${table}
+           SET custom_fields = jsonb_set(COALESCE(custom_fields, '{}'::jsonb), ARRAY[$1::text], to_jsonb($2::text), true),
+               updated_at = now()
+           WHERE source_row_id = $3 AND department_id = $4`,
+          [col, value, req.params.recordId, departmentId]
+        );
+      }
+    } catch (mirrorErr) {
+      logger.warn(`Hindi mirror file-field sync failed for dept form ${form.form_name}/${req.params.recordId}`, { err: mirrorErr.message });
+    }
+
+    return res.json({ success: true });
+  } catch (err) {
+    logger.error(`PATCH /api/department-form-data/:id/records/${req.params.recordId}/file-field`, { stack: err.stack });
+    return res.status(500).json({ success: false, message: "Failed to save file field." });
+  }
+});
+
+/* ─────────────────────────────────────────────────────────────────────
    POST /api/department-form-data/:id/records/:recordId/lock
    Acquire a pre-edit lock. Returns 200 { acquired:true } or
    409 { acquired:false, lockedByName, expiresAt } when locked by someone else.

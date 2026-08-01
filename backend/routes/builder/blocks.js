@@ -7,6 +7,7 @@
  * GET    /section/:sectionId     list blocks for a section
  * POST   /section/:sectionId     create block
  * PUT    /:id                    update block content (with locking + version snapshot)
+ * PATCH  /:id/file-field         immediate upload-time replace of one file/image field
  * DELETE /:id                    soft-delete block
  * POST   /reorder                bulk reorder blocks
  * PUT    /:id/translations/:language   upsert a block's translated content
@@ -266,6 +267,58 @@ router.put("/:id", async (req, res) => {
     return res.status(500).json({ success: false, message: "Failed to update block" });
   } finally {
     client.release();
+  }
+});
+
+/* ─── PATCH /:id/file-field — immediate upload-time replace ──────────────────
+   Called right after a successful upload for an IMAGE/IMAGE_GRID/FILE block's
+   file reference — deliberately NOT part of the deferred "Save Changes" flow
+   (PUT /:id above). Block edits are held in local UI state and only PUT to
+   the server on Save, but uploads write to disk immediately; replacing an
+   upload before ever saving orphaned the old file with no DB trace of it.
+   This persists just the one file field the moment it's uploaded — reading
+   the old value and writing the new one in a single statement (no separate
+   read-then-write race) — and deletes the old file if superseded, regardless
+   of whether the surrounding block content has ever been explicitly saved. */
+const FILE_FIELD_PATH_RE = /^(url|fileName|name)$|^cols\.[0-9]+\.(url|fileName)$/;
+
+router.patch("/:id/file-field", async (req, res) => {
+  const pool = req.app.locals.pool;
+  try {
+    const { id } = req.params;
+    const { path, value } = req.body;
+    if (!isUUID(id)) return res.status(400).json({ success: false, message: "Invalid block id" });
+    if (typeof path !== "string" || !FILE_FIELD_PATH_RE.test(path))
+      return res.status(400).json({ success: false, message: "Invalid field path" });
+    if (typeof value !== "string")
+      return res.status(400).json({ success: false, message: "value must be a string" });
+
+    const pathArr = path.split(".");
+
+    const { rows } = await pool.query(
+      `WITH old AS (
+         SELECT content #>> $2::text[] AS old_value
+         FROM public.section_blocks WHERE id = $1 AND deleted_at IS NULL
+       )
+       UPDATE public.section_blocks
+       SET content = jsonb_set(content, $2::text[], to_jsonb($3::text), true),
+           updated_by = $4
+       WHERE id = $1 AND deleted_at IS NULL
+       RETURNING content, (SELECT old_value FROM old) AS old_value`,
+      [id, pathArr, value, req.user.userId]
+    );
+    if (!rows.length) return res.status(404).json({ success: false, message: "Block not found" });
+
+    const { old_value: oldValue } = rows[0];
+    if (oldValue && oldValue !== value) {
+      const [oldKey] = extractUploadKeys(oldValue);
+      if (oldKey) await deleteFile(oldKey).catch(() => {});
+    }
+
+    return res.json({ success: true, data: rows[0].content });
+  } catch (err) {
+    logger.error("builder/blocks PATCH /:id/file-field", { ...getLogContext(req), err: err.message });
+    return res.status(500).json({ success: false, message: "Failed to save file field" });
   }
 });
 
