@@ -65,7 +65,13 @@ const isValidRecordsTable = name =>
   /^[a-z][a-z0-9_]*_records$/.test(name) || /^dept_form_[a-z0-9_]+$/.test(name);
 
 // Columns always excluded from user-facing display
-const EXCLUDED_COLS = new Set(["language", "source_row_id"]);
+const EXCLUDED_COLS = new Set(["language", "source_row_id", "updated_by"]);
+
+// Field types excluded from the form→TABLE-block import pipeline (column picker,
+// preview, import, refetch, switch-language). Document/file fields have no meaningful
+// representation as a table cell (raw storage key, not a usable value) and are handled
+// by the dedicated FILE/IMAGE block types instead. Scoped to this file only.
+const EXCLUDED_FIELD_TYPES = new Set(["document"]);
 
 // Fixed system columns shared by every _records table (when present)
 const SYSTEM_COLS = [
@@ -180,12 +186,17 @@ async function getPhysicalCols(pool, tableName) {
 // are fields added after form creation that are stored in the JSONB column.
 function validateColumns(requested, physicalCols, schemaFields = []) {
   const schemaColSet = new Set((schemaFields || []).map(f => f.column_name));
+  const excludedTypeColSet = new Set(
+    (schemaFields || []).filter(f => EXCLUDED_FIELD_TYPES.has(f.type)).map(f => f.column_name)
+  );
   const hasCustomFields = physicalCols.has("custom_fields");
   const systemCols = new Set(["department_id", "created_by", "created_at", "year"]);
   return requested.filter(c =>
-    systemCols.has(c) ||
-    physicalCols.has(c) ||
-    (hasCustomFields && schemaColSet.has(c))
+    !excludedTypeColSet.has(c) &&
+    !EXCLUDED_COLS.has(c) &&
+    (systemCols.has(c) ||
+     physicalCols.has(c) ||
+     (hasCustomFields && schemaColSet.has(c)))
   );
 }
 
@@ -254,6 +265,7 @@ router.get("/forms/:formName/columns", async (req, res) => {
       .filter(f => {
         if (!f.column_name || EXCLUDED_COLS.has(f.column_name)) return false;
         if (f.hidden) return false;
+        if (EXCLUDED_FIELD_TYPES.has(f.type)) return false;
         return dbCols.has(f.column_name) || hasCustomFields;
       })
       .map(f => ({ key: f.column_name, label: resolveFieldLabel(f, language) }));
@@ -334,7 +346,6 @@ router.post("/sections/:sectionId/blocks/table-import", async (req, res) => {
     const formName        = req.body.formName        || req.body.form_name;
     const year            = req.body.year            != null ? req.body.year : req.body.academic_year;
     const selectedColumns = req.body.selectedColumns || req.body.columns;
-    const schemaFields    = req.body.schemaFields    || req.body.schema_fields || [];
     const orderIndex      = req.body.orderIndex      != null ? req.body.orderIndex : req.body.order_index;
     const language        = req.body.language === "hi" ? "hi" : "en";
 
@@ -355,6 +366,11 @@ router.post("/sections/:sectionId/blocks/table-import", async (req, res) => {
       `SELECT id FROM public.report_sections WHERE id=$1 AND deleted_at IS NULL`, [sectionId]
     );
     if (!secRows.length) return res.status(404).json({ success: false, message: "Section not found" });
+
+    // Resolve the form schema server-side (never trust a client-supplied schemaFields body —
+    // it's also what lets validateColumns() correctly exclude document/file columns below).
+    const schemaRow    = await getActiveSchema(pool, formName, iid, year != null ? Number(year) : null);
+    const schemaFields = Array.isArray(schemaRow?.schema?.fields) ? schemaRow.schema.fields : [];
 
     const physicalCols = await getPhysicalCols(pool, tableName);
     const safeSelected = validateColumns(selectedColumns, physicalCols, schemaFields);
@@ -507,7 +523,7 @@ router.post("/blocks/:blockId/refetch", async (req, res) => {
     // same column labels that content.columns[].key was built with.  Fall back to a
     // live DB query only when not stored (e.g. old blocks imported before this fix).
     let primarySchema = Array.isArray(dsParams.schema_fields) ? dsParams.schema_fields : null;
-    if (!primarySchema) {
+    if (!primarySchema || !primarySchema.length) {
       primarySchema = [];
       if (await tableExists(pool, "custom_field_schemas")) {
         const qps = [primaryFormName, primaryIid];
