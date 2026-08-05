@@ -83,7 +83,7 @@ router.get("/section/:sectionId", async (req, res) => {
          ORDER BY d.name`, [sectionId]
       ),
       pool.query(
-        `SELECT swa.id, swa.role_name, swa.due_at, swa.assigned_at
+        `SELECT swa.id, swa.role_name, swa.department_id, swa.due_at, swa.assigned_at
          FROM public.section_workflow_assignments swa
          WHERE swa.section_id = $1
            AND swa.assignee_type = 'ROLE'

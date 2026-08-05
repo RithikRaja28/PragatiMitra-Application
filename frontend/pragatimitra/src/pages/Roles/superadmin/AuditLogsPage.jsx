@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useCallback } from "react";
+import ReactDOM from "react-dom";
 import { User, Building, Landmark, Shield, FileText, Lock } from "lucide-react";
 import { useAuth } from "../../../store/AuthContext";
 import { PageContainer, PageHeader, Toolbar, SearchInput, FilterChip, Button, Card, EmptyState, ErrorState } from "../../../ui";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { t } from "../../../i18n/translations";
 import api from "../../../services/api";
+import { useShell } from "../../../components/Dashboard/shellContext";
 
 /* ═══════════════════════════════════════════════════════════════
    NAVIGATION CONFIG — category groups + per-entity chips
@@ -614,7 +616,14 @@ function FieldDiffDetail({ log }) {
 ═══════════════════════════════════════════════════════════════ */
 function AuditDetailModal({ log, onClose }) {
   const { lang } = useLanguage();
+  const { collapsed } = useShell();
   if (!log) return null;
+
+  // Lock body scroll while modal is open
+  useEffect(() => {
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = ""; };
+  }, []);
 
   const typeMeta = TYPE_META[log.entity_type] || { label: log.entity_type, bg: "#f1f5f9", color: "#64748b" };
   const EntIcon  = ENTITY_ICON[log.entity_type] || FileText;
@@ -642,9 +651,9 @@ function AuditDetailModal({ log, onClose }) {
     }
   }
 
-  return (
+  const modal = (
     <div
-      style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}
+      style={{ position: "fixed", top: "var(--sh-topbar-h, 64px)", left: collapsed ? "var(--sh-side-col, 64px)" : "var(--sh-side-open, 280px)", width: collapsed ? "calc(100vw - var(--sh-side-col, 64px))" : "calc(100vw - var(--sh-side-open, 280px))", height: "calc(100vh - var(--sh-topbar-h, 64px))", background: "rgba(0,0,0,0.45)", zIndex: 99999, display: "flex", alignItems: "center", justifyContent: "center", padding: 24, boxSizing: "border-box", transition: "left var(--sh-ease, 0.22s ease), width var(--sh-ease, 0.22s ease)" }}
       onClick={onClose}
     >
       <div
@@ -705,6 +714,9 @@ function AuditDetailModal({ log, onClose }) {
       </div>
     </div>
   );
+
+  // Portal to document.body so position:fixed is always relative to the viewport
+  return ReactDOM.createPortal(modal, document.body);
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -894,7 +906,7 @@ export default function AuditLogsPage() {
               {/* Actor */}
               <div>
                 <div style={{ fontSize: 13, fontWeight: 600, color: "#1e293b" }}>{log.actor_name || "System"}</div>
-                {log.actor_email && <div style={{ fontSize: 11, color: "#94a3b8" }}>{log.actor_email.split("@")[0]}</div>}
+                {log.actor_email && <div style={{ fontSize: 11, color: "#94a3b8" }}>{log.actor_email}</div>}
               </div>
 
               {/* Message */}

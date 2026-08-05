@@ -18,7 +18,7 @@ const https   = require("https");
 
 const { verifyToken, requireRole } = require("../../middleware/auth");
 const { writeAuditLog }            = require("../../utils/audit");
-const { uploadBuffer, getReadUrl, deleteFile: deleteS3File } = require("../../utils/s3");
+const { UPLOAD_ROOT, instituteDir, reportDir, resolveSafePath } = require("../../utils/localStorage");
 const logger                       = require("../../utils/logger");
 const { getLogContext }            = logger;
 const { translateSentence }        = require("../../services/translationService");
@@ -29,9 +29,34 @@ router.use(verifyToken);
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const isUUID  = v => typeof v === "string" && UUID_RE.test(v);
 
-const EXPORTS_DIR  = path.join(__dirname, "../../exports");
-const BACKEND_ROOT = path.join(__dirname, "../../");
-if (!fs.existsSync(EXPORTS_DIR)) fs.mkdirSync(EXPORTS_DIR, { recursive: true });
+/* Loads a report's title + institution_id and enforces the same tenant
+   isolation rule used elsewhere (e.g. resolveReportScope in upload.js):
+   super_admin may access any report, everyone else only their own
+   institution's. Returns null for both "not found" and "not authorized" —
+   callers respond 404 either way so the two cases aren't distinguishable. */
+async function loadReportForAccess(pool, req, reportId) {
+  const { rows } = await pool.query(
+    `SELECT id, title, institution_id FROM public.reports WHERE id = $1 AND deleted_at IS NULL`,
+    [reportId]
+  );
+  if (!rows.length) return null;
+  const report = rows[0];
+  const roles  = req.user.roles || [];
+  if (!roles.includes("super_admin") && String(report.institution_id) !== String(req.user.institutionId)) {
+    return null;
+  }
+  return report;
+}
+
+/* Generated reports live under uploads/[institute]/reports/[report]/generated/<fmt>/
+   — private (never statically mounted; only reachable via the authenticated
+   download route below), split by format for a clean, browsable disk layout. */
+function generatedDirFor(institutionName, institutionId, reportTitle, reportId, fmt) {
+  const dir = path.join(UPLOAD_ROOT, instituteDir(institutionName, institutionId),
+    "reports", reportDir(reportTitle, reportId), "generated", fmt.toLowerCase());
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
 
 /* ─── Colors — exact match to wordDocUtils.jsx ───────────────────────────── */
 const C = {
@@ -102,11 +127,23 @@ function decodeEntities(s) {
     .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, " ");
 }
 
+/* Extracts the raw storage key if `url` points at our own /uploads/ tree —
+   whether given as a bare path or a full absolute URL back to this same host
+   (the actual format /api/upload/image returns) — so it can be read straight
+   off disk via the traversal-safe resolver instead of round-tripping over
+   HTTP to ourselves. Returns null for anything else (a genuinely external
+   URL), which falls through to the network fetch below. */
+function localUploadKey(url) {
+  const match = url.match(/\/uploads\/(.+)$/);
+  return match ? match[1] : null;
+}
+
 async function fetchImageBuffer(url) {
   if (!url) return null;
   try {
-    if (url.startsWith("/uploads/")) {
-      const p = path.join(BACKEND_ROOT, url);
+    const key = localUploadKey(url);
+    if (key) {
+      const p = resolveSafePath(key);
       return fs.existsSync(p) ? fs.readFileSync(p) : null;
     }
     if (!url.startsWith("http")) return null;
@@ -155,11 +192,8 @@ router.get("/report/:reportId/status", async (req, res) => {
     const { reportId } = req.params;
     if (!isUUID(reportId)) return res.status(400).json({ success: false, message: "Invalid report id" });
 
-    const reportRes = await pool.query(
-      `SELECT title FROM public.reports WHERE id = $1 AND deleted_at IS NULL`,
-      [reportId]
-    );
-    if (!reportRes.rows.length) return res.status(404).json({ success: false, message: "Report not found" });
+    const report = await loadReportForAccess(pool, req, reportId);
+    if (!report) return res.status(404).json({ success: false, message: "Report not found" });
 
     const sectRes = await pool.query(
       `SELECT s.id, s.title, s.status, s.parent_id, s.order_index, p.title AS parent_title
@@ -177,7 +211,7 @@ router.get("/report/:reportId/status", async (req, res) => {
     return res.json({
       success: true,
       data: {
-        report_title:       reportRes.rows[0].title,
+        report_title:       report.title,
         can_compile:        notReady.length === 0 && all.length > 0,
         total_count:        all.length,
         ready_count:        ready.length,
@@ -227,6 +261,11 @@ router.post(
       );
       if (!reportRes.rows.length) return res.status(404).json({ success: false, message: "Report not found" });
       const report = reportRes.rows[0];
+
+      const roles = req.user.roles || [];
+      if (!roles.includes("super_admin") && String(report.institution_id) !== String(req.user.institutionId)) {
+        return res.status(404).json({ success: false, message: "Report not found" });
+      }
 
       // Pre-compile readiness check
       if (approved_only) {
@@ -294,7 +333,10 @@ router.post(
       const safeName = report.title.replace(/[^a-zA-Z0-9]/g, "_").slice(0, 60);
       const ext      = fmt === "DOCX" ? "docx" : "pdf";
       const fileName = `${safeName}_${ts}.${ext}`;
-      const outPath  = path.join(EXPORTS_DIR, fileName);
+      const outPath  = path.join(
+        generatedDirFor(report.institution_name, report.institution_id, report.title, report.id, fmt),
+        fileName
+      );
 
       let fileSize = 0;
       if (fmt === "DOCX") {
@@ -303,29 +345,12 @@ router.post(
         fileSize = await generatePdf(report, sections, outPath, opts);
       }
 
-      // Upload to S3 (compiled-reports folder) — fall back to local file on S3 failure
-      const mimeType = fmt === "DOCX"
-        ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        : "application/pdf";
-      const s3Key = `compiled-reports/${reportId}/${fileName}`;
-      let storePath = outPath;
-      let storeOpts = opts;
-      try {
-        const buffer = fs.readFileSync(outPath);
-        await uploadBuffer(s3Key, buffer, mimeType);
-        storeOpts = { ...opts, s3_key: s3Key };
-        storePath = s3Key;
-        fs.unlink(outPath, () => {}); // clean up local file after successful S3 upload
-      } catch (s3Err) {
-        logger.warn("compile: S3 upload failed, keeping local file", { err: s3Err.message });
-      }
-
       const { rows: compRows } = await pool.query(
         `INSERT INTO public.compiled_reports
            (report_id, language, format, storage_path, file_size, compile_options, included_sections, compiled_by)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
-        [reportId, language, fmt, storePath, fileSize,
-         JSON.stringify(storeOpts), sections.map(s => s.id), req.user.userId]
+        [reportId, language, fmt, outPath, fileSize,
+         JSON.stringify(opts), sections.map(s => s.id), req.user.userId]
       );
 
       await writeAuditLog(req, {
@@ -353,6 +378,10 @@ router.get("/report/:reportId/history", async (req, res) => {
   try {
     const { reportId } = req.params;
     if (!isUUID(reportId)) return res.status(400).json({ success: false, message: "Invalid report id" });
+
+    const report = await loadReportForAccess(pool, req, reportId);
+    if (!report) return res.status(404).json({ success: false, message: "Report not found" });
+
     const { rows } = await pool.query(
       `SELECT cr.*, u.full_name AS compiled_by_name
        FROM public.compiled_reports cr
@@ -373,21 +402,19 @@ router.get("/report/:reportId/:compileId/download", async (req, res) => {
   const pool = req.app.locals.pool;
   try {
     const { reportId, compileId } = req.params;
+    if (!isUUID(reportId) || !isUUID(compileId))
+      return res.status(400).json({ success: false, message: "Invalid id" });
+
+    const report = await loadReportForAccess(pool, req, reportId);
+    if (!report) return res.status(404).json({ success: false, message: "Artifact not found" });
+
     const { rows } = await pool.query(
       `SELECT * FROM public.compiled_reports WHERE id = $1 AND report_id = $2`,
       [compileId, reportId]
     );
     if (!rows.length) return res.status(404).json({ success: false, message: "Artifact not found" });
     const artifact = rows[0];
-    const s3Key    = artifact.compile_options?.s3_key;
 
-    // S3-stored file: redirect to presigned URL (1-hour window)
-    if (s3Key) {
-      const url = await getReadUrl(s3Key, 3600);
-      return res.redirect(url);
-    }
-
-    // Fallback: stream from local disk (legacy records created before S3 integration)
     if (!fs.existsSync(artifact.storage_path))
       return res.status(404).json({ success: false, message: "File not found on server" });
     const mimeMap = {
@@ -413,20 +440,20 @@ router.delete(
     const pool = req.app.locals.pool;
     try {
       const { reportId, compileId } = req.params;
+      if (!isUUID(reportId) || !isUUID(compileId))
+        return res.status(400).json({ success: false, message: "Invalid id" });
+
+      const report = await loadReportForAccess(pool, req, reportId);
+      if (!report) return res.status(404).json({ success: false, message: "Compiled report not found" });
+
       const { rows } = await pool.query(
         `SELECT * FROM public.compiled_reports WHERE id = $1 AND report_id = $2`,
         [compileId, reportId]
       );
       if (!rows.length) return res.status(404).json({ success: false, message: "Compiled report not found" });
       const artifact = rows[0];
-      const s3Key    = artifact.compile_options?.s3_key;
 
-      // Remove from S3 if stored there
-      if (s3Key) {
-        await deleteS3File(s3Key).catch((e) =>
-          logger.warn("compile DELETE: S3 delete failed (continuing)", { key: s3Key, err: e.message })
-        );
-      } else if (artifact.storage_path && fs.existsSync(artifact.storage_path)) {
+      if (artifact.storage_path && fs.existsSync(artifact.storage_path)) {
         fs.unlink(artifact.storage_path, () => {});
       }
 

@@ -17,6 +17,7 @@ const logger = require("../utils/logger");
 const {
   resolveDeptContext, ensureDeptYearRow, pgType, slugify,
   deptRecordsTable, collectColumnNames, buildDeptRecordsTableDDL, quoteIdent,
+  getReservedFieldCollisions,
 } = require("../services/departmentFormService");
 const { resolveOperatingYear } = require("../services/academicYearService");
 const { assertEquivalent } = require("../services/equivalenceGuard");
@@ -477,6 +478,10 @@ router.post("/", requireRole(WRITE_ROLES), requireActiveDepartment, async (req, 
   if (!schema || typeof schema !== "object")
     return res.status(400).json({ success: false, message: "schema is required." });
 
+  const reservedCollisions = getReservedFieldCollisions(schema.fields);
+  if (reservedCollisions.length > 0)
+    return res.status(400).json({ success: false, message: `Column name(s) are reserved and cannot be used: ${reservedCollisions.join(", ")}. Please rename this field.` });
+
   const slug = slugify(form_name);
   if (!/^[a-z][a-z0-9_]*$/.test(slug))
     return res.status(400).json({ success: false, message: "form_name must start with a letter and contain only letters, digits, and underscores." });
@@ -668,6 +673,10 @@ router.put("/:id/schema", requireRole(WRITE_ROLES), requireActiveDepartment, asy
   const pool = req.app.locals.pool;
   const { schema } = req.body;
   if (!schema) return res.status(400).json({ success: false, message: "schema is required." });
+
+  const reservedCollisions = getReservedFieldCollisions(schema.fields);
+  if (reservedCollisions.length > 0)
+    return res.status(400).json({ success: false, message: `Column name(s) are reserved and cannot be used: ${reservedCollisions.join(", ")}. Please rename this field.` });
 
   const year = resolveYear(req);
 

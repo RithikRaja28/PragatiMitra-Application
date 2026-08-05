@@ -1,10 +1,10 @@
 "use strict";
 
-const express                      = require("express");
+const express = require("express");
 const { verifyToken, requireRole } = require("../middleware/auth");
-const { writeAuditLog }            = require("../utils/audit");
-const logger                       = require("../utils/logger");
-const { getLogContext }            = logger;
+const { writeAuditLog } = require("../utils/audit");
+const logger = require("../utils/logger");
+const { getLogContext } = logger;
 
 const router = express.Router();
 
@@ -15,25 +15,25 @@ const router = express.Router();
 
 /* ── GET /api/notification-templates/inbox ── */
 router.get("/inbox", verifyToken, async (req, res) => {
-  const pool   = req.app.locals.pool;
+  const pool = req.app.locals.pool;
   const userId = req.user.userId;
   try {
     const { rows } = await pool.query(
       `SELECT * FROM (
          (SELECT id, type, title, body, entity_type, entity_id,
-                 (read_at IS NULL) AS is_unread, read_at, created_at
+                 (read_at IS NOT NULL) AS is_read, read_at, created_at
           FROM public.notifications
           WHERE user_id = $1 AND read_at IS NULL
           ORDER BY created_at DESC)
          UNION ALL
          (SELECT id, type, title, body, entity_type, entity_id,
-                 (read_at IS NULL) AS is_unread, read_at, created_at
+                 (read_at IS NOT NULL) AS is_read, read_at, created_at
           FROM public.notifications
           WHERE user_id = $1 AND read_at IS NOT NULL
           ORDER BY created_at DESC
           LIMIT 3)
        ) n
-       ORDER BY is_unread DESC, created_at DESC`,
+       ORDER BY is_read ASC, created_at DESC`,
       [userId]
     );
     return res.json({ success: true, notifications: rows });
@@ -45,7 +45,7 @@ router.get("/inbox", verifyToken, async (req, res) => {
 
 /* ── GET /api/notification-templates/inbox/unread ── */
 router.get("/inbox/unread", verifyToken, async (req, res) => {
-  const pool   = req.app.locals.pool;
+  const pool = req.app.locals.pool;
   const userId = req.user.userId;
   try {
     const { rows } = await pool.query(
@@ -62,7 +62,7 @@ router.get("/inbox/unread", verifyToken, async (req, res) => {
 
 /* ── PUT /api/notification-templates/inbox/read-all ── */
 router.put("/inbox/read-all", verifyToken, async (req, res) => {
-  const pool   = req.app.locals.pool;
+  const pool = req.app.locals.pool;
   const userId = req.user.userId;
   try {
     await pool.query(
@@ -78,7 +78,7 @@ router.put("/inbox/read-all", verifyToken, async (req, res) => {
 
 /* ── PUT /api/notification-templates/inbox/:id/read ── */
 router.put("/inbox/:id/read", verifyToken, async (req, res) => {
-  const pool   = req.app.locals.pool;
+  const pool = req.app.locals.pool;
   const userId = req.user.userId;
   const { id } = req.params;
 
@@ -160,7 +160,7 @@ router.put(
                    email_subject, email_body, app_message, updated_at`,
         [
           email_enabled ?? existing[0].email_enabled,
-          app_enabled   ?? existing[0].app_enabled,
+          app_enabled ?? existing[0].app_enabled,
           email_subject.trim(),
           email_body.trim(),
           app_message?.trim() ?? "",
@@ -172,11 +172,11 @@ router.put(
       await writeAuditLog(req, {
         actionType: "NOTIFICATION_TEMPLATE_UPDATED",
         entityType: "NOTIFICATION_TEMPLATE",
-        entityId:   event_id,
-        oldValue:   existing[0],
-        newValue:   rows[0],
-        status:     "SUCCESS",
-        message:    `Notification template "${rows[0].label}" updated`,
+        entityId: event_id,
+        oldValue: existing[0],
+        newValue: rows[0],
+        status: "SUCCESS",
+        message: `Notification template "${rows[0].label}" updated`,
       });
 
       return res.json({ success: true, template: rows[0] });

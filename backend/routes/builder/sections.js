@@ -64,13 +64,17 @@ router.get("/review-queue", async (req, res) => {
        JOIN public.reports r ON r.id = s.report_id AND r.deleted_at IS NULL
        LEFT JOIN public.workflow_steps ws ON ws.id = s.current_step_id
        LEFT JOIN public.users u ON u.id = s.updated_by
+       LEFT JOIN public.users u_caller ON u_caller.id = $2
        WHERE s.status IN ('SUBMITTED','UNDER_REVIEW')
          AND s.deleted_at IS NULL
          AND ($1::uuid IS NULL OR r.institution_id = $1)
          AND (
            /* Step explicitly designates this user or their role */
            ws.approver_user_id = $2
-           OR ws.approver_role = ANY($3::text[])
+           OR (
+               ws.approver_role = ANY($3::text[])
+               AND (ws.approver_department_id IS NULL OR ws.approver_department_id = u_caller.department_id)
+           )
            /* Admins see stepless sections as fallback oversight — NOT director-approval ones */
            OR ($4 AND s.current_step_id IS NULL AND NOT COALESCE(s.needs_director_approval, FALSE))
            /* Directors office see all sections pending their final approval */
@@ -142,8 +146,10 @@ router.get("/assigned", async (req, res) => {
        JOIN public.reports r         ON r.id = s.report_id    AND r.deleted_at IS NULL
        JOIN public.user_roles ur     ON ur.user_id = $1 AND ur.revoked_at IS NULL
        JOIN public.roles ro          ON ro.id = ur.role_id AND ro.name = swa.role_name
+       JOIN public.users u           ON u.id = $1
        WHERE swa.assignee_type = 'ROLE'
          AND swa.workflow_step_id IS NULL
+         AND (swa.department_id IS NULL OR swa.department_id = u.department_id)
          AND NOT EXISTS (
            SELECT 1 FROM public.section_assignments sa2
            WHERE sa2.section_id = swa.section_id AND sa2.user_id = $1
@@ -293,10 +299,24 @@ router.get("/dept-users", requireRole(["department_admin"]), async (req, res) =>
     if (!deptId) return res.json({ success: true, data: [] });
 
     const { rows } = await pool.query(`
-      SELECT id, full_name, email
-      FROM public.users
-      WHERE department_id = $1 AND account_status = 'ACTIVE' AND id != $2
-      ORDER BY full_name
+      SELECT u.id, u.full_name, u.email
+      FROM public.users u
+      WHERE u.department_id = $1 
+        AND u.account_status = 'ACTIVE' 
+        AND u.id != $2
+        AND NOT (
+          EXISTS (
+            SELECT 1 FROM public.user_roles ur 
+            JOIN public.roles r ON r.id = ur.role_id 
+            WHERE ur.user_id = u.id AND r.name = 'pg_student' AND ur.revoked_at IS NULL
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM public.user_roles ur 
+            JOIN public.roles r ON r.id = ur.role_id 
+            WHERE ur.user_id = u.id AND r.name = 'contributor' AND ur.revoked_at IS NULL
+          )
+        )
+      ORDER BY u.full_name
     `, [deptId, req.user.userId]);
     return res.json({ success: true, data: rows });
   } catch (err) {
@@ -380,16 +400,18 @@ router.patch("/:id/dept-delegate", requireRole(["department_admin"]), async (req
 router.post("/", async (req, res) => {
   const pool = req.app.locals.pool;
   try {
-    const { report_id, parent_id, title, description, order_index, title_translations } = req.body;
+    const { report_id, parent_id, title, description, order_index, title_translations, workflow_template_id } = req.body;
     if (!isUUID(report_id)) return res.status(400).json({ success: false, message: "report_id (UUID) required" });
     if (!title?.trim())     return res.status(400).json({ success: false, message: "title required" });
 
-    // Verify report exists
+    // Verify report exists and get default workflow if needed
     const { rows: rr } = await pool.query(
-      `SELECT id FROM public.reports WHERE id = $1 AND deleted_at IS NULL`,
+      `SELECT id, default_workflow_id FROM public.reports WHERE id = $1 AND deleted_at IS NULL`,
       [report_id]
     );
     if (!rr.length) return res.status(404).json({ success: false, message: "Report not found" });
+
+    let finalWfId = workflow_template_id || rr[0].default_workflow_id || null;
 
     if (parent_id && !isUUID(parent_id))
       return res.status(400).json({ success: false, message: "parent_id must be a UUID" });
@@ -409,10 +431,10 @@ router.post("/", async (req, res) => {
 
     const { rows } = await pool.query(
       `INSERT INTO public.report_sections
-         (report_id, parent_id, title, description, order_index, created_by, updated_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$6)
+         (report_id, parent_id, title, description, order_index, workflow_template_id, created_by, updated_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$7)
        RETURNING *`,
-      [report_id, parent_id || null, title.trim(), description || null, oi, req.user.userId]
+      [report_id, parent_id || null, title.trim(), description || null, oi, finalWfId, req.user.userId]
     );
     const section = rows[0];
 

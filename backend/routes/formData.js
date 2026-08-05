@@ -13,6 +13,7 @@ const { assertFormDomainAccess } = require("../services/domainService");
 const { resolveEffectiveDepartment, getDepartmentWriteBlock } = require("../services/departmentContext");
 const { ensureSchemaExists } = require("../services/schemaPropagationService");
 const { isFormAssigned, isContributorOnly, isPgStudentOnly } = require("./formAssignments");
+const { extractUploadKeys, deleteFile, decodeFileTokenWithoutVerification, signReadUrl } = require("../utils/localStorage");
 const LOCK_TTL_MINUTES = 15;
 async function acquireLock(pool, { recordId, formType, formId, userId, userName, ttlMinutes = LOCK_TTL_MINUTES }) {
   const { rowCount } = await pool.query(
@@ -217,6 +218,15 @@ function dbCol(col) {
    - institute_admin → departmentId = null  (sees ALL dept records)
    - department_admin → departmentId = theirs (sees ONLY their dept)
    - super_admin     → reads from body/query
+
+   "department_admin" as a returned `role` value means "department-scoped",
+   not literally the department_admin DB role — nodal officers (via their NOA
+   capability), plain contributors, and PG students all get the identical
+   treatment (scoped to their own department, not the whole institute), same
+   as departmentFormData.js's loadForm() already does for pg_student. Every
+   call site below only branches on `ctx.role === "department_admin"` to
+   decide whether to apply the departmentId filter, so reusing this label
+   keeps all of them correct without touching each one individually.
 ════════════════════════════════════════════════════════════════════ */
 async function resolveUserContext(pool, req) {
   const roles = req.user.roles || [];
@@ -230,7 +240,8 @@ async function resolveUserContext(pool, req) {
     };
   }
 
-  const isDeptAdmin = roles.includes("department_admin") || roles.includes("nodal_officer");
+  const isDeptScoped = roles.includes("department_admin") || roles.includes("nodal_officer")
+    || isContributorOnly(req) || isPgStudentOnly(req);
 
   // EFFECTIVE (nodal-aware) institution + department — a Nodal Officer scopes to
   // their NODAL department, not their home department (Bug 4). Read via the single
@@ -239,8 +250,8 @@ async function resolveUserContext(pool, req) {
 
   return {
     institutionId: institutionId || null,
-    departmentId:  isDeptAdmin ? (departmentId || null) : null,
-    role: isDeptAdmin ? "department_admin" : "institute_admin",
+    departmentId:  isDeptScoped ? (departmentId || null) : null,
+    role: isDeptScoped ? "department_admin" : "institute_admin",
   };
 }
 
@@ -837,6 +848,17 @@ router.post("/:formName/records", async (req, res) => {
     if (archiveBlock.blocked)
       return res.status(403).json({ success: false, message: archiveBlock.message });
 
+    for (const f of fields) {
+      const col = dbCol(f.column_name);
+      if (f.type === "document" && typeof data[col] === "string") {
+        const match = data[col].match(/\/api\/file\/(.+)$/);
+        if (match) {
+          const key = decodeFileTokenWithoutVerification(match[1]);
+          if (key) data[col] = key;
+        }
+      }
+    }
+
     /* Split schema fields: those with a physical column go to real DB columns;
        extra fields (added after creation via schema edit in a new year) are
        stored in the custom_fields JSONB column — no ALTER TABLE ever runs. */
@@ -997,7 +1019,7 @@ router.put("/:formName/records/:id", async (req, res) => {
        A 2023 record must be validated/saved against the 2023 schema (a,b,c),
        not the latest schema (which may be 2024: a,b,c,d). */
     const { rows: targetRows } = await pool.query(
-      `SELECT language, year, updated_at FROM ${formName}_records WHERE id = $1 AND institution_id = $2`,
+      `SELECT * FROM ${formName}_records WHERE id = $1 AND institution_id = $2`,
       [id, ctx.institutionId]
     );
     if (!targetRows.length)
@@ -1022,6 +1044,17 @@ router.put("/:formName/records/:id", async (req, res) => {
     const fields    = activeFields(schema);
     const fieldCols = fields.map((f) => dbCol(f.column_name));
     const fieldModes = buildFieldModes(fields);
+
+    for (const f of fields) {
+      const col = dbCol(f.column_name);
+      if (f.type === "document" && typeof data[col] === "string") {
+        const match = data[col].match(/\/api\/file\/(.+)$/);
+        if (match) {
+          const key = decodeFileTokenWithoutVerification(match[1]);
+          if (key) data[col] = key;
+        }
+      }
+    }
 
     /* Split fields: base fields (physical columns) vs extra fields (JSONB). */
     const physicalCols   = await getPhysicalCols(pool, `${formName}_records`);
@@ -1087,6 +1120,14 @@ router.put("/:formName/records/:id", async (req, res) => {
       if (still.length)
         return res.status(403).json({ success: false, message: "You do not have permission to edit this record." });
       return res.status(404).json({ success: false, message: "Record not found." });
+    }
+
+    // Clean up replaced files
+    const oldKeys = extractUploadKeys(targetRows[0]);
+    const newKeys = extractUploadKeys(data);
+    const toDelete = oldKeys.filter(k => !newKeys.includes(k));
+    for (const key of toDelete) {
+      await deleteFile(key).catch(() => {});
     }
 
     await writeAuditLog(req, {
@@ -1158,6 +1199,140 @@ router.put("/:formName/records/:id", async (req, res) => {
   } catch (err) {
     logger.error(`PUT /api/form-data/${formName}/records/${id}`, { stack: err.stack });
     return res.status(500).json({ success: false, message: "Failed to update record." });
+  }
+});
+
+/* ─────────────────────────────────────────────────────────────────────
+   PATCH /api/form-data/:formName/records/:id/file-field
+   Body: { column, value }
+   Mirrors blocks.js's PATCH .../file-field for reports: called right after
+   a successful document/image upload for one existing record's document
+   field, independent of that record's own Save/Submit. Reads the old value
+   and writes the new one in a single atomic statement, then deletes the old
+   file if superseded — regardless of whether the record edit has been
+   submitted yet. Only ever touches a column the record's own active schema
+   actually declares as a "document" field — never an arbitrary client-
+   supplied column name. Also syncs the record's Hindi mirror row (if one
+   exists) to the same value, since a file reference isn't translated —
+   it's the same physical file for both language rows.
+───────────────────────────────────────────────────────────────────────── */
+router.patch("/:formName/records/:id/file-field", async (req, res) => {
+  const pool = req.app.locals.pool;
+  const { formName, id } = req.params;
+  const { column, value } = req.body;
+
+  if (!validateFormName(formName))
+    return res.status(400).json({ success: false, message: "Invalid form name." });
+  if (typeof value !== "string")
+    return res.status(400).json({ success: false, message: "value must be a string." });
+
+  try {
+    const ctx = await resolveUserContext(pool, req);
+    if (!ctx.institutionId)
+      return res.status(400).json({ success: false, message: "Institution ID required." });
+
+    const deptBlock = await getDepartmentWriteBlock(pool, { departmentId: ctx.departmentId, roles: req.user.roles });
+    if (deptBlock.blocked)
+      return res.status(403).json({ success: false, message: deptBlock.message });
+
+    const lockBlock = await getLockBlock(pool, formName, ctx.institutionId, lockYearForReq(req));
+    if (lockBlock.locked)
+      return res.status(403).json({ success: false, message: lockBlock.message });
+
+    const { rows: targetRows } = await pool.query(
+      `SELECT * FROM ${formName}_records WHERE id = $1 AND institution_id = $2`,
+      [id, ctx.institutionId]
+    );
+    if (!targetRows.length)
+      return res.status(404).json({ success: false, message: "Record not found." });
+
+    if (ctx.role === "department_admin" && ctx.departmentId) {
+      const rowDept = targetRows[0].department_id;
+      if (rowDept && rowDept !== ctx.departmentId)
+        return res.status(404).json({ success: false, message: "Record not found." });
+    }
+
+    const recordYear = targetRows[0].year != null ? Number(targetRows[0].year) : null;
+    const schema = await getActiveSchema(pool, formName, ctx.institutionId, recordYear);
+    if (!schema) return res.status(404).json({ success: false, message: "No active schema found." });
+
+    const ayLock = await getAcademicYearLockBlockForReq(pool, req, ctx.institutionId, recordYear ?? schema.year);
+    if (ayLock.locked)
+      return res.status(403).json({ success: false, message: ayLock.message });
+
+    const archiveBlock = await getFormArchiveBlockForReq(pool, req, ctx.institutionId, formName, recordYear ?? schema.year);
+    if (archiveBlock.blocked)
+      return res.status(403).json({ success: false, message: archiveBlock.message });
+
+    const recYearBlock = await getYearWriteBlock(pool, formName, ctx.institutionId, recordYear);
+    if (recYearBlock.blocked)
+      return res.status(403).json({ success: false, message: recYearBlock.message });
+
+    const col = dbCol(String(column || ""));
+    const field = activeFields(schema).find(f => dbCol(f.column_name) === col && f.type === "document");
+    if (!field)
+      return res.status(400).json({ success: false, message: "Not a document field on this form." });
+
+    const physicalCols = await getPhysicalCols(pool, `${formName}_records`);
+    let oldValue;
+
+    if (physicalCols.has(col)) {
+      const { rows } = await pool.query(
+        `WITH old AS (
+           SELECT ${col} AS old_value FROM ${formName}_records WHERE id = $1 AND institution_id = $2
+         )
+         UPDATE ${formName}_records SET ${col} = $3, updated_at = now()
+         WHERE id = $1 AND institution_id = $2
+         RETURNING (SELECT old_value FROM old) AS old_value`,
+        [id, ctx.institutionId, value]
+      );
+      oldValue = rows[0]?.old_value;
+    } else {
+      const { rows } = await pool.query(
+        `WITH old AS (
+           SELECT custom_fields ->> $3 AS old_value FROM ${formName}_records WHERE id = $1 AND institution_id = $2
+         )
+         UPDATE ${formName}_records
+         SET custom_fields = jsonb_set(COALESCE(custom_fields, '{}'::jsonb), ARRAY[$3::text], to_jsonb($4::text), true),
+             updated_at = now()
+         WHERE id = $1 AND institution_id = $2
+         RETURNING (SELECT old_value FROM old) AS old_value`,
+        [id, ctx.institutionId, col, value]
+      );
+      oldValue = rows[0]?.old_value;
+    }
+
+    if (oldValue && oldValue !== value) {
+      const [oldKey] = extractUploadKeys(oldValue);
+      if (oldKey) await deleteFile(oldKey).catch(() => {});
+    }
+
+    // Sync the Hindi mirror row to the same file reference, if one exists —
+    // best-effort, never blocks the response on failure.
+    try {
+      if (physicalCols.has(col)) {
+        await pool.query(
+          `UPDATE ${formName}_records SET ${col} = $1, updated_at = now()
+           WHERE source_row_id = $2 AND institution_id = $3`,
+          [value, id, ctx.institutionId]
+        );
+      } else {
+        await pool.query(
+          `UPDATE ${formName}_records
+           SET custom_fields = jsonb_set(COALESCE(custom_fields, '{}'::jsonb), ARRAY[$1::text], to_jsonb($2::text), true),
+               updated_at = now()
+           WHERE source_row_id = $3 AND institution_id = $4`,
+          [col, value, id, ctx.institutionId]
+        );
+      }
+    } catch (mirrorErr) {
+      logger.warn(`Hindi mirror file-field sync failed for ${formName}/${id}`, { err: mirrorErr.message });
+    }
+
+    return res.json({ success: true });
+  } catch (err) {
+    logger.error(`PATCH /api/form-data/${formName}/records/${id}/file-field`, { stack: err.stack });
+    return res.status(500).json({ success: false, message: "Failed to save file field." });
   }
 });
 
@@ -1240,7 +1415,7 @@ router.delete("/:formName/records/bulk-delete", async (req, res) => {
     }
 
     const { rows: deletedRows, rowCount } = await pool.query(
-      `DELETE FROM ${formName}_records WHERE ${whereClause} RETURNING id, source_row_id, language`,
+      `DELETE FROM ${formName}_records WHERE ${whereClause} RETURNING *`,
       queryParams
     );
 
@@ -1249,16 +1424,29 @@ router.delete("/:formName/records/bulk-delete", async (req, res) => {
        English rows (source_row_id = deletedEnglishId) AND the English sources of any
        deleted Hindi rows (id = deletedHindiRow.source_row_id). */
     if (deletedRows.length > 0) {
+      for (const row of deletedRows) {
+        const keys = extractUploadKeys(row);
+        for (const key of keys) {
+          await deleteFile(key).catch(() => {});
+        }
+      }
+
       const cascadeIds = [...new Set([
         ...deletedRows.filter((r) => r.language !== "hi").map((r) => r.id),
         ...deletedRows.filter((r) => r.language === "hi" && r.source_row_id).map((r) => r.source_row_id),
       ])];
       if (cascadeIds.length) {
-        await pool.query(
+        const { rows: cascadeDeletedRows } = await pool.query(
           `DELETE FROM ${formName}_records
-           WHERE (source_row_id = ANY($1::uuid[]) OR id = ANY($1::uuid[])) AND institution_id = $2`,
+           WHERE (source_row_id = ANY($1::uuid[]) OR id = ANY($1::uuid[])) AND institution_id = $2 RETURNING *`,
           [cascadeIds, ctx.institutionId]
         );
+        for (const row of cascadeDeletedRows) {
+          const keys = extractUploadKeys(row);
+          for (const key of keys) {
+            await deleteFile(key).catch(() => {});
+          }
+        }
       }
     }
 
@@ -1362,13 +1550,22 @@ router.delete("/:formName/records/:id", async (req, res) => {
       whereVals.push(ctx.departmentId);
     }
 
-    const { rowCount } = await pool.query(
-      `DELETE FROM ${formName}_records WHERE ${whereClause}`,
+    const { rows: deletedRows, rowCount } = await pool.query(
+      `DELETE FROM ${formName}_records WHERE ${whereClause} RETURNING *`,
       whereVals
     );
 
     if (!rowCount)
       return res.status(404).json({ success: false, message: "Record not found." });
+
+    if (deletedRows.length > 0) {
+      for (const row of deletedRows) {
+        const keys = extractUploadKeys(row);
+        for (const key of keys) {
+          await deleteFile(key).catch(() => {});
+        }
+      }
+    }
 
     await writeAuditLog(req, {
       actionType: "FORM_DATA_DELETED",

@@ -477,7 +477,7 @@ router.get("/pg-students", requireRole(ASSIGN_ROLES), async (req, res) => {
 
       ({ rows: pgStudents } = await pool.query(
         `SELECT u.id, u.full_name, u.email, u.department_id,
-                COALESCE(d.department_name, '') AS department_name
+                COALESCE(d.name, '') AS department_name
          FROM users u
          JOIN user_roles ur ON ur.user_id = u.id AND ur.revoked_at IS NULL
               AND (ur.expires_at IS NULL OR ur.expires_at > now())
@@ -490,10 +490,10 @@ router.get("/pg-students", requireRole(ASSIGN_ROLES), async (req, res) => {
       ));
 
       ({ rows: departments } = await pool.query(
-        `SELECT d.department_id AS id, d.department_name AS name
+        `SELECT d.department_id AS id, d.name AS name
          FROM departments d
          WHERE d.institution_id = $1 AND d.status = 'ACTIVE'
-         ORDER BY d.department_name`,
+         ORDER BY d.name`,
         [institutionId]
       ));
     } else {
@@ -517,7 +517,7 @@ router.get("/pg-students", requireRole(ASSIGN_ROLES), async (req, res) => {
         const deptWhere = deptFilter ? `AND fa.department_id = $3::uuid` : ``;
         const { rows } = await pool.query(
           `SELECT fa.id, fa.assigned_to, u.full_name, u.email, fa.department_id,
-                  COALESCE(d.department_name, '') AS department_name
+                  COALESCE(d.name, '') AS department_name
            FROM form_assignments fa
            JOIN users u ON u.id = fa.assigned_to
            LEFT JOIN departments d ON d.department_id = fa.department_id

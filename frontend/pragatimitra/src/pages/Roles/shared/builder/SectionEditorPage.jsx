@@ -1164,7 +1164,7 @@ function IconChip({ type, size = 30 }) {
   );
 }
 
-const ADD_BLOCK_TYPES = ["PARAGRAPH", "HEADING", "TABLE", "IMAGE", "IMAGE_GRID", "LIST", /* "FILE", */ "KPI", "DIVIDER"];
+const ADD_BLOCK_TYPES = ["PARAGRAPH", "HEADING", "TABLE", "IMAGE", "IMAGE_GRID", "LIST", "KPI", "DIVIDER"];
 
 /* ── Block-type picker list, shared by InlineAdder's dropdown and the big
    "+ Add Block" button below. ────────────────────────────────────────────── */
@@ -1591,7 +1591,14 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
 
       if (assignData.success) {
         const mine = (assignData.data?.users || []).find((a) => a.user_id === user?.id);
-        setMyRole(mine?.role || null);
+        let resolvedRole = mine?.role || null;
+        if (!resolvedRole) {
+          const roleMatch = (assignData.data?.roles || []).find(r => 
+            user?.roles?.some(ur => ur.name === r.role_name) && (!r.department_id || r.department_id === user?.departmentId)
+          );
+          if (roleMatch) resolvedRole = 'OWNER';
+        }
+        setMyRole(resolvedRole);
       }
 
       const reportId = secData.data.report_id;
@@ -2672,6 +2679,7 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
                       blockId={block.id}
                       apiFetch={apiFetch}
                       lang={contentLang}
+                      reportId={section?.report_id}
                     />
                   </div>
 

@@ -11,7 +11,7 @@ const logger  = require("../utils/logger");
 const { getLogContext } = logger;
 const { writeAuditLog } = require("../utils/audit");
 const { translateSentence, transliteratePhrase, lookupLabel, translateRow, resolveTranslationMode } = require("../services/translationService");
-const { getReadUrl } = require("../utils/s3");
+const { signReadUrl } = require("../utils/localStorage");
 const { getAcademicYearLockBlockForReq, getFormArchiveBlockForReq, resolveOperatingYear } = require("../services/academicYearService");
 const { assertFormDomainAccess } = require("../services/domainService");
 const { resolveEffectiveDepartment, getDepartmentWriteBlock } = require("../services/departmentContext");
@@ -1096,18 +1096,19 @@ router.get("/:formName/export", async (req, res) => {
     }
 
 
-    /* Document fields → presigned URLs. getReadUrl is local HMAC (no S3 network
+    /* Document fields → signed local download URLs (HMAC-signed, no network
        call); resolved lazily per key with a cache so each unique file is signed
-       once across all batches. Legacy local URLs (http://…) pass through as-is. */
+       once across all batches. Legacy full URLs (http://…) pass through as-is. */
     const docCols = new Set(
       fields.filter((f) => f.type === "document").map((f) => dbCol(f.column_name))
     );
+    const exportBaseUrl = `${req.protocol}://${req.get("host")}`;
     const keyToUrl = {};
     async function signDoc(val) {
       if (!val) return "";
       if (val.startsWith("http://") || val.startsWith("https://")) return val;
       if (keyToUrl[val] === undefined) {
-        try { keyToUrl[val] = await getReadUrl(val, DOC_URL_TTL); }
+        try { keyToUrl[val] = signReadUrl(val, DOC_URL_TTL, exportBaseUrl); }
         catch { keyToUrl[val] = val; } // fallback: keep raw key on error
       }
       return keyToUrl[val];

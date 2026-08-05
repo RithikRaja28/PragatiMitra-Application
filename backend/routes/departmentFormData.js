@@ -23,6 +23,8 @@ const { verifyToken } = require("../middleware/auth");
 const logger = require("../utils/logger");
 const { writeAuditLog } = require("../utils/audit");
 const { resolveDeptContext, deptRecordsTable, quoteIdent } = require("../services/departmentFormService");
+const { translateRow, resolveTranslationMode, enrichSchemaLabels } = require("../services/translationService");
+const { extractUploadKeys, deleteFile, decodeFileTokenWithoutVerification, signReadUrl } = require("../utils/localStorage");
 const { getEffectiveState, STATE } = require("../services/stateResolver");
 const { resolveOperatingYear } = require("../services/academicYearService");
 const { assertEquivalent } = require("../services/equivalenceGuard");
@@ -61,7 +63,6 @@ async function releaseLock(pool, { recordId, userId }) {
     [recordId, userId]
   );
 }
-const { enrichSchemaLabels, translateRow, resolveTranslationMode } = require("../services/translationService");
 
 const router = express.Router();
 router.use(verifyToken);
@@ -497,6 +498,18 @@ router.post("/:id/records", async (req, res) => {
     const effectiveSchema = await loadEffectiveSchema(pool, form, year);
     const fields = activeFields(effectiveSchema);
     const fieldCols = fields.map((f) => dbCol(f.column_name));
+    
+    for (const f of fields) {
+      const col = dbCol(f.column_name);
+      if (f.type === "document" && typeof data[col] === "string") {
+        const match = data[col].match(/\/api\/file\/(.+)$/);
+        if (match) {
+          const key = decodeFileTokenWithoutVerification(match[1]);
+          if (key) data[col] = key;
+        }
+      }
+    }
+
     const createdBy = req.user.userId || null;
 
     // Split: physical columns (creation-year) go directly; extra fields go to custom_fields JSONB.
@@ -578,6 +591,17 @@ router.put("/:id/records/:recordId", async (req, res) => {
     const fields = activeFields(effectiveSchema);
     const fieldCols = fields.map((f) => dbCol(f.column_name));
 
+    for (const f of fields) {
+      const col = dbCol(f.column_name);
+      if (f.type === "document" && typeof data[col] === "string") {
+        const match = data[col].match(/\/api\/file\/(.+)$/);
+        if (match) {
+          const key = decodeFileTokenWithoutVerification(match[1]);
+          if (key) data[col] = key;
+        }
+      }
+    }
+
     // Split: physical vs extra fields.
     const physicalCols = await getPhysicalCols(pool, table);
     const baseFieldCols = fieldCols.filter((c) => physicalCols.has(c));
@@ -600,11 +624,25 @@ router.put("/:id/records/:recordId", async (req, res) => {
       req.params.recordId,
     ];
 
+    const { rows: oldRows } = await pool.query(
+      `SELECT * FROM ${table} WHERE id = $1 AND department_id = $2`,
+      [req.params.recordId, departmentId]
+    );
+
     const { rows } = await pool.query(
       `UPDATE ${table} SET ${setClauses.join(", ")} WHERE ${whereClause} RETURNING *`,
       vals
     );
     if (!rows.length) return res.status(404).json({ success: false, message: "Record not found." });
+
+    if (oldRows.length > 0) {
+      const oldKeys = extractUploadKeys(oldRows[0]);
+      const newKeys = extractUploadKeys(data);
+      const toDelete = oldKeys.filter(k => !newKeys.includes(k));
+      for (const key of toDelete) {
+        await deleteFile(key).catch(() => {});
+      }
+    }
 
     const record = rows[0];
     if (record.custom_fields && typeof record.custom_fields === "object") {
@@ -668,6 +706,110 @@ router.put("/:id/records/:recordId", async (req, res) => {
   } catch (err) {
     logger.error("PUT /api/department-form-data/:id/records/:recordId", { stack: err.stack });
     return res.status(500).json({ success: false, message: "Failed to update record." });
+  }
+});
+
+/* ─────────────────────────────────────────────────────────────────────
+   PATCH /api/department-form-data/:id/records/:recordId/file-field
+   Body: { column, value }
+   Mirrors formData.js's twin route: called right after a successful
+   document/image upload for one existing record's document field,
+   independent of that record's own Save/Submit. Reads the old value and
+   writes the new one in a single atomic statement, then deletes the old
+   file if superseded — regardless of whether the record edit has been
+   submitted yet. Only ever touches a column the record's own effective
+   schema actually declares as a "document" field, and syncs the record's
+   Hindi mirror row (if one exists) to the same value.
+───────────────────────────────────────────────────────────────────── */
+router.patch("/:id/records/:recordId/file-field", async (req, res) => {
+  const pool = req.app.locals.pool;
+  if (!requireContributor(req, res)) return;
+  const { column, value } = req.body;
+  if (typeof value !== "string")
+    return res.status(400).json({ success: false, message: "value must be a string." });
+
+  try {
+    const { form, departmentId, error } = await loadForm(pool, req, req.params.id);
+    if (error) return res.status(404).json({ success: false, message: error });
+    const table = deptRecordsTable(form.department_id, form.form_name);
+    const year = resolveYear(req);
+
+    const lock = await deptLockBlock(pool, form, year);
+    if (lock.locked) return res.status(403).json({ success: false, message: lock.message });
+
+    const { rows: targetRows } = await pool.query(
+      `SELECT * FROM ${table} WHERE id = $1 AND department_id = $2`,
+      [req.params.recordId, departmentId]
+    );
+    if (!targetRows.length)
+      return res.status(404).json({ success: false, message: "Record not found." });
+
+    const effectiveSchema = await loadEffectiveSchema(pool, form, year);
+    const col = dbCol(String(column || ""));
+    const field = activeFields(effectiveSchema).find((f) => dbCol(f.column_name) === col && f.type === "document");
+    if (!field)
+      return res.status(400).json({ success: false, message: "Not a document field on this form." });
+
+    const physicalCols = await getPhysicalCols(pool, table);
+    let oldValue;
+
+    if (physicalCols.has(col)) {
+      const { rows } = await pool.query(
+        `WITH old AS (
+           SELECT ${quoteIdent(col)} AS old_value FROM ${table} WHERE id = $1 AND department_id = $2
+         )
+         UPDATE ${table} SET ${quoteIdent(col)} = $3, updated_at = now()
+         WHERE id = $1 AND department_id = $2
+         RETURNING (SELECT old_value FROM old) AS old_value`,
+        [req.params.recordId, departmentId, value]
+      );
+      oldValue = rows[0]?.old_value;
+    } else {
+      const { rows } = await pool.query(
+        `WITH old AS (
+           SELECT custom_fields ->> $3 AS old_value FROM ${table} WHERE id = $1 AND department_id = $2
+         )
+         UPDATE ${table}
+         SET custom_fields = jsonb_set(COALESCE(custom_fields, '{}'::jsonb), ARRAY[$3::text], to_jsonb($4::text), true),
+             updated_at = now()
+         WHERE id = $1 AND department_id = $2
+         RETURNING (SELECT old_value FROM old) AS old_value`,
+        [req.params.recordId, departmentId, col, value]
+      );
+      oldValue = rows[0]?.old_value;
+    }
+
+    if (oldValue && oldValue !== value) {
+      const [oldKey] = extractUploadKeys(oldValue);
+      if (oldKey) await deleteFile(oldKey).catch(() => {});
+    }
+
+    // Sync Hindi mirror row, best-effort.
+    try {
+      await ensureSourceRowIdColumn(pool, table);
+      if (physicalCols.has(col)) {
+        await pool.query(
+          `UPDATE ${table} SET ${quoteIdent(col)} = $1, updated_at = now()
+           WHERE source_row_id = $2 AND department_id = $3`,
+          [value, req.params.recordId, departmentId]
+        );
+      } else {
+        await pool.query(
+          `UPDATE ${table}
+           SET custom_fields = jsonb_set(COALESCE(custom_fields, '{}'::jsonb), ARRAY[$1::text], to_jsonb($2::text), true),
+               updated_at = now()
+           WHERE source_row_id = $3 AND department_id = $4`,
+          [col, value, req.params.recordId, departmentId]
+        );
+      }
+    } catch (mirrorErr) {
+      logger.warn(`Hindi mirror file-field sync failed for dept form ${form.form_name}/${req.params.recordId}`, { err: mirrorErr.message });
+    }
+
+    return res.json({ success: true });
+  } catch (err) {
+    logger.error(`PATCH /api/department-form-data/:id/records/${req.params.recordId}/file-field`, { stack: err.stack });
+    return res.status(500).json({ success: false, message: "Failed to save file field." });
   }
 });
 
@@ -751,20 +893,38 @@ router.delete("/:id/records/bulk-delete", async (req, res) => {
     if (lock.locked) return res.status(403).json({ success: false, message: lock.message });
 
     await ensureSourceRowIdColumn(pool, table);
-    /* Bug 12 — resolve each selected id to its English source (a Hindi row → its
-       source_row_id), then delete the whole pair. So a Hindi row can never be
-       deleted on its own, and selecting either side removes both. */
-    const { rows: sel } = await pool.query(
-      `SELECT id, source_row_id FROM ${table} WHERE id = ANY($1::uuid[]) AND department_id = $2`,
+    
+    const { rows: deletedRows, rowCount } = await pool.query(
+      `DELETE FROM ${table} WHERE id = ANY($1::uuid[]) AND department_id = $2 RETURNING *`,
       [ids, departmentId]
     );
-    const rootIds = [...new Set(sel.map((r) => r.source_row_id || r.id))];
-    const { rowCount } = rootIds.length
-      ? await pool.query(
-          `DELETE FROM ${table} WHERE (id = ANY($1::uuid[]) OR source_row_id = ANY($1::uuid[])) AND department_id = $2`,
-          [rootIds, departmentId]
-        )
-      : { rowCount: 0 };
+    
+    if (deletedRows.length > 0) {
+      for (const row of deletedRows) {
+        const keys = extractUploadKeys(row);
+        for (const key of keys) {
+          await deleteFile(key).catch(() => {});
+        }
+      }
+      
+      const cascadeIds = [...new Set([
+        ...deletedRows.filter((r) => r.language !== "hi").map((r) => r.id),
+        ...deletedRows.filter((r) => r.language === "hi" && r.source_row_id).map((r) => r.source_row_id),
+      ])];
+      if (cascadeIds.length) {
+        const { rows: cascadeDeletedRows } = await pool.query(
+          `DELETE FROM ${table} WHERE (source_row_id = ANY($1::uuid[]) OR id = ANY($1::uuid[])) AND department_id = $2 RETURNING *`,
+          [cascadeIds, departmentId]
+        );
+        for (const row of cascadeDeletedRows) {
+          const keys = extractUploadKeys(row);
+          for (const key of keys) {
+            await deleteFile(key).catch(() => {});
+          }
+        }
+      }
+    }
+
     const deleted = rowCount ?? 0;
 
     await writeAuditLog(req, {
@@ -783,7 +943,7 @@ router.delete("/:id/records/bulk-delete", async (req, res) => {
 });
 
 /* ─────────────────────────────────────────────────────────────────────
-   GET /api/department-form-data/:id/export?format=csv|xlsx&language=
+   GET /api/department-form-data/:id/export?format=csv&language=
    Exports the department's records for the selected year.
    Supports language=hi to export translated values with Hindi headers.
 ───────────────────────────────────────────────────────────────────── */
@@ -902,11 +1062,20 @@ router.delete("/:id/records/:recordId", async (req, res) => {
       [req.params.recordId, departmentId]
     );
     const rootId = tgt[0]?.source_row_id || req.params.recordId;
-    const { rowCount } = await pool.query(
-      `DELETE FROM ${table} WHERE (id = $1 OR source_row_id = $1) AND department_id = $2`,
+    const { rows: deletedRows, rowCount } = await pool.query(
+      `DELETE FROM ${table} WHERE (id = $1 OR source_row_id = $1) AND department_id = $2 RETURNING *`,
       [rootId, departmentId]
     );
     if (!rowCount) return res.status(404).json({ success: false, message: "Record not found." });
+
+    if (deletedRows.length > 0) {
+      for (const row of deletedRows) {
+        const keys = extractUploadKeys(row);
+        for (const key of keys) {
+          await deleteFile(key).catch(() => {});
+        }
+      }
+    }
 
     await writeAuditLog(req, {
       actionType: "DEPARTMENT_FORM_RECORD_DELETED",

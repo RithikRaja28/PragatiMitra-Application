@@ -16,10 +16,15 @@ export function useApi() {
         if (instId) academicYear = sessionStorage.getItem(`pm_academic_year_${instId}`);
       } catch { /* sessionStorage unavailable — header simply omitted */ }
 
+      // FormData bodies must let the browser set Content-Type itself (it needs
+      // to add the multipart boundary) — forcing application/json here would
+      // send an unparseable body.
+      const isFormData = typeof FormData !== "undefined" && options.body instanceof FormData;
+
       const res = await fetch(`${API_BASE}${path}`, {
         ...options,
         headers: {
-          "Content-Type": "application/json",
+          ...(isFormData ? {} : { "Content-Type": "application/json" }),
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
           ...(academicYear ? { "X-Academic-Year": academicYear } : {}),
           ...options.headers,

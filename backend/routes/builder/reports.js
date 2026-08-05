@@ -16,6 +16,7 @@ const express           = require("express");
 const { randomUUID }    = require("crypto");
 const { verifyToken, requireRole } = require("../../middleware/auth");
 const { writeAuditLog } = require("../../utils/audit");
+const { deleteReportFolder, deleteFile, renameFolder, reportDir, instituteDir } = require("../../utils/localStorage");
 const logger            = require("../../utils/logger");
 const { getLogContext } = logger;
 
@@ -474,6 +475,20 @@ router.put(
       }
       if (!sets.length) return res.status(400).json({ success: false, message: "Nothing to update" });
 
+      const { rows: oldRows } = await pool.query(
+        `SELECT r.title, r.cover_image_url, r.logo_url, r.bg_image_url, i.institution_id, i.institution_name
+         FROM public.reports r
+         JOIN public.institutions i ON i.institution_id = r.institution_id
+         WHERE r.id = $1`,
+        [id]
+      );
+      if (!oldRows.length) return res.status(404).json({ success: false, message: "Report not found" });
+
+      const old = oldRows[0];
+      const oldTitle = old.title;
+      const institutionId = old.institution_id;
+      const institutionName = old.institution_name;
+
       params.push(req.user.userId);
       sets.push(`updated_by = $${params.length}`);
       params.push(id);
@@ -483,6 +498,69 @@ router.put(
         params
       );
       if (!rows.length) return res.status(404).json({ success: false, message: "Report not found" });
+
+      const checkAndDel = async (oldUrl, newUrl) => {
+        if (oldUrl && newUrl !== undefined && oldUrl !== newUrl) {
+          const match = oldUrl.match(/\/uploads\/(.+)$/);
+          if (match) await deleteFile(match[1]).catch(() => {});
+        }
+      };
+      await checkAndDel(old?.cover_image_url, req.body.cover_image_url);
+      await checkAndDel(old?.logo_url, req.body.logo_url);
+      await checkAndDel(old?.bg_image_url, req.body.bg_image_url);
+
+      // If title changed, rename the storage folder and cascade URLs in DB
+      if (req.body.title && req.body.title !== oldTitle) {
+        const oldSlug = reportDir(oldTitle, id);
+        const newSlug = reportDir(req.body.title, id);
+        if (oldSlug !== newSlug) {
+          const instPart = instituteDir(institutionName, institutionId);
+          const oldPrefix = `${instPart}/reports/${oldSlug}`;
+          const newPrefix = `${instPart}/reports/${newSlug}`;
+          
+          await renameFolder(oldPrefix, newPrefix);
+
+          // Cascade the URL rename into section_blocks (joined via report_sections —
+          // section_blocks has no direct report_id column) and the report's own
+          // branding URLs, atomically so one can't succeed while the other is stale.
+          const cascadeClient = await pool.connect();
+          try {
+            await cascadeClient.query("BEGIN");
+
+            // 1) Update all related section_blocks URLs
+            await cascadeClient.query(
+              `UPDATE public.section_blocks sb
+               SET content = (REPLACE(content::text, $1, $2))::jsonb
+               FROM public.report_sections rs
+               WHERE sb.section_id = rs.id AND rs.report_id = $3`,
+              [`/uploads/${oldPrefix}/`, `/uploads/${newPrefix}/`, id]
+            );
+
+            // 2) Update report's own branding URLs
+            await cascadeClient.query(
+              `UPDATE public.reports
+               SET logo_url = REPLACE(logo_url, $1, $2),
+                   cover_image_url = REPLACE(cover_image_url, $1, $2),
+                   bg_image_url = REPLACE(bg_image_url, $1, $2)
+               WHERE id = $3`,
+              [`/uploads/${oldPrefix}/`, `/uploads/${newPrefix}/`, id]
+            );
+
+            await cascadeClient.query("COMMIT");
+          } catch (e) {
+            await cascadeClient.query("ROLLBACK");
+            throw e;
+          } finally {
+            cascadeClient.release();
+          }
+
+          // Re-fetch the row to return the updated branding URLs
+          const { rows: updatedBranding } = await pool.query(
+            `SELECT * FROM public.reports WHERE id = $1`, [id]
+          );
+          rows[0] = updatedBranding[0];
+        }
+      }
 
       await writeAuditLog(req, {
         actionType: "REPORT_UPDATED",
@@ -512,10 +590,19 @@ router.delete(
       if (!isUUID(id)) return res.status(400).json({ success: false, message: "Invalid report id" });
 
       const { rows } = await pool.query(
-        `UPDATE public.reports SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING id, title`,
+        `UPDATE public.reports SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING id, title, institution_id`,
         [id]
       );
       if (!rows.length) return res.status(404).json({ success: false, message: "Report not found" });
+
+      const report = rows[0];
+      const { rows: iRows } = await pool.query(
+        `SELECT institution_name FROM public.institutions WHERE institution_id = $1`,
+        [report.institution_id]
+      );
+      if (iRows.length) {
+        await deleteReportFolder(iRows[0].institution_name, report.institution_id, report.title, report.id);
+      }
 
       await writeAuditLog(req, {
         actionType: "REPORT_DELETED",
@@ -571,6 +658,15 @@ router.put(
       const { id } = req.params;
       if (!isUUID(id)) return res.status(400).json({ success: false, message: "Invalid report id" });
 
+      const { rows: oldReportRows } = await pool.query(
+        `SELECT cover_image_url, logo_url, bg_image_url FROM public.reports WHERE id = $1`,
+        [id]
+      );
+      const { rows: oldAssignRows } = await pool.query(
+        `SELECT asset_type, asset_url FROM public.branding_assignments WHERE report_id = $1`,
+        [id]
+      );
+
       // Update branding URL columns on the report itself
       const { cover_image_url, logo_url, bg_image_url } = req.body;
       await pool.query(
@@ -603,6 +699,25 @@ router.put(
                  assigned_at = NOW()`,
           [id, a.asset_type, a.user_id || null, a.asset_url || null, req.user.userId]
         );
+      }
+
+      const checkAndDel = async (oldUrl, newUrl) => {
+        if (oldUrl && newUrl !== undefined && oldUrl !== newUrl) {
+          const match = oldUrl.match(/\/uploads\/(.+)$/);
+          if (match) await deleteFile(match[1]).catch(() => {});
+        }
+      };
+      const old = oldReportRows[0] || {};
+      await checkAndDel(old.cover_image_url, cover_image_url);
+      await checkAndDel(old.logo_url, logo_url);
+      await checkAndDel(old.bg_image_url, bg_image_url);
+      
+      for (const a of assignments) {
+        if (!VALID_TYPES.includes(a.asset_type)) continue;
+        const oldAssign = oldAssignRows.find(o => o.asset_type === a.asset_type);
+        if (oldAssign) {
+          await checkAndDel(oldAssign.asset_url, a.asset_url);
+        }
       }
 
       await writeAuditLog(req, {

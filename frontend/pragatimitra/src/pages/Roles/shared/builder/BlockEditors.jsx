@@ -110,11 +110,28 @@ function TranslateButton({ apiFetch, getSource, onTranslated, label = "Translate
   );
 }
 
-/* ── S3 upload helper ─────────────────────────────────────────────────── */
-async function uploadToS3(file, apiFetch, folder, compressionSettings) {
+/* Best-effort: persist a single file/image field immediately after a
+   successful upload, independent of the block's own "Save Changes" flow.
+   Block edits are held in local UI state and only PUT to the server on
+   Save, but uploads write to disk immediately — without this, replacing an
+   upload before ever saving orphaned the old file with no DB trace of it.
+   The backend (blocks.js PATCH /:id/file-field) reads the old value and
+   writes the new one in one atomic statement and deletes the old file if
+   superseded, so there's no client-side guessing about save state at all. */
+function persistFileField(apiFetch, blockId, path, value) {
+  if (!blockId || !path) return;
+  apiFetch(`/api/builder/blocks/${blockId}/file-field`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path, value }),
+  }).catch(() => {});
+}
+
+/* ── Image upload helper ──────────────────────────────────────────────── */
+async function uploadImageFile(file, apiFetch, purpose, compressionSettings, scope = {}) {
   if (!file) throw new Error("No file selected");
-  const ALLOWED = ["image/jpeg", "image/png", "image/webp"];
-  if (!ALLOWED.includes(file.type)) throw new Error("Only JPEG, PNG and WebP images are allowed");
+  const ALLOWED = ["image/jpeg", "image/png", "image/webp", "image/gif", "image/bmp", "image/tiff", "image/svg+xml"];
+  if (!ALLOWED.includes(file.type)) throw new Error("Only JPEG, PNG, WebP, GIF, BMP, TIFF and SVG images are allowed");
 
   if (compressionSettings) {
     const sizeKB = file.size / 1024;
@@ -125,21 +142,18 @@ async function uploadToS3(file, apiFetch, folder, compressionSettings) {
     }
   }
 
-  const presignRes = await apiFetch("/api/upload/presign", {
-    method: "POST",
-    body: JSON.stringify({ fileName: file.name, fileType: file.type, fileSize: file.size, folder: folder || "report-images" }),
-  });
-  const presignData = await presignRes.json();
-  if (!presignRes.ok) throw new Error(presignData.error || "Failed to get upload URL");
+  const fd = new FormData();
+  fd.append("file", file);
+  fd.append("purpose", purpose || "report-image");
+  if (scope.reportId) fd.append("reportId", scope.reportId);
 
-  const s3Res = await fetch(presignData.uploadUrl, {
-    method: "PUT", body: file, headers: { "Content-Type": file.type },
-  });
-  if (!s3Res.ok) throw new Error("S3 upload failed");
-  return presignData.publicUrl;
+  const uploadRes = await apiFetch("/api/upload/image", { method: "POST", body: fd });
+  const uploadData = await uploadRes.json();
+  if (!uploadRes.ok || !uploadData.success) throw new Error(uploadData.error || "Upload failed");
+  return uploadData.publicUrl;
 }
 
-function UploadImageBtn({ onUploaded, apiFetch, folder, disabled }) {
+function UploadImageBtn({ onUploaded, apiFetch, purpose, disabled, reportId, blockId, fieldPath }) {
   const fileRef  = useRef(null);
   const [uploading,    setUploading]    = useState(false);
   const [err,          setErr]          = useState("");
@@ -157,7 +171,9 @@ function UploadImageBtn({ onUploaded, apiFetch, folder, disabled }) {
     if (!file) return;
     setUploading(true); setErr(""); setUploadResult(null);
     try {
-      onUploaded(await uploadToS3(file, apiFetch, folder, compressionSettings));
+      const url = await uploadImageFile(file, apiFetch, purpose, compressionSettings, { reportId });
+      persistFileField(apiFetch, blockId, fieldPath, url);
+      onUploaded({ url, fileName: file.name });
       setUploadResult("success");
       showToast("Upload Successful");
       setTimeout(() => setUploadResult(null), 2500);
@@ -199,6 +215,85 @@ function UploadImageBtn({ onUploaded, apiFetch, folder, disabled }) {
           >
             ↩ Click to Upload Again
           </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+async function uploadDocumentFile(file, apiFetch, scope = {}) {
+  if (!file) throw new Error("No file selected");
+  const ALLOWED = [
+    "application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "image/jpeg", "image/png", "image/webp"
+  ];
+  if (!ALLOWED.includes(file.type)) throw new Error("File type not allowed");
+
+  const fd = new FormData();
+  fd.append("file", file);
+
+  if (scope.reportId) {
+    fd.append("context", "report_submission");
+    fd.append("reportId", scope.reportId);
+    const res = await apiFetch("/api/upload/document", { method: "POST", body: fd });
+    const data = await res.json();
+    if (!res.ok || !data.success) throw new Error(data.error || "Upload failed");
+    return data.fileKey;
+  } else {
+    throw new Error("Missing scope for upload");
+  }
+}
+
+function UploadFileBtn({ onUploaded, apiFetch, disabled, reportId, blockId, fieldPath }) {
+  const fileRef = useRef(null);
+  const [uploading, setUploading] = useState(false);
+  const [err, setErr] = useState("");
+  const [uploadResult, setUploadResult] = useState(null);
+  const [toast, setToast] = useState(null);
+
+  function showToast(message, type = "success") {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3500);
+  }
+
+  async function handleChange(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true); setErr(""); setUploadResult(null);
+    try {
+      const url = await uploadDocumentFile(file, apiFetch, { reportId });
+      persistFileField(apiFetch, blockId, fieldPath, url);
+      onUploaded({ url, name: file.name });
+      setUploadResult("success");
+      showToast("Upload Successful");
+      setTimeout(() => setUploadResult(null), 2500);
+    } catch (ex) {
+      setErr(ex.message || "Upload failed");
+      setUploadResult("error");
+      showToast("Upload Failed", "error");
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  }
+
+  return (
+    <div style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-start", gap: 3 }}>
+      {toast && <Toast message={toast.message} type={toast.type} />}
+      <input ref={fileRef} type="file" style={{ display: "none" }} onChange={handleChange} />
+      {uploadResult === "success" ? (
+        <div style={{ fontSize: 11, color: "#16a34a", fontWeight: 600 }}>✓ Uploaded</div>
+      ) : (
+        <button type="button" onClick={() => fileRef.current?.click()} disabled={uploading || disabled}
+          style={{ padding: "5px 11px", border: "1px solid #e2e8f0", borderRadius: 7, background: uploading ? "#f1f5f9" : "#fff", fontSize: 11, cursor: uploading || disabled ? "not-allowed" : "pointer", color: "#475569", fontWeight: 600, display: "flex", alignItems: "center", gap: 5, whiteSpace: "nowrap" }}>
+          {uploading ? "Uploading..." : "Upload File"}
+        </button>
+      )}
+      {uploadResult === "error" && err && (
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 4, maxWidth: 200 }}>
+          <div style={{ fontSize: 10, color: "#dc2626", fontWeight: 600 }}>{err}</div>
+          <button type="button" onClick={() => { setErr(""); setUploadResult(null); fileRef.current?.click(); }} style={{ fontSize: 10, fontWeight: 600, color: "#dc2626", background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}>Retry</button>
         </div>
       )}
     </div>
@@ -563,8 +658,9 @@ export function HeadingBlock({ content, onChange, readOnly, lang = "en", apiFetc
 }
 
 /* ── Enhanced Image Block ─────────────────────────────────────────────── */
-export function ImageBlock({ content, onChange, readOnly, lang = "en", translations, onSaveTranslation }) {
+export function ImageBlock({ content, onChange, readOnly, lang = "en", translations, onSaveTranslation, reportId, templateId, blockId }) {
   const { apiFetch } = useApi();
+  const isTemplate = !!templateId;
   const widthPct = content.widthPct ?? 100;
   const align    = content.align || "center";
   const wrapStyle = { left: { display: "flex", justifyContent: "flex-start" }, center: { display: "flex", justifyContent: "center" }, right: { display: "flex", justifyContent: "flex-end" } }[align] || { display: "flex", justifyContent: "center" };
@@ -577,13 +673,21 @@ export function ImageBlock({ content, onChange, readOnly, lang = "en", translati
   const isStale = !!translations?.hi?._stale;
   const needsTranslation = !readOnly && isHi && (!hiCap && !hiAlt || isStale) && (content.caption || content.alt);
 
+  if (isTemplate) {
+    return (
+      <div style={{ height: 80, background: "#f8fafc", border: "1px dashed #cbd5e1", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", color: "#94a3b8", fontSize: 12, textAlign: "center", padding: "0 12px" }}>
+        Image can be added here later while forming the report
+      </div>
+    );
+  }
+
   return (
     <div>
       {!readOnly && (
         <div style={{ marginBottom: 8 }}>
           <div style={{ display: "flex", gap: 6, marginBottom: 8, alignItems: "flex-start" }}>
-            <input key={content.url} defaultValue={content.url || ""} onBlur={(e) => onChange({ ...content, url: e.target.value })} placeholder="Paste image URL…" style={{ flex: 1, padding: "7px 11px", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 12, outline: "none", boxSizing: "border-box" }} />
-            <UploadImageBtn apiFetch={apiFetch} folder="report-images" onUploaded={(url) => onChange({ ...content, url })} />
+            <input key={content.url} defaultValue={content.fileName || (content.url && !content.url.includes("/uploads/") ? content.url : "")} onBlur={(e) => onChange({ ...content, url: e.target.value })} placeholder="Paste image URL…" style={{ flex: 1, padding: "7px 11px", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 12, outline: "none", boxSizing: "border-box" }} />
+            <UploadImageBtn apiFetch={apiFetch} purpose="report-image" reportId={reportId} blockId={blockId} fieldPath="url" onUploaded={({ url, fileName }) => onChange({ ...content, url, fileName })} />
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             <span style={{ fontSize: 11, color: "#64748b" }}>Width</span>
@@ -642,8 +746,9 @@ export function ImageBlock({ content, onChange, readOnly, lang = "en", translati
 }
 
 /* ── Image Grid ───────────────────────────────────────────────────────── */
-export function ImageGridBlock({ content, onChange, readOnly, lang = "en", translations, onSaveTranslation }) {
+export function ImageGridBlock({ content, onChange, readOnly, lang = "en", translations, onSaveTranslation, reportId, templateId, blockId }) {
   const { apiFetch } = useApi();
+  const isTemplate = !!templateId;
   const cols   = content.cols || [{ url: "", caption: "", alt: "" }, { url: "", caption: "", alt: "" }];
   const isHi   = lang === "hi";
   const hiCols = translations?.hi?.cols || [];
@@ -665,6 +770,20 @@ export function ImageGridBlock({ content, onChange, readOnly, lang = "en", trans
           const caption = isHi ? (hiCol.caption || "") : (col.caption || "");
           const alt     = isHi ? (hiCol.alt     || "") : (col.alt     || "");
           const needsTranslation = !readOnly && isHi && (!hiCol.caption && !hiCol.alt || isStale) && (col.caption || col.alt);
+          if (isTemplate) {
+            return (
+              <div key={i}>
+                {!readOnly && cols.length > 1 && (
+                  <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 4 }}>
+                    <button onClick={() => removeCol(i)} style={{ background: "none", border: "none", cursor: "pointer", color: "#ef4444", fontSize: 12 }}>X</button>
+                  </div>
+                )}
+                <div style={{ height: 80, background: "#f8fafc", border: "1px dashed #cbd5e1", borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center", color: "#94a3b8", fontSize: 11, textAlign: "center", padding: "0 8px" }}>
+                  Image can be added here later while forming the report
+                </div>
+              </div>
+            );
+          }
           return (
             <div key={i}>
               {!readOnly && (
@@ -673,8 +792,8 @@ export function ImageGridBlock({ content, onChange, readOnly, lang = "en", trans
                     <span style={{ fontSize: 10, fontWeight: 600, color: "#94a3b8" }}>Image {i + 1}</span>
                     {cols.length > 1 && <button onClick={() => removeCol(i)} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: "#ef4444", fontSize: 12 }}>X</button>}
                   </div>
-                  <input key={"url-" + i + "-" + col.url} defaultValue={col.url || ""} onBlur={(e) => update(i, { url: e.target.value })} placeholder="Image URL…" style={{ width: "100%", padding: "5px 8px", border: "1px solid #e2e8f0", borderRadius: 6, fontSize: 11, outline: "none", boxSizing: "border-box", marginBottom: 4 }} />
-                  <UploadImageBtn apiFetch={apiFetch} folder="report-images" onUploaded={(url) => update(i, { url })} />
+                  <input key={"url-" + i + "-" + col.url} defaultValue={col.fileName || (col.url && !col.url.includes("/uploads/") ? col.url : "")} onBlur={(e) => update(i, { url: e.target.value })} placeholder="Image URL…" style={{ width: "100%", padding: "5px 8px", border: "1px solid #e2e8f0", borderRadius: 6, fontSize: 11, outline: "none", boxSizing: "border-box", marginBottom: 4 }} />
+                  <UploadImageBtn apiFetch={apiFetch} purpose="report-image" reportId={reportId} blockId={blockId} fieldPath={`cols.${i}.url`} onUploaded={({ url, fileName }) => update(i, { url, fileName })} />
                   <input
                     key={"cap-" + (isHi ? "hi" : "en") + "-" + i + "-" + caption}
                     defaultValue={caption}
@@ -1470,17 +1589,55 @@ export function KpiBlock({ content, onChange, readOnly, kpiScope = "department" 
 }
 
 /* ── File ─────────────────────────────────────────────────────────────── */
-export function FileBlock({ content, onChange, readOnly }) {
+export function FileBlock({ content, onChange, readOnly, reportId, templateId, blockId }) {
+  const { apiFetch } = useApi();
+  const isTemplate = !!templateId;
+  const [downloading, setDownloading] = useState(false);
+
+  async function handleDownload(e) {
+    if (!content.url || content.url.startsWith("http")) return;
+    e.preventDefault();
+    setDownloading(true);
+    try {
+      // Secure local file: we must fetch a fresh download token
+      const res = await apiFetch(`/api/file/token?key=${encodeURIComponent(content.url)}`);
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.message || "Failed to get download token");
+      
+      // Open the clean URL which the browser can natively download
+      window.open(json.url, "_blank");
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setDownloading(false);
+    }
+  }
+
+  if (isTemplate) {
+    return (
+      <div style={{ height: 80, background: "#f8fafc", border: "1px dashed #cbd5e1", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", color: "#94a3b8", fontSize: 12, textAlign: "center", padding: "0 12px" }}>
+        File(s) can be added here later while forming the report
+      </div>
+    );
+  }
+
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8 }}>
-      <span style={{ fontSize: 20 }}>Fil</span>
+    <div style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 14px", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8 }}>
+      <span style={{ fontSize: 20, marginTop: 4 }}>Fil</span>
       <div style={{ flex: 1 }}>
         {readOnly
-          ? <a href={content.url || "#"} target="_blank" rel="noreferrer" style={{ color: "#2563eb", fontSize: 13 }}>{content.name || content.url || "File"}</a>
-          : <>
-              <input key={"name-" + content.name} defaultValue={content.name || ""} onBlur={(e) => onChange({ ...content, name: e.target.value })} placeholder="File name / label" style={{ width: "100%", border: "none", background: "transparent", fontSize: 13, outline: "none", marginBottom: 4 }} />
-              <input key={"url-" + content.url} defaultValue={content.url || ""} onBlur={(e) => onChange({ ...content, url: e.target.value })} placeholder="File URL or path" style={{ width: "100%", border: "none", background: "transparent", fontSize: 12, color: "#64748b", outline: "none" }} />
-            </>
+          ? <a href={content.url?.startsWith("http") ? content.url : "#"} onClick={handleDownload} target="_blank" rel="noreferrer" style={{ color: "#2563eb", fontSize: 13, textDecoration: "underline", cursor: downloading ? "wait" : "pointer", display: "inline-block", padding: "4px 0" }}>
+              {downloading ? "Downloading..." : (content.name || "File")}
+            </a>
+          : <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <input key={"name-" + content.name} defaultValue={content.name || ""} onBlur={(e) => onChange({ ...content, name: e.target.value })} placeholder="File name / label" style={{ width: "100%", border: "none", background: "transparent", fontSize: 13, outline: "none" }} />
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ flex: 1, fontSize: 12, color: content.url ? "#16a34a" : "#94a3b8" }}>
+                  {content.url ? "File attached" : "No file attached yet"}
+                </span>
+                <UploadFileBtn apiFetch={apiFetch} reportId={reportId} blockId={blockId} fieldPath="url" onUploaded={({ url, name }) => onChange({ ...content, url, name })} />
+              </div>
+            </div>
         }
       </div>
     </div>
@@ -1720,17 +1877,17 @@ export function KpiImportBlock({ blockId, content, onChange, onRefetched, readOn
 // kpiScope: "institute" | "department" — controls which KPIs appear in the KPI picker.
 // Pass this from the report builder so the picker only shows KPIs belonging to the
 // same scope as the report being authored.
-export function BlockEditor({ block, onChange, onRefetched, readOnly, kpiScope = "department", blockId, apiFetch, lang = "en", onSaveTranslation }) {
+export function BlockEditor({ block, onChange, onRefetched, readOnly, kpiScope = "department", blockId, apiFetch, lang = "en", onSaveTranslation, reportId, templateId }) {
   const p = { content: block.content, onChange, readOnly, lang, translations: block.translations, onSaveTranslation };
   switch (block.block_type) {
     case "PARAGRAPH":  return <RichTextBlock  {...p} apiFetch={apiFetch} />;
     case "HEADING":    return <HeadingBlock   {...p} apiFetch={apiFetch} />;
-    case "IMAGE":      return <ImageBlock     {...p} />;
-    case "IMAGE_GRID": return <ImageGridBlock {...p} />;
+    case "IMAGE":      return <ImageBlock     {...p} reportId={reportId} templateId={templateId} blockId={blockId || block.id} />;
+    case "IMAGE_GRID": return <ImageGridBlock {...p} reportId={reportId} templateId={templateId} blockId={blockId || block.id} />;
     case "TABLE":      return <TableBlock     {...p} onRefetched={onRefetched} blockId={blockId || block.id} apiFetch={apiFetch} />;
     case "LIST":       return <ListBlock      {...p} apiFetch={apiFetch} />;
     case "DIVIDER":    return <DividerBlock />;
-    case "FILE":       return <FileBlock      {...p} />;
+    case "FILE":       return <FileBlock      {...p} reportId={reportId} templateId={templateId} blockId={blockId || block.id} />;
     case "KPI":
       if ((block.content || {}).source === "kpi_import") {
         return <KpiImportBlock blockId={blockId || block.id} content={block.content} onChange={onChange} onRefetched={onRefetched} readOnly={readOnly} apiFetch={apiFetch} />;
@@ -1762,7 +1919,6 @@ const BLOCK_MENU = [
   { type: "IMAGE",      icon: "Img", label: "Image",      hint: "A single image — upload or paste a URL, set width/alignment, add a caption." },
   { type: "IMAGE_GRID", icon: "Grd", label: "Image Grid", hint: "Multiple images side by side — upload up to 4 images, each with its own caption." },
   { type: "DIVIDER",    icon: "--",  label: "Divider",    hint: "A plain horizontal line used to visually separate content — no data to fill in." },
-  { type: "FILE",       icon: "Fil", label: "File",       hint: "A downloadable file attachment — provide a file name/label and its URL or path." },
 ];
 
 export function AddBlockMenu({ onAdd }) {
