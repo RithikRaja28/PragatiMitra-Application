@@ -161,6 +161,42 @@ async function fetchImageBuffer(url) {
   } catch { return null; }
 }
 
+/* ─── Shared image preprocessing for cover + watermark (used by both DOCX & PDF) ───
+   One pre-processed buffer, reused identically by both generators, so cover and
+   watermark render pixel-for-pixel the same regardless of format. */
+const PAGE_PX = { width: 794, height: 1122 }; // A4 at 96 DPI — matches existing embed size
+
+// Both cover and watermark use a "cover" fit (crop-to-fill, aspect ratio preserved) —
+// NOT "contain" (shrink-to-fit), which would letterbox/pillarbox a non-A4-shaped
+// source image and leave a visible transparent gap between the image and the paper
+// edge. "cover" guarantees the image always fully fills the page with zero gap.
+async function renderCoverImage(buf) {
+  if (!buf) return null;
+  try {
+    const sharp = require("sharp");
+    return await sharp(buf)
+      .resize(PAGE_PX.width, PAGE_PX.height, { fit: "cover", position: "centre" })
+      .png()
+      .toBuffer();
+  } catch { return null; }
+}
+
+// Watermark: same full-bleed "cover" fit, then Word's own built-in "Washout" picture
+// recolor (lumMod 20% / lumOff 80% → output = input*0.2 + 255*0.8), baked into the
+// pixels so DOCX and PDF render identically without relying on per-format opacity
+// tricks — and so it's genuinely faded rather than full-strength.
+async function renderWatermarkImage(buf) {
+  if (!buf) return null;
+  try {
+    const sharp = require("sharp");
+    return await sharp(buf)
+      .resize(PAGE_PX.width, PAGE_PX.height, { fit: "cover", position: "centre" })
+      .linear(0.2, 204) // Word's "Washout" preset: output = input*0.2 + 255*0.8
+      .png()
+      .toBuffer();
+  } catch { return null; }
+}
+
 /* ─── Pre-translate metadata strings for Hindi compilation ──────────────────
    Translates report title + every section title/description in one parallel
    batch before any document generator runs. Results are stored in opts.hiStrings
@@ -490,21 +526,9 @@ async function generateDocx(report, sections, outPath, opts) {
     TextWrappingType, TextWrappingSide,
   } = docx;
 
-  // When a background image is present, switch to white text so it shows over the image
-  const hasBg = !!report.bg_image_url;
-  const C = {
-    primary:   hasBg ? "FFFFFF" : "1F3864",
-    secondary: hasBg ? "F0F0F0" : "2E4A7A",
-    tertiary:  hasBg ? "E0E0E0" : "374151",
-    body:      hasBg ? "FFFFFF" : "111827",
-    gray:      hasBg ? "DDDDDD" : "6B7280",
-    lightGray: hasBg ? "CCCCCC" : "9CA3AF",
-    tblHead:   hasBg ? "444444" : "D0CECE",
-    tblAlt:    hasBg ? "222222" : "F9FAFB",
-    divider:   hasBg ? "AAAAAA" : "9CA3AF",
-    border:    hasBg ? "888888" : "D1D5DB",
-    link:      hasBg ? "93C5FD" : "1D4ED8",
-  };
+  // Use the same static colour palette as PDF (no hasBg colour override — the
+  // watermark is already faded to 80% white by renderWatermarkImage, so dark
+  // text is readable over it, exactly like the PDF output).
 
   const sectionNumbers = opts.include_numbering ? buildSectionNumbers(sections) : new Map();
   const lang    = opts.language === "hi" ? "hi" : "en";
@@ -586,7 +610,7 @@ async function generateDocx(report, sections, outPath, opts) {
         text,
         bold:       fmt.bold    || undefined,
         italics:    fmt.italic  || undefined,
-        size:       fmt.size    || 22,
+        size:       fmt.size    || 24,   // 12pt — matches PDF body font-size:12pt
         color:      fmt.color   || C.body,
         font:       docFont,
         underline:  fmt.underline  ? { type: UnderlineType.SINGLE } : undefined,
@@ -643,19 +667,40 @@ async function generateDocx(report, sections, outPath, opts) {
       }
     }
 
+    // Note: <ol>/<ul>/<li> are already converted to <p> items by flattenLists
+    // (called from htmlToParagraphs) before parseHtmlRuns is ever invoked.
     const cleaned = html
       .replace(/<\/p>/gi, "<br/>").replace(/<p[^>]*>/gi, "")
       .replace(/<\/div>/gi, "<br/>").replace(/<div[^>]*>/gi, "")
-      .replace(/<\/li>/gi, "<br/>").replace(/<li[^>]*>/gi, "• ")
       .replace(/<\/h[1-6]>/gi, "<br/>").replace(/<h[1-6][^>]*>/gi, "");
 
     walk(cleaned, { bold: baseBold, italic: baseItalic });
-    return runs.length > 0 ? runs : [new TextRun({ text: "", size: 22 })];
+    return runs.length > 0 ? runs : [new TextRun({ text: "", size: 24 })];
+  }
+
+  /* ── Convert <ol>/<ul> list markup to flat <p> items before paragraph splitting.
+     Ordered lists get numeric prefixes, preserving the same numbering that the
+     PDF renders from the real <ol> HTML element. ── */
+  function flattenLists(h) {
+    let out = h;
+    // Ordered lists: prefix each <li> with its 1-based index number
+    out = out.replace(/<ol[^>]*>([\s\S]*?)<\/ol>/gi, (_, inner) => {
+      let i = 0;
+      return inner.replace(/<li[^>]*>([\s\S]*?)<\/li>/gi,
+        (__, content) => `<p>${++i}.\u00a0\u00a0${content.trim()}</p>`);
+    });
+    // Unordered lists: bullet each <li>
+    out = out.replace(/<ul[^>]*>([\s\S]*?)<\/ul>/gi, (_, inner) =>
+      inner.replace(/<li[^>]*>([\s\S]*?)<\/li>/gi,
+        (__, content) => `<p>\u2022\u00a0\u00a0${content.trim()}</p>`)
+    );
+    return out;
   }
 
   /* ── Split HTML into Paragraphs, preserving per-paragraph alignment ── */
   function htmlToParagraphs(html, extraProps = {}) {
-    if (!html) return [new Paragraph({ children: [new TextRun({ text: "", size: 22 })], spacing: { after: 80 }, ...extraProps })];
+    if (!html) return [new Paragraph({ children: [new TextRun({ text: "", size: 24 })], spacing: { after: 80 }, ...extraProps })];
+    html = flattenLists(html);   // expand <ol>/<ul> before paragraph splitting
 
     // Capture <p> tag attributes (for alignment) then split on paragraph boundaries
     const lines = html
@@ -698,7 +743,7 @@ async function generateDocx(report, sections, outPath, opts) {
       }
     }
     return paras.length > 0 ? paras
-      : [new Paragraph({ children: [new TextRun({ text: "", size: 22 })], spacing: { after: 80 }, ...extraProps })];
+      : [new Paragraph({ children: [new TextRun({ text: "", size: 24 })], spacing: { after: 80 }, ...extraProps })];
   }
 
   /* ── Section heading paragraph — matches SectionHeader component ── */
@@ -801,15 +846,16 @@ async function generateDocx(report, sections, outPath, opts) {
       })),
     }));
 
+    // C.divider = "9CA3AF" — matches PDF .data-tbl { border: 1px solid #9ca3af }
     return new Table({
       width: { size: 100, type: WidthType.PERCENTAGE },
       borders: {
-        top:          { style: BorderStyle.SINGLE, size: 4, color: C.border },
-        bottom:       { style: BorderStyle.SINGLE, size: 4, color: C.border },
-        left:         { style: BorderStyle.SINGLE, size: 4, color: C.border },
-        right:        { style: BorderStyle.SINGLE, size: 4, color: C.border },
-        insideH:      { style: BorderStyle.SINGLE, size: 4, color: C.border },
-        insideV:      { style: BorderStyle.SINGLE, size: 4, color: C.border },
+        top:          { style: BorderStyle.SINGLE, size: 4, color: C.divider },
+        bottom:       { style: BorderStyle.SINGLE, size: 4, color: C.divider },
+        left:         { style: BorderStyle.SINGLE, size: 4, color: C.divider },
+        right:        { style: BorderStyle.SINGLE, size: 4, color: C.divider },
+        insideH:      { style: BorderStyle.SINGLE, size: 4, color: C.divider },
+        insideV:      { style: BorderStyle.SINGLE, size: 4, color: C.divider },
       },
       rows: [headerRow, ...bodyRows],
     });
@@ -881,12 +927,12 @@ async function generateDocx(report, sections, outPath, opts) {
     return new Table({
       width: { size: 100, type: WidthType.PERCENTAGE },
       borders: {
-        top: { style: BorderStyle.SINGLE, size: 4, color: C.border },
-        bottom: { style: BorderStyle.SINGLE, size: 4, color: C.border },
-        left: { style: BorderStyle.SINGLE, size: 4, color: C.border },
-        right: { style: BorderStyle.SINGLE, size: 4, color: C.border },
-        insideH: { style: BorderStyle.SINGLE, size: 4, color: C.border },
-        insideV: { style: BorderStyle.SINGLE, size: 4, color: C.border },
+        top: { style: BorderStyle.SINGLE, size: 4, color: C.divider },
+        bottom: { style: BorderStyle.SINGLE, size: 4, color: C.divider },
+        left: { style: BorderStyle.SINGLE, size: 4, color: C.divider },
+        right: { style: BorderStyle.SINGLE, size: 4, color: C.divider },
+        insideH: { style: BorderStyle.SINGLE, size: 4, color: C.divider },
+        insideV: { style: BorderStyle.SINGLE, size: 4, color: C.divider },
       },
       rows,
     });
@@ -933,7 +979,10 @@ async function generateDocx(report, sections, outPath, opts) {
 
       case "HEADING": {
         const lvl    = Math.max(1, Math.min(3, c.level || 2));
-        const sizes  = [36, 28, 24];  // 18pt, 14pt, 12pt
+        // Match PDF .ch1/.ch2/.ch3 which declare 18px/14px/12px.
+        // At print resolution 1px = 0.75pt, so 18px=13.5pt, 14px=10.5pt, 12px=9pt.
+        // DOCX half-points: 13.5pt×2=27, 10.5pt×2=21, 9pt×2=18.
+        const sizes  = [27, 21, 18];  // 13.5pt, 10.5pt, 9pt
         const colors = [C.primary, C.secondary, C.tertiary];
         const hasBorder = lvl === 1;
         const headText  = lang === "hi" ? (hi.text || c.text || "") : (c.text || "");
@@ -958,8 +1007,8 @@ async function generateDocx(report, sections, outPath, opts) {
         items.forEach((item, i) => {
           els.push(new Paragraph({
             children: [
-              new TextRun({ text: ordered ? `${i + 1}.  ` : "•  ", bold: false, size: 22, color: C.body, font: docFont }),
-              new TextRun({ text: String(item || ""), size: 22, color: C.body, font: docFont }),
+              new TextRun({ text: ordered ? `${i + 1}.  ` : "•  ", bold: false, size: 24, color: C.body, font: docFont }),
+              new TextRun({ text: String(item || ""), size: 24, color: C.body, font: docFont }),
             ],
             indent: { left: 360 },
             spacing: { after: 40 },
@@ -971,8 +1020,9 @@ async function generateDocx(report, sections, outPath, opts) {
       case "KPI": {
         if (c.source === "kpi_import") {
           // KPI import block
+          // size 21 = 10.5pt — matches PDF .kpi-title { font-size: 14px } (14px×0.75=10.5pt)
           els.push(new Paragraph({
-            children: [new TextRun({ text: c.title || "KPI Chart", bold: true, size: 28, color: C.secondary })],
+            children: [new TextRun({ text: c.title || "KPI Chart", bold: true, size: 21, color: C.secondary })],
             spacing: { after: 60 },
           }));
           if (c.caption || c.compile_options?.caption) {
@@ -992,7 +1042,8 @@ async function generateDocx(report, sections, outPath, opts) {
           const unit  = c.unit  || c.kpi_unit  || "";
           els.push(new Paragraph({
             children: [
-              new TextRun({ text: `${title}: `, bold: true, size: 22, color: C.primary }),
+              // color: C.body (black) — matches PDF .kpi-simple which has no special colour
+              new TextRun({ text: `${title}: `, bold: true, size: 22, color: C.body }),
               new TextRun({ text: `${val} ${unit}`.trim(), size: 22, color: C.body }),
             ],
             spacing: { after: 80 },
@@ -1017,7 +1068,21 @@ async function generateDocx(report, sections, outPath, opts) {
                 alignment: AlignmentType.CENTER,
                 spacing: { after: 40 },
               }));
-            } catch { /* skip broken image */ }
+            } catch {
+              // broken image — show placeholder matching PDF's .img-placeholder
+              els.push(new Paragraph({
+                children: [new TextRun({ text: "[Image]", size: 18, color: C.gray, font: docFont })],
+                alignment: AlignmentType.CENTER,
+                spacing: { after: 40 },
+              }));
+            }
+          } else {
+            // fetch failed — placeholder
+            els.push(new Paragraph({
+              children: [new TextRun({ text: "[Image]", size: 18, color: C.gray, font: docFont })],
+              alignment: AlignmentType.CENTER,
+              spacing: { after: 40 },
+            }));
           }
           const imgCaption = lang === "hi" ? (hi.caption || c.caption) : c.caption;
           if (imgCaption) {
@@ -1095,10 +1160,12 @@ async function generateDocx(report, sections, outPath, opts) {
       }
 
       case "FILE":
+        // Layout matches PDF .file-blk: "📎 filename" with link colour + underline
         els.push(new Paragraph({
           children: [
-            new TextRun({ text: "📎  Attachment: ", bold: true, size: 20, color: C.body }),
-            new TextRun({ text: c.name || c.url || "File", size: 20, color: C.link }),
+            new TextRun({ text: "📎  ", size: 20, color: C.body }),
+            new TextRun({ text: c.name || c.url || "Attachment", size: 20, color: C.link,
+              underline: { type: UnderlineType.SINGLE } }),
           ],
           spacing: { before: 40, after: 60 },
           shading: { type: ShadingType.CLEAR, fill: "EFF6FF" },
@@ -1113,10 +1180,16 @@ async function generateDocx(report, sections, outPath, opts) {
   }
 
   /* ── Fetch branding assets upfront ── */
-  const [coverBuf, logoBuf, bgBuf] = await Promise.all([
+  const [rawCoverBuf, logoBuf, rawBgBuf] = await Promise.all([
     fetchImageBuffer(report.cover_image_url),
     fetchImageBuffer(report.logo_url),
     fetchImageBuffer(report.bg_image_url),
+  ]);
+  // Cover: full-bleed crop-to-fill (no distortion). Watermark: same full-bleed fit +
+  // Word's "Washout" fade baked in — identical preprocessing PDF uses (see below).
+  const [coverBuf, bgBuf] = await Promise.all([
+    renderCoverImage(rawCoverBuf),
+    renderWatermarkImage(rawBgBuf),
   ]);
 
   /* ── Build document children (title page + TOC + sections) ── */
@@ -1125,17 +1198,33 @@ async function generateDocx(report, sections, outPath, opts) {
   // Use translated report title when in Hindi mode
   const docTitle = lang === "hi" && opts.hiStrings ? opts.hiStrings.reportTitle : report.title;
 
-  // Report title block (matches A4Page + first-page block in wordDocUtils)
+  // ── Title page — layout mirrors PDF's titleHtml ──
   const docInstName = lang === "hi" && opts.hiStrings ? opts.hiStrings.institutionName : (report.institution_name || "");
+
+  // Logo: right-aligned before any text, matching PDF's `float:right` on the title page.
+  // logoBuf is already fetched above (same buffer used in the footer).
+  if (logoBuf) {
+    try {
+      children.push(new Paragraph({
+        children: [new ImageRun({ data: logoBuf, transformation: { width: 96, height: 36 } })],
+        alignment: AlignmentType.RIGHT,
+        spacing: { after: 20 },
+      }));
+    } catch { /* skip if image is broken */ }
+  }
+
+  // Institution name: 13pt, Calibri (matches PDF font-family:'Calibri','Segoe UI',Arial)
   children.push(new Paragraph({
-    children: [new TextRun({ text: docInstName, bold: true, size: 24, color: C.primary, font: docFont })],
+    children: [new TextRun({ text: docInstName, bold: true, size: 26,
+      color: C.primary, font: lang === "hi" ? docFont : "Calibri" })],
     alignment: AlignmentType.CENTER,
     spacing: { after: 60 },
   }));
+
+  // Report title: 20pt, no bottom border (PDF .title-main has no underline/border)
   children.push(new Paragraph({
     children: [new TextRun({ text: docTitle, bold: true, size: 40, color: C.primary, font: docFont })],
     alignment: AlignmentType.CENTER,
-    border: { bottom: { color: C.primary, space: 1, style: BorderStyle.SINGLE, size: 16 } },
     spacing: { after: 80 },
   }));
   if (report.report_type || report.academic_year) {
@@ -1219,9 +1308,10 @@ async function generateDocx(report, sections, outPath, opts) {
 
       children.push(new Paragraph({
         children: [
-          new TextRun({ text: label, size: isH1 ? 22 : 20, bold: isH1, color: isH1 ? C.primary : C.body, font: docFont }),
+          // H1 entries: C.primary; sub-entries: C.tertiary (#374151) — matches PDF hardcoded #374151
+          new TextRun({ text: label, size: isH1 ? 22 : 20, bold: isH1, color: isH1 ? C.primary : C.tertiary, font: docFont }),
           new TextRun({ text: "\t", size: isH1 ? 22 : 20, font: docFont }),
-          new TextRun({ text: pgNum, size: isH1 ? 22 : 20, bold: isH1, color: isH1 ? C.primary : C.body, font: docFont }),
+          new TextRun({ text: pgNum, size: isH1 ? 22 : 20, bold: isH1, color: isH1 ? C.primary : C.tertiary, font: docFont }),
         ],
         indent: { left: indent },
         tabStops: [{ type: TabStopType.RIGHT, position: TabStopPosition.MAX, leader: dotLeader }],
@@ -1271,6 +1361,7 @@ async function generateDocx(report, sections, outPath, opts) {
         children: [
           new ImageRun({
             data: bgBuf,
+            type: "png", // renderWatermarkImage always outputs PNG
             transformation: { width: 794, height: 1122 }, // A4 at 96 DPI
             floating: {
               horizontalPosition: {
@@ -1358,7 +1449,7 @@ async function generateDocx(report, sections, outPath, opts) {
         // Omit headers/footers entirely so the cover page has none
         children: [
           new Paragraph({
-            children: [new ImageRun({ data: coverBuf, transformation: { width: 794, height: 1122 } })],
+            children: [new ImageRun({ data: coverBuf, type: "png", transformation: { width: 794, height: 1122 } })],
             alignment: AlignmentType.CENTER,
             spacing: { after: 0, before: 0 },
           }),
@@ -1371,7 +1462,11 @@ async function generateDocx(report, sections, outPath, opts) {
 
   docSections.push({
     properties: {
-      page: { margin: { top: 1080, right: 1080, bottom: 1080, left: 1080 } },
+      page: {
+        // 22mm top/bottom, 20mm left/right — matches PDF margin:{ top:"22mm", bottom:"22mm", left:"20mm", right:"20mm" }
+        // 22mm × (1440 twips/in ÷ 25.4mm/in) = 1247 twips; 20mm = 1134 twips
+        margin: { top: 1247, right: 1134, bottom: 1247, left: 1134 },
+      },
     },
     headers: { default: docHeader },
     footers: { default: docFooter },
@@ -1384,7 +1479,8 @@ async function generateDocx(report, sections, outPath, opts) {
     styles: {
       default: {
         document: {
-          run: { font: docFont, size: 22, color: C.body },
+          // size: 24 = 12pt — matches PDF body font-size:12pt
+          run: { font: docFont, size: 24, color: C.body },
           paragraph: { spacing: { line: 432, lineRule: "auto" } },
         },
       },
@@ -1416,11 +1512,19 @@ async function generatePdf(report, sections, outPath, opts) {
     return `data:${mime};base64,${buf.toString("base64")}`;
   }
 
-  const [logoDataUrl, bgDataUrl, coverDataUrl] = await Promise.all([
+  const [logoDataUrl, rawBgBuf, rawCoverBuf] = await Promise.all([
     toDataUrl(report.logo_url),
-    toDataUrl(report.bg_image_url),
-    toDataUrl(report.cover_image_url),
+    fetchImageBuffer(report.bg_image_url),
+    fetchImageBuffer(report.cover_image_url),
   ]);
+  // Same preprocessing DOCX uses (full-bleed fit + Word "Washout" fade for the
+  // watermark) — guarantees the two formats render identically.
+  const [bgBuf, coverBuf] = await Promise.all([
+    renderWatermarkImage(rawBgBuf),
+    renderCoverImage(rawCoverBuf),
+  ]);
+  const bgDataUrl    = bgBuf    ? `data:image/png;base64,${bgBuf.toString("base64")}`    : null;
+  const coverDataUrl = coverBuf ? `data:image/png;base64,${coverBuf.toString("base64")}` : null;
 
   // Pre-convert all block image URLs to data URLs so Puppeteer can embed them
   const blockImageUrls = new Set();
@@ -1440,7 +1544,7 @@ async function generatePdf(report, sections, outPath, opts) {
     if (dataUrl) blockImageMap[url] = dataUrl;
   }));
 
-  const html    = buildHtml(report, sections, opts, { logoDataUrl, bgDataUrl, coverDataUrl, blockImageMap });
+  const html    = buildHtml(report, sections, opts, { logoDataUrl, bgDataUrl, blockImageMap });
   const pdfHiType   = opts.language === "hi" && opts.hiStrings ? opts.hiStrings.reportType : report.report_type;
   const hdrMeta     = [pdfHiType, report.academic_year].filter(Boolean).join("  ");
   const pdfDocTitle = opts.language === "hi" && opts.hiStrings ? opts.hiStrings.reportTitle : report.title;
@@ -1453,7 +1557,7 @@ async function generatePdf(report, sections, outPath, opts) {
     // Set viewport to A4 dimensions (794×1123px at 96dpi) so fixed/vw/vh units match the page
     await page.setViewport({ width: 794, height: 1123 });
     await page.setContent(html, { waitUntil: "networkidle0" });
-    const pdfBuf = await page.pdf({
+    const contentPdfBuf = await page.pdf({
       format: "A4",
       printBackground: true,
       displayHeaderFooter: true,
@@ -1480,8 +1584,39 @@ async function generatePdf(report, sections, outPath, opts) {
         </div>`,
       margin: { top: "22mm", bottom: "22mm", left: "20mm", right: "20mm" },
     });
-    fs.writeFileSync(outPath, pdfBuf);
-    return pdfBuf.length;
+
+    let finalBuf = contentPdfBuf;
+
+    // Cover page, if present, is rendered as its own single-page PDF with no
+    // header/footer/watermark, then merged in front of the content PDF — Puppeteer's
+    // header/footer templates apply to every page with no per-page exclusion, so this
+    // is the only reliable way to keep page 1 as cover-image-only (matches DOCX, whose
+    // cover already lives in its own headerless section).
+    if (coverDataUrl) {
+      // "load" (not "networkidle0") — the cover doc has one already-embedded data:
+      // URI image with no external requests, and re-using "networkidle0" for a second
+      // setContent() on the same page proved unreliable in testing.
+      await page.setContent(buildCoverOnlyHtml(coverDataUrl), { waitUntil: "load" });
+      const coverPdfBuf = await page.pdf({
+        format: "A4",
+        printBackground: true,
+        displayHeaderFooter: false,
+        margin: { top: 0, bottom: 0, left: 0, right: 0 },
+      });
+
+      const { PDFDocument } = require("pdf-lib");
+      const merged       = await PDFDocument.create();
+      const coverDoc      = await PDFDocument.load(coverPdfBuf);
+      const contentDoc     = await PDFDocument.load(contentPdfBuf);
+      const [coverPage]    = await merged.copyPages(coverDoc, [0]);
+      const contentPages   = await merged.copyPages(contentDoc, contentDoc.getPageIndices());
+      merged.addPage(coverPage);
+      for (const p of contentPages) merged.addPage(p);
+      finalBuf = Buffer.from(await merged.save());
+    }
+
+    fs.writeFileSync(outPath, finalBuf);
+    return finalBuf.length;
   } finally {
     await browser.close();
   }
@@ -1491,7 +1626,7 @@ async function generatePdf(report, sections, outPath, opts) {
 /* CSS mirrors wordDocUtils.jsx + ReportPreviewPage.jsx exactly               */
 
 function buildHtml(report, sections, opts, assets = {}) {
-  const { logoDataUrl = null, bgDataUrl = null, coverDataUrl = null, blockImageMap = {} } = assets;
+  const { logoDataUrl = null, bgDataUrl = null, blockImageMap = {} } = assets;
   const hasBg  = !!(bgDataUrl || report.bg_image_url);
   const hlang  = opts.language === "hi" ? "hi" : "en";
   const isHindi = hlang === "hi";
@@ -1692,25 +1827,26 @@ function buildHtml(report, sections, opts, assets = {}) {
     return `<div class="section" style="${pb}">${sectionHeaderHtml(s)}${blocks}</div>`;
   }).join("\n");
 
-  /* ── Cover image — full-page first page (placed OUTSIDE page-wrapper) ── */
-  const coverSrc = coverDataUrl || (report.cover_image_url ? escHtml(report.cover_image_url) : null);
-  const coverHtml = coverSrc
-    ? `<div class="cover-page" style="page-break-after:always;width:100%;height:100vh;overflow:hidden;line-height:0;margin:0;padding:0;">
-        <img src="${coverSrc}" style="width:100%;height:100%;object-fit:cover;display:block;">
-       </div>`
-    : "";
+  /* ── Background image overlay ──
+     bgDataUrl is already full-bleed-fit + faded (Word's "Washout" recolor) by
+     renderWatermarkImage, so no CSS opacity here — the fade is baked into the
+     pixels, identical to DOCX. Cover image is rendered separately (see
+     buildCoverOnlyHtml / generatePdf's two-pass render), never here.
 
-  /* ── Background image overlay ── */
+     Sizing/positioning: deliberately OVERSIZED (250x340mm, vs. A4's 210x297mm) and
+     shifted -25mm/-25mm. Chromium's exact reference box for `position:fixed` during
+     paginated printing (full page vs. margin-reduced content box) isn't something we
+     can rely on — an exact-size negative-margin-offset produced a visible gap on the
+     bottom/right edges in testing. Oversizing and overshooting guarantees full
+     coverage on all 4 sides under either model. */
   const bgSrc = bgDataUrl || null; // only embed if data URL is available (PDF); HTML export skips
-  // Fixed background img: offset by the PDF margins (top:22mm, left:20mm) to reach paper edge.
-  // Without this, position:fixed left:0 starts at the content area edge (20mm from paper), not paper edge.
   const bgOverlayHtml = bgSrc
     ? `<img src="${bgSrc}"
             style="position:fixed;
-                   top:-22mm;left:-20mm;
-                   width:210mm;height:297mm;
-                   object-fit:fill;
-                   opacity:0.13;display:block;z-index:0;pointer-events:none;
+                   top:-25mm;left:-25mm;
+                   width:250mm;height:340mm;
+                   object-fit:cover;
+                   display:block;z-index:0;pointer-events:none;
                    -webkit-print-color-adjust:exact;print-color-adjust:exact;">`
     : "";
 
@@ -1810,7 +1946,6 @@ hr.divider { border: none; border-top: 1px solid #9ca3af; margin: 10px 0 12px; }
 .file-blk a { color: #1d4ed8; text-decoration: underline; }
 
 /* ── Page/print ── */
-@page :first { margin: 0; size: A4 portrait; }
 @page { margin: 20mm 25mm; size: A4 portrait; }
 @media print {
   body {
@@ -1819,7 +1954,6 @@ hr.divider { border: none; border-top: 1px solid #9ca3af; margin: 10px 0 12px; }
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
-  .cover-page { width: 100vw !important; height: 100vh !important; margin: 0 !important; }
   .page-wrapper { background: ${bgSrc ? "transparent" : "#ffffff"} !important; box-shadow: none; margin: 0; padding: 0; }
   .section[style*="page-break-before"] { page-break-before: always; }
   .toc-page { page-break-after: always; }
@@ -1845,13 +1979,33 @@ hr.divider { border: none; border-top: 1px solid #9ca3af; margin: 10px 0 12px; }
 </head>
 <body style="position:relative;">
 ${bgOverlayHtml}
-${coverHtml}
 <div class="page-wrapper" style="position:relative;z-index:1;">
 ${titleHtml}
 ${tocHtml}
 ${contentHtml}
 </div>
 </body>
+</html>`;
+}
+
+/* ── Cover-only document — rendered as its own single-page PDF (see generatePdf)
+   so the cover page never gets the running header/footer or watermark. ── */
+function buildCoverOnlyHtml(coverDataUrl) {
+  return `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  @page { margin: 0; size: A4 portrait; }
+  html, body { width: 210mm; height: 297mm; }
+  img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  @media print {
+    body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  }
+</style>
+</head>
+<body><img src="${coverDataUrl}"></body>
 </html>`;
 }
 
