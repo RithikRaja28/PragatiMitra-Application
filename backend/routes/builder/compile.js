@@ -69,7 +69,7 @@ const C = {
   tblHead:   "D0CECE",   // Table header background
   tblAlt:    "F9FAFB",   // Alternating row
   divider:   "9CA3AF",
-  border:    "D1D5DB",
+  border:    "9CA3AF",   // matches PDF's .data-tbl border color exactly
   link:      "1D4ED8",
 };
 
@@ -195,6 +195,64 @@ async function renderWatermarkImage(buf) {
       .png()
       .toBuffer();
   } catch { return null; }
+}
+
+// docx's ImageRun REQUIRES an explicit `type` ("jpg"|"png"|"gif"|"bmp"). Used for the
+// title-page/footer logo: detects its real format (converting anything unsupported,
+// e.g. webp, to PNG) rather than guessing.
+const DOCX_IMAGE_TYPES = { jpeg: "jpg", jpg: "jpg", png: "png", gif: "gif", bmp: "bmp" };
+async function toDocxImage(buf) {
+  if (!buf) return null;
+  try {
+    const sharp = require("sharp");
+    const meta = await sharp(buf).metadata();
+    const mapped = DOCX_IMAGE_TYPES[meta.format];
+    if (mapped) return { data: buf, type: mapped, width: meta.width, height: meta.height };
+    const png = await sharp(buf).png().toBuffer();
+    const pngMeta = await sharp(png).metadata();
+    return { data: png, type: "png", width: pngMeta.width, height: pngMeta.height };
+  } catch { return null; }
+}
+
+/* ─── Shared TOC page-number estimator — used by BOTH generateDocx and buildHtml
+   so their tables of contents can never drift out of sync with each other. ─── */
+function estimateBlockPageUnits(b) {
+  const bc = (typeof b.content === "string" ? { html: b.content } : b.content) || {};
+  switch (b.block_type) {
+    case "PARAGRAPH": {
+      const text = (bc.html || bc.text || "").replace(/<[^>]+>/g, " ");
+      const words = text.split(/\s+/).filter(Boolean).length;
+      return Math.max(0.3, words / 90);
+    }
+    case "HEADING":    return 0.4;
+    case "IMAGE":      return 3.5;
+    case "IMAGE_GRID": return 4.0;
+    case "TABLE":      return 1.5 + ((bc.rows || []).length * 0.25);
+    case "LIST":       return 0.4 + ((bc.items || []).length * 0.15);
+    case "KPI":        return 0.6;
+    case "DIVIDER":    return 0.1;
+    case "FILE":       return 0.3;
+    default:           return 0.4;
+  }
+}
+
+function buildTocPageNums(sectionList) {
+  const nums = new Map();
+  const UNITS_PER_PAGE = 5;
+  let page = 3; // p1 = title, p2 = TOC, p3 = first section
+
+  for (const s of sectionList) {
+    const depth = s.depth || 0;
+    if (depth === 0) {
+      nums.set(s.id, page);
+      const units = (s.blocks || []).reduce((sum, b) => sum + estimateBlockPageUnits(b), 0.5);
+      page += Math.max(1, Math.round(units / UNITS_PER_PAGE));
+    } else {
+      const parentPage = nums.get(s.parent_id) || page;
+      nums.set(s.id, parentPage);
+    }
+  }
+  return nums;
 }
 
 /* ─── Pre-translate metadata strings for Hindi compilation ──────────────────
@@ -520,7 +578,7 @@ async function generateDocx(report, sections, outPath, opts) {
     Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell,
     AlignmentType, BorderStyle, ImageRun, WidthType, ShadingType,
     HeadingLevel, TabStopType, TabStopPosition, Header, Footer,
-    PageNumber, NumberFormat, UnderlineType, LeaderType,
+    PageNumber, NumberFormat, UnderlineType, LeaderType, ExternalHyperlink,
     HorizontalPositionRelativeFrom, HorizontalPositionAlign,
     VerticalPositionRelativeFrom, VerticalPositionAlign,
     TextWrappingType, TextWrappingSide,
@@ -605,8 +663,8 @@ async function generateDocx(report, sections, outPath, opts) {
     const runs = [];
 
     function makeRun(text, fmt) {
-      if (!text) return;
-      runs.push(new TextRun({
+      if (!text) return null;
+      return new TextRun({
         text,
         bold:       fmt.bold    || undefined,
         italics:    fmt.italic  || undefined,
@@ -620,14 +678,17 @@ async function generateDocx(report, sections, outPath, opts) {
         shading:    fmt.bgColor
           ? { type: ShadingType.CLEAR, fill: fmt.bgColor, color: "auto" }
           : undefined,
-      }));
+      });
     }
 
-    function walk(str, fmt) {
+    // walk() appends into `out` — normally the top-level `runs` array, but a local
+    // array when collecting an <a> tag's inner content, so the whole link can be
+    // wrapped in one real ExternalHyperlink instead of flattened to plain text.
+    function walk(str, fmt, out) {
       while (str.length > 0) {
         const lt = str.indexOf("<");
-        if (lt < 0) { makeRun(decodeEntities(str), fmt); return; }
-        if (lt > 0)   makeRun(decodeEntities(str.slice(0, lt)), fmt);
+        if (lt < 0) { const r = makeRun(decodeEntities(str), fmt); if (r) out.push(r); return; }
+        if (lt > 0) { const r = makeRun(decodeEntities(str.slice(0, lt)), fmt); if (r) out.push(r); }
 
         const gt = str.indexOf(">", lt);
         if (gt < 0) return;
@@ -637,7 +698,7 @@ async function generateDocx(report, sections, outPath, opts) {
 
         // Self-closing / void
         if (name === "br" || tag === "br/" || tag === "br") {
-          runs.push(new TextRun({ text: "\n", font: "Times New Roman" }));
+          out.push(new TextRun({ text: "\n", font: "Times New Roman" }));
           continue;
         }
         if (tag.startsWith("/")) continue;
@@ -663,7 +724,19 @@ async function generateDocx(report, sections, outPath, opts) {
           bgColor:     ts.bgColor || (name === "mark" ? "FFFF00" : fmt.bgColor),
           size:        ts.fontSize || fmt.size,
         };
-        walk(inner, child);
+
+        // Real hyperlink — matches the PDF's <a href>, instead of plain colored text.
+        if (name === "a") {
+          const hrefM = tag.match(/href=["']([^"']*)["']/i);
+          const href  = hrefM ? decodeEntities(hrefM[1]) : null;
+          if (href) {
+            const children = [];
+            walk(inner, { ...child, underline: true }, children);
+            if (children.length) out.push(new ExternalHyperlink({ link: href, children }));
+            continue;
+          }
+        }
+        walk(inner, child, out);
       }
     }
 
@@ -674,7 +747,7 @@ async function generateDocx(report, sections, outPath, opts) {
       .replace(/<\/div>/gi, "<br/>").replace(/<div[^>]*>/gi, "")
       .replace(/<\/h[1-6]>/gi, "<br/>").replace(/<h[1-6][^>]*>/gi, "");
 
-    walk(cleaned, { bold: baseBold, italic: baseItalic });
+    walk(cleaned, { bold: baseBold, italic: baseItalic }, runs);
     return runs.length > 0 ? runs : [new TextRun({ text: "", size: 24 })];
   }
 
@@ -1060,11 +1133,15 @@ async function generateDocx(report, sections, outPath, opts) {
 
       case "IMAGE": {
         if (c.url) {
-          const buf = await fetchImageBuffer(c.url);
-          if (buf) {
+          const rawBuf = await fetchImageBuffer(c.url);
+          // ImageRun requires an explicit `type`; without it docx writes the
+          // media part with a literal ".undefined" extension, which Word
+          // rejects as a corrupted file (no matching Content_Types entry).
+          const img = rawBuf ? await toDocxImage(rawBuf) : null;
+          if (img) {
             try {
               els.push(new Paragraph({
-                children: [new ImageRun({ data: buf, transformation: { width: 500, height: 300 } })],
+                children: [new ImageRun({ data: img.data, type: img.type, transformation: { width: 500, height: 300 } })],
                 alignment: AlignmentType.CENTER,
                 spacing: { after: 40 },
               }));
@@ -1106,16 +1183,19 @@ async function generateDocx(report, sections, outPath, opts) {
         const imgPxW   = Math.max(80, Math.floor(520 / colCount));
         const imgPxH   = Math.round(imgPxW * 0.72);
 
-        const bufs = await Promise.all(
+        const rawBufs = await Promise.all(
           gridCols.map(col => (col.url ? fetchImageBuffer(col.url) : Promise.resolve(null)))
         );
+        // Same explicit-`type` requirement as the single IMAGE block above —
+        // untyped ImageRuns write ".undefined" media parts that Word rejects.
+        const imgs = await Promise.all(rawBufs.map(b => (b ? toDocxImage(b) : null)));
 
         const gridCells = gridCols.map((col, i) => {
           const cellChildren = [];
-          if (bufs[i]) {
+          if (imgs[i]) {
             try {
               cellChildren.push(new Paragraph({
-                children: [new ImageRun({ data: bufs[i], transformation: { width: imgPxW, height: imgPxH } })],
+                children: [new ImageRun({ data: imgs[i].data, type: imgs[i].type, transformation: { width: imgPxW, height: imgPxH } })],
                 alignment: AlignmentType.CENTER,
                 spacing: { after: 20 },
               }));
@@ -1164,8 +1244,14 @@ async function generateDocx(report, sections, outPath, opts) {
         els.push(new Paragraph({
           children: [
             new TextRun({ text: "📎  ", size: 20, color: C.body }),
-            new TextRun({ text: c.name || c.url || "Attachment", size: 20, color: C.link,
-              underline: { type: UnderlineType.SINGLE } }),
+            c.url
+              ? new ExternalHyperlink({
+                  link: c.url,
+                  children: [new TextRun({ text: c.name || c.url || "Attachment", size: 20, color: C.link,
+                    underline: { type: UnderlineType.SINGLE } })],
+                })
+              : new TextRun({ text: c.name || "Attachment", size: 20, color: C.link,
+                  underline: { type: UnderlineType.SINGLE } }),
           ],
           spacing: { before: 40, after: 60 },
           shading: { type: ShadingType.CLEAR, fill: "EFF6FF" },
@@ -1187,9 +1273,10 @@ async function generateDocx(report, sections, outPath, opts) {
   ]);
   // Cover: full-bleed crop-to-fill (no distortion). Watermark: same full-bleed fit +
   // Word's "Washout" fade baked in — identical preprocessing PDF uses (see below).
-  const [coverBuf, bgBuf] = await Promise.all([
+  const [coverBuf, bgBuf, logoImg] = await Promise.all([
     renderCoverImage(rawCoverBuf),
     renderWatermarkImage(rawBgBuf),
+    logoBuf ? toDocxImage(logoBuf) : null,
   ]);
 
   /* ── Build document children (title page + TOC + sections) ── */
@@ -1202,11 +1289,12 @@ async function generateDocx(report, sections, outPath, opts) {
   const docInstName = lang === "hi" && opts.hiStrings ? opts.hiStrings.institutionName : (report.institution_name || "");
 
   // Logo: right-aligned before any text, matching PDF's `float:right` on the title page.
-  // logoBuf is already fetched above (same buffer used in the footer).
-  if (logoBuf) {
+  // logoImg is already resolved above (same typed buffer used in the footer).
+  if (logoImg) {
     try {
+      const logoH = 52, logoW = Math.round(logoH * (logoImg.width / logoImg.height));
       children.push(new Paragraph({
-        children: [new ImageRun({ data: logoBuf, transformation: { width: 96, height: 36 } })],
+        children: [new ImageRun({ data: logoImg.data, type: logoImg.type, transformation: { width: logoW, height: logoH } })],
         alignment: AlignmentType.RIGHT,
         spacing: { after: 20 },
       }));
@@ -1240,46 +1328,7 @@ async function generateDocx(report, sections, outPath, opts) {
     }));
   }
 
-  /* ── Estimate approximate page numbers per section for TOC ── */
-  function estimateBlockPageUnits(b) {
-    const bc = (typeof b.content === "string" ? { html: b.content } : b.content) || {};
-    switch (b.block_type) {
-      case "PARAGRAPH": {
-        const text = (bc.html || bc.text || "").replace(/<[^>]+>/g, " ");
-        const words = text.split(/\s+/).filter(Boolean).length;
-        return Math.max(0.3, words / 90);
-      }
-      case "HEADING":    return 0.4;
-      case "IMAGE":      return 3.5;
-      case "IMAGE_GRID": return 4.0;
-      case "TABLE":      return 1.5 + ((bc.rows || []).length * 0.25);
-      case "LIST":       return 0.4 + ((bc.items || []).length * 0.15);
-      case "KPI":        return 0.6;
-      case "DIVIDER":    return 0.1;
-      case "FILE":       return 0.3;
-      default:           return 0.4;
-    }
-  }
-
-  function buildTocPageNums(sectionList) {
-    const nums = new Map();
-    const UNITS_PER_PAGE = 5;
-    let page = 3; // p1 = title, p2 = TOC, p3 = first section
-
-    for (const s of sectionList) {
-      const depth = s.depth || 0;
-      if (depth === 0) {
-        nums.set(s.id, page);
-        const units = (s.blocks || []).reduce((sum, b) => sum + estimateBlockPageUnits(b), 0.5);
-        page += Math.max(1, Math.round(units / UNITS_PER_PAGE));
-      } else {
-        // Subsection — start on same page as parent (rough but meaningful)
-        const parentPage = nums.get(s.parent_id) || page;
-        nums.set(s.id, parentPage);
-      }
-    }
-    return nums;
-  }
+  // (estimateBlockPageUnits / buildTocPageNums are module-level, shared with buildHtml)
 
   // TOC — separate page, dotted leaders with estimated page numbers
   if (opts.include_toc) {
@@ -1419,9 +1468,15 @@ async function generateDocx(report, sections, outPath, opts) {
           new TextRun({ children: [PageNumber.CURRENT], size: 18, bold: true, color: C.lightGray }),
           // Tab to right
           new TextRun({ text: "\t", size: 15 }),
-          // Right: logo image (bigger) or fallback empty
-          ...(logoBuf
-            ? (() => { try { return [new ImageRun({ data: logoBuf, transformation: { width: 96, height: 36 } })]; } catch { return []; } })()
+          // Right: logo image (bigger) or fallback empty — aspect-ratio preserved,
+          // matching the title-page logo and PDF's footer `object-fit:contain`
+          // (a fixed 96x36 box previously squished non-2.67:1 logos into an oval).
+          ...(logoImg
+            ? (() => { try {
+                const footerLogoH = 36;
+                const footerLogoW = Math.min(96, Math.round(footerLogoH * (logoImg.width / logoImg.height)));
+                return [new ImageRun({ data: logoImg.data, type: logoImg.type, transformation: { width: footerLogoW, height: footerLogoH } })];
+              } catch { return []; } })()
             : []
           ),
         ],
@@ -1569,7 +1624,7 @@ async function generatePdf(report, sections, outPath, opts) {
           <span>${escHtml(pdfDocTitle || "")}</span>
         </div>`,
       footerTemplate: `
-        <div style="font-size:8px;font-family:'Times New Roman',Times,serif;color:#374151;
+        <div style="font-size:8px;font-family:${pdfFont};color:#374151;
                     width:100%;padding:4px 25mm 6px;box-sizing:border-box;
                     display:grid;grid-template-columns:1fr auto 1fr;align-items:center;
                     border-top:1px solid #e5e7eb;">
@@ -1722,10 +1777,15 @@ function buildHtml(report, sections, opts, assets = {}) {
       case "IMAGE": {
         if (!c.url) return "";
         const htmlImgCap = isHindi ? (hi.caption || c.caption || "") : (c.caption || "");
-        const imgSrc = blockImageMap[c.url] || escHtml(c.url);
+        const capHtml = htmlImgCap ? `<div class="img-cap">${escHtml(htmlImgCap)}</div>` : "";
+        // If the fetch/data-URL conversion failed, show an explicit placeholder
+        // instead of a broken <img src> pointing at an unreachable internal path
+        // (matches DOCX, which always shows "[Image]" on any failure).
+        const imgSrc = blockImageMap[c.url];
+        if (!imgSrc) return `<div class="img-wrap"><div class="img-placeholder" style="height:200px;">[Image]</div>${capHtml}</div>`;
         return `<div class="img-wrap">
           <img src="${imgSrc}" alt="${escHtml(htmlImgCap)}" style="width:${c.widthPct ?? 100}%;max-height:500px;object-fit:contain;border-radius:3px;border:1px solid #e5e7eb">
-          ${htmlImgCap ? `<div class="img-cap">${escHtml(htmlImgCap)}</div>` : ""}
+          ${capHtml}
         </div>`;
       }
 
@@ -1735,7 +1795,8 @@ function buildHtml(report, sections, opts, assets = {}) {
         const hiCols = isHindi ? (hi.cols || []) : [];
         const items = cols.map((col, gi) => {
           const gridCap = hiCols[gi]?.caption || col.caption || "";
-          const gridSrc = col.url ? (blockImageMap[col.url] || escHtml(col.url)) : null;
+          // Placeholder on any failure (missing url OR failed fetch), matching DOCX.
+          const gridSrc = col.url ? blockImageMap[col.url] : null;
           return `
           <div>
             ${gridSrc ? `<img src="${gridSrc}" style="width:100%;border-radius:3px;border:1px solid #e5e7eb">` : `<div class="img-placeholder">[Image]</div>`}
@@ -1770,30 +1831,9 @@ function buildHtml(report, sections, opts, assets = {}) {
   /* ── Table of contents with dotted leaders and page numbers ── */
   let tocHtml = "";
   if (opts.include_toc) {
-    // Re-use the same page estimator from DOCX path
-    function estUnits(b) {
-      const bc = (typeof b.content === "string" ? { html: b.content } : b.content) || {};
-      switch (b.block_type) {
-        case "PARAGRAPH": {
-          const words = (bc.html || bc.text || "").replace(/<[^>]+>/g, " ").split(/\s+/).filter(Boolean).length;
-          return Math.max(0.3, words / 90);
-        }
-        case "IMAGE": return 3.5; case "IMAGE_GRID": return 4.0;
-        case "TABLE": return 1.5 + ((bc.rows || []).length * 0.25);
-        case "LIST": return 0.4 + ((bc.items || []).length * 0.15);
-        default: return 0.4;
-      }
-    }
-    const tocMap = new Map();
-    let pg = 3;
-    for (const s of sections) {
-      if ((s.depth || 0) === 0) {
-        tocMap.set(s.id, pg);
-        pg += Math.max(1, Math.round((s.blocks || []).reduce((a, b) => a + estUnits(b), 0.5) / 5));
-      } else {
-        tocMap.set(s.id, tocMap.get(s.parent_id) || pg);
-      }
-    }
+    // Same estimator DOCX uses (module-level buildTocPageNums/estimateBlockPageUnits)
+    // — a single shared implementation so the two TOCs can't drift apart.
+    const tocMap = buildTocPageNums(sections);
 
     const rows = sections.map(s => {
       const depth  = s.depth || 0;
@@ -1910,6 +1950,12 @@ body {
 
 /* ── Paragraph ── */
 .para { font-size: 12pt; line-height: 1.8; color: #111827; margin-bottom: 10px; word-break: break-word; }
+/* Quill class-based alignment (fallback when there's no inline text-align style) —
+   DOCX already honors this via a ql-align-* regex; PDF had no matching rule at all,
+   so ql-align-* content silently defaulted to left-aligned here. */
+.ql-align-center  { text-align: center; }
+.ql-align-right   { text-align: right; }
+.ql-align-justify { text-align: justify; }
 
 /* ── List ── */
 .blk-list { font-size: 12pt; color: #111827; padding-left: 20px; line-height: 1.75; margin: 4px 0 10px; }
