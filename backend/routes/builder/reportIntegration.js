@@ -421,10 +421,14 @@ router.post("/sections/:sectionId/blocks/table-import", async (req, res) => {
       );
       const newBlock = blkRows[0];
 
-      // 3b. Auto-fetch + persist the Hindi mirror data as a block_translations row,
-      // so the Hindi version is available immediately without a manual "switch language"
-      // step. Only applies when the import's primary content is English — if the user
-      // explicitly imported the Hindi data as primary, there's no English translation to add.
+      // 3b.
+// Manual bilingual support.
+//
+// When importing English, check whether manually entered Hindi records
+// already exist for the same form/year. If they do, store them as the
+// Hindi variant of this report block.
+//
+// No automatic translation or Hindi mirror generation is performed.
       let translations = {};
       if (language === "en") {
         const hiColumnMeta = buildColumnMeta(safeSelected, schemaFields, "hi");
@@ -432,15 +436,52 @@ router.post("/sections/:sectionId/blocks/table-import", async (req, res) => {
         const { rows: hiRows } = await client.query(hiQuery);
         // Always persist Hindi column metadata so headers render in Hindi even when
         // no Hindi data rows exist yet (schema labels come from custom_field_schemas.label.hi).
-        const hiContent = { columns: hiColumnMeta, rows: hiRows };
-        await client.query(
-          `INSERT INTO public.block_translations (block_id, language, content, status, created_by, updated_by)
-           VALUES ($1,'hi',$2::jsonb,'DRAFT',$3,$3)
-           ON CONFLICT (block_id, language) DO UPDATE
-             SET content = EXCLUDED.content, updated_by = EXCLUDED.updated_by`,
-          [newBlock.id, JSON.stringify(hiContent), req.user.userId]
-        );
-        translations = { hi: hiContent };
+        // const hiContent = { columns: hiColumnMeta, rows: hiRows };
+        // await client.query(
+        //   `INSERT INTO public.block_translations (block_id, language, content, status, created_by, updated_by)
+        //    VALUES ($1,'hi',$2::jsonb,'DRAFT',$3,$3)
+        //    ON CONFLICT (block_id, language) DO UPDATE
+        //      SET content = EXCLUDED.content, updated_by = EXCLUDED.updated_by`,
+        //   [newBlock.id, JSON.stringify(hiContent), req.user.userId]
+        // );
+        // translations = { hi: hiContent };
+
+
+       const hasHindiData = hiRows.some(row =>
+  safeSelected.some(col => {
+    const value = row[col];
+
+    return (
+      value !== null &&
+      value !== undefined &&
+      String(value).trim() !== ""
+    );
+  })
+);
+
+if (hasHindiData) {
+    const hiContent = {
+        columns: hiColumnMeta,
+        rows: hiRows,
+    };
+
+    await client.query(
+        `INSERT INTO public.block_translations
+           (block_id, language, content, status, created_by, updated_by)
+         VALUES ($1,'hi',$2::jsonb,'DRAFT',$3,$3)
+         ON CONFLICT (block_id, language)
+         DO UPDATE
+           SET content = EXCLUDED.content,
+               updated_by = EXCLUDED.updated_by`,
+        [
+            newBlock.id,
+            JSON.stringify(hiContent),
+            req.user.userId,
+        ]
+    );
+
+    translations.hi = hiContent;
+}
       }
 
       // 4. Snapshot
@@ -581,15 +622,52 @@ router.post("/blocks/:blockId/refetch", async (req, res) => {
             const { rows: hiRows } = await pool.query(hiQuery);
             // Always persist Hindi column metadata so headers render in Hindi even when
             // no Hindi data rows exist yet (labels come from custom_field_schemas.label.hi).
-            const hiContent = { columns: hiColumnMeta, rows: hiRows };
-            await pool.query(
-              `INSERT INTO public.block_translations (block_id, language, content, status, created_by, updated_by)
-               VALUES ($1,'hi',$2::jsonb,'DRAFT',$3,$3)
-               ON CONFLICT (block_id, language) DO UPDATE
-                 SET content = EXCLUDED.content, updated_by = EXCLUDED.updated_by`,
-              [blockId, JSON.stringify(hiContent), req.user.userId]
-            );
-            translations = { hi: hiContent };
+            // const hiContent = { columns: hiColumnMeta, rows: hiRows };
+            // await pool.query(
+            //   `INSERT INTO public.block_translations (block_id, language, content, status, created_by, updated_by)
+            //    VALUES ($1,'hi',$2::jsonb,'DRAFT',$3,$3)
+            //    ON CONFLICT (block_id, language) DO UPDATE
+            //      SET content = EXCLUDED.content, updated_by = EXCLUDED.updated_by`,
+            //   [blockId, JSON.stringify(hiContent), req.user.userId]
+            // );
+            // translations = { hi: hiContent };
+
+
+             const hasHindiData = hiRows.some(row =>
+    safeSelected.some(col => {
+        const value = row[col];
+
+        return (
+            value != null &&
+            String(value).trim() !== ""
+        );
+    })
+);
+
+if (hasHindiData) {
+
+    const hiContent = {
+        columns: hiColumnMeta,
+        rows: hiRows,
+    };
+
+    await pool.query(
+        `INSERT INTO public.block_translations
+           (block_id, language, content, status, created_by, updated_by)
+         VALUES ($1,'hi',$2::jsonb,'DRAFT',$3,$3)
+         ON CONFLICT (block_id, language)
+         DO UPDATE
+           SET content = EXCLUDED.content,
+               updated_by = EXCLUDED.updated_by`,
+        [
+            blockId,
+            JSON.stringify(hiContent),
+            req.user.userId,
+        ]
+    );
+
+    translations.hi = hiContent;
+}
           }
           }
         }

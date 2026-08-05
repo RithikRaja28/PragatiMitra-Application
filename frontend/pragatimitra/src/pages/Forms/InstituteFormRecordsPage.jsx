@@ -128,7 +128,36 @@ export default function InstituteFormRecordsPage({ form, onBack }) {
       const lockData = await lockRes.json();
 
       if (data.success) {
-        setGrouped(data.grouped || {});
+        const filteredGrouped = {};
+
+Object.entries(data.grouped || {}).forEach(([dept, records]) => {
+    filteredGrouped[dept] = (records || []).filter(record => {
+
+        if (lang !== "hi") {
+            return true;
+        }
+
+        if (record.language !== "hi") {
+            return false;
+        }
+
+        if (!data.schema?.schema?.fields) {
+            return true;
+        }
+
+        return data.schema.schema.fields.some(field => {
+            const value = record[dbCol(field.column_name)];
+
+            return (
+                value != null &&
+                String(value).trim() !== ""
+            );
+        });
+    });
+});
+
+setGrouped(filteredGrouped);
+
         setDepartments(data.departments || []);
         setSchema(data.schema);
       } else {

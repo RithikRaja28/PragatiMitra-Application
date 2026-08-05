@@ -341,23 +341,100 @@ export function RecordEditPage({
 }) {
   const { lang } = useLanguage();
   const isEdit = !!record;
-  const editLang = record?.language === "hi" ? "hi" : "en";
-  const refLang  = editLang === "hi" ? "en" : "hi";
-  const showReference = translationEnabled !== false && !!record?.id;
-  const cpPath = counterpartPath ||
-    (formName && record?.id ? `/api/form-data/${formName}/records/${record.id}/counterpart` : null);
+ 
 
-  const [formData, setFormData] = useState(() => {
+//    const [formData, setFormData] = useState(() => {
+//     const init = {};
+//     fields.forEach(f => {
+//         const col = dbCol(f.column_name);
+//         init[col] = record?.data?.[col] ?? record?.[col] ?? "";
+//     });
+//     return init;
+// });
+
+
+const [formData, setFormData] = useState(() => {
     const init = {};
-    fields.forEach(f => { const col = dbCol(f.column_name); init[col] = record ? (record[col] ?? "") : ""; });
+
+    fields.forEach(f => {
+        const col = dbCol(f.column_name);
+
+        init[col] =
+            record?.englishRecord?.[col] ??
+            record?.data?.[col] ??
+            record?.[col] ??
+            "";
+    });
+
     return init;
-  });
-  const [refData, setRefData]       = useState({});
-  const [refLoading, setRefLoading] = useState(false);
-  const [saving, setSaving]         = useState(false);
+});
+
+// const [formDataHi, setFormDataHi] = useState(() => {
+//     const init = {};
+//     fields.forEach(f => {
+//         const col = dbCol(f.column_name);
+//         init[col] = record?.data_hi?.[col] ?? "";
+//     });
+//     return init;
+// });
+
+
+const [formDataHi, setFormDataHi] = useState(() => {
+    const init = {};
+
+    fields.forEach(f => {
+        const col = dbCol(f.column_name);
+
+        init[col] =
+            record?.hindiRecord?.[col] ??
+            record?.data_hi?.[col] ??
+            "";
+    });
+
+    return init;
+});
+
+
+useEffect(() => {
+    const english = {};
+    const hindi = {};
+
+    
+
+   fields.forEach(field => {
+    const col = dbCol(field.column_name);
+
+    english[col] =
+        record?.englishRecord?.[col] ??
+        record?.data?.[col] ??
+        record?.[col] ??
+        "";
+
+    hindi[col] =
+        record?.hindiRecord?.[col] ??
+        record?.data_hi?.[col] ??
+        "";
+});
+
+setFormData(english);
+setFormDataHi(hindi);
+
+
+}, [record, fields]);
+
+const [saving, setSaving] = useState(false);
+
+
+
   const [error, setError]           = useState("");
 
   function handleChange(col, val) { setFormData(prev => ({ ...prev, [col]: val })); }
+   function handleChangeHi(col,val){
+    setFormDataHi(prev=>({
+        ...prev,
+        [col]:val
+    }));
+}
 
   useEffect(() => {
     const id = "pm-rec-edit-css";
@@ -371,33 +448,34 @@ export function RecordEditPage({
     document.head.appendChild(el);
   }, []);
 
-  const refetchCounterpart = useCallback(() => {
-    if (!showReference || !cpPath) return;
-    setRefLoading(true);
-    apiFetch(cpPath)
-      .then(r => r.json())
-      .then(d => {
-        const ref = d?.record || {};
-        const next = {};
-        fields.forEach(f => { const col = dbCol(f.column_name); next[col] = ref[col] ?? ""; });
-        setRefData(next);
-      })
-      .catch(() => {})
-      .finally(() => setRefLoading(false));
-  }, [showReference, cpPath, apiFetch, fields]);
+ 
 
-  useEffect(() => { refetchCounterpart(); }, [refetchCounterpart]);
-
-  async function handleSubmit(e) {
+ async function handleSubmit(e) {
     e.preventDefault();
-    if (viewOnly) return;
-    setSaving(true); setError("");
-    const res = await onSave(formData);
-    if (res?.success) { onBack(); return; }
-    setSaving(false);
-    setError(res?.message || "Failed to save record.");
-  }
 
+    if (viewOnly) return;
+
+    setSaving(true);
+    setError("");
+
+    try {
+
+        const res = await onSave(
+            formData,
+            formDataHi
+        );
+
+        if (res?.success) {
+            onBack();
+            return;
+        }
+
+        setError(res?.message || "Failed to save record.");
+
+    } finally {
+        setSaving(false);
+    }
+}
   const noFields = (
     <div style={{ textAlign: "center", color: "#94a3b8", fontSize: 13, padding: "24px 0" }}>
       No schema fields configured for this form.
@@ -411,41 +489,59 @@ export function RecordEditPage({
     isEdit ? t("Edit Record", lang) : t("Add Record", lang),
   ];
 
+  const shouldShowHindi =
+    !viewOnly || record?.hindiRecord != null;
+
   const editablePane = (
-    <ModalPane title={
-      viewOnly
-        ? (editLang === "hi" ? t("Hindi", lang) : t("English", lang))
-        : (editLang === "hi" ? t("Hindi (Editable)", lang) : t("English (Editable)", lang))
-    }>
+  <ModalPane
+    title={t("English", lang)}
+    helper="Edit English values manually."
+>
       {fields.length === 0 ? noFields : fields.map(field => (
         viewOnly
-          ? <ReadOnlyField key={dbCol(field.column_name)} field={field} value={formData[dbCol(field.column_name)]} lang={editLang} getToken={getToken} />
-          : <FieldInput key={dbCol(field.column_name)} field={field} value={formData[dbCol(field.column_name)]} onChange={handleChange} getToken={getToken} lang={editLang} />
+          ? <ReadOnlyField key={dbCol(field.column_name)} field={field} value={formData[dbCol(field.column_name)]} lang="en" getToken={getToken} />
+          : <FieldInput key={dbCol(field.column_name)} field={field} value={formData[dbCol(field.column_name)]} onChange={handleChange} getToken={getToken} lang="en" />
       ))}
     </ModalPane>
   );
 
-  const referencePane = (
-    <ModalPane
-      title={editLang === "hi" ? t("English Reference (Current)", lang) : t("Hindi Reference (Current)", lang)}
-      reference loading={refLoading}
-      helper={t("Translation updates after save.", lang)}
-    >
-      {fields.length === 0 ? noFields : fields.map(field => (
-        <ReadOnlyField key={dbCol(field.column_name)} field={field} value={refData[dbCol(field.column_name)]} lang={refLang} getToken={getToken} />
-      ))}
+   const hindiPane = (
+   <ModalPane
+    title={t("Hindi", lang)}
+    helper="Edit Hindi values manually."
+>
+      {fields.map(field =>
+    viewOnly ? (
+        <ReadOnlyField
+            key={dbCol(field.column_name)}
+            field={field}
+            value={formDataHi[dbCol(field.column_name)]}
+            lang="hi"
+            getToken={getToken}
+        />
+    ) : (
+        <FieldInput
+            key={dbCol(field.column_name)}
+            field={field}
+            value={formDataHi[dbCol(field.column_name)]}
+            onChange={handleChangeHi}
+            getToken={getToken}
+            lang="hi"
+        />
+    )
+)}
     </ModalPane>
-  );
+);
 
-  const leftPane  = editLang === "hi" ? referencePane : editablePane;
-  const rightPane = editLang === "hi" ? editablePane  : referencePane;
+//  const leftPane = editablePane;
+// const rightPane = hindiPane;
 
   return (
     <div className="pm-rec-edit" style={{ padding: "20px 28px 28px", fontFamily: "'Plus Jakarta Sans', sans-serif", minHeight: "100%", maxWidth: 1440, display: "flex", flexDirection: "column" }}>
       <PageHeader
         breadcrumb={breadcrumb || defaultBreadcrumb}
         title={isEdit ? t("Edit Record", lang) : t("Add Record", lang)}
-        description={isEdit ? t("Update data and review translated values.", lang) : t("Fill in the details below.", lang)}
+        description={isEdit ? t("Update English and Hindi values.", lang) : t("Fill in the details below.", lang)}
         actions={
           <Button variant="ghost" onClick={onBack} icon={<span style={{ fontSize: 15, lineHeight: 1 }}>â†</span>}>{t("Back", lang)}</Button>
         }
@@ -464,7 +560,11 @@ export function RecordEditPage({
             </div>
           </div>
           <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 28 }}>
-            {showReference ? <div className="pm-rec-grid">{leftPane}{rightPane}</div> : editablePane}
+            <div className="pm-rec-grid">
+    {editablePane}
+
+    {shouldShowHindi && hindiPane}
+</div>
             {error && (
               <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, padding: "10px 14px", fontSize: 13, color: "#b91c1c", marginTop: 16 }}>
                 {error}
@@ -1475,12 +1575,21 @@ export default function FormDataPage() {
   /* Save from the dedicated edit page. Returns { success, message } and does NOT
      navigate â€” the page stays open and refreshes its read-only preview. The
      records list is refreshed in the background so it's current on Back. */
-  async function saveRecord(formData) {
+  async function saveRecord(formData, formDataHi) {
     const editing = editTarget && editTarget !== "new" ? editTarget : null;
     try {
       const res = editing
-        ? await apiFetch(`/api/form-data/${formEntity.form_name}/records/${editing.id}`, { method: "PUT",  body: JSON.stringify({ data: formData, updated_at: editing.updated_at ?? null }) })
-        : await apiFetch(`/api/form-data/${formEntity.form_name}/records`,                { method: "POST", body: JSON.stringify({ data: formData }) });
+        ? await apiFetch(`/api/form-data/${formEntity.form_name}/records/${editing.id}`, { method: "PUT", body: JSON.stringify({
+    language: "en",
+    data: formData,
+    data_hi: formDataHi,
+    updated_at: editing.updated_at ?? null
+}) })
+        : await apiFetch(`/api/form-data/${formEntity.form_name}/records`,                { method: "POST",body: JSON.stringify({
+    language: "en",
+    data: formData,
+    data_hi: formDataHi
+}) });
       const data = await res.json();
       if (data.success) {
         showToast(data.message);

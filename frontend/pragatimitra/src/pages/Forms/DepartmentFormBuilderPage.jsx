@@ -142,7 +142,18 @@ function FieldRow({ field, index, total, onChange, onRemove, onMove, isEdit }) {
               onChange={(e) => onChange(index, "label.en", e.target.value)} />
           </div>
           <div>
-            <label style={labelStyle}>{t("Label (Hindi)", lang)} <span style={{ fontSize: 11, color: color.muted, fontWeight: 400 }}>({t("auto-filled if blank", lang)})</span></label>
+            <label style={labelStyle}>
+    {t("Label (Hindi)", lang)}
+    <span
+        style={{
+            fontSize: 11,
+            color: color.muted,
+            fontWeight: 400
+        }}
+    >
+        ({t("Optional", lang)})
+    </span>
+</label>
             <input style={inputStyle(false)} value={field.label?.hi || ""} placeholder="जैसे छात्र का नाम"
               onChange={(e) => onChange(index, "label.hi", e.target.value)} />
           </div>

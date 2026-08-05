@@ -118,6 +118,34 @@ async function getFormActiveYear(pool, formName, institutionId) {
   return rows[0]?.year ?? null;
 }
 
+
+async function resolveRecordsTable(pool, formName, institutionId) {
+    const { rows } = await pool.query(
+        `
+        SELECT
+            department_id,
+            form_name
+        FROM department_table_list
+        WHERE form_name = $1
+          AND institution_id = $2
+          AND is_archived = FALSE
+        ORDER BY academic_year DESC
+        LIMIT 1
+        `,
+        [formName, institutionId]
+    );
+
+    if (rows.length) {
+        const prefix = rows[0].department_id
+            .replace(/-/g, "")
+            .substring(0, 12);
+
+        return `dept_form_${prefix}_${rows[0].form_name}`;
+    }
+
+    return `${formName}_records`;
+}
+
 const router = express.Router();
 router.use(verifyToken);
 
@@ -311,12 +339,106 @@ async function getActiveSchema(pool, formName, institutionId, year) {
     const { rows: fb } = await pool.query(fq, fbParams);
     row = fb[0] || null;
   }
+  // Fallback: Department forms
+   // ----------------------------------------------------
+// Fallback: Department forms
+// ----------------------------------------------------
+if (!row) {
+
+    // Try requested academic year first
+    const deptParams = [formName];
+    let deptQuery = `
+        SELECT
+            dfs.id,
+            dfs.department_form_id,
+            dfs.academic_year AS year,
+            dfs.schema,
+            dfs.is_base,
+            dtl.department_id,
+            dtl.institution_id,
+            dtl.used_column_names
+        FROM department_table_list dtl
+        JOIN department_form_schemas dfs
+          ON dfs.department_form_id = dtl.id
+        WHERE dtl.form_name = $1
+    `;
+
+    if (year) {
+        deptQuery += ` AND dfs.academic_year = $2`;
+        deptParams.push(year);
+    }
+
+    deptQuery += `
+        ORDER BY dfs.academic_year DESC
+        LIMIT 1
+    `;
+
+    let { rows: deptRows } = await pool.query(
+        deptQuery,
+        deptParams
+    );
+
+    row = deptRows[0] || null;
+
+    // If requested year not found,
+    // fall back to latest available department schema
+    if (!row && year) {
+
+        const { rows: latestRows } = await pool.query(
+            `
+            SELECT
+                dfs.id,
+                dfs.department_form_id,
+                dfs.academic_year AS year,
+                dfs.schema,
+                dfs.is_base,
+                dtl.department_id,
+                dtl.institution_id,
+                dtl.used_column_names
+            FROM department_table_list dtl
+            JOIN department_form_schemas dfs
+              ON dfs.department_form_id = dtl.id
+            WHERE dtl.form_name = $1
+            ORDER BY dfs.academic_year DESC
+            LIMIT 1
+            `,
+            [formName]
+        );
+
+        row = latestRows[0] || null;
+    }
+}
   if (!row) return null;
 
   // New-style schema rows (snapshot model) are complete — return as-is.
   // Legacy extra-only rows (no base fields present) are merged with the
   // creation-year base row for backward compatibility.
-  const baseRow = await getBaseSchemaRow(pool, formName, row.institution_id || institutionId);
+  let baseRow;
+
+if (row.department_form_id) {
+
+    const { rows } = await pool.query(
+        `
+        SELECT *
+        FROM department_form_schemas
+        WHERE department_form_id = $1
+          AND is_base = true
+        LIMIT 1
+        `,
+        [row.department_form_id]
+    );
+
+    baseRow = rows[0] || null;
+
+} else {
+
+    baseRow = await getBaseSchemaRow(
+        pool,
+        formName,
+        row.institution_id || institutionId
+    );
+
+}
   if (!baseRow || baseRow.id === row.id) return row;
 
   const baseFields     = baseRow.schema?.fields || [];
@@ -338,6 +460,7 @@ async function getActiveSchema(pool, formName, institutionId, year) {
     ],
   };
 }
+
 
 function activeFields(schemaRow) {
   const excluded = new Set(schemaRow.schema?.excluded_fixed_columns || []);
@@ -676,7 +799,7 @@ router.get("/:formName/records/:id", async (req, res) => {
     if (!ctx.institutionId)
       return res.status(400).json({ success: false, message: "Institution ID required." });
 
-    let whereClause = "id = $1 AND institution_id = $2 AND (language = 'en' OR language IS NULL)";
+    let whereClause = "id = $1 AND institution_id = $2";
     const params = [id, ctx.institutionId];
     if (ctx.role === "department_admin" && ctx.departmentId) {
       whereClause += ` AND (department_id = $3 OR department_id IS NULL)`;
@@ -692,11 +815,113 @@ router.get("/:formName/records/:id", async (req, res) => {
       return res.status(404).json({ success: false, message: "Record not found or has been deleted." });
 
     const record = rows[0];
-    if (record.custom_fields && typeof record.custom_fields === "object") {
-      Object.assign(record, record.custom_fields);
-    }
 
-    return res.json({ success: true, record });
+    let englishRow = null;
+let hindiRow = null;
+
+if ((record.language ?? "en") === "en") {
+  englishRow = record;
+
+ let hiQuery = `
+    SELECT *
+    FROM ${formName}_records
+    WHERE source_row_id = $1
+      AND institution_id = $2
+      AND language = 'hi'
+`;
+
+const hiParams = [englishRow.id, ctx.institutionId];
+
+if (ctx.role === "department_admin" && ctx.departmentId) {
+    hiQuery += ` AND (department_id = $3 OR department_id IS NULL)`;
+    hiParams.push(ctx.departmentId);
+}
+
+hiQuery += ` LIMIT 1`;
+
+const { rows: hiRows } = await pool.query(
+    hiQuery,
+    hiParams
+);
+
+  hindiRow = hiRows[0] || null;
+
+} else {
+  hindiRow = record;
+
+  let enQuery = `
+    SELECT *
+    FROM ${formName}_records
+    WHERE id = $1
+      AND institution_id = $2
+`;
+
+const enParams = [hindiRow.source_row_id, ctx.institutionId];
+
+if (ctx.role === "department_admin" && ctx.departmentId) {
+    enQuery += ` AND (department_id = $3 OR department_id IS NULL)`;
+    enParams.push(ctx.departmentId);
+}
+
+enQuery += ` LIMIT 1`;
+
+const { rows: enRows } = await pool.query(
+    enQuery,
+    enParams
+);
+
+  englishRow = enRows[0] || null;
+}
+const data = {};
+const dataHi = {};
+
+const source =
+    englishRow ?? hindiRow;
+
+const recordYear =
+    source?.year ?? null;
+
+const schema = await getActiveSchema(
+    pool,
+    formName,
+    ctx.institutionId,
+    recordYear
+);
+
+if (!schema)
+    return res.status(404).json({
+        success: false,
+        message: "No active schema found."
+    });
+
+for (const field of activeFields(schema)) {
+
+    const col = dbCol(field.column_name);
+
+    data[col] =
+        englishRow?.[col] ?? null;
+
+    dataHi[col] =
+        hindiRow?.[col] ?? null;
+}
+   
+     
+    if (englishRow?.custom_fields && typeof englishRow.custom_fields === "object") {
+    Object.assign(englishRow, englishRow.custom_fields);
+}
+
+if (hindiRow?.custom_fields && typeof hindiRow.custom_fields === "object") {
+    Object.assign(hindiRow, hindiRow.custom_fields);
+}
+
+    return res.json({
+    success: true,
+    record: {
+        ...(englishRow || hindiRow),
+        data,
+        data_hi: dataHi
+    }
+});
   } catch (err) {
     logger.error(`GET /api/form-data/${formName}/records/${id}`, { stack: err.stack });
     return res.status(500).json({ success: false, message: "Failed to fetch record." });
@@ -777,15 +1002,267 @@ router.get("/:formName/records/:id/counterpart", async (req, res) => {
    client re-fetches records immediately after save.
    Tags department_id from user context.
 ─────────────────────────────────────────────────────────────────────── */
+// router.post("/:formName/records", async (req, res) => {
+//   const pool = req.app.locals.pool;
+//   const { formName } = req.params;
+//   const { data, year, language = SOURCE_LANGUAGE } = req.body;
+
+//   if (!validateFormName(formName))
+//     return res.status(400).json({ success: false, message: "Invalid form name." });
+//   if (!data || typeof data !== "object")
+//     return res.status(400).json({ success: false, message: "data is required." });
+
+//   try {
+//     const ctx = await resolveUserContext(pool, req);
+//     if (!ctx.institutionId)
+//       return res.status(400).json({ success: false, message: "Institution ID required." });
+
+//     // Bug 11 — department inactive is the highest-precedence write block.
+//     const deptBlock = await getDepartmentWriteBlock(pool, { departmentId: ctx.departmentId, roles: req.user.roles });
+//     if (deptBlock.blocked)
+//       return res.status(403).json({ success: false, message: deptBlock.message });
+
+//     const lockBlock = await getLockBlock(pool, formName, ctx.institutionId, lockYearForReq(req, Number(year) || null));
+//     if (lockBlock.locked) {
+//       return res.status(403).json({ success: false, message: lockBlock.message });
+//     }
+
+//     /* ── M-2 fix — ONE resolved academic year drives BOTH the schema lookup and
+//        record.year, so a record can never belong to one year but reference another
+//        year's schema. Resolve the effective year ONCE (explicit body → SELECTED
+//        top-bar header → institution ACTIVE year; no calendar shortcut), look up the
+//        schema FOR THAT YEAR, and only if that year has no schema fall back to the
+//        latest active one (existing behavior — forms without a per-year schema still
+//        save). record.year is then taken from the SCHEMA THAT WAS ACTUALLY USED, so
+//        record.year === schema.year ALWAYS. ── */
+//     const effectiveYear = Number(year)
+//       || lockYearForReq(req)
+//       || (Number.isInteger(req.institutionAcademicYear) ? req.institutionAcademicYear : null);
+
+//     let schema = await getActiveSchema(pool, formName, ctx.institutionId, effectiveYear);
+//     if (!schema && effectiveYear != null)
+//       schema = await getActiveSchema(pool, formName, ctx.institutionId, null); // latest active fallback
+//     if (!schema)
+//       return res.status(404).json({ success: false, message: "No active schema found." });
+//     // Bug 17 — store the CONSUMER institution's own schema id (for the SAME year),
+//     // never the creator's.
+//     schema = await resolveOwnedSchema(pool, formName, ctx.institutionId, schema.year, schema);
+
+//     const fields    = activeFields(schema);
+//     const fieldCols = fields.map((f) => dbCol(f.column_name));
+//     // const fieldModes = buildFieldModes(fields);
+//     const formYear  = effectiveYear ?? schema.year;
+//     const createdBy = req.user.userId || null;
+
+//     const ayLock = await getAcademicYearLockBlockForReq(pool, req, ctx.institutionId, formYear);
+//     if (ayLock.locked)
+//       return res.status(403).json({ success: false, message: ayLock.message });
+
+//     const archiveBlock = await getFormArchiveBlockForReq(pool, req, ctx.institutionId, formName, formYear);
+//     if (archiveBlock.blocked)
+//       return res.status(403).json({ success: false, message: archiveBlock.message });
+
+//     // Resolve the physical records table (institution or department form)
+// const tableName = await resolveRecordsTable(
+//     pool,
+//     formName,
+//     ctx.institutionId
+// );
+
+// if (!tableName) {
+//     return res.status(404).json({
+//         success: false,
+//         message: "Form data table not found."
+//     });
+// }
+
+
+//     /* Split schema fields: those with a physical column go to real DB columns;
+//        extra fields (added after creation via schema edit in a new year) are
+//        stored in the custom_fields JSONB column — no ALTER TABLE ever runs. */
+//    const physicalCols = await getPhysicalCols(
+//     pool,
+//     tableName
+// );
+//     const baseFieldCols = fieldCols.filter(col => physicalCols.has(col));
+//     const extraFieldCols = fieldCols.filter(col => !physicalCols.has(col));
+//     const customFieldsJson = extraFieldCols.length > 0
+//       ? JSON.stringify(Object.fromEntries(extraFieldCols.map(col => [col, data[col] ?? null])))
+//       : null;
+
+//   // ----------------------------------------------------
+// // Standard columns (supports BOTH institution & department forms)
+// // ----------------------------------------------------
+// const stdCols = [];
+// const stdVals = [];
+
+// if (physicalCols.has("form_name")) {
+//     stdCols.push("form_name");
+//     stdVals.push(formName);
+// }
+
+// if (physicalCols.has("institution_id")) {
+//     stdCols.push("institution_id");
+//     stdVals.push(ctx.institutionId);
+// }
+
+// if (physicalCols.has("department_id")) {
+//     stdCols.push("department_id");
+//     stdVals.push(ctx.departmentId);
+// }
+
+// // Institution form
+// if (physicalCols.has("year")) {
+//     stdCols.push("year");
+//     stdVals.push(formYear);
+// }
+
+// // Department form
+// if (physicalCols.has("academic_year")) {
+//     stdCols.push("academic_year");
+//     stdVals.push(formYear);
+// }
+
+// if (physicalCols.has("schema_id")) {
+//     stdCols.push("schema_id");
+//     stdVals.push(schema.id);
+// }
+
+// if (physicalCols.has("language")) {
+//     stdCols.push("language");
+//     stdVals.push(language);
+// }
+
+// if (physicalCols.has("created_by")) {
+//     stdCols.push("created_by");
+//     stdVals.push(createdBy);
+// }
+
+//     const allCols = [...stdCols, "custom_fields", ...baseFieldCols];
+//     const allVals = [...stdVals, customFieldsJson, ...baseFieldCols.map(col => data[col] ?? null)];
+//     const placeholders = allVals.map((_, i) => `$${i + 1}`).join(", ");
+
+//    const { rows } = await pool.query(
+//   `INSERT INTO ${tableName} (${allCols.join(", ")})
+//    VALUES (${placeholders})
+//    RETURNING *`,
+//   allVals
+// );
+//     const enRow = rows[0];
+
+//     await writeAuditLog(req, {
+//       actionType: "FORM_DATA_CREATED",
+//       entityType: "form_data",
+//       entityId: enRow.id,
+//       newValue: { form_name: formName, institution_id: ctx.institutionId, department_id: ctx.departmentId },
+//       message: `Form Data Added - "${formName}"`,
+//     });
+
+//     // Synchronously generate the Hindi mirror row before responding so the
+//     // client re-fetching records immediately after save always sees it.
+//     // Only generated for English submissions when this form has the Hindi
+//     // translation toggle enabled — when disabled we store only the English
+//     // row (no translation/transliteration API call). Translation failure is
+//     // logged but does not fail the response — the English row is already
+//     // committed.
+//     if (language === "en") {
+     
+//       try {
+//         await ensureSourceRowIdColumn(pool, tableName);
+
+//         const hiData = req.body.data_hi;
+//         if (
+//     !hiData ||
+//     typeof hiData !== "object" ||
+//     Object.keys(hiData).length === 0
+// ) {
+//     return res.json({
+//         success: true,
+//         record: enRow,
+//         message: "Record created successfully."
+//     });
+// }
+
+
+//         const hiCustomFieldsJson = extraFieldCols.length > 0
+//           ? JSON.stringify(Object.fromEntries(extraFieldCols.map(col => [col, hiData[col] ?? null])))
+//           : null;
+//        // Copy English standard values
+// const hiStdVals = [...stdVals];
+
+// // Replace language with Hindi
+// const langIndex = stdCols.indexOf("language");
+// if (langIndex !== -1) {
+//     hiStdVals[langIndex] = "hi";
+// }
+//         const hiAllCols = [...stdCols, "custom_fields", ...baseFieldCols, "source_row_id"];
+//         const hiAllVals = [...hiStdVals, hiCustomFieldsJson, ...baseFieldCols.map(col => hiData[col] ?? null), enRow.id];
+//         const hiPlaceholders = hiAllVals.map((_, i) => `$${i + 1}`).join(", ");
+
+//         await pool.query(
+//           `INSERT INTO ${tableName} (${hiAllCols.join(", ")}) VALUES (${hiPlaceholders})`,
+//           hiAllVals
+//         );
+//       } catch (err) {
+//         logger.error(`Hindi row insert failed for ${formName}`, { stack: err.stack });
+//       }
+//     }
+
+//     return res.json({ success: true, record: enRow, message: "Record created successfully." });
+//   } catch (err) {
+//     logger.error(`POST /api/form-data/${formName}/records`, { stack: err.stack });
+//     return res.status(500).json({ success: false, message: "Failed to create record." });
+//   }
+// });
+
+
+
+
+
 router.post("/:formName/records", async (req, res) => {
   const pool = req.app.locals.pool;
   const { formName } = req.params;
-  const { data, year, language = SOURCE_LANGUAGE } = req.body;
+ const {
+    data,
+    data_hi,
+    englishData,
+    hindiData,
+    year,
+    language = SOURCE_LANGUAGE
+} = req.body;
+
+// Backward compatibility
+const enData = englishData || data;
+const hiData = hindiData || data_hi;
 
   if (!validateFormName(formName))
     return res.status(400).json({ success: false, message: "Invalid form name." });
-  if (!data || typeof data !== "object")
-    return res.status(400).json({ success: false, message: "data is required." });
+  // if (!data || typeof data !== "object")
+  //   return res.status(400).json({ success: false, message: "data is required." });
+
+  if (
+    !enData ||
+    typeof enData !== "object" ||
+    Array.isArray(enData)
+) {
+    return res.status(400).json({
+        success: false,
+        message: "English data is required."
+    });
+}
+
+if (
+    hiData &&
+    (
+        typeof hiData !== "object" ||
+        Array.isArray(hiData)
+    )
+) {
+    return res.status(400).json({
+        success: false,
+        message: "Invalid Hindi data."
+    });
+}
 
   try {
     const ctx = await resolveUserContext(pool, req);
@@ -825,7 +1302,6 @@ router.post("/:formName/records", async (req, res) => {
 
     const fields    = activeFields(schema);
     const fieldCols = fields.map((f) => dbCol(f.column_name));
-    const fieldModes = buildFieldModes(fields);
     const formYear  = effectiveYear ?? schema.year;
     const createdBy = req.user.userId || null;
 
@@ -844,14 +1320,14 @@ router.post("/:formName/records", async (req, res) => {
     const baseFieldCols = fieldCols.filter(col => physicalCols.has(col));
     const extraFieldCols = fieldCols.filter(col => !physicalCols.has(col));
     const customFieldsJson = extraFieldCols.length > 0
-      ? JSON.stringify(Object.fromEntries(extraFieldCols.map(col => [col, data[col] ?? null])))
+      ? JSON.stringify(Object.fromEntries(extraFieldCols.map(col => [col, enData[col] ?? null])))
       : null;
 
     const stdCols = ["form_name", "institution_id", "department_id", "year", "schema_id", "language", "created_by"];
     const stdVals = [formName, ctx.institutionId, ctx.departmentId, formYear, schema.id, language, createdBy];
 
     const allCols = [...stdCols, "custom_fields", ...baseFieldCols];
-    const allVals = [...stdVals, customFieldsJson, ...baseFieldCols.map(col => data[col] ?? null)];
+    const allVals = [...stdVals, customFieldsJson, ...baseFieldCols.map(col => enData[col] ?? null)];
     const placeholders = allVals.map((_, i) => `$${i + 1}`).join(", ");
 
     const { rows } = await pool.query(
@@ -868,34 +1344,46 @@ router.post("/:formName/records", async (req, res) => {
       message: `Form Data Added - "${formName}"`,
     });
 
-    // Synchronously generate the Hindi mirror row before responding so the
-    // client re-fetching records immediately after save always sees it.
-    // Only generated for English submissions when this form has the Hindi
-    // translation toggle enabled — when disabled we store only the English
-    // row (no translation/transliteration API call). Translation failure is
-    // logged but does not fail the response — the English row is already
-    // committed.
-    if (language === "en" && await isHindiTranslationEnabled(pool, formName)) {
-      const tableName = `${formName}_records`;
-      try {
-        await ensureSourceRowIdColumn(pool, tableName);
+    // Manual Hindi mirror row — frontend now sends the Hindi payload directly
+    // (data_hi) instead of us calling a translation API. No data_hi means the
+    // client hasn't supplied a Hindi version yet; that's not an error, we just
+    // respond with the English row.
+    // const hiData = req.body.data_hi;
 
-        const hiData = await translateRow(data, fieldModes);
-        const hiCustomFieldsJson = extraFieldCols.length > 0
-          ? JSON.stringify(Object.fromEntries(extraFieldCols.map(col => [col, hiData[col] ?? null])))
-          : null;
-        const hiStdVals = [formName, ctx.institutionId, ctx.departmentId, formYear, schema.id, "hi", createdBy];
-        const hiAllCols = [...stdCols, "custom_fields", ...baseFieldCols, "source_row_id"];
-        const hiAllVals = [...hiStdVals, hiCustomFieldsJson, ...baseFieldCols.map(col => hiData[col] ?? null), enRow.id];
-        const hiPlaceholders = hiAllVals.map((_, i) => `$${i + 1}`).join(", ");
+    if (
+      !hiData ||
+      typeof hiData !== "object" ||
+      Object.keys(hiData).length === 0
+    ) {
+      return res.json({
+    success: true,
+    englishRecord: enRow,
+    message: "Record created successfully."
+});
+    }
 
-        await pool.query(
-          `INSERT INTO ${tableName} (${hiAllCols.join(", ")}) VALUES (${hiPlaceholders})`,
-          hiAllVals
-        );
-      } catch (err) {
-        logger.error(`Hindi row insert failed for ${formName}`, { stack: err.stack });
-      }
+    const tableName = `${formName}_records`;
+    try {
+      await ensureSourceRowIdColumn(pool, tableName);
+
+      const hiCustomFieldsJson = extraFieldCols.length > 0
+        ? JSON.stringify(Object.fromEntries(extraFieldCols.map(col => [col, hiData[col] ?? null])))
+        : null;
+
+      const hiStdVals = [...stdVals];
+      const langIndex = stdCols.indexOf("language");
+      if (langIndex !== -1) hiStdVals[langIndex] = "hi";
+
+      const hiAllCols = [...stdCols, "custom_fields", ...baseFieldCols, "source_row_id"];
+      const hiAllVals = [...hiStdVals, hiCustomFieldsJson, ...baseFieldCols.map(col => hiData[col] ?? null), enRow.id];
+      const hiPlaceholders = hiAllVals.map((_, i) => `$${i + 1}`).join(", ");
+
+      await pool.query(
+        `INSERT INTO ${tableName} (${hiAllCols.join(", ")}) VALUES (${hiPlaceholders})`,
+        hiAllVals
+      );
+    } catch (err) {
+      logger.error(`Hindi row insert failed for ${formName}`, { stack: err.stack });
     }
 
     return res.json({ success: true, record: enRow, message: "Record created successfully." });
@@ -904,6 +1392,9 @@ router.post("/:formName/records", async (req, res) => {
     return res.status(500).json({ success: false, message: "Failed to create record." });
   }
 });
+
+
+
 
 /* ─────────────────────────────────────────────────────────────────────
    POST /api/form-data/:formName/records/:id/lock
@@ -1021,7 +1512,7 @@ router.put("/:formName/records/:id", async (req, res) => {
 
     const fields    = activeFields(schema);
     const fieldCols = fields.map((f) => dbCol(f.column_name));
-    const fieldModes = buildFieldModes(fields);
+    // const fieldModes = buildFieldModes(fields);
 
     /* Split fields: base fields (physical columns) vs extra fields (JSONB). */
     const physicalCols   = await getPhysicalCols(pool, `${formName}_records`);
@@ -1103,53 +1594,163 @@ router.put("/:formName/records/:id", async (req, res) => {
     // translation enabled. When editedLanguage === "hi", the UPDATE above
     // already saved the Hindi row directly; no translation pipeline runs
     // and the English row is left untouched.
-    if (editedLanguage === "en" && await isHindiTranslationEnabled(pool, formName)) {
-      const tableName = `${formName}_records`;
-      try {
+    // if (editedLanguage === "en" && await isHindiTranslationEnabled(pool, formName)) {
+    //   const tableName = `${formName}_records`;
+    //   try {
+    //     await ensureSourceRowIdColumn(pool, tableName);
+
+    //     // const hiData = await translateRow(data, fieldModes);
+    //     const hiCustomFieldsJson = extraFieldCols.length > 0
+    //       ? JSON.stringify(Object.fromEntries(extraFieldCols.map(col => [col, hiData[col] ?? null])))
+    //       : null;
+
+    //     let hidx = 1;
+    //     const hiSetClauses = [
+    //       ...baseFieldCols.map(col => `${col} = $${hidx++}`),
+    //       ...(extraFieldCols.length > 0 ? [`custom_fields = $${hidx++}`] : []),
+    //       `updated_at = now()`,
+    //     ];
+    //     const hiVals = [
+    //       ...baseFieldCols.map(col => hiData[col] ?? null),
+    //       ...(extraFieldCols.length > 0 ? [hiCustomFieldsJson] : []),
+    //       id, ctx.institutionId,
+    //     ];
+
+    //     const upd = await pool.query(
+    //       `UPDATE ${tableName} SET ${hiSetClauses.join(", ")}
+    //        WHERE source_row_id = $${hidx} AND institution_id = $${hidx + 1}`,
+    //       hiVals
+    //     );
+
+    //     if (upd.rowCount === 0) {
+    //       const enRow = rows[0];
+    //       const hiCols = ["form_name", "institution_id", "department_id", "year", "schema_id", "language", "created_by", "source_row_id", "custom_fields", ...baseFieldCols];
+    //       const hiAllVals = [
+    //         formName, enRow.institution_id, enRow.department_id, enRow.year, enRow.schema_id,
+    //         "hi", enRow.created_by ?? req.user.userId ?? null, enRow.id,
+    //         hiCustomFieldsJson,
+    //         ...baseFieldCols.map(col => hiData[col] ?? null),
+    //       ];
+    //       const ph = hiAllVals.map((_, i) => `$${i + 1}`).join(", ");
+    //       await pool.query(
+    //         `INSERT INTO ${tableName} (${hiCols.join(", ")}) VALUES (${ph})`,
+    //         hiAllVals
+    //       );
+    //     }
+    //   } catch (err) {
+    //     logger.error(`Hindi row update failed for ${formName}/${id}`, { stack: err.stack });
+    //   }
+    // }
+   
+    // ----------------------------------------------------
+// Manual Hindi update (frontend sends data_hi)
+// ----------------------------------------------------
+const hiData = req.body.data_hi;
+
+// Only when editing an English record AND frontend supplied Hindi data.
+if (
+    editedLanguage === "en" &&
+    hiData &&
+    typeof hiData === "object" &&
+    Object.keys(hiData).length > 0
+) {
+    const tableName = `${formName}_records`;
+
+    try {
         await ensureSourceRowIdColumn(pool, tableName);
 
-        const hiData = await translateRow(data, fieldModes);
-        const hiCustomFieldsJson = extraFieldCols.length > 0
-          ? JSON.stringify(Object.fromEntries(extraFieldCols.map(col => [col, hiData[col] ?? null])))
-          : null;
+        const hiCustomFieldsJson =
+            extraFieldCols.length > 0
+                ? JSON.stringify(
+                      Object.fromEntries(
+                          extraFieldCols.map(col => [
+                              col,
+                              hiData[col] ?? null
+                          ])
+                      )
+                  )
+                : null;
 
         let hidx = 1;
+
         const hiSetClauses = [
-          ...baseFieldCols.map(col => `${col} = $${hidx++}`),
-          ...(extraFieldCols.length > 0 ? [`custom_fields = $${hidx++}`] : []),
-          `updated_at = now()`,
+            ...baseFieldCols.map(col => `${col} = $${hidx++}`),
+            ...(extraFieldCols.length
+                ? [`custom_fields = $${hidx++}`]
+                : []),
+            `updated_at = now()`,
         ];
+
         const hiVals = [
-          ...baseFieldCols.map(col => hiData[col] ?? null),
-          ...(extraFieldCols.length > 0 ? [hiCustomFieldsJson] : []),
-          id, ctx.institutionId,
+            ...baseFieldCols.map(col => hiData[col] ?? null),
+            ...(extraFieldCols.length
+                ? [hiCustomFieldsJson]
+                : []),
+            id,
+            ctx.institutionId,
         ];
 
         const upd = await pool.query(
-          `UPDATE ${tableName} SET ${hiSetClauses.join(", ")}
-           WHERE source_row_id = $${hidx} AND institution_id = $${hidx + 1}`,
-          hiVals
+            `UPDATE ${tableName}
+             SET ${hiSetClauses.join(", ")}
+             WHERE source_row_id = $${hidx}
+               AND institution_id = $${hidx + 1}`,
+            hiVals
         );
 
+        // Hindi row doesn't exist yet → create it.
         if (upd.rowCount === 0) {
-          const enRow = rows[0];
-          const hiCols = ["form_name", "institution_id", "department_id", "year", "schema_id", "language", "created_by", "source_row_id", "custom_fields", ...baseFieldCols];
-          const hiAllVals = [
-            formName, enRow.institution_id, enRow.department_id, enRow.year, enRow.schema_id,
-            "hi", enRow.created_by ?? req.user.userId ?? null, enRow.id,
-            hiCustomFieldsJson,
-            ...baseFieldCols.map(col => hiData[col] ?? null),
-          ];
-          const ph = hiAllVals.map((_, i) => `$${i + 1}`).join(", ");
-          await pool.query(
-            `INSERT INTO ${tableName} (${hiCols.join(", ")}) VALUES (${ph})`,
-            hiAllVals
-          );
+
+            const enRow = rows[0];
+
+            const hiCols = [
+                "form_name",
+                "institution_id",
+                "department_id",
+                "year",
+                "schema_id",
+                "language",
+                "created_by",
+                "source_row_id",
+                "custom_fields",
+                ...baseFieldCols
+            ];
+
+            const hiAllVals = [
+                formName,
+                enRow.institution_id,
+                enRow.department_id,
+                enRow.year,
+                enRow.schema_id,
+                "hi",
+                enRow.created_by ?? req.user.userId ?? null,
+                enRow.id,
+                hiCustomFieldsJson,
+                ...baseFieldCols.map(col => hiData[col] ?? null)
+            ];
+
+            const placeholders =
+                hiAllVals.map((_, i) => `$${i + 1}`).join(", ");
+
+            await pool.query(
+                `INSERT INTO ${tableName}
+                (${hiCols.join(", ")})
+                VALUES (${placeholders})`,
+                hiAllVals
+            );
         }
-      } catch (err) {
-        logger.error(`Hindi row update failed for ${formName}/${id}`, { stack: err.stack });
-      }
+
+    } catch (err) {
+
+        logger.error(
+            `Hindi row update failed for ${formName}/${id}`,
+            { stack: err.stack }
+        );
+
     }
+}
+
+
 
     // Release the pre-edit lock on successful save (best-effort).
     releaseLock(pool, { recordId: id, userId: req.user.userId }).catch(() => {});
