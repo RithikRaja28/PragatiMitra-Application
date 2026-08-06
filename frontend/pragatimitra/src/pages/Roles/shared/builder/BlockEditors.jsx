@@ -67,48 +67,48 @@ const selectSt = {
    getSource() returns either a string or a string[] (batch). onTranslated
    receives the matching shape back (string or string[]).
    isHtml=true — sends { html } to backend so all tags/styles are preserved. */
-function TranslateButton({ apiFetch, getSource, onTranslated, label = "Translate from English", isHtml = false }) {
-  const [busy, setBusy] = useState(false);
-  const [err,  setErr]  = useState("");
+// function TranslateButton({ apiFetch, getSource, onTranslated, label = "Translate from English", isHtml = false }) {
+//   const [busy, setBusy] = useState(false);
+//   const [err,  setErr]  = useState("");
 
-  async function run() {
-    setErr("");
-    const source = getSource();
-    const isBatch = Array.isArray(source);
-    if (isBatch ? !source.some((s) => s && s.trim()) : !source || !source.trim()) return;
-    setBusy(true);
-    try {
-      const body = isBatch ? { texts: source } : isHtml ? { html: source } : { text: source };
-      const res  = await apiFetch("/api/report-integration/translate", { method: "POST", body: JSON.stringify(body) });
-      const data = await res.json();
-      if (!res.ok || !data.success) throw new Error(data.message || "Translation failed");
-      onTranslated(isBatch ? data.data.translations : data.data.hi);
-    } catch (ex) {
-      setErr(ex.message || "Translation failed");
-    } finally {
-      setBusy(false);
-    }
-  }
+//   async function run() {
+//     setErr("");
+//     const source = getSource();
+//     const isBatch = Array.isArray(source);
+//     if (isBatch ? !source.some((s) => s && s.trim()) : !source || !source.trim()) return;
+//     setBusy(true);
+//     try {
+//       const body = isBatch ? { texts: source } : isHtml ? { html: source } : { text: source };
+//       const res  = await apiFetch("/api/report-integration/translate", { method: "POST", body: JSON.stringify(body) });
+//       const data = await res.json();
+//       if (!res.ok || !data.success) throw new Error(data.message || "Translation failed");
+//       onTranslated(isBatch ? data.data.translations : data.data.hi);
+//     } catch (ex) {
+//       setErr(ex.message || "Translation failed");
+//     } finally {
+//       setBusy(false);
+//     }
+//   }
 
-  return (
-    <div style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-start", gap: 2 }}>
-      <button
-        type="button"
-        onClick={run}
-        disabled={busy || !apiFetch}
-        style={{
-          padding: "4px 10px", border: "1px solid #c4b5fd", borderRadius: 6,
-          background: busy ? "#f5f3ff" : "#faf5ff", color: "#7c3aed",
-          fontSize: 11, fontWeight: 700, cursor: busy ? "not-allowed" : "pointer", fontFamily: "inherit",
-          display: "flex", alignItems: "center", gap: 5, whiteSpace: "nowrap",
-        }}
-      >
-        {busy ? "Translating…" : label}
-      </button>
-      {err && <div style={{ fontSize: 10, color: "#b91c1c" }}>{err}</div>}
-    </div>
-  );
-}
+//   return (
+//     <div style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-start", gap: 2 }}>
+//       <button
+//         type="button"
+//         onClick={run}
+//         disabled={busy || !apiFetch}
+//         style={{
+//           padding: "4px 10px", border: "1px solid #c4b5fd", borderRadius: 6,
+//           background: busy ? "#f5f3ff" : "#faf5ff", color: "#7c3aed",
+//           fontSize: 11, fontWeight: 700, cursor: busy ? "not-allowed" : "pointer", fontFamily: "inherit",
+//           display: "flex", alignItems: "center", gap: 5, whiteSpace: "nowrap",
+//         }}
+//       >
+//         {busy ? "Translating…" : label}
+//       </button>
+//       {err && <div style={{ fontSize: 10, color: "#b91c1c" }}>{err}</div>}
+//     </div>
+//   );
+// }
 
 /* ── S3 upload helper ─────────────────────────────────────────────────── */
 async function uploadToS3(file, apiFetch, folder, compressionSettings) {
@@ -472,16 +472,21 @@ export function RichTextBlock({ content, onChange, readOnly, lang = "en", apiFet
 
       {isHi && (content.html || content.text) && (
         <div style={{ padding: "6px 10px", background: isStale ? "#fffbeb" : "#faf5ff", border: `1px solid ${isStale ? "#fcd34d" : "#e9d5ff"}`, borderTop: "none", display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ fontSize: 11, color: isStale ? "#b45309" : "#7c3aed" }}>
-            {isStale ? "Hindi may be outdated —" : hiHtml ? "Re-translate to fix formatting —" : "No Hindi content yet —"}
-          </span>
-          <TranslateButton
-            apiFetch={apiFetch}
-            isHtml
-            label={hiHtml ? "Re-translate from English" : "Translate from English"}
-            getSource={() => content.html || content.text || ""}
-            onTranslated={(hi) => onSaveTranslation?.("hi", { html: hi, _stale: false })}
-          />
+          <span style={{ fontSize: 11, color: "#64748b" }}>
+  Editing Hindi content manually.
+</span>
+          <div
+    style={{
+        padding: "6px 10px",
+        background: "#f8fafc",
+        border: "1px solid #e2e8f0",
+        borderTop: "none",
+        fontSize: 11,
+        color: "#64748b",
+    }}
+>
+    Enter Hindi content manually.
+</div>
         </div>
       )}
 
@@ -548,16 +553,7 @@ export function HeadingBlock({ content, onChange, readOnly, lang = "en", apiFetc
           dangerouslySetInnerHTML={{ __html: text }}
         />
       </div>
-      {needsTranslation && (
-        <div style={{ marginTop: 6, display: "flex", alignItems: "center", gap: 8 }}>
-          {isStale && <span style={{ fontSize: 11, color: "#b45309" }}>Hindi translation may be outdated —</span>}
-          <TranslateButton
-            apiFetch={apiFetch}
-            getSource={() => content.text}
-            onTranslated={(hi) => onSaveTranslation?.("hi", { text: hi, _stale: false })}
-          />
-        </div>
-      )}
+      {/* Manual Hindi editing */}
     </div>
   );
 }
@@ -613,7 +609,7 @@ export function ImageBlock({ content, onChange, readOnly, lang = "en", translati
               style={{ padding: "5px 10px", border: "1px solid #e2e8f0", borderRadius: 7, fontSize: 11, outline: "none", color: "#64748b" }}
             />
           </div>
-          {needsTranslation && (
+          {/* {needsTranslation && (
             <div style={{ marginTop: 6, display: "flex", alignItems: "center", gap: 8 }}>
               {isStale && <span style={{ fontSize: 11, color: "#b45309" }}>May be outdated —</span>}
               <TranslateButton
@@ -622,7 +618,7 @@ export function ImageBlock({ content, onChange, readOnly, lang = "en", translati
                 onTranslated={([capHi, altHi]) => onSaveTranslation?.("hi", { caption: capHi, alt: altHi, _stale: false })}
               />
             </div>
-          )}
+          )} */}
         </div>
       )}
       <div style={wrapStyle}>
@@ -684,11 +680,7 @@ export function ImageGridBlock({ content, onChange, readOnly, lang = "en", trans
                   />
                   {needsTranslation && (
                     <div style={{ marginTop: 5 }}>
-                      <TranslateButton
-                        apiFetch={apiFetch}
-                        getSource={() => [col.caption || "", col.alt || ""]}
-                        onTranslated={([capHi, altHi]) => updateHi(i, { caption: capHi, alt: altHi })}
-                      />
+                      
                     </div>
                   )}
                 </div>
@@ -1074,24 +1066,20 @@ export function TableBlock({ content, onChange, onRefetched, readOnly, blockId, 
   return (
     <div>
       {needsTranslation && (
-        <div style={{ marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
-          {isStale && <span style={{ fontSize: 11, color: "#b45309" }}>Hindi translation may be outdated —</span>}
-          <TranslateButton
-            label="Translate all cells from English"
-            apiFetch={apiFetch}
-            getSource={() => [...enHeaders, ...enRows.flat()]}
-            onTranslated={(flat) => {
-              const newHeaders = flat.slice(0, enHeaders.length);
-              const cellsFlat  = flat.slice(enHeaders.length);
-              const newRows = [];
-              let idx = 0;
-              for (const r of enRows) { newRows.push(cellsFlat.slice(idx, idx + r.length)); idx += r.length; }
-              onSaveTranslation?.("hi", { headers: newHeaders, rows: newRows, _stale: false });
-            }}
-          />
-        </div>
-      )}
-
+  <div
+    style={{
+      marginBottom: 8,
+      padding: "8px 12px",
+      background: "#f8fafc",
+      border: "1px solid #e2e8f0",
+      borderRadius: 6,
+      fontSize: 11,
+      color: "#64748b",
+    }}
+  >
+    Enter table headers and cell values manually in Hindi.
+  </div>
+)}
       {/* ── Table style controls (edit / English mode only) ── */}
       {!readOnly && !isHi && (
         <div style={{
@@ -1204,16 +1192,20 @@ export function ListBlock({ content, onChange, readOnly, lang = "en", apiFetch, 
   return (
     <div>
       {needsTranslation && (
-        <div style={{ marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
-          {isStale && <span style={{ fontSize: 11, color: "#b45309" }}>May be outdated —</span>}
-          <TranslateButton
-            label="Translate all items from English"
-            apiFetch={apiFetch}
-            getSource={() => enItems}
-            onTranslated={(itemsHi) => onSaveTranslation?.("hi", { items: itemsHi, _stale: false })}
-          />
-        </div>
-      )}
+  <div
+    style={{
+      marginBottom: 8,
+      padding: "8px 12px",
+      background: "#f8fafc",
+      border: "1px solid #e2e8f0",
+      borderRadius: 6,
+      fontSize: 11,
+      color: "#64748b",
+    }}
+  >
+    Enter list items manually in Hindi.
+  </div>
+)}
       {/* ─ List toolbar ─ */}
       <div style={{
         display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap",

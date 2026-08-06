@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useApi } from "../../../../hooks/useApi";
 import { Button } from "../../../../ui";
-import { Languages } from "lucide-react";
 import Toast from "../../../../components/shared/Toast";
 import { ConfirmDialog } from "../../../../components/shared/formUtils";
 import BuilderHeader from "./BuilderHeader";
@@ -59,7 +58,7 @@ export default function ReportStructurePage({ reportId, onNavigate }) {
   const [addingTo, setAddingTo] = useState(null);
   const [newSecTitle, setNewSecTitle] = useState("");
   const [newSecTitleHi, setNewSecTitleHi] = useState("");
-  const [translating, setTranslating] = useState(false);
+
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
@@ -90,18 +89,9 @@ export default function ReportStructurePage({ reportId, onNavigate }) {
 
   const toggleExpand = (id) => setExpanded(p => ({ ...p, [id]: !p[id] }));
 
-  const autoTranslateTitle = async () => {
-    if (!newSecTitle.trim()) return;
-    setTranslating(true);
-    try {
-      const res  = await apiFetch("/api/report-integration/translate", {
-        method: "POST", body: JSON.stringify({ text: newSecTitle.trim() }),
-      });
-      const data = await res.json();
-      if (data.success) setNewSecTitleHi(data.data.hi || "");
-    } catch { /* ignore */ }
-    finally { setTranslating(false); }
-  };
+ // Manual English/Hindi editing only.
+// Auto translation removed.
+const autoTranslateTitle = () => {};
 
   const addSection = async (parentId = null) => {
     if (!newSecTitle.trim()) return;
@@ -194,10 +184,11 @@ export default function ReportStructurePage({ reportId, onNavigate }) {
 
             {addingTo === "root" && (
               <AddSectionInline
-                value={newSecTitle} onChange={setNewSecTitle}
-                valueHi={newSecTitleHi} onChangeHi={setNewSecTitleHi}
-                onAutoTranslate={autoTranslateTitle} translating={translating}
-                onAdd={() => addSection(null)} onCancel={() => { setAddingTo(null); setNewSecTitle(""); setNewSecTitleHi(""); }}
+    value={newSecTitle}
+    onChange={setNewSecTitle}
+    valueHi={newSecTitleHi}
+    onChangeHi={setNewSecTitleHi}
+    onAdd={() => addSection(null)}onCancel={() => { setAddingTo(null); setNewSecTitle(""); setNewSecTitleHi(""); }}
                 busy={busy} />
             )}
 
@@ -300,7 +291,15 @@ function SectionCard({ sec, depth, expanded, onToggle, hover, onHover,
   );
 }
 
-function AddSectionInline({ value, onChange, valueHi, onChangeHi, onAutoTranslate, translating, onAdd, onCancel, busy }) {
+function AddSectionInline({
+    value,
+    onChange,
+    valueHi,
+    onChangeHi,
+    onAdd,
+    onCancel,
+    busy
+}){
   return (
     <div style={{ marginBottom: 6, background: C.primaryLt, padding: "10px 12px", borderRadius: 8, border: `1px solid ${C.primary}33` }}>
       <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: onChangeHi ? 8 : 0 }}>
@@ -319,15 +318,7 @@ function AddSectionInline({ value, onChange, valueHi, onChangeHi, onAutoTranslat
             value={valueHi || ""}
             onChange={e => onChangeHi(e.target.value)}
           />
-          <button
-            onClick={onAutoTranslate}
-            disabled={translating || !value.trim()}
-            style={{
-              padding: "5px 10px", borderRadius: 6, border: "1px solid #fcd34d",
-              background: "#fef3c7", color: "#b45309", cursor: translating || !value.trim() ? "not-allowed" : "pointer",
-              fontSize: 11, fontWeight: 700, fontFamily: "inherit", whiteSpace: "nowrap",
-            }}
-          >{translating ? "…" : <><Languages size={12} style={{ verticalAlign: "-2px", marginRight: 4 }} />Auto</>}</button>
+         
         </div>
       )}
     </div>

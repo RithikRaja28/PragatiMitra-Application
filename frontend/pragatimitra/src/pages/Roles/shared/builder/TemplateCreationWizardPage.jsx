@@ -7,7 +7,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { useApi }  from "../../../../hooks/useApi";
 import { useAuth } from "../../../../store/AuthContext";
 import { Button } from "../../../../ui";
-import { Languages, Pencil, AlertTriangle } from "lucide-react";
+import {  Pencil, AlertTriangle } from "lucide-react";
 import { useShell } from "../../../../components/Dashboard/shellContext";
 import { BlockEditor, AddBlockMenu, DEFAULT_CONTENT, BLOCK_ICONS } from "./BlockEditors";
 
@@ -471,18 +471,7 @@ function HindiTitleEditor({ sec, onSave, apiFetch, immutable }) {
 
   useEffect(() => { setVal(sec.title_translations?.hi || ""); setSaved(false); }, [sec.id, sec.title_translations?.hi]);
 
-  async function autoTranslate() {
-    if (!sec.title?.trim()) return;
-    setBusy(true);
-    try {
-      const res  = await apiFetch("/api/report-integration/translate", {
-        method: "POST", body: JSON.stringify({ text: sec.title }),
-      });
-      const data = await res.json();
-      if (data.success) setVal(data.data.hi || "");
-    } catch { /* ignore */ }
-    finally { setBusy(false); }
-  }
+  
 
   async function save() {
     if (!val.trim()) return;
@@ -515,16 +504,7 @@ function HindiTitleEditor({ sec, onSave, apiFetch, immutable }) {
         />
         {!immutable && (
           <>
-            <button
-              onClick={autoTranslate}
-              disabled={busy}
-              title="Auto-translate English title to Hindi"
-              style={{
-                padding: "6px 10px", borderRadius: 7, border: `1px solid #fcd34d`,
-                background: "#fef3c7", color: "#b45309", cursor: busy ? "not-allowed" : "pointer",
-                fontSize: 11, fontWeight: 700, fontFamily: "inherit", whiteSpace: "nowrap",
-              }}
-            >{busy ? "…" : <><Languages size={12} style={{ verticalAlign: "-2px", marginRight: 4 }} />Auto</>}</button>
+            
             <button
               onClick={save}
               disabled={busy || !val.trim()}

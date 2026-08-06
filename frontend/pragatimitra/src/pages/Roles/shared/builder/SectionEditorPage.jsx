@@ -545,13 +545,21 @@ const TITLE_H = 110;               // approximate height taken by title block on
 
 /* ── render one block in Word style ── */
 function WordBlock({ block, lang = "en", measureIdx = null }) {
+  // const c    = block.content || {};
+  // const isHi = lang === "hi";
+  // // Block translations live in block.translations[language] (block_translations table),
+  // // mirroring only the translatable text fields of `content`. Fall back to English
+  // // whenever the active language has no translation row yet, or the field is empty.
+  // const t    = isHi ? (block.translations?.hi || {}) : null;
+  // const pick = (hiVal, enVal) => (isHi && hiVal) ? hiVal : enVal;
+
   const c    = block.content || {};
-  const isHi = lang === "hi";
-  // Block translations live in block.translations[language] (block_translations table),
-  // mirroring only the translatable text fields of `content`. Fall back to English
-  // whenever the active language has no translation row yet, or the field is empty.
-  const t    = isHi ? (block.translations?.hi || {}) : null;
-  const pick = (hiVal, enVal) => (isHi && hiVal) ? hiVal : enVal;
+const isHi = lang === "hi";
+
+// Manual language mode.
+// Never fall back to English when Hindi is selected.
+const t    = isHi ? (block.translations?.hi || {}) : null;
+const pick = (hiVal, enVal) => (isHi ? hiVal : enVal);
 
   switch (block.block_type) {
 
@@ -630,11 +638,24 @@ function WordBlock({ block, lang = "en", measureIdx = null }) {
     }
 
     case "TABLE": {
+      // const isFormImport = c.source === "form_import";
+      // const dataLanguage = c.language === "hi" ? "hi" : "en";
+      // const useTranslation = isHi && lang !== dataLanguage && t;
+      // const fmtColumns = (isFormImport && useTranslation && t.columns) || c.columns || [];
+      // const fmtRows    = (isFormImport && useTranslation && t.rows)    || c.rows    || [];
+
       const isFormImport = c.source === "form_import";
-      const dataLanguage = c.language === "hi" ? "hi" : "en";
-      const useTranslation = isHi && lang !== dataLanguage && t;
-      const fmtColumns = (isFormImport && useTranslation && t.columns) || c.columns || [];
-      const fmtRows    = (isFormImport && useTranslation && t.rows)    || c.rows    || [];
+
+const fmtColumns =
+    isFormImport
+        ? (isHi ? (t?.columns || []) : (c.columns || []))
+        : [];
+
+const fmtRows =
+    isFormImport
+        ? (isHi ? (t?.rows || []) : (c.rows || []))
+        : [];
+
       const headers = isFormImport
         ? fmtColumns.map(col => col.label || col.key)
         : (pick(t?.headers, c.headers) || []);
@@ -1526,8 +1547,8 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
   const [saveDescModal,     setSaveDescModal]     = useState({ open: false, desc: "", error: "" });
   // Pre-save prompt: ask whether to auto-translate updated English content into Hindi
   // for blocks that already have a Hindi translation, before the save actually runs.
-  const [translatePromptModal, setTranslatePromptModal] = useState({ open: false, blocks: [] });
-  const [translatingBeforeSave, setTranslatingBeforeSave] = useState(false);
+  // const [translatePromptModal, setTranslatePromptModal] = useState({ open: false, blocks: [] });
+  // const [translatingBeforeSave, setTranslatingBeforeSave] = useState(false);
   const hasUnsavedChanges = dirtyBlocks.size > 0 || Object.keys(dirtyTranslations).length > 0;
   const dirtyBlockCount   = new Set([...dirtyBlocks, ...Object.keys(dirtyTranslations)]).size;
 
@@ -1794,52 +1815,41 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
   /* ── Entry point for the "Save Changes" button: if any dirty (English-edited)
      block already has a Hindi translation, ask whether to auto-translate the
      updated content before saving. Otherwise skip straight to the description modal. ── */
-  function openSaveFlow() {
-    const dirtyList = [...dirtyBlocks]
-      .map((id) => blocks.find((b) => b.id === id))
-      .filter(Boolean);
-    // Blocks that already have a Hindi translation — ask whether to re-translate
-    const withHindi    = dirtyList.filter((b) =>
-      b.translations?.hi && Object.keys(b.translations.hi).filter(k => k !== "_stale").length > 0
-      && extractTranslatableFields(b)
-    );
-    // Blocks with NO Hindi translation yet — ask whether to create one
-    const withoutHindi = dirtyList.filter((b) =>
-      (!b.translations?.hi || Object.keys(b.translations.hi).filter(k => k !== "_stale").length === 0)
-      && extractTranslatableFields(b)
-    );
-    const allNeedingPrompt = [...withHindi, ...withoutHindi];
-    if (allNeedingPrompt.length > 0) {
-      setTranslatePromptModal({ open: true, blocks: allNeedingPrompt, hasNew: withoutHindi.length > 0, hasExisting: withHindi.length > 0 });
-    } else {
-      setSaveDescModal({ open: true, desc: "", error: "" });
-    }
-  }
+    /* ── Manual English/Hindi mode.
+   Saving never performs or asks for translation.
+   Always proceed directly to the Save Description dialog. ── */
+function openSaveFlow() {
+  setSaveDescModal({
+    open: true,
+    desc: "",
+    error: ""
+  });
+}
 
-  /* ── User chose to auto-translate the updated English content before saving. ── */
-  async function handleTranslateBeforeSave() {
-    const targets = translatePromptModal.blocks;
-    setTranslatePromptModal({ open: false, blocks: [] });
-    setTranslatingBeforeSave(true);
-    try {
-      for (const block of targets) {
-        const partial = await autoTranslateBlock(block).catch(() => null);
-        if (partial) saveBlockTranslation(block.id, "hi", partial);
-      }
-    } finally {
-      setTranslatingBeforeSave(false);
-      setSaveDescModal({ open: true, desc: "", error: "" });
-    }
-  }
+  // /* ── User chose to auto-translate the updated English content before saving. ── */
+  // async function handleTranslateBeforeSave() {
+  //   const targets = translatePromptModal.blocks;
+  //   setTranslatePromptModal({ open: false, blocks: [] });
+  //   setTranslatingBeforeSave(true);
+  //   try {
+  //     for (const block of targets) {
+  //       const partial = await autoTranslateBlock(block).catch(() => null);
+  //       if (partial) saveBlockTranslation(block.id, "hi", partial);
+  //     }
+  //   } finally {
+  //     setTranslatingBeforeSave(false);
+  //     setSaveDescModal({ open: true, desc: "", error: "" });
+  //   }
+  // }
 
-  /* ── User chose to skip auto-translation — mark those translations stale so the
-     "Translate from English" affordance reappears even though the field isn't empty. ── */
-  function handleSkipTranslateBeforeSave() {
-    const targets = translatePromptModal.blocks;
-    setTranslatePromptModal({ open: false, blocks: [] });
-    for (const block of targets) saveBlockTranslation(block.id, "hi", { _stale: true });
-    setSaveDescModal({ open: true, desc: "", error: "" });
-  }
+  // /* ── User chose to skip auto-translation — mark those translations stale so the
+  //    "Translate from English" affordance reappears even though the field isn't empty. ── */
+  // function handleSkipTranslateBeforeSave() {
+  //   const targets = translatePromptModal.blocks;
+  //   setTranslatePromptModal({ open: false, blocks: [] });
+  //   for (const block of targets) saveBlockTranslation(block.id, "hi", { _stale: true });
+  //   setSaveDescModal({ open: true, desc: "", error: "" });
+  // }
 
   /* ── save all dirty blocks (+ pending translations) with description ── */
   async function executeSave(description) {
@@ -2744,7 +2754,7 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
           </div>
         )}
 
-        {/* ── Pre-save: auto-translate updated content into Hindi? ── */}
+        {/* ── Pre-save: auto-translate updated content into Hindi? ──
         {translatePromptModal.open && (
           <div style={{
             position: "fixed", inset: 0, background: "rgba(15,23,42,0.45)",
@@ -2792,7 +2802,7 @@ export default function SectionEditorPage({ sectionId, reportTitle, onBack, kpiS
               </div>
             </div>
           </div>
-        )}
+        )} */}
 
         {/* ── Save Description Modal ── */}
         {saveDescModal.open && (

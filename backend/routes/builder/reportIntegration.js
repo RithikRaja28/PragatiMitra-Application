@@ -30,32 +30,32 @@ router.use(verifyToken);
                          tags, inline styles, and structure are preserved
      { text }          — single plain-text string
      { texts: string[] } — batch of plain-text strings (list items, table cells) */
-router.post("/translate", async (req, res) => {
-  const { html, text, texts } = req.body;
-  try {
-    if (typeof html === "string") {
-      if (!html.trim())
-        return res.status(400).json({ success: false, message: "html is required" });
-      const hi = await translateHtml(html.trim());
-      return res.json({ success: true, data: { hi } });
-    }
-    if (Array.isArray(texts)) {
-      if (!texts.length || !texts.every((t) => typeof t === "string"))
-        return res.status(400).json({ success: false, message: "texts must be a non-empty string array" });
-      const translations = await Promise.all(
-        texts.map((t) => (t.trim() ? translateSentence(t) : Promise.resolve("")))
-      );
-      return res.json({ success: true, data: { translations } });
-    }
-    if (typeof text !== "string" || !text.trim())
-      return res.status(400).json({ success: false, message: "text or html is required" });
-    const hi = await translateSentence(text.trim());
-    return res.json({ success: true, data: { hi } });
-  } catch (err) {
-    logger.error("report-integration POST /translate", { ...getLogContext(req), err: err.message });
-    return res.status(500).json({ success: false, message: "Translation failed" });
-  }
-});
+// router.post("/translate", async (req, res) => {
+//   const { html, text, texts } = req.body;
+//   try {
+//     if (typeof html === "string") {
+//       if (!html.trim())
+//         return res.status(400).json({ success: false, message: "html is required" });
+//       const hi = await translateHtml(html.trim());
+//       return res.json({ success: true, data: { hi } });
+//     }
+//     if (Array.isArray(texts)) {
+//       if (!texts.length || !texts.every((t) => typeof t === "string"))
+//         return res.status(400).json({ success: false, message: "texts must be a non-empty string array" });
+//       const translations = await Promise.all(
+//         texts.map((t) => (t.trim() ? translateSentence(t) : Promise.resolve("")))
+//       );
+//       return res.json({ success: true, data: { translations } });
+//     }
+//     if (typeof text !== "string" || !text.trim())
+//       return res.status(400).json({ success: false, message: "text or html is required" });
+//     const hi = await translateSentence(text.trim());
+//     return res.json({ success: true, data: { hi } });
+//   } catch (err) {
+//     logger.error("report-integration POST /translate", { ...getLogContext(req), err: err.message });
+//     return res.status(500).json({ success: false, message: "Translation failed" });
+//   }
+// });
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const isUUID  = v => typeof v === "string" && UUID_RE.test(v);
