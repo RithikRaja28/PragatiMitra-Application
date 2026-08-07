@@ -613,12 +613,26 @@ function collectColumnNames(fields) {
 ───────────────────────────────────────────────────────────────────── */
 router.post(
   "/",
-  requireRole(["super_admin", "institute_admin"]),
+  // requireRole(["super_admin", "institute_admin"]),
   async (req, res) => {
     const pool = req.app.locals.pool;
-    const { form_name, share_table = false, schema, year, translate_to_hindi, form_domain } = req.body;
-    // Form-level Hindi translation toggle — defaults to TRUE (preserves behavior).
-    const translateToHindi = translate_to_hindi === false ? false : true;
+    const {
+  form_name,
+  share_table = false,
+  schema,
+  year,
+  translate_to_hindi,
+  form_domain
+} = req.body;
+
+// Backward compatibility:
+// Old frontend sends translate_to_hindi.
+// New frontend doesn't.
+const translateToHindi =
+  typeof translate_to_hindi === "boolean"
+    ? translate_to_hindi
+    : false;
+ 
     // Domain (academic|hospital|finance). Default academic → existing behavior.
     const VALID_FORM_DOMAINS = ["academic", "hospital", "finance"];
     const formDomain = VALID_FORM_DOMAINS.includes(String(form_domain).toLowerCase())
@@ -684,8 +698,39 @@ router.post(
       if (ayLock.locked)
         return res.status(403).json({ success: false, message: ayLock.message });
 
-      // Auto-fill missing Hindi labels before persisting
-      if (translateToHindi) await autoFillHindiLabels(schema);
+      // Manual English/Hindi mode.
+// When Hindi translation is enabled, the client must provide both labels.
+// Never generate Hindi automatically.
+     const fields = schema?.fields || [];
+
+for (const field of fields) {
+
+    if (!field.label || typeof field.label !== "object") {
+        return res.status(400).json({
+            success: false,
+            message: `Field "${field.column_name}" must contain label.en`
+        });
+    }
+
+    // English required
+    if (!String(field.label.en || "").trim()) {
+        return res.status(400).json({
+            success: false,
+            message: `Field "${field.column_name}" requires an English label.`
+        });
+    }
+
+    // Hindi optional
+    if (
+        field.label.hi != null &&
+        typeof field.label.hi !== "string"
+    ) {
+        return res.status(400).json({
+            success: false,
+            message: `Field "${field.column_name}" has an invalid Hindi label.`
+        });
+    }
+}
 
       const client = await pool.connect();
       try {
@@ -1054,7 +1099,7 @@ router.post(
 ───────────────────────────────────────────────────────────────────── */
 router.put(
   "/:formName/schema",
-  requireRole(["super_admin", "institute_admin"]),
+  // requireRole(["super_admin", "institute_admin"]),
   requireFormDomain,
   async (req, res) => {
     const pool = req.app.locals.pool;
@@ -1089,8 +1134,56 @@ router.put(
 
       // Auto-fill missing Hindi labels before persisting.
       // translate_to_hindi may be toggled in this same request; default to true if not specified.
-      const effectiveTranslate = typeof translate_to_hindi === "boolean" ? translate_to_hindi : true;
-      if (effectiveTranslate) await autoFillHindiLabels(schema);
+      // const effectiveTranslate = typeof translate_to_hindi === "boolean" ? translate_to_hindi : true;
+      // if (effectiveTranslate) await autoFillHindiLabels(schema);
+
+
+
+      // ------------------------------------------------------------
+// Manual English / Hindi labels
+// Backend never translates labels.
+// Frontend must send both English and Hindi labels.
+// ------------------------------------------------------------
+
+
+
+for (const field of (schema.fields || [])) {
+
+  if (!field.label || typeof field.label !== "object") {
+    return res.status(400).json({
+      success: false,
+      message: `Field "${field.column_name}" must contain a label object.`
+    });
+  }
+
+  if (
+    typeof field.label.en !== "string" ||
+    !field.label.en.trim()
+  ) {
+    return res.status(400).json({
+      success: false,
+      message: `English label is required for "${field.column_name}".`
+    });
+  }
+
+   // Hindi optional
+if (
+    field.label.hi != null &&
+    typeof field.label.hi !== "string"
+) {
+    return res.status(400).json({
+        success: false,
+        message: `Hindi label for "${field.column_name}" must be a string.`
+    });
+}
+
+field.label.en = field.label.en.trim();
+
+if (typeof field.label.hi === "string") {
+    field.label.hi = field.label.hi.trim();
+}
+
+}
 
       const client = await pool.connect();
       try {

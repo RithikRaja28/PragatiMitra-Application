@@ -70,16 +70,26 @@ export default function DepartmentFormRecordsPage({ form, year = null, onBack })
 
   const showToast = (message, type = "success") => { setToast({ message, type }); setTimeout(() => setToast(null), 3500); };
 
-  async function saveRecord(formData) {
+async function saveRecord(formData, formDataHi) {
     const editing = editTarget && editTarget !== "new" ? editTarget : null;
     const yqSave = year != null ? `?year=${year}` : "";
     try {
       const res = editing
         ? await apiFetch(`/api/department-form-data/${form.id}/records/${editing.id}${yqSave}`, {
-            method: "PUT", body: JSON.stringify({ data: formData, year }),
+            method: "PUT", body: JSON.stringify({
+    language: "en",
+    year,
+    englishData: formData,
+    hindiData: formDataHi,
+}),
           })
         : await apiFetch(`/api/department-form-data/${form.id}/records${yqSave}`, {
-            method: "POST", body: JSON.stringify({ data: formData, year }),
+            method: "POST", body: JSON.stringify({
+    language: "en",
+    year,
+    englishData: formData,
+    hindiData: formDataHi,
+}),
           });
       const d = await res.json();
       if (d.success) {
@@ -102,7 +112,28 @@ export default function DepartmentFormRecordsPage({ form, year = null, onBack })
     try {
       const res = await apiFetch(`/api/department-form-data/${form.id}/records?language=${lang}${yq}`);
       const d = await res.json();
-      if (d.success) { setRecords(d.records || []); setSchema(d.schema?.schema || null); setLock(d.lock || { is_locked: false }); }
+      if (d.success) { 
+     const rows = (d.records || [])
+    .filter(r => {
+        if (lang === "hi") {
+            return r.hindiRecord !== null;
+        }
+        return r.englishRecord !== null;
+    })
+    .map((r) => {
+        const row =
+            lang === "hi"
+                ? r.hindiRecord
+                : r.englishRecord;
+
+        return {
+            ...row,
+            englishRecord: r.englishRecord,
+            hindiRecord: r.hindiRecord,
+        };
+    });
+setRecords(rows);
+         setSchema(d.schema?.schema || null); setLock(d.lock || { is_locked: false }); }
       else setError(d.message || t("Failed to load records.", lang));
     } catch (e) { if (!isAuthError(e)) setError(t("Failed to load records.", lang)); }
     finally { setLoading(false); hasLoadedRef.current = true; }
@@ -194,7 +225,10 @@ export default function DepartmentFormRecordsPage({ form, year = null, onBack })
       const recRes = await apiFetch(`/api/department-form-data/${form.id}/records/${sourceId}`);
       const recData = await recRes.json();
 
-      if (!recData.success || !recData.record) {
+      if (
+    !recData.success ||
+    (!recData.englishRecord && !recData.record)
+){
         try { await apiFetch(lockPath, { method: "DELETE" }); } catch {}
         lockUrlRef.current = null;
         lockedRecordRef.current = null;
@@ -208,7 +242,14 @@ export default function DepartmentFormRecordsPage({ form, year = null, onBack })
       }
 
       // ── Step 3: open edit form with fresh data ─────────────────────────
-      setEditTarget(recData.record);
+      // setEditTarget(recData.record);
+      const record = {
+    ...(recData.englishRecord || recData.record),
+    englishRecord: recData.englishRecord,
+    hindiRecord: recData.hindiRecord
+};
+
+setEditTarget(record);
     } catch (e) {
       // Record fetch failed (network error, server not yet restarted, etc.)
       try { await apiFetch(lockPath, { method: "DELETE" }); } catch {}

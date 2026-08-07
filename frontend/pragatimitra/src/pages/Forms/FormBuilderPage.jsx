@@ -39,14 +39,14 @@ const FIELD_TYPES = [
      translate     — real sentence translation (I am walking → मैं कॉलेज जा रहा हूँ)
      none          — copy the value verbatim (numbers, dates, emails, files)
    Kept in sync with the backend so existing `text` fields keep transliterating. */
-const DEFAULT_TRANSLATION_MODE = {
-  text: "transliterate", textarea: "transliterate", description: "translate",
-  number: "none", date: "none", boolean: "none",
-  email: "none", phone: "none", document: "none",
-};
-function defaultTranslationMode(type) {
-  return DEFAULT_TRANSLATION_MODE[type] || "transliterate";
-}
+// const DEFAULT_TRANSLATION_MODE = {
+//   text: "transliterate", textarea: "transliterate", description: "translate",
+//   number: "none", date: "none", boolean: "none",
+//   email: "none", phone: "none", document: "none",
+// };
+// function defaultTranslationMode(type) {
+//   return DEFAULT_TRANSLATION_MODE[type] || "transliterate";
+// }
 
 /* derive DB identifier from human-readable form name */
 function toIdentifier(name) {
@@ -409,19 +409,27 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
   /* ── Step 1 state ── */
   const [step, setStep]     = useState(1);
   const [basics, setBasics] = useState({
-    form_name:   isEdit || isAdapt ? (initialData?.form_name?.replace(/_/g, " ") || "") : "",
+    form_name:
+        isEdit || isAdapt
+            ? (initialData?.form_name?.replace(/_/g, " ") || "")
+            : "",
+
     description: "",
+
     share_table: false,
-    year:        selectedYear ?? null,
-    // Form-level Hindi translation toggle. Default ON (preserves behavior);
-    // for edit/adapt seed from the form's current value when available.
-    translate_to_hindi: (isEdit || isAdapt) ? (initialData?.translate_to_hindi ?? true) : true,
-    // Domain (academic|hospital|finance). New forms inherit the creator's domain
-    // (super_admin can change it in the selector). Default Academic.
-    form_domain: (isEdit || isAdapt)
-      ? (initialData?.form_domain || "academic")
-      : (user?.roleDomain && user.roleDomain !== "academic" ? user.roleDomain : "academic"),
-  });
+
+    year: selectedYear ?? null,
+
+    form_domain:
+        (isEdit || isAdapt)
+            ? (initialData?.form_domain || "academic")
+            : (
+                user?.roleDomain &&
+                user.roleDomain !== "academic"
+            )
+                ? user.roleDomain
+                : "academic",
+});
   const [basicsErrors, setBasicsErrors] = useState({});
 
   /* derived identifier — e.g. "Student Records" → "student_records" */
@@ -532,9 +540,9 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
           if (data.schema.used_column_names?.length) {
             setUsedColumnNames(new Set(data.schema.used_column_names));
           }
-          if (typeof data.translate_to_hindi === "boolean") {
-            setBasics((b) => ({ ...b, translate_to_hindi: data.translate_to_hindi }));
-          }
+          // if (typeof data.translate_to_hindi === "boolean") {
+          //   setBasics((b) => ({ ...b, translate_to_hindi: data.translate_to_hindi }));
+          // }
         } else {
           setColsError(data.message || "Could not load schema.");
         }
@@ -650,13 +658,16 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
       .map((f, i) => {
         const { _key, isNew, ...rest } = f; // strip React-internal flags; 'hidden' is kept
         return {
-          // translation_mode is always derived from the field type (never chosen
-          // by the admin); this explicit value overrides any older stored mode.
-          ...rest,
-          column_name: f.column_name.trim().toLowerCase().replace(/\s+/g, "_"),
-          translation_mode: defaultTranslationMode(f.type),
-          order: i,
-        };
+    ...rest,
+
+    column_name:
+        f.column_name
+            .trim()
+            .toLowerCase()
+            .replace(/\s+/g, "_"),
+
+    order: i,
+};
       });
 
     return {
@@ -707,7 +718,16 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
       if (isCreate) {
         res = await apiFetch("/api/forms", {
           method: "POST",
-          body: JSON.stringify({ form_name: identifier, share_table: basics.share_table, schema, year: basics.year, translate_to_hindi: basics.translate_to_hindi, form_domain: isCrossDomainAdmin ? basics.form_domain : userDomain }),
+        body: JSON.stringify({
+    form_name: identifier,
+    share_table: basics.share_table,
+    schema,
+    year: basics.year,
+    form_domain:
+        isCrossDomainAdmin
+            ? basics.form_domain
+            : userDomain,
+}),
         });
       } else if (isAdapt) {
         res = await apiFetch("/api/forms/adopt", {
@@ -717,7 +737,10 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
       } else {
         res = await apiFetch(`/api/forms/${initialData.form_name}/schema`, {
           method: "PUT",
-          body: JSON.stringify({ schema, year: basics.year, translate_to_hindi: basics.translate_to_hindi }),
+          body: JSON.stringify({
+    schema,
+    year: basics.year,
+}),
         });
       }
 
@@ -1120,19 +1143,11 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
               </ReviewSection>
             )}
 
-            <ReviewSection title="Form Metadata Review">
-              <ReviewRow label="Form Name"       value={basics.form_name || initialData?.form_name} />
-              <ReviewRow label="Academic Year"   value={basics.year != null ? `${basics.year}-${basics.year + 1}` : "Not Configured"} />
-              {isCreate && <ReviewRow label="Domain" value={(isCrossDomainAdmin ? basics.form_domain : userDomain).charAt(0).toUpperCase() + (isCrossDomainAdmin ? basics.form_domain : userDomain).slice(1)} />}
-              {basics.description && <ReviewRow label="Description" value={basics.description} />}
-              {isSuperAdmin && isCreate && (
-                <ReviewRow label="Shared Template" value={basics.share_table ? "Yes — available to all institutions" : "No — private to this institution"} />
-              )}
-            </ReviewSection>
+            
 
             {/* Language Configuration — per-form Hindi translation toggle.
                 Hidden in adapt mode (the template's existing setting applies). */}
-            {!isAdapt && (
+            {/* {!isAdapt && (
               <ReviewSection title="Language Configuration">
                 <label style={{ display: "flex", alignItems: "flex-start", gap: 12, cursor: "pointer" }}>
                   <input
@@ -1151,7 +1166,7 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
                   </div>
                 </label>
               </ReviewSection>
-            )}
+            )} */}
 
             <ReviewSection title={`Schema Architecture Preview · ${reviewFields.length} field${reviewFields.length !== 1 ? "s" : ""}${activeFields.some(f => f.hidden) ? ` (${activeFields.filter(f => f.hidden).length} hidden)` : ""}`}>
               {reviewFields.length === 0 ? (
@@ -1164,11 +1179,56 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
                       background: f.is_fixed ? "#f0f9ff" : "#f8fafc", borderRadius: 8,
                     }}>
                       <span style={{ width: 22, fontSize: 11, color: "#94a3b8", fontWeight: 600, flexShrink: 0 }}>{i + 1}</span>
-                      <span style={{ fontFamily: "monospace", fontSize: 12, color: "#1e293b", fontWeight: 600, minWidth: 160 }}>{f.column_name}</span>
-                      <span style={{ fontSize: 12, color: "#64748b" }}>{f.label?.en}</span>
-                      <span style={{ marginLeft: "auto", fontSize: 11, color: "#94a3b8" }}>
-                        {FIELD_TYPES.find((t) => t.value === f.type)?.label || f.type}
-                      </span>
+                      <span
+    style={{
+        fontFamily: "monospace",
+        fontSize: 12,
+        color: "#1e293b",
+        fontWeight: 600,
+        minWidth: 160,
+    }}
+>
+    {f.column_name}
+</span>
+
+<div
+    style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 2,
+        flex: 1,
+    }}
+>
+    <span
+        style={{
+            fontSize: 12,
+            color: "#64748b",
+            fontWeight: 600,
+        }}
+    >
+        EN: {f.label?.en || "—"}
+    </span>
+
+    <span
+        style={{
+            fontSize: 12,
+            color: "#94a3b8",
+        }}
+    >
+        HI: {f.label?.hi || "—"}
+    </span>
+</div>
+
+<span
+    style={{
+        marginLeft: "auto",
+        fontSize: 11,
+        color: "#94a3b8",
+    }}
+>
+    {FIELD_TYPES.find((t) => t.value === f.type)?.label || f.type}
+</span>
+      
                       {f.is_fixed && <span style={{ fontSize: 10, color: "#2563eb", fontWeight: 700, background: "#e0f2fe", padding: "1px 7px", borderRadius: 20 }}>FIXED</span>}
                       {f.required && <span style={{ fontSize: 10, color: "#d97706", fontWeight: 700, background: "#fef3c7", padding: "1px 7px", borderRadius: 20 }}>REQ</span>}
                     </div>

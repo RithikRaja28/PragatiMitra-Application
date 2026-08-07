@@ -282,27 +282,15 @@ export default function CreateReportWizardPage({ onCreated, onCancel, initialRep
     s.id === pid ? { ...s, subsections: s.subsections.map(sub => sub.id === sid ? { ...sub, [k]: v } : sub) } : s
   ));
 
-  const autoTranslateSec = async (id, englishTitle) => {
-    if (!englishTitle?.trim()) return;
-    try {
-      const res  = await apiFetch("/api/report-integration/translate", {
-        method: "POST", body: JSON.stringify({ text: englishTitle.trim() }),
-      });
-      const data = await res.json();
-      if (data.success) updSec(id, "title_hi", data.data.hi || "");
-    } catch { /* ignore */ }
-  };
+ const autoTranslateSec = () => {
+    // Manual English/Hindi editing only.
+    // Auto translation removed.
+};
 
-  const autoTranslateSub = async (pid, sid, englishTitle) => {
-    if (!englishTitle?.trim()) return;
-    try {
-      const res  = await apiFetch("/api/report-integration/translate", {
-        method: "POST", body: JSON.stringify({ text: englishTitle.trim() }),
-      });
-      const data = await res.json();
-      if (data.success) updSub(pid, sid, "title_hi", data.data.hi || "");
-    } catch { /* ignore */ }
-  };
+  const autoTranslateSub = () => {
+    // Manual English/Hindi editing only.
+    // Auto translation removed.
+};
   const delSec = (id) => {
     const sec = sections.find(s => s.id === id);
     if (sec && !sec.isNew) apj(apiFetch, `/api/builder/sections/${id}`, { method: "DELETE" }).catch(() => {});
@@ -827,14 +815,14 @@ export default function CreateReportWizardPage({ onCreated, onCancel, initialRep
                         section={sec} index={si} total={sections.length}
                         onTitleChange={v => updSec(sec.id, "title", v)}
                         onTitleHiChange={v => updSec(sec.id, "title_hi", v)}
-                        onAutoTranslate={() => autoTranslateSec(sec.id, sec.title)}
+                      onAutoTranslate={undefined}
                         onDelete={() => delSec(sec.id)}
                         onAddSub={() => addSub(sec.id)}
                         onMoveUp={() => mvUp(si)}
                         onMoveDown={() => mvDown(si)}
                         onSubTitleChange={(sid, v) => updSub(sec.id, sid, "title", v)}
                         onSubTitleHiChange={(sid, v) => updSub(sec.id, sid, "title_hi", v)}
-                        onSubAutoTranslate={(sid) => autoTranslateSub(sec.id, sid, sec.subsections.find(s=>s.id===sid)?.title)}
+                        onSubAutoTranslate={undefined}
                         onSubDelete={sid => delSub(sec.id, sid)}
                       />
                     ))}
@@ -1344,18 +1332,26 @@ export default function CreateReportWizardPage({ onCreated, onCancel, initialRep
 }
 
 /* ══ Section row ══════════════════════════════════════════════════════════ */
-function SectionRow({ section, index, total, onTitleChange, onTitleHiChange, onAutoTranslate,
-    onDelete, onAddSub, onMoveUp, onMoveDown, onSubTitleChange, onSubTitleHiChange, onSubAutoTranslate, onSubDelete }) {
+function SectionRow({
+    section,
+    index,
+    total,
+    onTitleChange,
+    onTitleHiChange,
+    onDelete,
+    onAddSub,
+    onMoveUp,
+    onMoveDown,
+    onSubTitleChange,
+    onSubTitleHiChange,
+    onSubDelete
+}){
   const [editing, setEditing] = useState(!section.title);
-  const [translating, setTranslating] = useState(false);
+
   const inputRef = useRef();
   useEffect(() => { if (editing && inputRef.current) inputRef.current.focus(); }, [editing]);
 
-  async function handleAutoTranslate() {
-    setTranslating(true);
-    await onAutoTranslate();
-    setTranslating(false);
-  }
+  
 
   return (
     <div style={{ marginBottom: 8 }}>
@@ -1406,37 +1402,34 @@ function SectionRow({ section, index, total, onTitleChange, onTitleHiChange, onA
               placeholder="हिंदी शीर्षक (optional)…"
               style={{ ...inp, flex: 1, fontSize: 12, padding: "3px 8px", border: "1px solid #fcd34d", background: "#fff" }}
             />
-            <button onClick={handleAutoTranslate} disabled={translating || !section.title?.trim()}
-              style={{ padding: "3px 9px", border: "1px solid #fcd34d", borderRadius: 6, background: "#fef3c7",
-                color: "#b45309", cursor: translating || !section.title?.trim() ? "not-allowed" : "pointer",
-                fontSize: 11, fontWeight: 700, fontFamily: "inherit", whiteSpace: "nowrap" }}>
-              {translating ? "…" : <><Languages size={12} style={{ verticalAlign: "-2px", marginRight: 4 }} />Auto</>}
-            </button>
+          
           </div>
         )}
       </div>
       {(section.subsections || []).map(sub => (
-        <SubRow key={sub.id} sub={sub}
-          onChange={v => onSubTitleChange(sub.id, v)}
-          onHiChange={v => onSubTitleHiChange(sub.id, v)}
-          onAutoTranslate={() => onSubAutoTranslate(sub.id)}
-          onDelete={() => onSubDelete(sub.id)} />
+        <SubRow
+    key={sub.id}
+    sub={sub}
+    onChange={v => onSubTitleChange(sub.id, v)}
+    onHiChange={v => onSubTitleHiChange(sub.id, v)}
+    onDelete={() => onSubDelete(sub.id)}
+/>
       ))}
     </div>
   );
 }
 
-function SubRow({ sub, onChange, onHiChange, onAutoTranslate, onDelete }) {
+function SubRow({
+    sub,
+    onChange,
+    onHiChange,
+    onDelete
+}) {
   const [editing, setEditing] = useState(!sub.title);
-  const [translating, setTranslating] = useState(false);
+ 
   const ref = useRef();
   useEffect(() => { if (editing && ref.current) ref.current.focus(); }, [editing]);
 
-  async function handleAutoTranslate() {
-    setTranslating(true);
-    await onAutoTranslate();
-    setTranslating(false);
-  }
 
   return (
     <div style={{ marginLeft: 32, marginTop: 4, borderRadius: 7, background: C.surface,
@@ -1472,12 +1465,7 @@ function SubRow({ sub, onChange, onHiChange, onAutoTranslate, onDelete }) {
             placeholder="हिंदी शीर्षक (optional)…"
             style={{ ...inp, flex: 1, fontSize: 11, padding: "3px 7px", border: "1px solid #fcd34d", background: "#fff" }}
           />
-          <button onClick={handleAutoTranslate} disabled={translating || !sub.title?.trim()}
-            style={{ padding: "3px 8px", border: "1px solid #fcd34d", borderRadius: 5, background: "#fef3c7",
-              color: "#b45309", cursor: translating || !sub.title?.trim() ? "not-allowed" : "pointer",
-              fontSize: 10, fontWeight: 700, fontFamily: "inherit", whiteSpace: "nowrap" }}>
-            {translating ? "…" : <><Languages size={12} style={{ verticalAlign: "-2px", marginRight: 4 }} />Auto</>}
-          </button>
+          
         </div>
       )}
     </div>

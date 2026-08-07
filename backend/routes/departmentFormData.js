@@ -312,7 +312,7 @@ router.get("/:id/records", async (req, res) => {
 
     const table = deptRecordsTable(form.department_id, form.form_name);
     const year = resolveYear(req);
-    const language = (req.query.language || "en").toLowerCase();
+    // const language = (req.query.language || "en").toLowerCase();
 
     // Tolerate a missing physical table (e.g. legacy/partial state) — return empty.
     const { rows: ex } = await pool.query(
@@ -323,9 +323,7 @@ router.get("/:id/records", async (req, res) => {
 
     // enrichSchemaLabels expects a schema-row wrapper ({ schema: { fields } }).
     // Wrap, enrich, then unwrap so the response shape stays the same.
-    const displaySchema = language !== "en"
-      ? (await enrichSchemaLabels({ schema: effectiveSchema }, language).catch(() => ({ schema: effectiveSchema }))).schema
-      : effectiveSchema;
+    const displaySchema = effectiveSchema;
 
     if (!ex.length) {
       const lk = await deptLockBlock(pool, form, year);
@@ -334,42 +332,117 @@ router.get("/:id/records", async (req, res) => {
 
     // Return records in the requested language. For Hindi: prefer translated mirror rows;
     // fall back to English rows that have no Hindi mirror (legacy / untranslated).
-    const { rows: rawRecords } = language === "en"
-      ? await pool.query(
-          `SELECT t.*, u.full_name AS entered_by
-           FROM ${table} t
-           LEFT JOIN users u ON u.id = t.created_by
-           WHERE t.department_id = $1 AND t.academic_year = $2 AND (t.language = 'en' OR t.language IS NULL)
-           ORDER BY t.created_at DESC`,
-          [departmentId, year]
-        )
-      : await pool.query(
-          `WITH has_translation AS (
-             SELECT source_row_id FROM ${table}
-             WHERE  language = $3 AND source_row_id IS NOT NULL
-               AND  department_id = $1 AND academic_year = $2
-           )
-           SELECT t.*, u.full_name AS entered_by
-           FROM ${table} t
-           LEFT JOIN users u ON u.id = t.created_by
-           WHERE t.department_id = $1 AND t.academic_year = $2
-             AND (
-               t.language = $3
-               OR (
-                 (t.language = 'en' OR t.language IS NULL)
-                 AND t.id NOT IN (SELECT source_row_id FROM has_translation WHERE source_row_id IS NOT NULL)
-               )
-             )
-           ORDER BY t.created_at DESC`,
-          [departmentId, year, language]
-        );
+    // const { rows: rawRecords } = language === "en"
+    //   ? await pool.query(
+    //       `SELECT t.*, u.full_name AS entered_by
+    //        FROM ${table} t
+    //        LEFT JOIN users u ON u.id = t.created_by
+    //        WHERE t.department_id = $1 AND t.academic_year = $2 AND (t.language = 'en' OR t.language IS NULL)
+    //        ORDER BY t.created_at DESC`,
+    //       [departmentId, year]
+    //     )
+    //   : await pool.query(
+    //       `WITH has_translation AS (
+    //          SELECT source_row_id FROM ${table}
+    //          WHERE  language = $3 AND source_row_id IS NOT NULL
+    //            AND  department_id = $1 AND academic_year = $2
+    //        )
+    //        SELECT t.*, u.full_name AS entered_by
+    //        FROM ${table} t
+    //        LEFT JOIN users u ON u.id = t.created_by
+    //        WHERE t.department_id = $1 AND t.academic_year = $2
+    //          AND (
+    //            t.language = $3
+    //            OR (
+    //              (t.language = 'en' OR t.language IS NULL)
+    //              AND t.id NOT IN (SELECT source_row_id FROM has_translation WHERE source_row_id IS NOT NULL)
+    //            )
+    //          )
+    //        ORDER BY t.created_at DESC`,
+    //       [departmentId, year, language]
+    //     );
+
+    const { rows: englishRows } = await pool.query(
+`
+SELECT t.*, u.full_name AS entered_by
+FROM ${table} t
+LEFT JOIN users u
+ON u.id = t.created_by
+WHERE
+t.department_id = $1
+AND t.academic_year = $2
+AND (t.language='en' OR t.language IS NULL)
+ORDER BY t.created_at DESC
+`,
+[
+departmentId,
+year
+]
+);
+
+
     const lock = await deptLockBlock(pool, form, year);
 
     // Flatten custom_fields (extra JSONB fields from non-creation years) into each row.
-    const records = rawRecords.map((row) => {
-      if (!row.custom_fields || typeof row.custom_fields !== "object") return row;
-      return { ...row, ...row.custom_fields };
+    // const records = rawRecords.map((row) => {
+    //   if (!row.custom_fields || typeof row.custom_fields !== "object") return row;
+    //   return { ...row, ...row.custom_fields };
+    // });
+    
+     const records = [];
+
+for (const englishRecord of englishRows) {
+
+    // Merge English custom fields
+    if (
+        englishRecord.custom_fields &&
+        typeof englishRecord.custom_fields === "object"
+    ) {
+        Object.assign(
+            englishRecord,
+            englishRecord.custom_fields
+        );
+    }
+
+    // Find Hindi record
+    const { rows: hiRows } = await pool.query(
+`
+SELECT t.*, u.full_name AS entered_by
+FROM ${table} t
+LEFT JOIN users u
+ON u.id = t.created_by
+WHERE
+t.department_id = $1
+AND t.source_row_id = $2
+AND t.language='hi'
+LIMIT 1
+`,
+[
+departmentId,
+englishRecord.id
+]
+);
+
+    let hindiRecord = hiRows[0] || null;
+
+    // Merge Hindi custom fields
+    if (
+        hindiRecord?.custom_fields &&
+        typeof hindiRecord.custom_fields === "object"
+    ) {
+        Object.assign(
+            hindiRecord,
+            hindiRecord.custom_fields
+        );
+    }
+
+    records.push({
+        englishRecord,
+        hindiRecord
     });
+
+}
+
 
     return res.json({
       success: true,
@@ -409,12 +482,48 @@ router.get("/:id/records/:recordId", async (req, res) => {
     if (!rows.length)
       return res.status(404).json({ success: false, message: "Record not found or has been deleted." });
 
-    const record = rows[0];
-    if (record.custom_fields && typeof record.custom_fields === "object") {
-      Object.assign(record, record.custom_fields);
-    }
+    // const record = rows[0];
+    // if (record.custom_fields && typeof record.custom_fields === "object") {
+    //   Object.assign(record, record.custom_fields);
+    // }
 
-    return res.json({ success: true, record });
+   const englishRecord = rows[0] ?? null;
+
+if (
+    englishRecord.custom_fields &&
+    typeof englishRecord.custom_fields === "object"
+) {
+    Object.assign(englishRecord, englishRecord.custom_fields);
+}
+    // Add Hindi query
+    const { rows: hiRows } = await pool.query(
+  `SELECT t.*, u.full_name AS entered_by
+FROM ${table} t
+LEFT JOIN users u
+ON u.id = t.created_by
+WHERE
+t.department_id = $1
+AND t.source_row_id = $2
+AND t.language = 'hi'
+LIMIT 1`,
+  [departmentId, englishRecord.id]
+);
+
+let hindiRecord = hiRows[0] || null;
+
+if (
+  hindiRecord?.custom_fields &&
+  typeof hindiRecord.custom_fields === "object"
+) {
+  Object.assign(hindiRecord, hindiRecord.custom_fields);
+}
+
+
+   return res.json({
+    success: true,
+    englishRecord,
+    hindiRecord
+});
   } catch (err) {
     logger.error("GET /api/department-form-data/:id/records/:recordId", { stack: err.stack });
     return res.status(500).json({ success: false, message: "Failed to fetch record." });
@@ -483,9 +592,40 @@ router.get("/:id/records/:recordId/counterpart", async (req, res) => {
 router.post("/:id/records", async (req, res) => {
   const pool = req.app.locals.pool;
   if (!requireContributor(req, res)) return;
-  const { data } = req.body;
-  if (!data || typeof data !== "object")
-    return res.status(400).json({ success: false, message: "data is required." });
+   
+   const { englishData, hindiData } = req.body;
+   console.log("Form ID:", req.params.id);
+console.log("Body:", req.body);
+
+
+console.log("English Data:", englishData);
+console.log("Hindi Data:", hindiData);
+
+
+
+
+  // if (!data || typeof data !== "object")
+  //   return res.status(400).json({ success: false, message: "data is required." });
+
+if (!englishData || typeof englishData !== "object" || Array.isArray(englishData))
+  return res.status(400).json({
+    success: false,
+    message: "englishData is required."
+  });
+
+if (
+    hindiData &&
+    (
+        typeof hindiData !== "object" ||
+        Array.isArray(hindiData)
+    )
+) {
+    return res.status(400).json({
+        success: false,
+        message: "Invalid hindiData."
+    });
+}
+
   try {
     const { form, departmentId, institutionId, error } = await loadForm(pool, req, req.params.id);
     if (error) return res.status(404).json({ success: false, message: error });
@@ -517,13 +657,13 @@ router.post("/:id/records", async (req, res) => {
     const baseFieldCols = fieldCols.filter((c) => physicalCols.has(c));
     const extraFieldCols = fieldCols.filter((c) => !physicalCols.has(c));
     const customFieldsJson = extraFieldCols.length > 0
-      ? JSON.stringify(Object.fromEntries(extraFieldCols.map((c) => [c, data[c] ?? null])))
+      ? JSON.stringify(Object.fromEntries(extraFieldCols.map((c) => [c, englishData[c] ?? null])))
       : null;
 
     const stdCols = ["form_name", "department_id", "institution_id", "academic_year", "role_name", "schema_id", "language", "created_by", "custom_fields"];
     const stdVals = [form.form_name, departmentId, institutionId, year, null, form.id, "en", createdBy, customFieldsJson];
     const allCols = [...stdCols, ...baseFieldCols.map(quoteIdent)];
-    const allVals = [...stdVals, ...baseFieldCols.map((c) => data[c] ?? null)];
+    const allVals = [...stdVals, ...baseFieldCols.map((c) => englishData[c] ?? null)];
     const ph = allVals.map((_, i) => `$${i + 1}`).join(", ");
 
     const { rows } = await pool.query(
@@ -535,24 +675,106 @@ router.post("/:id/records", async (req, res) => {
     if (record.custom_fields && typeof record.custom_fields === "object") {
       Object.assign(record, record.custom_fields);
     }
+    
+    let hindiRecord = null;
+    
+    // try {
+    //   await ensureSourceRowIdColumn(pool, table);
+    //   // const fieldModes = buildFieldModes(fields);
+    //   // const hiData = await translateRow(data, fieldModes);
 
-    // Create Hindi mirror row — English record already committed; translation failure is non-fatal.
+    //   const hiCustomFieldsJson = extraFieldCols.length > 0
+    //     ? JSON.stringify(Object.fromEntries(extraFieldCols.map((c) => [c, hindiData[c] ?? null])))
+    //     : null;
+    //   const hiCols = ["form_name", "department_id", "institution_id", "academic_year", "role_name", "schema_id",
+    //     "language", "created_by", "custom_fields", "source_row_id", ...baseFieldCols.map(quoteIdent)];
+    //   const hiVals = [form.form_name, departmentId, institutionId, year, null, form.id,
+    //     "hi", createdBy, hiCustomFieldsJson, record.id, ...baseFieldCols.map((c) => hindiData[c] ?? null)];
+    //   const hiPh = hiVals.map((_, i) => `$${i + 1}`).join(", ");
+    //   await pool.query(`INSERT INTO ${table} (${hiCols.join(", ")}) VALUES (${hiPh})`, hiVals);
+    // } catch (hiErr) {
+    //   logger.warn("Hindi record creation failed; English record saved.", { form: form.form_name, error: hiErr.message });
+    // }
+
+    if (hindiData) {
+
     try {
-      await ensureSourceRowIdColumn(pool, table);
-      const fieldModes = buildFieldModes(fields);
-      const hiData = await translateRow(data, fieldModes);
-      const hiCustomFieldsJson = extraFieldCols.length > 0
-        ? JSON.stringify(Object.fromEntries(extraFieldCols.map((c) => [c, hiData[c] ?? null])))
-        : null;
-      const hiCols = ["form_name", "department_id", "institution_id", "academic_year", "role_name", "schema_id",
-        "language", "created_by", "custom_fields", "source_row_id", ...baseFieldCols.map(quoteIdent)];
-      const hiVals = [form.form_name, departmentId, institutionId, year, null, form.id,
-        "hi", createdBy, hiCustomFieldsJson, record.id, ...baseFieldCols.map((c) => hiData[c] ?? null)];
-      const hiPh = hiVals.map((_, i) => `$${i + 1}`).join(", ");
-      await pool.query(`INSERT INTO ${table} (${hiCols.join(", ")}) VALUES (${hiPh})`, hiVals);
+
+        await ensureSourceRowIdColumn(pool, table);
+
+        const hiCustomFieldsJson =
+            extraFieldCols.length > 0
+                ? JSON.stringify(
+                    Object.fromEntries(
+                        extraFieldCols.map(c => [c, hindiData[c] ?? null])
+                    )
+                )
+                : null;
+
+        const hiCols = [
+            "form_name",
+            "department_id",
+            "institution_id",
+            "academic_year",
+            "role_name",
+            "schema_id",
+            "language",
+            "created_by",
+            "custom_fields",
+            "source_row_id",
+            ...baseFieldCols.map(quoteIdent)
+        ];
+
+        const hiVals = [
+            form.form_name,
+            departmentId,
+            institutionId,
+            year,
+            null,
+            form.id,
+            "hi",
+            createdBy,
+            hiCustomFieldsJson,
+            record.id,
+            ...baseFieldCols.map(c => hindiData[c] ?? null)
+        ];
+
+        const hiPh =
+            hiVals.map((_, i) => `$${i + 1}`).join(", ");
+
+        const { rows: hiRows } = await pool.query(
+            `INSERT INTO ${table}
+             (${hiCols.join(", ")})
+             VALUES (${hiPh})
+             RETURNING *`,
+            hiVals
+        );
+
+        hindiRecord = hiRows[0];
+
+        if (
+            hindiRecord.custom_fields &&
+            typeof hindiRecord.custom_fields === "object"
+        ) {
+            Object.assign(
+                hindiRecord,
+                hindiRecord.custom_fields
+            );
+        }
+
     } catch (hiErr) {
-      logger.warn("Hindi translation failed; English record saved.", { form: form.form_name, error: hiErr.message });
+
+        logger.warn(
+            "Hindi record creation failed; English record saved.",
+            {
+                form: form.form_name,
+                error: hiErr.message
+            }
+        );
+
     }
+
+}
 
     await writeAuditLog(req, {
       actionType: "DEPARTMENT_FORM_RECORD_CREATED",
@@ -562,7 +784,12 @@ router.post("/:id/records", async (req, res) => {
       message: `Record created in department form "${form.form_name}"`,
     }).catch(() => {});
 
-    return res.json({ success: true, record, message: "Record created successfully." });
+   return res.json({
+    success: true,
+    englishRecord: record,
+    hindiRecord,
+    message: "Record created successfully."
+});
   } catch (err) {
     logger.error("POST /api/department-form-data/:id/records", { stack: err.stack });
     return res.status(500).json({ success: false, message: "Failed to create record." });
@@ -575,9 +802,19 @@ router.post("/:id/records", async (req, res) => {
 router.put("/:id/records/:recordId", async (req, res) => {
   const pool = req.app.locals.pool;
   if (!requireContributor(req, res)) return;
-  const { data } = req.body;
-  if (!data || typeof data !== "object")
-    return res.status(400).json({ success: false, message: "data is required." });
+  // const { data } = req.body;
+   const { englishData, hindiData } = req.body;
+   if (!englishData || typeof englishData !== "object" || Array.isArray(englishData))
+    return res.status(400).json({
+        success: false,
+        message: "englishData is required."
+    });
+
+if (!hindiData || typeof hindiData !== "object" || Array.isArray(hindiData))
+    return res.status(400).json({
+        success: false,
+        message: "hindiData is required."
+    });
   try {
     const { form, departmentId, institutionId, error } = await loadForm(pool, req, req.params.id);
     if (error) return res.status(404).json({ success: false, message: error });
@@ -607,7 +844,7 @@ router.put("/:id/records/:recordId", async (req, res) => {
     const baseFieldCols = fieldCols.filter((c) => physicalCols.has(c));
     const extraFieldCols = fieldCols.filter((c) => !physicalCols.has(c));
     const customFieldsJson = extraFieldCols.length > 0
-      ? JSON.stringify(Object.fromEntries(extraFieldCols.map((c) => [c, data[c] ?? null])))
+      ? JSON.stringify(Object.fromEntries(extraFieldCols.map((c) => [c, englishData[c] ?? null])))
       : null;
 
     let idx = 1;
@@ -618,7 +855,7 @@ router.put("/:id/records/:recordId", async (req, res) => {
     ];
     const whereClause = `department_id = $${idx++} AND id = $${idx++}`;
     const vals = [
-      ...baseFieldCols.map((c) => data[c] ?? null),
+      ...baseFieldCols.map((c) => englishData[c] ?? null),
       ...(extraFieldCols.length > 0 ? [customFieldsJson] : []),
       departmentId,
       req.params.recordId,
@@ -655,10 +892,10 @@ router.put("/:id/records/:recordId", async (req, res) => {
     // Sync Hindi mirror row — English record already updated; translation failure is non-fatal.
     try {
       await ensureSourceRowIdColumn(pool, table);
-      const fieldModes = buildFieldModes(fields);
-      const hiData = await translateRow(data, fieldModes);
+      // const fieldModes = buildFieldModes(fields);
+      // const hiData = await translateRow(data, fieldModes);
       const hiCustomFieldsJson = extraFieldCols.length > 0
-        ? JSON.stringify(Object.fromEntries(extraFieldCols.map((c) => [c, hiData[c] ?? null])))
+        ? JSON.stringify(Object.fromEntries(extraFieldCols.map((c) => [c, hindiData[c] ?? null])))
         : null;
 
       const { rows: hiExisting } = await pool.query(
@@ -674,7 +911,7 @@ router.put("/:id/records/:recordId", async (req, res) => {
           "updated_at = now()",
         ];
         const hiVals = [
-          ...baseFieldCols.map((c) => hiData[c] ?? null),
+          ...baseFieldCols.map((c) => hindiData[c] ?? null),
           ...(extraFieldCols.length > 0 ? [hiCustomFieldsJson] : []),
           req.params.recordId, departmentId,
         ];
@@ -686,12 +923,18 @@ router.put("/:id/records/:recordId", async (req, res) => {
         const hiCols = ["form_name", "department_id", "institution_id", "academic_year", "role_name", "schema_id",
           "language", "created_by", "custom_fields", "source_row_id", ...baseFieldCols.map(quoteIdent)];
         const hiVals = [form.form_name, departmentId, institutionId, year, null, form.id,
-          "hi", req.user.userId, hiCustomFieldsJson, req.params.recordId, ...baseFieldCols.map((c) => hiData[c] ?? null)];
+          "hi", req.user.userId, hiCustomFieldsJson, req.params.recordId, ...baseFieldCols.map((c) => hindiData[c] ?? null)];
         const hiPh = hiVals.map((_, i) => `$${i + 1}`).join(", ");
         await pool.query(`INSERT INTO ${table} (${hiCols.join(", ")}) VALUES (${hiPh})`, hiVals);
       }
     } catch (hiErr) {
-      logger.warn("Hindi mirror sync failed; English record updated.", { form: form.form_name, error: hiErr.message });
+      logger.warn(
+    "Hindi record update failed; English record updated.",
+    {
+        form: form.form_name,
+        error: hiErr.message,
+    }
+);
     }
 
     await writeAuditLog(req, {
@@ -893,39 +1136,100 @@ router.delete("/:id/records/bulk-delete", async (req, res) => {
     if (lock.locked) return res.status(403).json({ success: false, message: lock.message });
 
     await ensureSourceRowIdColumn(pool, table);
-    
-    const { rows: deletedRows, rowCount } = await pool.query(
-      `DELETE FROM ${table} WHERE id = ANY($1::uuid[]) AND department_id = $2 RETURNING *`,
-      [ids, departmentId]
-    );
-    
-    if (deletedRows.length > 0) {
-      for (const row of deletedRows) {
-        const keys = extractUploadKeys(row);
-        for (const key of keys) {
-          await deleteFile(key).catch(() => {});
-        }
-      }
-      
-      const cascadeIds = [...new Set([
-        ...deletedRows.filter((r) => r.language !== "hi").map((r) => r.id),
-        ...deletedRows.filter((r) => r.language === "hi" && r.source_row_id).map((r) => r.source_row_id),
-      ])];
-      if (cascadeIds.length) {
-        const { rows: cascadeDeletedRows } = await pool.query(
-          `DELETE FROM ${table} WHERE (source_row_id = ANY($1::uuid[]) OR id = ANY($1::uuid[])) AND department_id = $2 RETURNING *`,
-          [cascadeIds, departmentId]
-        );
-        for (const row of cascadeDeletedRows) {
-          const keys = extractUploadKeys(row);
-          for (const key of keys) {
-            await deleteFile(key).catch(() => {});
-          }
-        }
-      }
+    /* Bug 12 — resolve each selected id to its English source (a Hindi row → its
+       source_row_id), then delete the whole pair. So a Hindi row can never be
+       deleted on its own, and selecting either side removes both. */
+    // const { rows: sel } = await pool.query(
+    //   `SELECT id, source_row_id FROM ${table} WHERE id = ANY($1::uuid[]) AND department_id = $2`,
+    //   [ids, departmentId]
+    // );
+
+     const { rows: selectedRecords } = await pool.query(
+`
+SELECT
+id,
+language,
+source_row_id
+FROM ${table}
+WHERE
+id = ANY($1::uuid[])
+AND department_id = $2
+`,
+[
+ids,
+departmentId
+]
+);
+
+    // const rootIds = [...new Set(sel.map((r) => r.source_row_id || r.id))];
+    // const { rowCount } = rootIds.length
+    //   ? await pool.query(
+    //       `DELETE FROM ${table} WHERE (id = ANY($1::uuid[]) OR source_row_id = ANY($1::uuid[])) AND department_id = $2`,
+    //       [rootIds, departmentId]
+    //     )
+    //   : { rowCount: 0 };
+    // const deleted = rowCount ?? 0;
+
+     
+     const processed = new Set();
+
+let deleted = 0;
+
+for (const record of selectedRecords) {
+
+    // Unique key for one English-Hindi pair
+    const key =
+        record.language === "en"
+            ? record.id
+            : (record.source_row_id || record.id);
+
+    if (processed.has(key)) {
+        continue;
     }
 
-    const deleted = rowCount ?? 0;
+    processed.add(key);
+
+    if (record.language === "en") {
+
+        await pool.query(
+`
+DELETE FROM ${table}
+WHERE
+(id = $1 OR source_row_id = $1)
+AND department_id = $2
+`,
+[
+record.id,
+departmentId
+]
+);
+   const paths = extractUploadKeys(record);
+        for (const path of paths) {
+          await deleteFile(path).catch(() => {});
+        }  
+
+    } else {
+
+        await pool.query(
+`
+DELETE FROM ${table}
+WHERE
+id = $1
+AND department_id = $2
+`,
+[
+record.id,
+departmentId
+]
+);
+const paths = extractUploadKeys(record);
+        for (const path of paths) {
+          await deleteFile(path).catch(() => {});
+        }  
+    }
+
+    deleted++;
+}
 
     await writeAuditLog(req, {
       actionType: "DEPARTMENT_FORM_RECORDS_BULK_DELETED",
@@ -934,8 +1238,11 @@ router.delete("/:id/records/bulk-delete", async (req, res) => {
       newValue: { form_name: form.form_name, form_id: form.id, academic_year: year, deleted_count: deleted },
       message: `${deleted} record(s) bulk deleted from department form "${form.form_name}"`,
     }).catch(() => {});
-
-    return res.json({ success: true, deleted, failed: Math.max(0, ids.length - deleted), message: `${deleted} record(s) deleted.` });
+    
+    return res.json({ success: true, deleted, failed: Math.max(
+0,
+ids.length - selectedRecords.length
+), message: `${deleted} record(s) deleted.` });
   } catch (err) {
     logger.error("DELETE /api/department-form-data bulk-delete", { stack: err.stack });
     return res.status(500).json({ success: false, message: "Bulk delete failed." });
@@ -1036,7 +1343,7 @@ router.get("/:id/export", async (req, res) => {
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
     return res.send(csv);
   } catch (err) {
-    logger.error("GET /api/department-form-data/:id/export", { stack: err.stack });
+    logger.error("  guide neGET /api/department-form-data/:id/export", { stack: err.stack });
     return res.status(500).json({ success: false, message: "Failed to export records." });
   }
 });
@@ -1057,15 +1364,77 @@ router.delete("/:id/records/:recordId", async (req, res) => {
     /* Bug 12 — delete the whole pair whichever side was targeted: resolve the
        English source id first (a Hindi row → its source_row_id), so a Hindi row is
        never deleted on its own (English orphan). */
-    const { rows: tgt } = await pool.query(
-      `SELECT source_row_id FROM ${table} WHERE id = $1 AND department_id = $2`,
-      [req.params.recordId, departmentId]
-    );
-    const rootId = tgt[0]?.source_row_id || req.params.recordId;
-    const { rows: deletedRows, rowCount } = await pool.query(
-      `DELETE FROM ${table} WHERE (id = $1 OR source_row_id = $1) AND department_id = $2 RETURNING *`,
-      [rootId, departmentId]
-    );
+    // const { rows: tgt } = await pool.query(
+    //   `SELECT source_row_id FROM ${table} WHERE id = $1 AND department_id = $2`,
+    //   [req.params.recordId, departmentId]
+    // );
+    // const rootId = tgt[0]?.source_row_id || req.params.recordId;
+    
+
+    const { rows: target } = await pool.query(
+`
+SELECT
+id,
+language,
+source_row_id
+FROM ${table}
+WHERE
+id = $1
+AND department_id = $2
+`,
+[
+req.params.recordId,
+departmentId
+]
+);
+
+if (!target.length) {
+    return res.status(404).json({
+        success: false,
+        message: "Record not found."
+    });
+}
+
+const record = target[0];
+
+    let rowCount = 0;
+
+if (record.language === "en") {
+
+    const result = await pool.query(
+`
+DELETE FROM ${table}
+WHERE
+(id = $1 OR source_row_id = $1)
+AND department_id = $2
+`,
+[
+record.id,
+departmentId
+]
+);
+
+    rowCount = result.rowCount;
+
+} else {
+
+    const result = await pool.query(
+`
+DELETE FROM ${table}
+WHERE
+id = $1
+AND department_id = $2
+`,
+[
+record.id,
+departmentId
+]
+);
+
+    rowCount = result.rowCount;
+}
+
+
     if (!rowCount) return res.status(404).json({ success: false, message: "Record not found." });
 
     if (deletedRows.length > 0) {
@@ -1080,7 +1449,7 @@ router.delete("/:id/records/:recordId", async (req, res) => {
     await writeAuditLog(req, {
       actionType: "DEPARTMENT_FORM_RECORD_DELETED",
       entityType: "department_form_record",
-      entityId: rootId,
+     entityId: record.id,
       newValue: { form_name: form.form_name, form_id: form.id, academic_year: year },
       message: `Record deleted from department form "${form.form_name}"`,
     }).catch(() => {});

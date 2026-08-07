@@ -504,11 +504,34 @@ router.post("/", requireRole(WRITE_ROLES), requireActiveDepartment, async (req, 
     if (!departmentId)
       return res.status(400).json({ success: false, message: "No department is associated with your account." });
 
-    table = deptRecordsTable(departmentId, slug);
+   table = deptRecordsTable(departmentId, slug);
 
-    await autoFillHindiLabels(schema).catch(() => {});
+// ----------------------------------------------------
+// Manual English / Hindi labels
+// Supports BOTH old frontend and new frontend
+// ----------------------------------------------------
 
-    const usedColNames = collectColumnNames(schema.fields);
+for (const field of (schema.fields || [])) {
+
+    const english =
+        typeof field.label === "object"
+            ? (field.label.en || "")
+            : (field.label || "");
+
+    const hindi =
+        typeof field.label === "object"
+            ? (field.label.hi || "")
+            : (field.label_hi || "");
+
+    field.label = {
+        en: english,
+        hi: hindi
+    };
+
+    delete field.label_hi;
+}
+
+const usedColNames = collectColumnNames(schema.fields);
 
     const client = await pool.connect();
     try {
@@ -724,9 +747,44 @@ router.put("/:id/schema", requireRole(WRITE_ROLES), requireActiveDepartment, asy
       if (existingTypeByCol.has(f.column_name)) f.type = existingTypeByCol.get(f.column_name);
     }
 
-    const mergedUsed = Array.from(new Set([...(form.used_column_names || []), ...collectColumnNames(schema.fields)]));
+    const mergedUsed = Array.from(new Set([
+    ...(form.used_column_names || []),
+    ...collectColumnNames(schema.fields)
+]));
 
-    await autoFillHindiLabels(schema).catch(() => {});
+// ----------------------------------------------------
+// Manual English / Hindi labels
+// Supports BOTH old frontend and new frontend
+// ----------------------------------------------------
+
+for (const field of (schema.fields || [])) {
+
+    const english =
+        typeof field.label === "object"
+            ? (field.label.en || "")
+            : (field.label || "");
+
+    const hindi =
+        typeof field.label === "object"
+            ? (field.label.hi || "")
+            : (field.label_hi || "");
+
+    // English label is mandatory
+    if (!english.trim()) {
+        return res.status(400).json({
+            success: false,
+            message: `${field.column_name} English label is required`
+        });
+    }
+
+    field.label = {
+        en: english.trim(),
+        hi: hindi.trim()
+    };
+
+    delete field.label_hi;
+}
+
 
     const client = await pool.connect();
     try {
