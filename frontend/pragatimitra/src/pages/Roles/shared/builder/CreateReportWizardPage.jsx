@@ -490,7 +490,8 @@ export default function CreateReportWizardPage({ onCreated, onCancel, initialRep
     if (!reportId) return true;
     setBusy(true);
     try {
-      const allSecs = sections.flatMap(s => [s, ...(s.subsections || [])]);
+      const flatten = (arr) => arr.flatMap(s => [s, ...flatten(s.subsections || [])]);
+      const allSecs = flatten(sections);
       const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
       const isUUID = v => typeof v === "string" && UUID_RE.test(v);
 
@@ -531,18 +532,19 @@ export default function CreateReportWizardPage({ onCreated, onCancel, initialRep
         method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ assignments: flat }),
       });
 
-      // Upload branding files to S3 and save public URLs (best-effort)
+      // Upload branding files to local storage and save public URLs (best-effort)
+      const BRANDING_PURPOSE = { COVER_IMAGE: "branding-cover", LOGO: "branding-logo", BG_IMAGE: "branding-background" };
       const uploadedUrls = { ...brandingUrls };
       for (const [assetType, file] of Object.entries(brandingFiles)) {
         if (!file) continue;
         try {
-          const presign = await apj(apiFetch, "/api/upload/presign", {
-            method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ fileName: file.name, fileType: file.type, fileSize: file.size, folder: "branding" }),
-          });
-          await fetch(presign.uploadUrl, { method: "PUT", body: file, headers: { "Content-Type": file.type } });
-          uploadedUrls[assetType] = presign.publicUrl;
-          setBrandingUrls(p => ({ ...p, [assetType]: presign.publicUrl }));
+          const fd = new FormData();
+          fd.append("file", file);
+          fd.append("purpose", BRANDING_PURPOSE[assetType] || "report-image");
+          fd.append("reportId", reportId);
+          const uploaded = await apj(apiFetch, "/api/upload/image", { method: "POST", body: fd });
+          uploadedUrls[assetType] = uploaded.publicUrl;
+          setBrandingUrls(p => ({ ...p, [assetType]: uploaded.publicUrl }));
         } catch { /* best-effort */ }
       }
       if (Object.values(uploadedUrls).some(u => u)) {
@@ -1173,7 +1175,7 @@ export default function CreateReportWizardPage({ onCreated, onCancel, initialRep
                 display: "flex", alignItems: "center", gap: 10 }}>
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={C.primary} strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
                 <span style={{ fontSize: 13, fontWeight: 700, color: C.text }}>Branding Assets</span>
-                <span style={{ fontSize: 11, color: C.textMuted, marginLeft: 4 }}>(optional — uploaded to S3 on save)</span>
+                <span style={{ fontSize: 11, color: C.textMuted, marginLeft: 4 }}>(optional)</span>
               </div>
               <div style={{ padding: "16px 18px", display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14 }}>
                 {[

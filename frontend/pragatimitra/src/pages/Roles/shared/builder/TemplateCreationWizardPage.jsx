@@ -407,7 +407,7 @@ function SectionRow({ sec, depth, sectionIndex, subIndex, selectedId, onSelect, 
 }
 
 /* ── BlockRow ────────────────────────────────────────────────────────────── */
-function BlockRow({ blk, onContentChange, onToggleRequired, onDelete, immutable }) {
+function BlockRow({ blk, onContentChange, onToggleRequired, onDelete, immutable, templateId }) {
   const label = TYPE_LABELS[blk.block_type] || blk.block_type;
   const color  = BLOCK_COLOR[blk.block_type] || C.primary;
 
@@ -457,6 +457,7 @@ function BlockRow({ blk, onContentChange, onToggleRequired, onDelete, immutable 
           block={{ block_type: blk.block_type, content: blk.default_content || {} }}
           onChange={content => onContentChange(blk.id, content)}
           readOnly={immutable}
+          templateId={templateId}
         />
       </div>
     </div>
@@ -528,7 +529,7 @@ function Step2Structure({
   immutable, savingLabel,
   onAddSection, onDeleteSection, onRenameSection, onSaveHindiTitle,
   onAddBlock, onUpdateBlock, onToggleRequired, onDeleteBlock,
-  onBack, onNext, apiFetch,
+  onBack, onNext, apiFetch, templateId,
 }) {
   const blockCount = {};
   for (const s of sections) blockCount[s.id] = (s.blocks || []).length;
@@ -763,6 +764,7 @@ function Step2Structure({
                     onToggleRequired={onToggleRequired}
                     onDelete={onDeleteBlock}
                     immutable={immutable}
+                    templateId={templateId}
                   />
                 ))}
                 {!immutable && (
@@ -1187,6 +1189,7 @@ export default function TemplateCreationWizardPage({ initialId = null, onDone: o
             onAddBlock={addBlock} onUpdateBlock={updateBlockContent}
             onToggleRequired={toggleRequired} onDeleteBlock={deleteBlock}
             onBack={() => setStep(0)} onNext={() => setStep(2)}
+            templateId={templateId}
           />
         )}
 

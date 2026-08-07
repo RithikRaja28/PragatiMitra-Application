@@ -1,12 +1,12 @@
 "use strict";
 
-const express   = require("express");
-const jwt       = require("jsonwebtoken");
-const bcrypt    = require("bcrypt");
-const crypto    = require("crypto");
+const express = require("express");
+const jwt = require("jsonwebtoken");
+const bcrypt = require("bcrypt");
+const crypto = require("crypto");
 const rateLimit = require("express-rate-limit");
 
-const logger            = require("../utils/logger");
+const logger = require("../utils/logger");
 const { getLogContext } = logger;
 // ── NEW ──────────────────────────────────────────────────────────
 const { writeAuditLog } = require("../utils/audit");
@@ -53,7 +53,7 @@ const forgotPasswordLimiter = rateLimit({
 function signAccessToken(payload) {
   return jwt.sign(payload, process.env.JWT_SECRET, {
     expiresIn: "15m",
-    issuer:   "pragatimitra-api",
+    issuer: "pragatimitra-api",
     audience: "pragatimitra-app",
   });
 }
@@ -74,10 +74,10 @@ function cookieOptions() {
     // the refresh cookie is cross-site, so production needs SameSite=None +
     // Secure or the browser drops it (login appears to work but refresh fails).
     // Local dev stays same-site → keep the stricter "strict" + non-secure.
-    secure:   isProd,
+    secure: isProd,
     sameSite: isProd ? "none" : "strict",
-    maxAge:   REFRESH_TOKEN_TTL_MS,
-    path:     "/api/auth",
+    maxAge: REFRESH_TOKEN_TTL_MS,
+    path: "/api/auth",
   };
 }
 
@@ -135,14 +135,14 @@ async function enrichWithNodalOfficerRole(pool, user) {
     ]);
 
     if (deptResult.rows.length) {
-      user.noa_active_years    = deptResult.rows.map((r) => r.reporting_year);
-      user.noa_institution_id  = deptResult.rows[0].institution_id;
-      user.noa_department_id   = deptResult.rows[0].department_id;
+      user.noa_active_years = deptResult.rows.map((r) => r.reporting_year);
+      user.noa_institution_id = deptResult.rows[0].institution_id;
+      user.noa_department_id = deptResult.rows[0].department_id;
       user.noa_department_name = deptResult.rows[0].department_name;
     }
 
     if (instResult.rows.length) {
-      user.noa_institute_active_years   = instResult.rows.map((r) => r.reporting_year);
+      user.noa_institute_active_years = instResult.rows.map((r) => r.reporting_year);
       user.noa_institute_institution_id = instResult.rows[0].institution_id;
     }
   } catch (_) {
@@ -196,8 +196,8 @@ function institutionGateBlocked(user) {
 }
 
 function buildAccessPayload(user, sessionId) {
-  const isDeptNOA     = !!(user.noa_active_years?.length);
-  const isInstNOA     = !!(user.noa_institute_active_years?.length);
+  const isDeptNOA = !!(user.noa_active_years?.length);
+  const isInstNOA = !!(user.noa_institute_active_years?.length);
   const originalRoles = (user.roles || []).map((r) => r.name);
 
   // Inject NOA-derived roles into the JWT without touching user_roles in DB.
@@ -208,15 +208,15 @@ function buildAccessPayload(user, sessionId) {
     roles.unshift("institute_admin");
 
   return {
-    userId:                  user.id,
-    email:                   user.email,
+    userId: user.id,
+    email: user.email,
     // Use dept-NOA context for departmentId; inst-level NOA keeps original institution_id.
-    institutionId:           isDeptNOA ? user.noa_institution_id : user.institution_id,
-    departmentId:            isDeptNOA ? user.noa_department_id  : user.department_id,
+    institutionId: isDeptNOA ? user.noa_institution_id : user.institution_id,
+    departmentId: isDeptNOA ? user.noa_department_id : user.department_id,
     roles,
     // Domain (academic|hospital|finance) drives shell + form visibility. Default academic.
-    roleDomain:              user.role_domain || "academic",
-    noaActiveYears:          user.noa_active_years         || [],
+    roleDomain: user.role_domain || "academic",
+    noaActiveYears: user.noa_active_years || [],
     noaInstituteActiveYears: user.noa_institute_active_years || [],
     sessionId,
   };
@@ -225,22 +225,22 @@ function buildAccessPayload(user, sessionId) {
 function buildUserObject(user) {
   const isDeptNOA = !!(user.noa_active_years?.length);
   return {
-    id:                      user.id,
-    fullName:                user.full_name,
-    email:                   user.email,
-    institutionId:           isDeptNOA ? user.noa_institution_id  : user.institution_id,
-    institutionName:         user.institution_name,
-    departmentId:            isDeptNOA ? user.noa_department_id   : user.department_id,
-    departmentName:          isDeptNOA ? user.noa_department_name : user.department_name,
-    profileImageUrl:         user.profile_image_url,
-    mustChangePassword:      user.must_change_password,
-    isTemporaryPassword:     user.is_temporary_password,
+    id: user.id,
+    fullName: user.full_name,
+    email: user.email,
+    institutionId: isDeptNOA ? user.noa_institution_id : user.institution_id,
+    institutionName: user.institution_name,
+    departmentId: isDeptNOA ? user.noa_department_id : user.department_id,
+    departmentName: isDeptNOA ? user.noa_department_name : user.department_name,
+    profileImageUrl: user.profile_image_url,
+    mustChangePassword: user.must_change_password,
+    isTemporaryPassword: user.is_temporary_password,
     // Domain (academic|hospital|finance) — drives which shell/dashboard loads.
-    roleDomain:              user.role_domain || "academic",
+    roleDomain: user.role_domain || "academic",
     // Original roles from user_roles — NEVER includes NOA-derived roles.
-    roles:                   user.roles || [],
+    roles: user.roles || [],
     // Years for which user has an active dept-level NOA assignment.
-    noaActiveYears:          user.noa_active_years         || [],
+    noaActiveYears: user.noa_active_years || [],
     // Years for which user has an active institute-level NOA assignment.
     noaInstituteActiveYears: user.noa_institute_active_years || [],
   };
@@ -272,9 +272,9 @@ router.post("/login", loginLimiter, async (req, res) => {
       await writeAuditLog(req, {
         actionType: "LOGIN_FAILED",
         entityType: "SESSION",
-        status:     "FAILURE",
-        message:    `Login attempt for unknown email: ${normalizedEmail}`,
-        metadata:   { reason: "user_not_found", attempted_email: normalizedEmail },
+        status: "FAILURE",
+        message: `Login attempt for unknown email: ${normalizedEmail}`,
+        metadata: { reason: "user_not_found", attempted_email: normalizedEmail },
       });
       return res.status(401).json({ success: false, message: "Invalid email or password." });
     }
@@ -282,13 +282,13 @@ router.post("/login", loginLimiter, async (req, res) => {
     // ── AUDIT: Login failed — account inactive / suspended ─────────
     if (user.account_status !== "ACTIVE") {
       await writeAuditLog(req, {
-        actionType:     "LOGIN_FAILED",
-        entityType:     "SESSION",
-        entityId:       user.id,
+        actionType: "LOGIN_FAILED",
+        entityType: "SESSION",
+        entityId: user.id,
         overrideUserId: user.id,
-        status:         "FAILURE",
-        message:        `Login blocked for ${user.email} — account ${user.account_status}`,
-        metadata:       { reason: "account_not_active", account_status: user.account_status },
+        status: "FAILURE",
+        message: `Login blocked for ${user.email} — account ${user.account_status}`,
+        metadata: { reason: "account_not_active", account_status: user.account_status },
       });
       return res.status(403).json({
         success: false,
@@ -303,13 +303,13 @@ router.post("/login", loginLimiter, async (req, res) => {
     // ── AUDIT: Login failed — wrong password ────────────────────────
     if (!passwordMatch) {
       await writeAuditLog(req, {
-        actionType:     "LOGIN_FAILED",
-        entityType:     "SESSION",
-        entityId:       user.id,
+        actionType: "LOGIN_FAILED",
+        entityType: "SESSION",
+        entityId: user.id,
         overrideUserId: user.id,
-        status:         "FAILURE",
-        message:        `Failed login attempt for ${user.email} — incorrect password`,
-        metadata:       { reason: "invalid_password" },
+        status: "FAILURE",
+        message: `Failed login attempt for ${user.email} — incorrect password`,
+        metadata: { reason: "invalid_password" },
       });
       return res.status(401).json({ success: false, message: "Invalid email or password." });
     }
@@ -317,22 +317,22 @@ router.post("/login", loginLimiter, async (req, res) => {
     // ── Bug 10: institution archived / deleted → block login ──────────
     if (institutionGateBlocked(user)) {
       await writeAuditLog(req, {
-        actionType:     "LOGIN_FAILED",
-        entityType:     "SESSION",
-        entityId:       user.id,
+        actionType: "LOGIN_FAILED",
+        entityType: "SESSION",
+        entityId: user.id,
         overrideUserId: user.id,
-        status:         "FAILURE",
-        message:        `Login blocked for ${user.email} — institution ${user.institution_deleted_at ? "deleted" : user.institution_status}`,
-        metadata:       { reason: "institution_not_active", institution_status: user.institution_status },
+        status: "FAILURE",
+        message: `Login blocked for ${user.email} — institution ${user.institution_deleted_at ? "deleted" : user.institution_status}`,
+        metadata: { reason: "institution_not_active", institution_status: user.institution_status },
       });
       return res.status(403).json({ success: false, message: "Your institution is no longer active. Please contact your administrator." });
     }
 
     // Single session: wipe all previous sessions for this user
-    await pool.query("DELETE FROM sessions WHERE user_id = $1", [user.id]);
+    // await pool.query("DELETE FROM sessions WHERE user_id = $1", [user.id]);
 
     const rawRefreshToken = generateRefreshToken();
-    const expiresAt       = new Date(Date.now() + REFRESH_TOKEN_TTL_MS);
+    const expiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_MS);
 
     const { rows: [{ id: sessionId }] } = await pool.query(
       `INSERT INTO sessions (user_id, token_hash, expires_at)
@@ -348,16 +348,16 @@ router.post("/login", loginLimiter, async (req, res) => {
 
     // ── AUDIT: Login success ────────────────────────────────────────
     await writeAuditLog(req, {
-      actionType:     "LOGIN_SUCCESS",
-      entityType:     "SESSION",
-      entityId:       user.id,
+      actionType: "LOGIN_SUCCESS",
+      entityType: "SESSION",
+      entityId: user.id,
       overrideUserId: user.id,
-      status:         "SUCCESS",
-      message:        `${user.full_name} (${user.email}) signed in`,
-      metadata:       {
-        session_id:   sessionId,
-        roles:        (user.roles || []).map((r) => r.name),
-        institution:  user.institution_name || null,
+      status: "SUCCESS",
+      message: `${user.full_name} (${user.email}) signed in`,
+      metadata: {
+        session_id: sessionId,
+        roles: (user.roles || []).map((r) => r.name),
+        institution: user.institution_name || null,
       },
     });
     // ───────────────────────────────────────────────────────────────
@@ -365,10 +365,10 @@ router.post("/login", loginLimiter, async (req, res) => {
     res.cookie("pm_refresh", rawRefreshToken, cookieOptions());
 
     return res.status(200).json({
-      success:     true,
-      message:     "Login successful.",
+      success: true,
+      message: "Login successful.",
       accessToken: signAccessToken(buildAccessPayload(user, sessionId)),
-      user:        buildUserObject(user),
+      user: buildUserObject(user),
     });
 
   } catch (err) {
@@ -411,8 +411,8 @@ router.post("/super-admin/register", superAdminLoginLimiter, async (req, res) =>
       return res.status(500).json({ success: false, message: "Super admin role not configured." });
 
     const superAdminRoleId = roleRows[0].id;
-    const passwordHash     = await bcrypt.hash(password, 12);
-    const displayName      = (fullName?.trim()) || normalizedEmail.split("@")[0];
+    const passwordHash = await bcrypt.hash(password, 12);
+    const displayName = (fullName?.trim()) || normalizedEmail.split("@")[0];
 
     const client = await pool.connect();
     let newUserId;
@@ -442,12 +442,12 @@ router.post("/super-admin/register", superAdminLoginLimiter, async (req, res) =>
     }
 
     await writeAuditLog(req, {
-      actionType:     "SUPER_ADMIN_REGISTERED",
-      entityType:     "USER",
-      entityId:       newUserId,
+      actionType: "SUPER_ADMIN_REGISTERED",
+      entityType: "USER",
+      entityId: newUserId,
       overrideUserId: newUserId,
-      status:         "SUCCESS",
-      message:        `Super admin account created for ${normalizedEmail}`,
+      status: "SUCCESS",
+      message: `Super admin account created for ${normalizedEmail}`,
     });
 
     return res.status(201).json({
@@ -486,22 +486,22 @@ router.post("/super-admin/login", superAdminLoginLimiter, async (req, res) => {
       await writeAuditLog(req, {
         actionType: "SUPER_ADMIN_LOGIN_FAILED",
         entityType: "SESSION",
-        status:     "FAILURE",
-        message:    `Super admin portal login attempt for unknown email: ${normalizedEmail}`,
-        metadata:   { reason: "user_not_found", attempted_email: normalizedEmail },
+        status: "FAILURE",
+        message: `Super admin portal login attempt for unknown email: ${normalizedEmail}`,
+        metadata: { reason: "user_not_found", attempted_email: normalizedEmail },
       });
       return res.status(401).json({ success: false, message: "Invalid email or password." });
     }
 
     if (user.account_status !== "ACTIVE") {
       await writeAuditLog(req, {
-        actionType:     "SUPER_ADMIN_LOGIN_FAILED",
-        entityType:     "SESSION",
-        entityId:       user.id,
+        actionType: "SUPER_ADMIN_LOGIN_FAILED",
+        entityType: "SESSION",
+        entityId: user.id,
         overrideUserId: user.id,
-        status:         "FAILURE",
-        message:        `Super admin portal login blocked for ${user.email} — account ${user.account_status}`,
-        metadata:       { reason: "account_not_active", account_status: user.account_status },
+        status: "FAILURE",
+        message: `Super admin portal login blocked for ${user.email} — account ${user.account_status}`,
+        metadata: { reason: "account_not_active", account_status: user.account_status },
       });
       return res.status(403).json({
         success: false,
@@ -515,13 +515,13 @@ router.post("/super-admin/login", superAdminLoginLimiter, async (req, res) => {
 
     if (!passwordMatch) {
       await writeAuditLog(req, {
-        actionType:     "SUPER_ADMIN_LOGIN_FAILED",
-        entityType:     "SESSION",
-        entityId:       user.id,
+        actionType: "SUPER_ADMIN_LOGIN_FAILED",
+        entityType: "SESSION",
+        entityId: user.id,
         overrideUserId: user.id,
-        status:         "FAILURE",
-        message:        `Failed super admin portal login for ${user.email} — incorrect password`,
-        metadata:       { reason: "invalid_password" },
+        status: "FAILURE",
+        message: `Failed super admin portal login for ${user.email} — incorrect password`,
+        metadata: { reason: "invalid_password" },
       });
       return res.status(401).json({ success: false, message: "Invalid email or password." });
     }
@@ -531,14 +531,14 @@ router.post("/super-admin/login", superAdminLoginLimiter, async (req, res) => {
 
     if (!isSuperAdmin) {
       await writeAuditLog(req, {
-        actionType:     "SUPER_ADMIN_LOGIN_FAILED",
-        entityType:     "SESSION",
-        entityId:       user.id,
+        actionType: "SUPER_ADMIN_LOGIN_FAILED",
+        entityType: "SESSION",
+        entityId: user.id,
         overrideUserId: user.id,
-        status:         "FAILURE",
-        message:        `Unauthorized super admin portal access by ${user.email} (insufficient role)`,
-        metadata:       {
-          reason:       "insufficient_role",
+        status: "FAILURE",
+        message: `Unauthorized super admin portal access by ${user.email} (insufficient role)`,
+        metadata: {
+          reason: "insufficient_role",
           actual_roles: (user.roles || []).map((r) => r.name),
         },
       });
@@ -549,10 +549,10 @@ router.post("/super-admin/login", superAdminLoginLimiter, async (req, res) => {
     }
 
     // Single session: wipe all previous sessions for this user
-    await pool.query("DELETE FROM sessions WHERE user_id = $1", [user.id]);
+    // await pool.query("DELETE FROM sessions WHERE user_id = $1", [user.id]);
 
     const rawRefreshToken = generateRefreshToken();
-    const expiresAt       = new Date(Date.now() + REFRESH_TOKEN_TTL_MS);
+    const expiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_MS);
 
     const { rows: [{ id: sessionId }] } = await pool.query(
       `INSERT INTO sessions (user_id, token_hash, expires_at)
@@ -566,25 +566,25 @@ router.post("/super-admin/login", superAdminLoginLimiter, async (req, res) => {
     await enrichWithNodalOfficerRole(pool, user);
 
     await writeAuditLog(req, {
-      actionType:     "SUPER_ADMIN_LOGIN_SUCCESS",
-      entityType:     "SESSION",
-      entityId:       user.id,
+      actionType: "SUPER_ADMIN_LOGIN_SUCCESS",
+      entityType: "SESSION",
+      entityId: user.id,
       overrideUserId: user.id,
-      status:         "SUCCESS",
-      message:        `Super admin ${user.full_name} (${user.email}) signed in via super admin portal`,
-      metadata:       {
+      status: "SUCCESS",
+      message: `Super admin ${user.full_name} (${user.email}) signed in via super admin portal`,
+      metadata: {
         session_id: sessionId,
-        roles:      (user.roles || []).map((r) => r.name),
+        roles: (user.roles || []).map((r) => r.name),
       },
     });
 
     res.cookie("pm_refresh", rawRefreshToken, cookieOptions());
 
     return res.status(200).json({
-      success:     true,
-      message:     "Login successful.",
+      success: true,
+      message: "Login successful.",
       accessToken: signAccessToken(buildAccessPayload(user, sessionId)),
-      user:        buildUserObject(user),
+      user: buildUserObject(user),
     });
 
   } catch (err) {
@@ -595,7 +595,7 @@ router.post("/super-admin/login", superAdminLoginLimiter, async (req, res) => {
 
 /* ── POST /api/auth/refresh ── */
 router.post("/refresh", refreshLimiter, async (req, res) => {
-  const pool     = req.app.locals.pool;
+  const pool = req.app.locals.pool;
   const rawToken = req.cookies.pm_refresh;
 
   if (!rawToken)
@@ -613,13 +613,13 @@ router.post("/refresh", refreshLimiter, async (req, res) => {
     if (reuseRows.length) {
       // ── AUDIT: Security violation — token replay ──────────────────
       await writeAuditLog(req, {
-        actionType:     "SESSION_TOKEN_REUSE",
-        entityType:     "SESSION",
-        entityId:       reuseRows[0].user_id,
+        actionType: "SESSION_TOKEN_REUSE",
+        entityType: "SESSION",
+        entityId: reuseRows[0].user_id,
         overrideUserId: reuseRows[0].user_id,
-        status:         "FAILURE",
-        message:        "Possible token theft detected — all sessions invalidated",
-        metadata:       { reason: "refresh_token_reuse" },
+        status: "FAILURE",
+        message: "Possible token theft detected — all sessions invalidated",
+        metadata: { reason: "refresh_token_reuse" },
       });
       // ─────────────────────────────────────────────────────────────
       await pool.query("DELETE FROM sessions WHERE user_id = $1", [reuseRows[0].user_id]);
@@ -649,7 +649,7 @@ router.post("/refresh", refreshLimiter, async (req, res) => {
       return res.status(401).json({ success: false, expired: true, message: "Session expired. Please sign in again." });
     }
 
-    const newRawToken  = generateRefreshToken();
+    const newRawToken = generateRefreshToken();
     const newExpiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_MS);
 
     await pool.query(
@@ -674,9 +674,9 @@ router.post("/refresh", refreshLimiter, async (req, res) => {
     // Return user alongside the new token so AuthContext can update noaActiveYears
     // immediately (e.g. when an admin enables/disables a NOA assignment).
     return res.status(200).json({
-      success:     true,
+      success: true,
       accessToken: signAccessToken(buildAccessPayload(user, session.id)),
-      user:        buildUserObject(user),
+      user: buildUserObject(user),
     });
 
   } catch (err) {
@@ -687,7 +687,7 @@ router.post("/refresh", refreshLimiter, async (req, res) => {
 
 /* ── GET /api/auth/me — restore session on page load ── */
 router.get("/me", refreshLimiter, async (req, res) => {
-  const pool     = req.app.locals.pool;
+  const pool = req.app.locals.pool;
   const rawToken = req.cookies.pm_refresh;
 
   if (!rawToken)
@@ -736,9 +736,9 @@ router.get("/me", refreshLimiter, async (req, res) => {
     }
 
     return res.status(200).json({
-      success:     true,
+      success: true,
       accessToken: signAccessToken(buildAccessPayload(user, session.id)),
-      user:        buildUserObject(user),
+      user: buildUserObject(user),
     });
 
   } catch (err) {
@@ -793,13 +793,13 @@ router.post("/change-password", verifyToken, async (req, res) => {
     const user = await fetchUser(pool, "WHERE u.id = $1", [req.user.userId]);
 
     await writeAuditLog(req, {
-      actionType:    "PASSWORD_CHANGED",
-      entityType:    "USER",
-      entityId:      user.id,
+      actionType: "PASSWORD_CHANGED",
+      entityType: "USER",
+      entityId: user.id,
       changedFields: ["password"],
-      status:        "SUCCESS",
-      message:       `User "${user.full_name}" (${user.email}) changed their account password`,
-      metadata:      { was_temporary_password: dbUser.is_temporary_password },
+      status: "SUCCESS",
+      message: `User "${user.full_name}" (${user.email}) changed their account password`,
+      metadata: { was_temporary_password: dbUser.is_temporary_password },
     });
 
     return res.json({
@@ -841,10 +841,10 @@ router.post("/forgot-password", forgotPasswordLimiter, async (req, res) => {
       await writeAuditLog(req, {
         actionType: "PASSWORD_RESET_REQUESTED",
         entityType: "USER",
-        entityId:   null,
-        status:     "FAILURE",
-        message:    `Reset requested for ${normalizedEmail} — not found or inactive`,
-        metadata:   { email: normalizedEmail },
+        entityId: null,
+        status: "FAILURE",
+        message: `Reset requested for ${normalizedEmail} — not found or inactive`,
+        metadata: { email: normalizedEmail },
       });
       return safeSuccess();
     }
@@ -859,7 +859,7 @@ router.post("/forgot-password", forgotPasswordLimiter, async (req, res) => {
       [user.id]
     );
 
-    const rawToken  = crypto.randomBytes(32).toString("hex");
+    const rawToken = crypto.randomBytes(32).toString("hex");
     const tokenHash = hashToken(rawToken);
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
 
@@ -873,8 +873,8 @@ router.post("/forgot-password", forgotPasswordLimiter, async (req, res) => {
 
     const { enqueueEmail } = require("../services/mailService");
     await enqueueEmail(pool, {
-      eventId:         "password_reset",
-      recipientEmail:  user.email,
+      eventId: "password_reset",
+      recipientEmail: user.email,
       recipientUserId: user.id,
       payload: { full_name: user.full_name, reset_url: resetUrl },
     });
@@ -882,9 +882,9 @@ router.post("/forgot-password", forgotPasswordLimiter, async (req, res) => {
     await writeAuditLog(req, {
       actionType: "PASSWORD_RESET_REQUESTED",
       entityType: "USER",
-      entityId:   user.id,
-      status:     "SUCCESS",
-      message:    `Password reset email queued for ${user.email}`,
+      entityId: user.id,
+      status: "SUCCESS",
+      message: `Password reset email queued for ${user.email}`,
     });
 
     return safeSuccess();
@@ -955,12 +955,12 @@ router.post("/reset-password", async (req, res) => {
     }
 
     await writeAuditLog(req, {
-      actionType:     "PASSWORD_RESET_COMPLETED",
-      entityType:     "USER",
-      entityId:       rec.user_id,
+      actionType: "PASSWORD_RESET_COMPLETED",
+      entityType: "USER",
+      entityId: rec.user_id,
       overrideUserId: rec.user_id,
-      status:         "SUCCESS",
-      message:        `Password successfully reset for ${rec.email}`,
+      status: "SUCCESS",
+      message: `Password successfully reset for ${rec.email}`,
     });
 
     return res.json({ success: true, message: "Password reset successfully. You can now log in." });
@@ -972,7 +972,7 @@ router.post("/reset-password", async (req, res) => {
 
 /* ── POST /api/auth/logout ── */
 router.post("/logout", async (req, res) => {
-  const pool     = req.app.locals.pool;
+  const pool = req.app.locals.pool;
   const rawToken = req.cookies.pm_refresh;
 
   if (rawToken) {
@@ -995,12 +995,12 @@ router.post("/logout", async (req, res) => {
       if (rows.length) {
         const { user_id, full_name, email } = rows[0];
         await writeAuditLog(req, {
-          actionType:     "LOGOUT",
-          entityType:     "SESSION",
-          entityId:       user_id,
+          actionType: "LOGOUT",
+          entityType: "SESSION",
+          entityId: user_id,
           overrideUserId: user_id,
-          status:         "SUCCESS",
-          message:        `${full_name} (${email}) signed out`,
+          status: "SUCCESS",
+          message: `${full_name} (${email}) signed out`,
         });
       }
       // ─────────────────────────────────────────────────────────────

@@ -624,6 +624,7 @@ function SectionDetailPanel({ section, sections, apiFetch, isAdmin, onAssign, on
   const [saving,       setSaving]       = useState(false);
   const [wfDraft,      setWfDraft]      = useState(section.workflow_template_id || "");
   const [wfSaving,     setWfSaving]     = useState(false);
+  const [errorMsg,     setErrorMsg]     = useState("");
 
   useEffect(() => {
     setWfDraft(section.workflow_template_id || "");
@@ -631,26 +632,42 @@ function SectionDetailPanel({ section, sections, apiFetch, isAdmin, onAssign, on
 
   async function saveWorkflow() {
     setWfSaving(true);
+    setErrorMsg("");
     try {
       const res = await apiFetch(`/api/builder/sections/${section.id}`, {
         method: "PUT",
         body:   JSON.stringify({ workflow_template_id: wfDraft || null }),
       });
-      if (res.ok) onSectionUpdate(section.id, { workflow_template_id: wfDraft || null });
-    } catch {}
+      if (res.ok) {
+        onSectionUpdate(section.id, { workflow_template_id: wfDraft || null });
+      } else {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(j.message || "Failed to save workflow");
+      }
+    } catch (e) {
+      setErrorMsg(e.message);
+    }
     setWfSaving(false);
   }
 
   async function saveField(field, value) {
     if (!value?.trim() || value.trim() === section[field]) { setEditingField(null); return; }
     setSaving(true);
+    setErrorMsg("");
     try {
       const res  = await apiFetch(`/api/builder/sections/${section.id}`, {
         method: "PUT",
         body:   JSON.stringify({ [field]: value.trim() }),
       });
-      if (res.ok) section[field] = value.trim(); // optimistic local update
-    } catch {}
+      if (res.ok) {
+        section[field] = value.trim(); // optimistic local update
+      } else {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(j.message || "Failed to save field");
+      }
+    } catch (e) {
+      setErrorMsg(e.message);
+    }
     setSaving(false);
     setEditingField(null);
   }
@@ -661,6 +678,8 @@ function SectionDetailPanel({ section, sections, apiFetch, isAdmin, onAssign, on
 
   return (
     <div style={{ flex: 1, overflowY: "auto", background: "#f8fafc" }}>
+      {errorMsg && <div style={{ background: "#fef2f2", color: "#b91c1c", padding: "8px 12px", fontSize: 13, border: "1px solid #fca5a5", borderRadius: 6, margin: "16px 28px 0" }}>{errorMsg}</div>}
+
 
       {/* ── Section header card ── */}
       <div style={{ background: "#fff", borderBottom: "1px solid rgba(0,0,0,0.06)", padding: "20px 28px" }}>

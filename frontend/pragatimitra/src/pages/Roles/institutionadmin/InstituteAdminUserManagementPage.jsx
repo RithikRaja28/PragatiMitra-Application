@@ -38,6 +38,12 @@ const INST_ADMIN_ALLOWED_ROLES = new Set([
   "nodal_officer", "reviewer", "publication_cell", "directors_office",
 ]);
 
+/* Roles hidden specifically from the "Create User" Role dropdown (still assignable
+   via other allowed paths, e.g. Nodal Officer is granted via the dedicated Nodal
+   Officer Assignment feature, not by directly creating a user with this role).
+   Does NOT affect the "Filter by Role" dropdown in the user list below. */
+const CREATE_USER_HIDDEN_ROLES = new Set(["nodal_officer"]);
+
 const ROLE_DOMAINS = [
   { value: "academic", label: "Academic" },
   { value: "hospital", label: "Hospital" },
@@ -217,7 +223,12 @@ function UserForm({ mode, entity, onCreated, onSaved, onBack, apiFetch, institut
     if (!isEdit) {
       apiFetch("/api/lookup/roles")
         .then((r) => r.json())
-        .then((d) => { if (d.success) setRoles(d.roles.filter((r) => INST_ADMIN_ALLOWED_ROLES.has(r.name))); })
+        .then((d) => {
+          if (d.success)
+            setRoles(d.roles.filter((r) =>
+              INST_ADMIN_ALLOWED_ROLES.has(r.name) && !CREATE_USER_HIDDEN_ROLES.has(r.name)
+            ));
+        })
         .catch(() => {});
     }
 
@@ -517,7 +528,7 @@ function UserList({ apiFetch, onEdit, institutionId, onToast }) {
       (u.full_name || "").toLowerCase().includes(q) ||
       (u.email || "").toLowerCase().includes(q);
     const matchStatus =
-      filterStatus === "all" || (u.account_status || "").toUpperCase() === filterStatus;
+      filterStatus === "all" || (u.account_status || "").toUpperCase() === filterStatus.toUpperCase();
     return matchSearch && matchStatus;
   });
 
@@ -716,7 +727,7 @@ export default function InstituteAdminUserManagementPage() {
 
   const showToast = (message, type = "success") => {
     setToast({ message, type });
-    setTimeout(() => setToast(null), 3500);
+    setTimeout(() => setToast(null), 10000);
   };
 
   if (isEdit && !entity) return <Navigate to={listPath} replace />;
@@ -724,7 +735,7 @@ export default function InstituteAdminUserManagementPage() {
   if (isCreate || isEdit) {
     return (
       <>
-        {toast && <Toast message={toast.message} type={toast.type} />}
+        {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
         <UserForm
           key={isEdit ? "edit" : "create"}
           mode={isEdit ? "edit" : "create"}
@@ -742,7 +753,7 @@ export default function InstituteAdminUserManagementPage() {
 
   return (
     <PageContainer>
-      {toast && <Toast message={toast.message} type={toast.type} />}
+      {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
 
       <PageHeader
         breadcrumb={[t("Home", lang), t("Institute", lang), t("Users", lang)]}

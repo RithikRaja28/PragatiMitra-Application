@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useApi } from "../../hooks/useApi";
+import { useAuth } from "../../store/AuthContext";
 import { useAcademicYear } from "../../store/AcademicYearContext";
 import { useLanguage } from "../../i18n/LanguageContext";
+import { DocumentCell } from "./FormDataPage";
 import { Lock, Inbox, Search as SearchIcon } from "lucide-react";
 import { S, Toast, isAuthError, formatDate } from "../../components/shared/formUtils";
 import { PageContainer, PageHeader } from "../../ui";
@@ -59,24 +61,6 @@ function IconUnlock() {
   );
 }
 
-/* ── Document cell — open URL in new tab ── */
-function DocumentCell({ url }) {
-  if (!url) return <span style={{ color: "#cbd5e1" }}>—</span>;
-  return (
-    <a
-      href={url}
-      target="_blank"
-      rel="noreferrer"
-      style={{
-        display: "inline-flex", alignItems: "center", gap: 5,
-        color: ACCENT, fontSize: 12, fontWeight: 600, textDecoration: "none",
-      }}
-    >
-      <IconFile /> View Doc ↗
-    </a>
-  );
-}
-
 const PAGE_SIZE = 15;
 
 /* ════════════════════════════════════════════════════════════════════
@@ -87,6 +71,7 @@ const PAGE_SIZE = 15;
 ════════════════════════════════════════════════════════════════════ */
 export default function InstituteFormRecordsPage({ form, onBack }) {
   const { apiFetch } = useApi();
+  const { accessToken } = useAuth();
   const { lang } = useLanguage();
   const { selectedYear, years } = useAcademicYear() || {};
   const yearAware = (years?.length || 0) > 0;
@@ -500,7 +485,7 @@ setGrouped(filteredGrouped);
                               ? (lang === "hi" ? "नहीं" : "No")
                               : "—";
                         } else if (f.type === "document") {
-                          cellContent = <DocumentCell url={raw} />;
+                          cellContent = <DocumentCell fileKey={raw || ""} getToken={() => accessToken} lang={lang} />;
                         } else {
                           cellContent = raw ?? <span style={{ color: "#cbd5e1" }}>—</span>;
                         }

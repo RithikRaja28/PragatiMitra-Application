@@ -1,4 +1,5 @@
 import React from "react";
+import { createPortal } from "react-dom";
 import { Trash2, AlertTriangle, Info, CheckCircle2, XCircle } from "lucide-react";
 
 /* ─── Shared style tokens used across all management form screens ─── */
@@ -127,18 +128,18 @@ export function Toast({ message, type }) {
  *   onCancel     – called when user clicks Cancel or the backdrop
  */
 export function ConfirmDialog({ title, message, variant = "default", confirmLabel = "Confirm", onConfirm, onCancel }) {
-  const confirmBg = variant === "danger"  ? "#ef4444"
-                  : variant === "warning" ? "#d97706"
-                  : "#2563eb";
+  const confirmBg = variant === "danger" ? "#ef4444"
+    : variant === "warning" ? "#d97706"
+      : "#2563eb";
 
-  return (
+  return createPortal(
     <div
       onClick={onCancel}
       style={{
         position: "fixed", inset: 0, zIndex: 10000,
         background: "rgba(15,23,42,0.45)",
         display: "flex", alignItems: "center", justifyContent: "center",
-        padding: 20,
+        padding: "20px 20px 20px calc(20px + var(--sidebar-width, 0px))",
       }}
     >
       <div
@@ -155,9 +156,9 @@ export function ConfirmDialog({ title, message, variant = "default", confirmLabe
           <div style={{
             width: 38, height: 38, borderRadius: 10, flexShrink: 0,
             display: "flex", alignItems: "center", justifyContent: "center",
-            background: variant === "danger"  ? "#fef2f2"
-                      : variant === "warning" ? "#fef3c7"
-                      : "#eff6ff",
+            background: variant === "danger" ? "#fef2f2"
+              : variant === "warning" ? "#fef3c7"
+                : "#eff6ff",
           }}>
             {variant === "danger"
               ? <Trash2 size={19} strokeWidth={2} color="#ef4444" />
@@ -197,7 +198,8 @@ export function ConfirmDialog({ title, message, variant = "default", confirmLabe
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 

@@ -62,27 +62,43 @@ function collectColumnNames(fields) {
     .filter(Boolean);
 }
 
+/* Standard columns injected into every dept_form_<slug> table. User-supplied
+   field names are reserved from colliding with these (case/space-insensitive);
+   an unguarded collision produces an invalid "column specified more than once"
+   CREATE TABLE / silently-skipped ALTER TABLE ADD COLUMN IF NOT EXISTS. */
+const STANDARD_COLUMNS = [
+  ["id", "UUID PRIMARY KEY DEFAULT gen_random_uuid()"],
+  ["form_name", "TEXT"],
+  ["department_id", "UUID"],
+  ["institution_id", "UUID"],
+  ["academic_year", "INT"],
+  ["role_name", "TEXT"],
+  ["schema_id", "UUID"],
+  ["status", "TEXT"],
+  ["order_index", "INT"],
+  ["custom_fields", "JSONB"],
+  ["language", "TEXT"],
+  ["source_row_id", "UUID"],
+  ["created_by", "UUID"],
+  ["updated_by", "UUID"],
+  ["created_at", "TIMESTAMPTZ DEFAULT now()"],
+  ["updated_at", "TIMESTAMPTZ DEFAULT now()"],
+];
+
+const RESERVED_COLUMN_NAMES = new Set(STANDARD_COLUMNS.map(([name]) => name));
+
+/* Normalize schema fields' column names and return any that collide with a
+   reserved standard column — empty array when the schema is clean. */
+function getReservedFieldCollisions(fields) {
+  return (fields || [])
+    .map((f) => f.column_name?.trim().toLowerCase().replace(/\s+/g, "_"))
+    .filter((col) => col && RESERVED_COLUMN_NAMES.has(col));
+}
+
 /* CREATE TABLE DDL for a department form's physical records table.
    Standard columns are department-scoped; fixed columns come from the schema. */
 function buildDeptRecordsTableDDL(tableName, fields) {
-  const standard = [
-    "id UUID PRIMARY KEY DEFAULT gen_random_uuid()",
-    "form_name TEXT",
-    "department_id UUID",
-    "institution_id UUID",
-    "academic_year INT",
-    "role_name TEXT",
-    "schema_id UUID",
-    "status TEXT",
-    "order_index INT",
-    "custom_fields JSONB",
-    "language TEXT",
-    "source_row_id UUID",
-    "created_by UUID",
-    "updated_by UUID",
-    "created_at TIMESTAMPTZ DEFAULT now()",
-    "updated_at TIMESTAMPTZ DEFAULT now()",
-  ];
+  const standard = STANDARD_COLUMNS.map(([name, def]) => `${name} ${def}`);
   const fixed = (fields || []).map((f) => {
     const col = f.column_name.toLowerCase().replace(/\s+/g, "_");
     return `${quoteIdent(col)} ${pgType(f.type)}`;
@@ -281,4 +297,6 @@ module.exports = {
   deptRecordsTable,
   collectColumnNames,
   buildDeptRecordsTableDDL,
+  RESERVED_COLUMN_NAMES,
+  getReservedFieldCollisions,
 };

@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useCallback, useRef, useMemo, useLayoutEffect } from "react";
+import React, { useState, useEffect, useCallback, useRef, useMemo, useLayoutEffect } from "react";
 import { useNavigate, useLocation, Navigate } from "react-router-dom";
 import ReactDOM from "react-dom";
 
@@ -44,42 +44,52 @@ function formStatus(form) {
   return { dateText, expired, badge };
 }
 
-/* â”€â”€ Icons â”€â”€ */
-function IcoPlus() { return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>; }
-function IcoEdit() { return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>; }
-function IcoTrash() { return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>; }
-function IcoBack() { return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>; }
-function IcoForm() { return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>; }
-function IcoUpload() { return <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>; }
-function IcoFile() { return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>; }
-function IcoDownload() { return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="8 17 12 21 16 17"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.88 18.09A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.29"/></svg>; }
-function IcoChevronDown() { return <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>; }
-function IcoCheck() { return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>; }
-function IcoAlert() { return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>; }
-function IcoSortAsc() { return <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 15 12 9 6 15"/></svg>; }
-function IcoSortDesc() { return <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>; }
-function IcoSort() { return <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="7" y1="12" x2="17" y2="12"/><line x1="11" y1="18" x2="13" y2="18"/></svg>; }
-function IcoSearch() { return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>; }
+/* ── Icons ── */
+function IcoPlus() { return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>; }
+function IcoEdit() { return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>; }
+function IcoTrash() { return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14H6L5 6" /><path d="M10 11v6M14 11v6" /><path d="M9 6V4h6v2" /></svg>; }
+function IcoBack() { return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6" /></svg>; }
+function IcoForm() { return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" /><line x1="10" y1="9" x2="8" y2="9" /></svg>; }
+function IcoUpload() { return <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 16 12 12 8 16" /><line x1="12" y1="12" x2="12" y2="21" /><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3" /></svg>; }
+function IcoFile() { return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>; }
+function IcoDownload() { return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="8 17 12 21 16 17" /><line x1="12" y1="12" x2="12" y2="21" /><path d="M20.88 18.09A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.29" /></svg>; }
+function IcoChevronDown() { return <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9" /></svg>; }
+function IcoCheck() { return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>; }
+function IcoAlert() { return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>; }
+function IcoSortAsc() { return <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 15 12 9 6 15" /></svg>; }
+function IcoSortDesc() { return <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9" /></svg>; }
+function IcoSort() { return <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="6" x2="21" y2="6" /><line x1="7" y1="12" x2="17" y2="12" /><line x1="11" y1="18" x2="13" y2="18" /></svg>; }
+function IcoSearch() { return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>; }
 
-/* â”€â”€ Document upload â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
-const ALLOWED_TYPES = [
-  "image/jpeg", "image/png", "image/webp", "application/pdf",
+/* ── Document upload ─────────────────────────────────────────────── */
+const IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif", "image/bmp", "image/tiff", "image/svg+xml"];
+const PDF_TYPE = "application/pdf";
+const DOC_TYPES = [
   "application/msword",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   "application/vnd.ms-excel",
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.ms-powerpoint",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "text/plain", "text/csv", "application/json", "application/xml", "text/xml",
 ];
-const IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
-const PDF_TYPE    = "application/pdf";
-const MAX_SIZE = 10 * 1024 * 1024;
+const ARCHIVE_TYPES = ["application/zip", "application/x-zip-compressed", "application/vnd.rar", "application/x-rar-compressed"];
+const AUDIO_TYPES = ["audio/mpeg", "audio/wav", "audio/x-wav", "audio/ogg", "audio/mp4"];
+const VIDEO_TYPES = ["video/mp4", "video/webm", "video/quicktime"];
+const ALLOWED_TYPES = [...IMAGE_TYPES, PDF_TYPE, ...DOC_TYPES, ...ARCHIVE_TYPES, ...AUDIO_TYPES, ...VIDEO_TYPES];
+
+const DOC_MAX = 25 * 1024 * 1024;
+const ARCHIVE_MAX = 50 * 1024 * 1024;
+const AUDIO_MAX = 50 * 1024 * 1024;
+const VIDEO_MAX = 200 * 1024 * 1024;
 const DOC_LABEL_STYLE = { display: "block", fontSize: 13, fontWeight: 500, color: "#334155", marginBottom: 6 };
 
-export function DocumentUploadField({ label, required, value, onChange, getToken, labelStyle = DOC_LABEL_STYLE }) {
+export function DocumentUploadField({ label, required, value, onChange, getToken, labelStyle = DOC_LABEL_STYLE, formName, departmentFormId, recordId, column }) {
   const fileRef = useRef(null);
-  const [status,   setStatus]   = useState("idle");
-  const [errMsg,   setErrMsg]   = useState("");
+  const [status, setStatus] = useState("idle");
+  const [errMsg, setErrMsg] = useState("");
   const [fileName, setFileName] = useState("");
-  const [toast,    setToast]    = useState(null);
+  const [toast, setToast] = useState(null);
   const hasExisting = !!value && status === "idle";
   const { settings: compressionSettings } = useCompressionSettings();
 
@@ -96,31 +106,56 @@ export function DocumentUploadField({ label, required, value, onChange, getToken
     }
     if (IMAGE_TYPES.includes(file.type)) {
       const sizeKB = file.size / 1024;
-      const minKB  = Number(compressionSettings.image_min_kb);
-      const maxKB  = Number(compressionSettings.image_max_kb);
+      const minKB = Number(compressionSettings.image_min_kb);
+      const maxKB = Number(compressionSettings.image_max_kb);
       if (sizeKB < minKB || sizeKB > maxKB) {
-        setErrMsg(`Upload Failed. Uploaded file size: ${Math.round(sizeKB)} KB. Allowed size: ${minKB} KB â€“ ${maxKB} KB.`);
+        setErrMsg(`Upload Failed. Uploaded file size: ${Math.round(sizeKB)} KB. Allowed size: ${minKB} KB – ${maxKB} KB.`);
         setStatus("error"); showToast("Upload Failed", "error"); return;
       }
     } else if (file.type === PDF_TYPE) {
       const sizeMB = file.size / (1024 * 1024);
-      const minMB  = parseFloat(compressionSettings.pdf_min_mb);
-      const maxMB  = parseFloat(compressionSettings.pdf_max_mb);
+      const minMB = parseFloat(compressionSettings.pdf_min_mb);
+      const maxMB = parseFloat(compressionSettings.pdf_max_mb);
       if (sizeMB < minMB || sizeMB > maxMB) {
-        setErrMsg(`Upload Failed. Uploaded file size: ${parseFloat(sizeMB.toFixed(2))} MB. Allowed size: ${minMB} MB â€“ ${maxMB} MB.`);
+        setErrMsg(`Upload Failed. Uploaded file size: ${parseFloat(sizeMB.toFixed(2))} MB. Allowed size: ${minMB} MB - ${maxMB} MB.`);
         setStatus("error"); showToast("Upload Failed", "error"); return;
       }
-    } else if (file.size > MAX_SIZE) {
-      setErrMsg("File exceeds 10 MB."); setStatus("error");
-      showToast("Upload Failed", "error"); return;
+    } else {
+      const limit = VIDEO_TYPES.includes(file.type) ? VIDEO_MAX
+        : AUDIO_TYPES.includes(file.type) ? AUDIO_MAX
+          : ARCHIVE_TYPES.includes(file.type) ? ARCHIVE_MAX
+            : DOC_MAX;
+      if (file.size > limit) {
+        setErrMsg(`File exceeds the ${Math.round(limit / (1024 * 1024))} MB limit for this file type.`);
+        setStatus("error"); showToast("Upload Failed", "error"); return;
+      }
     }
     setStatus("uploading"); setErrMsg(""); setFileName(file.name);
     try {
       const token = getToken();
       const fd = new FormData(); fd.append("file", file);
+      if (departmentFormId) {
+        fd.append("context", "department_form");
+        fd.append("departmentFormId", departmentFormId);
+      } else {
+        fd.append("context", "institute_form");
+        fd.append("formName", formName);
+      }
       const res = await api.post("/api/upload/document", { token, body: fd });
       const data = await res.json();
       if (!data.success) throw new Error(data.error || "Upload failed.");
+      // Persist this one field immediately, independent of the record's own
+      // Save/Submit — the upload already wrote the file to disk, so without
+      // this an unsaved replacement would leave the previous upload orphaned
+      // forever (or, on an existing record, never be cleaned up until the
+      // whole record happens to be saved). Best-effort: a failure here never
+      // blocks the upload the user is waiting on.
+      if (recordId && column) {
+        const path = departmentFormId
+          ? `/api/department-form-data/${departmentFormId}/records/${recordId}/file-field`
+          : `/api/form-data/${formName}/records/${recordId}/file-field`;
+        api.request(path, { method: "PATCH", token, json: { column, value: data.fileKey } }).catch(() => {});
+      }
       onChange(data.fileKey);
       setStatus("done");
       showToast("Upload Successful");
@@ -148,17 +183,17 @@ export function DocumentUploadField({ label, required, value, onChange, getToken
         }}>
         <input
           ref={fileRef} type="file"
-          accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.webp"
+          accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.jpg,.jpeg,.png,.webp,.gif,.bmp,.tiff,.svg,.txt,.csv,.json,.xml,.zip,.rar,.mp3,.wav,.ogg,.m4a,.mp4,.webm,.mov"
           style={{ display: "none" }}
           onChange={e => handleFile(e.target.files[0])}
           disabled={status === "uploading"}
         />
         {status === "uploading" && (
-          <div style={{ fontSize: 13, color: "#64748b" }}>Uploading <strong>{fileName}</strong>â€¦</div>
+          <div style={{ fontSize: 13, color: "#64748b" }}>Uploading <strong>{fileName}</strong>…</div>
         )}
         {status === "done" && (
           <div style={{ fontSize: 13, color: "#16a34a", fontWeight: 600 }}>
-            âœ“ Uploaded Successfully
+            ✓ Uploaded Successfully
             <div style={{ fontWeight: 400, color: "#64748b", fontSize: 12, marginTop: 4 }}>Click to replace.</div>
           </div>
         )}
@@ -170,7 +205,7 @@ export function DocumentUploadField({ label, required, value, onChange, getToken
               onClick={e => { e.stopPropagation(); fileRef.current?.click(); }}
               style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "6px 14px", borderRadius: 7, border: "1.5px solid #f87171", background: "#fff", color: "#dc2626", fontSize: 12, fontWeight: 600, cursor: "pointer" }}
             >
-              â†© Click to Upload Again
+              ↩ Click to Upload Again
             </button>
           </div>
         )}
@@ -180,12 +215,14 @@ export function DocumentUploadField({ label, required, value, onChange, getToken
             {hasExisting
               ? <div style={{ fontSize: 13, color: "#64748b" }}><IcoFile /> File attached. <span style={{ color: ACCENT, fontWeight: 600 }}>Click to replace.</span></div>
               : <div style={{ fontSize: 13, color: "#64748b" }}>
-                  <span style={{ color: ACCENT, fontWeight: 600 }}>Click to upload</span> or drag &amp; drop
-                  <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 5, lineHeight: 1.7 }}>
-                    <div>Images (JPG, JPEG, PNG): {Number(compressionSettings.image_min_kb)} KB â€“ {Number(compressionSettings.image_max_kb)} KB</div>
-                    <div>PDF: {parseFloat(compressionSettings.pdf_min_mb)} MB â€“ {parseFloat(compressionSettings.pdf_max_mb)} MB</div>
-                  </div>
+                <span style={{ color: ACCENT, fontWeight: 600 }}>Click to upload</span> or drag &amp; drop
+                <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 5, lineHeight: 1.7 }}>
+                  <div>Images (JPG, PNG, WebP, GIF, BMP, TIFF, SVG): {Number(compressionSettings.image_min_kb)} KB - {Number(compressionSettings.image_max_kb)} KB</div>
+                  <div>PDF: {parseFloat(compressionSettings.pdf_min_mb)} MB - {parseFloat(compressionSettings.pdf_max_mb)} MB</div>
+                  <div>Documents (Word, Excel, PowerPoint, TXT, CSV, JSON, XML): up to 25 MB</div>
+                  <div>Archives (ZIP, RAR) &amp; Audio: up to 50 MB &middot; Video: up to 200 MB</div>
                 </div>
+              </div>
             }
           </div>
         )}
@@ -196,7 +233,7 @@ export function DocumentUploadField({ label, required, value, onChange, getToken
 
 export function DocumentCell({ fileKey, getToken, lang = "en" }) {
   const [loading, setLoading] = useState(false);
-  if (!fileKey) return <span style={{ color: "#cbd5e1" }}>â€”</span>;
+  if (!fileKey) return <span style={{ color: "#cbd5e1" }}>—</span>;
   const isLegacyUrl = fileKey.startsWith("http://") || fileKey.startsWith("https://");
   async function handleView() {
     if (isLegacyUrl) { window.open(fileKey, "_blank", "noreferrer"); return; }
@@ -215,14 +252,14 @@ export function DocumentCell({ fileKey, getToken, lang = "en" }) {
       style={{ display: "inline-flex", alignItems: "center", gap: 5, color: ACCENT, fontSize: 12, fontWeight: 600, background: "none", border: "none", cursor: loading ? "wait" : "pointer", padding: 0, textDecoration: "none" }}>
       <IcoFile />{" "}
       {loading
-        ? (lang === "hi" ? "à¤²à¥‹à¤¡ à¤¹à¥‹ à¤°à¤¹à¤¾ à¤¹à¥ˆâ€¦" : "Loadingâ€¦")
-        : (lang === "hi" ? "à¤¦à¤¸à¥à¤¤à¤¾à¤µà¥‡à¤œà¤¼ à¤¦à¥‡à¤–à¥‡à¤‚ â†—" : "View Doc â†—")}
+        ? (lang === "hi" ? "लोड हो रहा है…" : "Loading…")
+        : (lang === "hi" ? "दस्तावेज़ देखें ↗" : "View Doc ↗")}
     </button>
   );
 }
 
-/* â”€â”€ Record edit sub-components â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
-export function FieldInput({ field, value, onChange, getToken, lang = "en" }) {
+/* ── Record edit sub-components ─────────────────────────────────────── */
+export function FieldInput({ field, value, onChange, getToken, lang = "en", formName, departmentFormId, recordId }) {
   const col = dbCol(field.column_name);
   const label = field.label?.[lang] || field.label?.en || displayCol(field.column_name);
   const type = field.type;
@@ -248,7 +285,8 @@ export function FieldInput({ field, value, onChange, getToken, lang = "en" }) {
   );
   if (type === "document") return (
     <DocumentUploadField label={label} required={field.required} value={value}
-      onChange={url => onChange(col, url)} getToken={getToken} />
+      onChange={url => onChange(col, url)} getToken={getToken} formName={formName} departmentFormId={departmentFormId}
+      recordId={recordId} column={col} />
   );
   const inputType = type === "number" ? "number" : type === "date" ? "date" : type === "email" ? "email" : type === "phone" ? "tel" : "text";
   return (
@@ -265,18 +303,18 @@ export function ReadOnlyField({ field, value, lang = "en", getToken }) {
   const empty = value == null || value === "";
   let display;
   if (field.type === "boolean")
-    display = value === true || value === "true" ? "Yes" : value === false || value === "false" ? "No" : "â€”";
+    display = value === true || value === "true" ? "Yes" : value === false || value === "false" ? "No" : "—";
   else if (field.type === "document") {
     return (
       <div>
         <FieldLabel>{label}</FieldLabel>
         <div style={{ width: "100%", minHeight: 44, padding: "0 14px", display: "flex", alignItems: "center", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 13, color: "#475569", background: "#fff", boxSizing: "border-box" }}>
-          {empty ? "â€”" : <DocumentCell fileKey={value} getToken={getToken} lang={lang} />}
+          {empty ? "—" : <DocumentCell fileKey={value} getToken={getToken} lang={lang} />}
         </div>
       </div>
     );
   } else {
-    display = empty ? "â€”" : String(value);
+    display = empty ? "—" : String(value);
   }
   return (
     <div>
@@ -308,7 +346,7 @@ export function ModalPane({ title, reference, helper, loading, children }) {
           </span>
         )}
         {reference && loading && (
-          <span style={{ fontSize: 11, color: "#94a3b8", fontWeight: 600 }}>Â· {t("Loadingâ€¦", lang)}</span>
+          <span style={{ fontSize: 11, color: "#94a3b8", fontWeight: 600 }}>· {t("Loading…", lang)}</span>
         )}
       </div>
       {helper && (
@@ -332,6 +370,7 @@ export function RecordEditPage({
   onBack,
   getToken,
   formName,
+  departmentFormId,
   counterpartPath,
   formTitle,
   apiFetch,
@@ -543,7 +582,7 @@ const [saving, setSaving] = useState(false);
         title={isEdit ? t("Edit Record", lang) : t("Add Record", lang)}
         description={isEdit ? t("Update English and Hindi values.", lang) : t("Fill in the details below.", lang)}
         actions={
-          <Button variant="ghost" onClick={onBack} icon={<span style={{ fontSize: 15, lineHeight: 1 }}>â†</span>}>{t("Back", lang)}</Button>
+          <Button variant="ghost" onClick={onBack} icon={<span style={{ fontSize: 15, lineHeight: 1 }}>←</span>}>{t("Back", lang)}</Button>
         }
       />
       {viewOnly && (
@@ -575,7 +614,7 @@ const [saving, setSaving] = useState(false);
             <Button type="button" variant="secondary" onClick={onBack} disabled={saving}>{t("Cancel", lang)}</Button>
             {!viewOnly && (
               <Button type="submit" variant="primary" loading={saving} disabled={saving}>
-                {saving ? t("Savingâ€¦", lang) : isEdit ? t("Update Record", lang) : t("Add Record", lang)}
+                {saving ? t("Saving…", lang) : isEdit ? t("Update Record", lang) : t("Add Record", lang)}
               </Button>
             )}
           </div>
@@ -585,11 +624,11 @@ const [saving, setSaving] = useState(false);
   );
 }
 
-/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-   Portal Modal Wrapper â€” renders outside any overflow:hidden parent
+/* ════════════════════════════════════════════════════════════════════
+   Portal Modal Wrapper — renders outside any overflow:hidden parent
    This fixes the modal-not-appearing bug where parent containers
    with overflow:hidden or transform clip the fixed-position modal.
-â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+════════════════════════════════════════════════════════════════════ */
 function ModalPortal({ children }) {
   const el = useRef(document.createElement("div"));
   useEffect(() => {
@@ -600,7 +639,7 @@ function ModalPortal({ children }) {
   }, []);
   return ReactDOM.createPortal(
     // The portal mounts on document.body, outside the RootLayout that sets the
-    // app font â€” so re-apply it here, otherwise modals fall back to the browser
+    // app font — so re-apply it here, otherwise modals fall back to the browser
     // default serif and look different from the rest of the app.
     <div style={{ pointerEvents: "auto", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>{children}</div>,
     el.current
@@ -608,9 +647,9 @@ function ModalPortal({ children }) {
 }
 
 
-/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-   DeleteModal â€” single or bulk, rendered via ModalPortal
-â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+/* ════════════════════════════════════════════════════════════════════
+   DeleteModal — single or bulk, rendered via ModalPortal
+════════════════════════════════════════════════════════════════════ */
 function DeleteModal({ count = 1, onConfirm, onClose, deleting }) {
   const { lang } = useLanguage();
   const isBulk = count > 1;
@@ -624,7 +663,7 @@ function DeleteModal({ count = 1, onConfirm, onClose, deleting }) {
           style={{ background: "#fff", borderRadius: 8, width: 400, padding: "32px 28px", boxShadow: "0 24px 64px rgba(0,0,0,0.22)", textAlign: "center" }}
           onClick={e => e.stopPropagation()}
         >
-          <div style={{ width: 56, height: 56, borderRadius: "50%", background: "#fef2f2", border: "2px solid #fecaca", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px", color: "#dc2626" }}><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg></div>
+          <div style={{ width: 56, height: 56, borderRadius: "50%", background: "#fef2f2", border: "2px solid #fecaca", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px", color: "#dc2626" }}><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /><path d="M10 11v6M14 11v6" /><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" /></svg></div>
           <div style={{ fontSize: 16, fontWeight: 700, color: "#1e293b", marginBottom: 8 }}>
             {isBulk
               ? (lang === "hi" ? `${count} रिकॉर्ड हटाएं?` : `Delete ${count} Records?`)
@@ -633,8 +672,8 @@ function DeleteModal({ count = 1, onConfirm, onClose, deleting }) {
           <div style={{ fontSize: 13, color: "#64748b", marginBottom: 8, lineHeight: 1.6 }}>
             {isBulk
               ? (lang === "hi"
-                  ? `à¤†à¤ª ${count} à¤šà¤¯à¤¨à¤¿à¤¤ à¤°à¤¿à¤•à¥‰à¤°à¥à¤¡ à¤¸à¥à¤¥à¤¾à¤¯à¥€ à¤°à¥‚à¤ª à¤¸à¥‡ à¤¹à¤Ÿà¤¾à¤¨à¥‡ à¤µà¤¾à¤²à¥‡ à¤¹à¥ˆà¤‚à¥¤ à¤¯à¤¹ à¤•à¤¾à¤°à¥à¤°à¤µà¤¾à¤ˆ à¤ªà¥‚à¤°à¥à¤µà¤µà¤¤ à¤¨à¤¹à¥€à¤‚ à¤•à¥€ à¤œà¤¾ à¤¸à¤•à¤¤à¥€à¥¤`
-                  : `You are about to permanently delete ${count} selected records. This action cannot be undone.`)
+                ? `आप ${count} चयनित रिकॉर्ड स्थायी रूप से हटाने वाले हैं। यह कार्रवाई पूर्ववत नहीं की जा सकती।`
+                : `You are about to permanently delete ${count} selected records. This action cannot be undone.`)
               : t("This record will be permanently deleted. This action cannot be undone.", lang)}
           </div>
           {isBulk && (
@@ -654,7 +693,7 @@ function DeleteModal({ count = 1, onConfirm, onClose, deleting }) {
   );
 }
 
-/* â”€â”€ Progress Bar â”€â”€ */
+/* ── Progress Bar ── */
 function ProgressBar({ percent, color = ACCENT, height = 8 }) {
   return (
     <div style={{ background: "#f1f5f9", borderRadius: 99, height, overflow: "hidden" }}>
@@ -670,14 +709,14 @@ function ImportProgressPanel({ total, processed, remaining, percent, chunksDone,
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <div style={{ width: 16, height: 16, borderRadius: "50%", border: `2.5px solid ${ACCENT}30`, borderTopColor: ACCENT, animation: "spin 0.8s linear infinite" }} />
-          <span style={{ fontSize: 13, fontWeight: 700, color: "#1e293b" }}>{t("Importing recordsâ€¦", lang)}</span>
+          <span style={{ fontSize: 13, fontWeight: 700, color: "#1e293b" }}>{t("Importing records…", lang)}</span>
         </div>
         <span style={{ fontSize: 14, fontWeight: 800, color: ACCENT }}>{Math.round(percent)}%</span>
       </div>
       <ProgressBar percent={percent} height={10} />
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 8, marginTop: 12 }}>
         {[
-          { label: t("Total", lang),     value: total,     color: "#475569", bg: "#f1f5f9" },
+          { label: t("Total", lang), value: total, color: "#475569", bg: "#f1f5f9" },
           { label: t("Processed", lang), value: processed, color: "#16a34a", bg: "#dcfce7" },
           { label: t("Remaining", lang), value: remaining, color: "#d97706", bg: "#fef3c7" },
         ].map(({ label, value, color, bg }) => (
@@ -689,46 +728,46 @@ function ImportProgressPanel({ total, processed, remaining, percent, chunksDone,
       </div>
       <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 10, textAlign: "center" }}>
         {lang === "hi"
-          ? `à¤¬à¥ˆà¤š ${chunksDone} / ${chunksTotal} Â· ${t("Please keep this window open", lang)}`
-          : `Batch ${chunksDone} of ${chunksTotal} Â· ${t("Please keep this window open", lang)}`}
+          ? `बैच ${chunksDone} / ${chunksTotal} · ${t("Please keep this window open", lang)}`
+          : `Batch ${chunksDone} of ${chunksTotal} · ${t("Please keep this window open", lang)}`}
       </div>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   );
 }
 
-/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-   FormImportWizard â€” with dept selection, rendered via ModalPortal
-â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+/* ════════════════════════════════════════════════════════════════════
+   FormImportWizard — with dept selection, rendered via ModalPortal
+════════════════════════════════════════════════════════════════════ */
 function FormImportWizard({ formName, onClose, onDone, apiFetch, getToken, selectedYear = null }) {
   const { lang } = useLanguage();
   const [step, setStep] = useState(1);
   const fileRef = useRef(null);
 
-  const [file, setFile]               = useState(null);
-  const [parsing, setParsing]         = useState(false);
-  const [parseError, setParseError]   = useState("");
+  const [file, setFile] = useState(null);
+  const [parsing, setParsing] = useState(false);
+  const [parseError, setParseError] = useState("");
   const [duplicateHandling, setDuplicateHandling] = useState("skip");
 
-  const [departments, setDepartments]         = useState([]);
-  const [userRole, setUserRole]               = useState("");
+  const [departments, setDepartments] = useState([]);
+  const [userRole, setUserRole] = useState("");
   const [selectedDepartmentId, setSelectedDepartmentId] = useState(null);
 
-  const [fileColumns, setFileColumns]   = useState([]);
+  const [fileColumns, setFileColumns] = useState([]);
   const [schemaFields, setSchemaFields] = useState([]);
-  const [mapping, setMapping]           = useState({});
-  const [allRows, setAllRows]           = useState([]);
-  const [preview, setPreview]           = useState([]);
-  const [totalRows, setTotalRows]       = useState(0);
+  const [mapping, setMapping] = useState({});
+  const [allRows, setAllRows] = useState([]);
+  const [preview, setPreview] = useState([]);
+  const [totalRows, setTotalRows] = useState(0);
 
-  const [executing, setExecuting]         = useState(false);
+  const [executing, setExecuting] = useState(false);
   const [importPercent, setImportPercent] = useState(0);
   const [importProcessed, setImportProcessed] = useState(0);
   const [importRemaining, setImportRemaining] = useState(0);
-  const [chunksDone, setChunksDone]       = useState(0);
-  const [chunksTotal, setChunksTotal]     = useState(0);
-  const [result, setResult]               = useState(null);
-  const [execError, setExecError]         = useState("");
+  const [chunksDone, setChunksDone] = useState(0);
+  const [chunksTotal, setChunksTotal] = useState(0);
+  const [result, setResult] = useState(null);
+  const [execError, setExecError] = useState("");
 
   useEffect(() => {
     apiFetch(`/api/form-data/${formName}/departments`)
@@ -742,7 +781,7 @@ function FormImportWizard({ formName, onClose, onDone, apiFetch, getToken, selec
           }
         }
       })
-      .catch(() => {});
+      .catch(() => { });
   }, [apiFetch, formName]);
 
   async function handleParse() {
@@ -752,7 +791,7 @@ function FormImportWizard({ formName, onClose, onDone, apiFetch, getToken, selec
       const fd = new FormData(); fd.append("file", file);
       if (selectedYear != null) fd.append("year", selectedYear);
       const token = getToken();
-      // Bug 7 â€” send the selected academic year (header + form field) so the backend
+      // Bug 7 — send the selected academic year (header + form field) so the backend
       // year-scoped assignment guard blocks parsing an import for an unassigned year.
       const res = await api.post(`/api/form-data/${formName}/import/parse`, {
         token, body: fd,
@@ -804,7 +843,7 @@ function FormImportWizard({ formName, onClose, onDone, apiFetch, getToken, selec
   async function downloadSample(format) {
     try {
       const token = getToken();
-      // Bug 7 â€” carry the selected academic year so the year-scoped assignment
+      // Bug 7 — carry the selected academic year so the year-scoped assignment
       // guard authorizes the contributor for THIS year (else it falls back to the
       // calendar year and would wrongly block the sample for their assigned year).
       const res = await api.get(`/api/form-data/${formName}/export/sample?format=${format}`, {
@@ -838,7 +877,7 @@ function FormImportWizard({ formName, onClose, onDone, apiFetch, getToken, selec
                 {t("Import Records", lang)}
                 <span style={{ fontSize: 11, fontWeight: 500, color: "#94a3b8", marginLeft: 8, fontFamily: "monospace" }}>{formName}</span>
               </div>
-              <button onClick={onClose} disabled={executing} style={{ background: "none", border: "none", fontSize: 20, color: "#94a3b8", cursor: executing ? "not-allowed" : "pointer", lineHeight: 1 }}>Ã—</button>
+              <button onClick={onClose} disabled={executing} style={{ background: "none", border: "none", fontSize: 20, color: "#94a3b8", cursor: executing ? "not-allowed" : "pointer", lineHeight: 1 }}>×</button>
             </div>
             <div style={{ display: "flex", alignItems: "center" }}>
               {steps.map((label, i) => {
@@ -861,14 +900,14 @@ function FormImportWizard({ formName, onClose, onDone, apiFetch, getToken, selec
           <div style={{ overflowY: "auto", maxHeight: "calc(100vh - 260px)" }}>
             {step === 1 && (
               <div style={{ padding: "16px 20px" }}>
-                {isDeptAdmin && <div style={{ background: "#f0fdf4", border: "1px solid #86efac", borderRadius: 8, padding: "9px 14px", marginBottom: 14, fontSize: 13, color: "#15803d", display: "flex", alignItems: "center", gap: 8 }}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>{t("Importing as Department Admin â€” data will be saved to your department only.", lang)}</div>}
-                {isInstAdmin && <div style={{ background: ACCENT + "0d", border: `1px solid ${ACCENT}25`, borderRadius: 8, padding: "9px 14px", marginBottom: 14, fontSize: 13, color: "#1d4ed8", display: "flex", alignItems: "center", gap: 8 }}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>{t("Importing as Institute Admin â€” you can tag data to a specific department below.", lang)}</div>}
+                {isDeptAdmin && <div style={{ background: "#f0fdf4", border: "1px solid #86efac", borderRadius: 8, padding: "9px 14px", marginBottom: 14, fontSize: 13, color: "#15803d", display: "flex", alignItems: "center", gap: 8 }}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" /></svg>{t("Importing as Department Admin — data will be saved to your department only.", lang)}</div>}
+                {isInstAdmin && <div style={{ background: ACCENT + "0d", border: `1px solid ${ACCENT}25`, borderRadius: 8, padding: "9px 14px", marginBottom: 14, fontSize: 13, color: "#1d4ed8", display: "flex", alignItems: "center", gap: 8 }}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" /></svg>{t("Importing as Institute Admin — you can tag data to a specific department below.", lang)}</div>}
                 {isInstAdmin && (
                   <div style={{ marginBottom: 14 }}>
                     <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#475569", marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.5 }}>{t("Department (optional)", lang)}</label>
                     <div style={{ position: "relative" }}>
                       <select value={selectedDepartmentId || ""} onChange={e => setSelectedDepartmentId(e.target.value || null)} style={{ width: "100%", padding: "8px 32px 8px 12px", fontSize: 13, border: "1.5px solid #e2e8f0", borderRadius: 8, background: "#fff", color: "#1e293b", appearance: "none", outline: "none", cursor: "pointer" }}>
-                        <option value="">{t("â€” All departments (institution-wide) â€”", lang)}</option>
+                        <option value="">{t("— All departments (institution-wide) —", lang)}</option>
                         {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
                       </select>
                       <div style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", pointerEvents: "none", color: "#94a3b8" }}><IcoChevronDown /></div>
@@ -879,8 +918,8 @@ function FormImportWizard({ formName, onClose, onDone, apiFetch, getToken, selec
                   style={{ border: `2px dashed ${file ? ACCENT : "#cbd5e1"}`, borderRadius: 10, padding: "18px 24px", textAlign: "center", cursor: "pointer", background: file ? ACCENT + "08" : "#f8fafc", marginBottom: 14, transition: "all .15s" }}>
                   <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" style={{ display: "none" }} onChange={e => { if (e.target.files[0]) setFile(e.target.files[0]); }} />
                   <div style={{ color: file ? ACCENT : "#94a3b8", marginBottom: 8, display: "flex", justifyContent: "center" }}><IcoUpload /></div>
-                  {file ? <div><div style={{ fontSize: 13, fontWeight: 700, color: ACCENT }}>{file.name}</div><div style={{ fontSize: 11, color: "#64748b", marginTop: 3 }}>{(file.size / 1024).toFixed(1)} KB Â· {t("Click to change", lang)}</div></div>
-                    : <div><div style={{ fontSize: 13, color: "#64748b" }}><span style={{ color: ACCENT, fontWeight: 700 }}>{t("Click to upload", lang)}</span> {t("or drag & drop", lang)}</div><div style={{ fontSize: 11, color: "#94a3b8", marginTop: 3 }}>CSV, Excel (.xlsx, .xls) Â· max 50 MB Â· up to 10,500 rows</div></div>}
+                  {file ? <div><div style={{ fontSize: 13, fontWeight: 700, color: ACCENT }}>{file.name}</div><div style={{ fontSize: 11, color: "#64748b", marginTop: 3 }}>{(file.size / 1024).toFixed(1)} KB · {t("Click to change", lang)}</div></div>
+                    : <div><div style={{ fontSize: 13, color: "#64748b" }}><span style={{ color: ACCENT, fontWeight: 700 }}>{t("Click to upload", lang)}</span> {t("or drag & drop", lang)}</div><div style={{ fontSize: 11, color: "#94a3b8", marginTop: 3 }}>CSV, Excel (.xlsx, .xls) · max 50 MB · up to 10,500 rows</div></div>}
                 </div>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14, padding: "8px 12px", background: "#f8fafc", borderRadius: 8, border: "1px solid #e2e8f0" }}>
                   <div style={{ fontSize: 13, color: "#475569" }}><span style={{ fontWeight: 600, color: "#1e293b" }}>{t("Need a template?", lang)}</span> {t("Download a sample with the correct columns.", lang)}</div>
@@ -897,8 +936,8 @@ function FormImportWizard({ formName, onClose, onDone, apiFetch, getToken, selec
                       { val: "overwrite", label: t("Overwrite", lang), desc: t("Existing matching rows are updated with new values", lang) },
                       { val: "new", label: t("Always insert new", lang), desc: t("Every row is inserted regardless of duplicates", lang) },
                     ].map(({ val, label, desc }) => (
-                      <label key={val} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "8px 12px", borderRadius: 8, border: `1.5px solid ${duplicateHandling===val?ACCENT+"60":"#e2e8f0"}`, background: duplicateHandling===val?ACCENT+"06":"#fff", cursor: "pointer", transition: "all .12s" }}>
-                        <input type="radio" name="dup" value={val} checked={duplicateHandling===val} onChange={() => setDuplicateHandling(val)} style={{ accentColor: ACCENT, marginTop: 2 }} />
+                      <label key={val} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "8px 12px", borderRadius: 8, border: `1.5px solid ${duplicateHandling === val ? ACCENT + "60" : "#e2e8f0"}`, background: duplicateHandling === val ? ACCENT + "06" : "#fff", cursor: "pointer", transition: "all .12s" }}>
+                        <input type="radio" name="dup" value={val} checked={duplicateHandling === val} onChange={() => setDuplicateHandling(val)} style={{ accentColor: ACCENT, marginTop: 2 }} />
                         <div><div style={{ fontSize: 13, fontWeight: 600, color: "#1e293b" }}>{label}</div><div style={{ fontSize: 11, color: "#94a3b8", marginTop: 1 }}>{desc}</div></div>
                       </label>
                     ))}
@@ -912,9 +951,9 @@ function FormImportWizard({ formName, onClose, onDone, apiFetch, getToken, selec
                 <div style={{ background: ACCENT + "08", border: `1px solid ${ACCENT}20`, borderRadius: 8, padding: "9px 14px", marginBottom: 16, display: "flex", alignItems: "center", gap: 9, fontSize: 13 }}>
                   <IcoFile />
                   <span style={{ color: "#475569" }}>
-                    <strong style={{ color: "#1e293b" }}>{totalRows.toLocaleString()}</strong> {t("rows detected", lang)} Â·{" "}
+                    <strong style={{ color: "#1e293b" }}>{totalRows.toLocaleString()}</strong> {t("rows detected", lang)} ·{" "}
                     <strong style={{ color: "#1e293b" }}>{mappedCount}</strong> {t("of", lang)} <strong style={{ color: "#1e293b" }}>{schemaFields.length}</strong> {t("columns mapped", lang)}
-                    {totalRows > 1000 && <span style={{ marginLeft: 10, color: "#7c3aed", fontWeight: 600 }}>Â· {Math.ceil(totalRows / CHUNK_SIZE)} {t("batches of", lang)} {CHUNK_SIZE}</span>}
+                    {totalRows > 1000 && <span style={{ marginLeft: 10, color: "#7c3aed", fontWeight: 600 }}>· {Math.ceil(totalRows / CHUNK_SIZE)} {t("batches of", lang)} {CHUNK_SIZE}</span>}
                   </span>
                 </div>
                 {schemaFields.length > 0 && (
@@ -932,16 +971,16 @@ function FormImportWizard({ formName, onClose, onDone, apiFetch, getToken, selec
                             <div style={{ fontSize: 13, fontWeight: 600, color: "#1e293b" }}>{field.label}{field.required && <span style={{ color: "#dc2626", marginLeft: 3 }}>*</span>}</div>
                             <div style={{ fontSize: 11, color: "#94a3b8", fontFamily: "monospace", marginTop: 1 }}>{field.col}</div>
                           </div>
-                          <div style={{ color: !isDoc && mapping[field.col] ? "#16a34a" : "#cbd5e1", textAlign: "center", fontSize: 16 }}>â†’</div>
+                          <div style={{ color: !isDoc && mapping[field.col] ? "#16a34a" : "#cbd5e1", textAlign: "center", fontSize: 16 }}>→</div>
                           {isDoc ? (
                             <div style={{ fontSize: 12, color: "#94a3b8", fontStyle: "italic", padding: "6px 9px", border: "1.5px dashed #e2e8f0", borderRadius: 6, background: "#f8fafc" }}>
-                              {t("Saved as blank â€” upload file manually after import", lang)}
+                              {t("Saved as blank — upload file manually after import", lang)}
                             </div>
                           ) : (
                             <div style={{ position: "relative" }}>
                               <select value={mapping[field.col] || ""} onChange={e => setMapping(prev => ({ ...prev, [field.col]: e.target.value }))} disabled={executing}
                                 style={{ width: "100%", padding: "6px 26px 6px 9px", fontSize: 13, border: `1.5px solid ${mapping[field.col] ? "#86efac" : "#e2e8f0"}`, borderRadius: 6, background: "#fff", color: "#1e293b", appearance: "none", cursor: executing ? "not-allowed" : "pointer", outline: "none" }}>
-                                <option value="">{lang === "hi" ? "â€” à¤›à¥‹à¤¡à¤¼à¥‡à¤‚ â€”" : "â€” skip â€”"}</option>
+                                <option value="">{lang === "hi" ? "— छोड़ें —" : "— skip —"}</option>
                                 {fileColumns.map(col => <option key={col} value={col}>{col}</option>)}
                               </select>
                               <div style={{ position: "absolute", right: 7, top: "50%", transform: "translateY(-50%)", pointerEvents: "none", color: "#94a3b8" }}><IcoChevronDown /></div>
@@ -954,11 +993,11 @@ function FormImportWizard({ formName, onClose, onDone, apiFetch, getToken, selec
                 )}
                 {preview.length > 0 && !executing && (
                   <div style={{ marginBottom: 14 }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: "#475569", marginBottom: 7, textTransform: "uppercase", letterSpacing: 0.5 }}>{lang === "hi" ? `${t("Preview", lang)} (à¤ªà¤¹à¤²à¥€ ${preview.length} à¤ªà¤‚à¤•à¥à¤¤à¤¿à¤¯à¤¾à¤)` : `Preview (first ${preview.length} rows)`}</div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: "#475569", marginBottom: 7, textTransform: "uppercase", letterSpacing: 0.5 }}>{lang === "hi" ? `${t("Preview", lang)} (पहली ${preview.length} पंक्तियाँ)` : `Preview (first ${preview.length} rows)`}</div>
                     <div style={{ overflowX: "auto", borderRadius: 7, border: "1px solid #e2e8f0" }}>
                       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
                         <thead><tr style={{ background: "#f8fafc" }}>{schemaFields.filter(f => mapping[f.col]).map(f => <th key={f.col} style={{ padding: "6px 10px", textAlign: "left", color: "#64748b", fontWeight: 700, borderBottom: "1px solid #e2e8f0", whiteSpace: "nowrap" }}>{f.label}</th>)}</tr></thead>
-                        <tbody>{preview.map((row, i) => <tr key={i} style={{ borderBottom: i < preview.length-1 ? "1px solid #f1f5f9" : "none" }}>{schemaFields.filter(f => mapping[f.col]).map(f => <td key={f.col} style={{ padding: "6px 10px", color: "#1e293b", maxWidth: 130, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{String(row[mapping[f.col]] ?? "â€”")}</td>)}</tr>)}</tbody>
+                        <tbody>{preview.map((row, i) => <tr key={i} style={{ borderBottom: i < preview.length - 1 ? "1px solid #f1f5f9" : "none" }}>{schemaFields.filter(f => mapping[f.col]).map(f => <td key={f.col} style={{ padding: "6px 10px", color: "#1e293b", maxWidth: 130, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{String(row[mapping[f.col]] ?? "—")}</td>)}</tr>)}</tbody>
                       </table>
                     </div>
                   </div>
@@ -971,23 +1010,23 @@ function FormImportWizard({ formName, onClose, onDone, apiFetch, getToken, selec
               <div style={{ padding: "28px 24px", textAlign: "center" }}>
                 <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}>
                   {result.failed === 0
-                    ? <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="1.8"><circle cx="12" cy="12" r="10"/><polyline points="8 12 11 15 16 9"/></svg>
+                    ? <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="1.8"><circle cx="12" cy="12" r="10" /><polyline points="8 12 11 15 16 9" /></svg>
                     : result.imported === 0
-                      ? <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="1.8"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
-                      : <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="1.8"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                      ? <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="1.8"><circle cx="12" cy="12" r="10" /><line x1="15" y1="9" x2="9" y2="15" /><line x1="9" y1="9" x2="15" y2="15" /></svg>
+                      : <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="1.8"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" /></svg>
                   }
                 </div>
                 <div style={{ fontSize: 16, fontWeight: 700, color: "#1e293b", marginBottom: 4 }}>{t("Import Complete", lang)}</div>
                 <div style={{ fontSize: 13, color: "#64748b", marginBottom: 20 }}>{result.message}</div>
                 <div style={{ marginBottom: 20, textAlign: "left" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "#64748b", marginBottom: 6 }}><span>{lang === "hi" ? `à¤¸à¤­à¥€ ${result.total.toLocaleString()} à¤ªà¤‚à¤•à¥à¤¤à¤¿à¤¯à¤¾à¤ à¤¸à¤‚à¤¸à¤¾à¤§à¤¿à¤¤ à¤¹à¥à¤ˆà¤‚` : `All ${result.total.toLocaleString()} rows processed`}</span><span style={{ fontWeight: 700, color: "#16a34a" }}>100%</span></div>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "#64748b", marginBottom: 6 }}><span>{lang === "hi" ? `सभी ${result.total.toLocaleString()} पंक्तियाँ संसाधित हुईं` : `All ${result.total.toLocaleString()} rows processed`}</span><span style={{ fontWeight: 700, color: "#16a34a" }}>100%</span></div>
                   <ProgressBar percent={100} color="#16a34a" height={10} />
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10, marginBottom: result.errors?.length ? 20 : 0 }}>
                   {[
                     { label: t("Imported", lang), value: result.imported, color: "#16a34a", bg: "#dcfce7" },
-                    { label: t("Skipped", lang),  value: result.skipped,  color: "#d97706", bg: "#fef3c7" },
-                    { label: t("Failed", lang),   value: result.failed,   color: "#dc2626", bg: "#fee2e2" },
+                    { label: t("Skipped", lang), value: result.skipped, color: "#d97706", bg: "#fef3c7" },
+                    { label: t("Failed", lang), value: result.failed, color: "#dc2626", bg: "#fee2e2" },
                   ].map(({ label, value, color, bg }) => (
                     <div key={label} style={{ background: bg, borderRadius: 10, padding: "14px 8px" }}>
                       <div style={{ fontSize: 26, fontWeight: 800, color, lineHeight: 1 }}>{value.toLocaleString()}</div>
@@ -998,19 +1037,19 @@ function FormImportWizard({ formName, onClose, onDone, apiFetch, getToken, selec
                 {result.errors?.length > 0 && (
                   <div style={{ textAlign: "left", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, padding: 12, maxHeight: 150, overflowY: "auto" }}>
                     <div style={{ fontSize: 11, fontWeight: 700, color: "#b91c1c", marginBottom: 6 }}>Row Errors ({result.errors.length})</div>
-                    {result.errors.map((e, i) => <div key={i} style={{ fontSize: 11, color: "#dc2626", marginBottom: 3 }}>Row {e.row} Â· <strong>{e.field}</strong>: {e.error}</div>)}
+                    {result.errors.map((e, i) => <div key={i} style={{ fontSize: 11, color: "#dc2626", marginBottom: 3 }}>Row {e.row} · <strong>{e.field}</strong>: {e.error}</div>)}
                   </div>
                 )}
               </div>
             )}
           </div>
-          {/* Footer â€” standardized on ui/Button */}
+          {/* Footer — standardized on ui/Button */}
           <div style={{ padding: "12px 20px", borderTop: "1px solid #f1f5f9", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <div>{step === 2 && !executing && <Button variant="ghost" onClick={() => setStep(1)}>{t("â† Back", lang)}</Button>}</div>
+            <div>{step === 2 && !executing && <Button variant="ghost" onClick={() => setStep(1)}>{t("← Back", lang)}</Button>}</div>
             <div style={{ display: "flex", gap: 10 }}>
               {step !== 3 && <Button variant="secondary" onClick={onClose} disabled={parsing || executing}>{t("Cancel", lang)}</Button>}
-              {step === 1 && <Button variant="primary" onClick={handleParse} loading={parsing} disabled={!file || parsing}>{parsing ? t("Parsingâ€¦", lang) : t("Next â†’", lang)}</Button>}
-              {step === 2 && <Button variant="primary" onClick={handleExecute} loading={executing} disabled={executing || mappedCount === 0}>{executing ? `${t("Importingâ€¦", lang)} ${Math.round(importPercent)}%` : (lang === "hi" ? `${totalRows.toLocaleString()} à¤ªà¤‚à¤•à¥à¤¤à¤¿à¤¯à¤¾à¤ à¤†à¤¯à¤¾à¤¤ à¤•à¤°à¥‡à¤‚` : `Import ${totalRows.toLocaleString()} Rows`)}</Button>}
+              {step === 1 && <Button variant="primary" onClick={handleParse} loading={parsing} disabled={!file || parsing}>{parsing ? t("Parsing…", lang) : t("Next →", lang)}</Button>}
+              {step === 2 && <Button variant="primary" onClick={handleExecute} loading={executing} disabled={executing || mappedCount === 0}>{executing ? `${t("Importing…", lang)} ${Math.round(importPercent)}%` : (lang === "hi" ? `${totalRows.toLocaleString()} पंक्तियाँ आयात करें` : `Import ${totalRows.toLocaleString()} Rows`)}</Button>}
               {step === 3 && <Button variant="primary" onClick={onDone} style={{ background: "#16a34a", borderColor: "#16a34a" }}>{t("Done", lang)}</Button>}
             </div>
           </div>
@@ -1022,7 +1061,7 @@ function FormImportWizard({ formName, onClose, onDone, apiFetch, getToken, selec
 
 /* Viewport-aware dropdown direction: when there isn't room below the trigger,
    the menu opens upward instead of being clipped at the bottom of the screen.
-   Returns [wrapperRef, openUp] â€” attach the ref to the position:relative wrapper
+   Returns [wrapperRef, openUp] — attach the ref to the position:relative wrapper
    and place the menu with top OR bottom: "calc(100% + 6px)" accordingly. */
 function useDropDirection(open, estimatedHeight = 240) {
   const ref = useRef(null);
@@ -1036,10 +1075,10 @@ function useDropDirection(open, estimatedHeight = 240) {
   return [ref, openUp];
 }
 
-/* â”€â”€ Export dropdown with progress bar â”€â”€ */
+/* ── Export dropdown with progress bar ── */
 function ExportDropdown({ formName, accessToken, language = "en", selectedYear = null }) {
-  const [open, setOpen]                   = useState(false);
-  const [exporting, setExporting]         = useState(null);
+  const [open, setOpen] = useState(false);
+  const [exporting, setExporting] = useState(null);
   const [exportPercent, setExportPercent] = useState(0);
 
   async function download(path, filename, key) {
@@ -1060,11 +1099,11 @@ function ExportDropdown({ formName, accessToken, language = "en", selectedYear =
   }
 
   const langTag = language !== "en" ? `_${language}` : "";
-  // Bug 7 â€” carry the selected academic year so the backend can enforce the
+  // Bug 7 — carry the selected academic year so the backend can enforce the
   // year-scoped assignment (export of an unassigned year is blocked server-side).
   const yearQ = selectedYear != null ? `&year=${selectedYear}` : "";
   const options = [
-    { key: "csv",  label: t("Export as CSV", language),  action: () => download(`/api/form-data/${formName}/export?format=csv&language=${language}${yearQ}`,  `${formName}${langTag}_export.csv`,  "csv")  },
+    { key: "csv", label: t("Export as CSV", language), action: () => download(`/api/form-data/${formName}/export?format=csv&language=${language}${yearQ}`, `${formName}${langTag}_export.csv`, "csv") },
     { key: "xlsx", label: t("Export as Excel", language), action: () => download(`/api/form-data/${formName}/export?format=xlsx&language=${language}${yearQ}`, `${formName}${langTag}_export.xlsx`, "xlsx") },
   ];
 
@@ -1075,13 +1114,13 @@ function ExportDropdown({ formName, accessToken, language = "en", selectedYear =
       <button onClick={() => setOpen(v => !v)} disabled={!!exporting}
         style={{ display: "inline-flex", alignItems: "center", gap: 7, background: "#fff", color: "#475569", border: "1.5px solid #e2e8f0", borderRadius: 10, padding: "9px 14px", fontSize: 13, fontWeight: 600, cursor: exporting ? "not-allowed" : "pointer", boxShadow: "0 1px 3px rgba(0,0,0,0.06)", opacity: exporting ? 0.85 : 1 }}>
         <IcoDownload />
-        {exporting ? `${t("Exportingâ€¦", language)} ${Math.round(exportPercent)}%` : t("Export", language)}
+        {exporting ? `${t("Exporting…", language)} ${Math.round(exportPercent)}%` : t("Export", language)}
         {!exporting && <IcoChevronDown />}
       </button>
       {exporting && (
         <div style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, right: 0, background: "#fff", borderRadius: 10, border: "1px solid #e2e8f0", padding: "10px 12px", boxShadow: "0 6px 20px rgba(0,0,0,0.1)", zIndex: 101, minWidth: 220 }}>
           <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, fontWeight: 600, color: "#475569", marginBottom: 6 }}>
-            <span>{t("Building", language)} {exporting.toUpperCase()} {t("fileâ€¦", language)}</span>
+            <span>{t("Building", language)} {exporting.toUpperCase()} {t("file…", language)}</span>
             <span style={{ color: ACCENT }}>{Math.round(exportPercent)}%</span>
           </div>
           <ProgressBar percent={exportPercent} height={6} />
@@ -1107,16 +1146,16 @@ function ExportDropdown({ formName, accessToken, language = "en", selectedYear =
   );
 }
 
-/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+/* ════════════════════════════════════════════════════════════════════
    SortDropdown
-â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+════════════════════════════════════════════════════════════════════ */
 function SortDropdown({ sortDir, onSort }) {
   const { lang } = useLanguage();
   const [open, setOpen] = useState(false);
 
   const options = [
     { key: "desc", label: t("Newest First", lang), icon: <IcoSortDesc /> },
-    { key: "asc",  label: t("Oldest First", lang), icon: <IcoSortAsc />  },
+    { key: "asc", label: t("Oldest First", lang), icon: <IcoSortAsc /> },
   ];
 
   const active = options.find(o => o.key === sortDir);
@@ -1127,7 +1166,7 @@ function SortDropdown({ sortDir, onSort }) {
 
   return (
     <div ref={wrapRef} style={{ position: "relative" }}>
-      {/* Trigger â€” identical styling to ExportDropdown */}
+      {/* Trigger — identical styling to ExportDropdown */}
       <button
         onClick={() => setOpen(v => !v)}
         style={{
@@ -1185,9 +1224,9 @@ function SortDropdown({ sortDir, onSort }) {
   );
 }
 
-/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+/* ════════════════════════════════════════════════════════════════════
    RowsPerPageDropdown
-â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+════════════════════════════════════════════════════════════════════ */
 function RowsPerPageDropdown({ pageSize, onPageSizeChange }) {
   const { lang } = useLanguage();
   const [open, setOpen] = useState(false);
@@ -1230,9 +1269,9 @@ function RowsPerPageDropdown({ pageSize, onPageSizeChange }) {
   );
 }
 
-/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+/* ════════════════════════════════════════════════════════════════════
    BulkActionBar
-â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+════════════════════════════════════════════════════════════════════ */
 function BulkActionBar({ selectedCount, totalOnPage, onSelectAll, onDeselectAll, onBulkDelete, allSelected }) {
   const { lang } = useLanguage();
   return (
@@ -1258,25 +1297,25 @@ function BulkActionBar({ selectedCount, totalOnPage, onSelectAll, onDeselectAll,
         onClick={onBulkDelete}
         style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#fef2f2", color: "#dc2626", border: "1.5px solid #fecaca", borderRadius: 8, padding: "7px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
       >
-        <IcoTrash /> {lang === "hi" ? `${selectedCount} à¤šà¤¯à¤¨à¤¿à¤¤ à¤¹à¤Ÿà¤¾à¤à¤‚` : `Delete ${selectedCount} Selected`}
+        <IcoTrash /> {lang === "hi" ? `${selectedCount} चयनित हटाएं` : `Delete ${selectedCount} Selected`}
       </button>
     </div>
   );
 }
 
-/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-   FormDataPage â€” Main Component
-â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+/* ════════════════════════════════════════════════════════════════════
+   FormDataPage — Main Component
+════════════════════════════════════════════════════════════════════ */
 export default function FormDataPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { apiFetch }    = useApi();
+  const { apiFetch } = useApi();
   const { accessToken, user } = useAuth();
-  const { lang }        = useLanguage();
+  const { lang } = useLanguage();
 
   // Who may assign forms to contributors:
-  //   â€¢ a real Department Admin, OR
-  //   â€¢ a Contributor who holds Nodal Officer capability â€” detected via the
+  //   • a real Department Admin, OR
+  //   • a Contributor who holds Nodal Officer capability — detected via the
   //     existing NOA signal (user.noaActiveYears, set by the backend's
   //     nodal_officer_assignments resolver). We do NOT hardcode a nodal role:
   //     the frontend user.roles stays "contributor"; noaActiveYears is the flag.
@@ -1286,16 +1325,16 @@ export default function FormDataPage() {
   const roleName = (user?.roles || [])[0]?.name || "";
   const moduleLabel = roleName === "hospital_admin" ? "Hospital"
     : roleName === "finance_admin" ? "Finance"
-    : "Department";
+      : "Department";
 
   const canAssign =
     (user?.roles || []).some((r) => r.name === "department_admin" || r.name === "institute_admin") ||
     (user?.noaActiveYears?.length || 0) > 0;
   const pgStudentScope = (user?.roles || []).some((r) => r.name === "institute_admin") ? "institute" : "department";
-  const [assignForm, setAssignForm]               = useState(null);
+  const [assignForm, setAssignForm] = useState(null);
   const [assignPgStudentForm, setAssignPgStudentForm] = useState(null);
 
-  /* Part 4 â€” a "pure" contributor (worker role) gets a work-focused view: the
+  /* Part 4 — a "pure" contributor (worker role) gets a work-focused view: the
      framing is "your assigned work", not admin/management. NOA-capable contributors
      are assigners, so they keep the standard view (canAssign covers that). */
   const isContributorOnly =
@@ -1304,33 +1343,33 @@ export default function FormDataPage() {
     !((user?.noaActiveYears?.length || 0) > 0);
 
   const isRecords = location.pathname.endsWith("/records");
-  const listPath  = `/${SLUG}`;
+  const listPath = `/${SLUG}`;
   const formEntity = isRecords ? (location.state?.entity ?? null) : null;
   const { selectedYear, years, selectedYearLocked } = useAcademicYear() || {};
   // Year-aware filtering only kicks in once the institution has created academic
   // years (opted into the lifecycle). Otherwise behave exactly as before.
-  const yearAware       = (years?.length || 0) > 0;
-  const ayLocked        = !!selectedYearLocked; // academic year locked â†’ view-only
-  const getToken        = useCallback(() => accessToken, [accessToken]);
+  const yearAware = (years?.length || 0) > 0;
+  const ayLocked = !!selectedYearLocked; // academic year locked → view-only
+  const getToken = useCallback(() => accessToken, [accessToken]);
 
-  const [importOpen, setImportOpen]     = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
 
-  const [forms, setForms]               = useState([]);
+  const [forms, setForms] = useState([]);
   const [formsLoading, setFormsLoading] = useState(true);
-  const [formsError, setFormsError]     = useState("");
+  const [formsError, setFormsError] = useState("");
 
-  const [records, setRecords]         = useState([]);
-  const [total, setTotal]             = useState(0);   // server-reported total (Issue 7)
-  const [schema, setSchema]           = useState(null);
+  const [records, setRecords] = useState([]);
+  const [total, setTotal] = useState(0);   // server-reported total (Issue 7)
+  const [schema, setSchema] = useState(null);
   const [recsLoading, setRecsLoading] = useState(false);
-  const [recsError, setRecsError]     = useState("");
+  const [recsError, setRecsError] = useState("");
 
-  /* â”€â”€ Lock status â”€â”€ */
+  /* ── Lock status ── */
   const [lockInfo, setLockInfo] = useState({ is_locked: false, locked_by: null, locked_at: null });
 
-  /* â”€â”€ Search (explicit: commit on Enter or the search button) â”€â”€ */
+  /* ── Search (explicit: commit on Enter or the search button) ── */
   const [searchInput, setSearchInput] = useState("");
-  const [searchTerm, setSearchTerm]   = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
   // Run the search only when the user asks for it (Enter / button click), not on
   // every keystroke. Resets to page 1 so the server returns matches from the
   // start (Issue 7: search is server-side).
@@ -1339,34 +1378,34 @@ export default function FormDataPage() {
     setCurrentPage(1);
   };
 
-  /* â”€â”€ Pre-edit lock state â”€â”€ */
+  /* ── Pre-edit lock state ── */
   const [acquiringLock, setAcquiringLock] = useState(null); // record id being locked
   const lockedRecordRef = useRef(null); // id of the record whose lock we currently hold
   const lockUrlRef = useRef(null);       // full path for the DELETE lock endpoint currently held
   const accessTokenRef = useRef(accessToken);
   useEffect(() => { accessTokenRef.current = accessToken; }, [accessToken]);
 
-  /* â”€â”€ Modal state â”€â”€ */
-  const [modalOpen, setModalOpen]       = useState(false);
-  const [editRecord, setEditRecord]     = useState(null);
-  /* Dedicated edit page target: null = list Â· "new" = add Â· record = edit. */
-  const [editTarget, setEditTarget]     = useState(null);
+  /* ── Modal state ── */
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editRecord, setEditRecord] = useState(null);
+  /* Dedicated edit page target: null = list · "new" = add · record = edit. */
+  const [editTarget, setEditTarget] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
-  const [saving, setSaving]             = useState(false);
-  const [deleting, setDeleting]         = useState(false);
-  const [modalError, setModalError]     = useState("");
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [modalError, setModalError] = useState("");
 
-  /* â”€â”€ Selection state â”€â”€ */
+  /* ── Selection state ── */
   const [selectedIds, setSelectedIds] = useState(new Set());
 
-  /* â”€â”€ Sorting state â€” default: created_at DESC â”€â”€ */
+  /* ── Sorting state — default: created_at DESC ── */
   const [sortField, setSortField] = useState("created_at");
-  const [sortDir, setSortDir]     = useState("desc");
+  const [sortDir, setSortDir] = useState("desc");
 
-  /* â”€â”€ Pagination â”€â”€ */
+  /* ── Pagination ── */
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize]       = useState(100);
+  const [pageSize, setPageSize] = useState(100);
 
   /* Records view: dense table (default) or browseable cards. */
   const [viewMode, setViewMode] = useState("table");
@@ -1380,7 +1419,7 @@ export default function FormDataPage() {
   /* Release any held lock when the browser tab/window is closed or component unmounts.
      Uses fetch+keepalive (not sendBeacon) because sendBeacon is POST-only and would
      hit the acquire endpoint instead of the release endpoint. The [] dependency array
-     ensures this effect runs exactly once â€” no premature cleanup when apiFetch
+     ensures this effect runs exactly once — no premature cleanup when apiFetch
      gets a new reference due to auth-context updates. */
   useEffect(() => {
     const releaseLockViaFetch = () => {
@@ -1395,7 +1434,7 @@ export default function FormDataPage() {
             ...(accessTokenRef.current ? { Authorization: `Bearer ${accessTokenRef.current}` } : {}),
           },
         });
-      } catch {} // best-effort
+      } catch { } // best-effort
     };
     window.addEventListener("beforeunload", releaseLockViaFetch);
     return () => {
@@ -1416,7 +1455,7 @@ export default function FormDataPage() {
     setAcquiringLock(rec.id);
     const lockPath = `/api/form-data/${formEntity.form_name}/records/${rec.id}/lock`;
 
-    // â”€â”€ Step 1: acquire the lock â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Step 1: acquire the lock ──────────────────────────────────────────
     let lockData;
     try {
       const lockRes = await apiFetch(lockPath, { method: "POST" });
@@ -1441,17 +1480,17 @@ export default function FormDataPage() {
       return;
     }
 
-    // Lock acquired â€” register it so cleanup handlers can release it on unmount or tab close.
+    // Lock acquired — register it so cleanup handlers can release it on unmount or tab close.
     lockUrlRef.current = lockPath;
     lockedRecordRef.current = rec.id;
 
-    // â”€â”€ Step 2: fetch the latest record from DB â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Step 2: fetch the latest record from DB ───────────────────────────
     try {
       const recRes = await apiFetch(`/api/form-data/${formEntity.form_name}/records/${rec.id}`);
       const recData = await recRes.json();
 
       if (!recData.success || !recData.record) {
-        try { await apiFetch(lockPath, { method: "DELETE" }); } catch {}
+        try { await apiFetch(lockPath, { method: "DELETE" }); } catch { }
         lockUrlRef.current = null;
         lockedRecordRef.current = null;
         if (recRes.status === 404) {
@@ -1463,11 +1502,11 @@ export default function FormDataPage() {
         return;
       }
 
-      // â”€â”€ Step 3: open edit form with fresh data â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+      // ── Step 3: open edit form with fresh data ─────────────────────────
       setEditTarget(recData.record);
     } catch (e) {
       // Record fetch failed (network error, server not yet restarted, etc.)
-      try { await apiFetch(lockPath, { method: "DELETE" }); } catch {}
+      try { await apiFetch(lockPath, { method: "DELETE" }); } catch { }
       lockUrlRef.current = null;
       lockedRecordRef.current = null;
       showToast("Failed to load the latest record data. Please try again.", "error");
@@ -1481,7 +1520,7 @@ export default function FormDataPage() {
     if (lockUrlRef.current) {
       try {
         await apiFetch(lockUrlRef.current, { method: "DELETE" });
-      } catch {} // best-effort â€” lock TTL will clean up
+      } catch { } // best-effort — lock TTL will clean up
       lockUrlRef.current = null;
       lockedRecordRef.current = null;
     }
@@ -1491,14 +1530,14 @@ export default function FormDataPage() {
 
   const formsLoadedRef = useRef(false);
   const loadForms = useCallback(async () => {
-    // Skeleton/"Loadingâ€¦" only on the FIRST load. On refreshes (e.g. the navbar
-    // year change) keep the current rows visible and swap them in place â€” no
+    // Skeleton/"Loading…" only on the FIRST load. On refreshes (e.g. the navbar
+    // year change) keep the current rows visible and swap them in place — no
     // flicker, no layout expand/shrink.
     if (!formsLoadedRef.current) setFormsLoading(true);
     setFormsError("");
     try {
-      const qs   = selectedYear != null ? `?year=${selectedYear}` : "";
-      const res  = await apiFetch(`/api/forms/institution-forms${qs}`);
+      const qs = selectedYear != null ? `?year=${selectedYear}` : "";
+      const res = await apiFetch(`/api/forms/institution-forms${qs}`);
       const data = await res.json();
       if (data.success) {
         const all = data.forms || [];
@@ -1513,23 +1552,23 @@ export default function FormDataPage() {
 
   useEffect(() => { loadForms(); }, [loadForms]);
 
-  /* â”€â”€ Load records, language-aware, with lock info â”€â”€ */
+  /* ── Load records, language-aware, with lock info ── */
   const loadRecords = useCallback(async (form) => {
     setRecsLoading(true); setRecsError("");
     setSelectedIds(new Set());
     try {
-      // Issue 7 â€” fetch only the current page; the server applies search + sort +
+      // Issue 7 — fetch only the current page; the server applies search + sort +
       // pagination so large forms stay fast.
       const params = new URLSearchParams({
         language: lang,
-        limit:    String(pageSize),
-        offset:   String((currentPage - 1) * pageSize),
-        sort:     sortField,
-        dir:      sortDir,
+        limit: String(pageSize),
+        offset: String((currentPage - 1) * pageSize),
+        sort: sortField,
+        dir: sortDir,
       });
       if (searchTerm.trim()) params.set("search", searchTerm.trim());
       if (selectedYear != null) params.set("year", String(selectedYear));
-      const res  = await apiFetch(`/api/form-data/${form.form_name}/records?${params.toString()}`);
+      const res = await apiFetch(`/api/form-data/${form.form_name}/records?${params.toString()}`);
       const data = await res.json();
       if (data.success) {
         setRecords(data.records || []);
@@ -1573,7 +1612,7 @@ export default function FormDataPage() {
   }
 
   /* Save from the dedicated edit page. Returns { success, message } and does NOT
-     navigate â€” the page stays open and refreshes its read-only preview. The
+     navigate — the page stays open and refreshes its read-only preview. The
      records list is refreshed in the background so it's current on Back. */
   async function saveRecord(formData, formDataHi) {
     const editing = editTarget && editTarget !== "new" ? editTarget : null;
@@ -1594,7 +1633,7 @@ export default function FormDataPage() {
       if (data.success) {
         showToast(data.message);
         // The edit page stays open after a save (see comment above), so a second
-        // Save in the same session must compare against the row's NEW updated_at â€”
+        // Save in the same session must compare against the row's NEW updated_at —
         // otherwise it sends the stale value from when the page first opened and
         // false-conflicts against its own prior save. Sync editTarget from the
         // server's RETURNING * row (data.record) before the next save can fire.
@@ -1618,7 +1657,7 @@ export default function FormDataPage() {
     if (!deleteTarget) return;
     setDeleting(true);
     try {
-      const res  = await apiFetch(`/api/form-data/${formEntity.form_name}/records/${deleteTarget}`, { method: "DELETE" });
+      const res = await apiFetch(`/api/form-data/${formEntity.form_name}/records/${deleteTarget}`, { method: "DELETE" });
       const data = await res.json();
       if (data.success) {
         setDeleteTarget(null); showToast(data.message); loadRecords(formEntity);
@@ -1631,7 +1670,7 @@ export default function FormDataPage() {
     setDeleting(true);
     const ids = Array.from(selectedIds);
     try {
-      const res  = await apiFetch(
+      const res = await apiFetch(
         `/api/form-data/${formEntity.form_name}/records/bulk-delete`,
         { method: "DELETE", body: JSON.stringify({ ids }) }
       );
@@ -1651,33 +1690,33 @@ export default function FormDataPage() {
     } finally { setDeleting(false); }
   }
 
-  /* â”€â”€ Derived: schema fields â”€â”€ */
+  /* ── Derived: schema fields ── */
   const excludedCols = new Set(schema?.schema?.excluded_fixed_columns || []);
   const schemaFields = (schema?.schema?.fields || []).filter(
     f => !f.hidden && !excludedCols.has(dbCol(f.column_name)) && !excludedCols.has(f.column_name)
   );
 
-  /* â”€â”€ Derived: the server already returns the search-filtered current page â”€â”€ */
+  /* ── Derived: the server already returns the search-filtered current page ── */
   const filteredRecords = records;
 
-  /* â”€â”€ Read-only flags â”€â”€
-     readOnly â†’ gates record *authoring* that only makes sense in English:
+  /* ── Read-only flags ──
+     readOnly → gates record *authoring* that only makes sense in English:
                 Add, Import, Delete and bulk-select. Disabled in Hindi because a
                 brand-new record must be created in English to generate its EN+HI
                 pair, and deletes are driven from the English (source) row.
-     canEdit  â†’ editing is allowed in BOTH languages (Task 2); only a locked form
+     canEdit  → editing is allowed in BOTH languages (Task 2); only a locked form
                 blocks it. Editing a Hindi row updates that row only; editing an
                 English row regenerates its Hindi mirror (handled by the backend). */
   const viewingTranslated = lang === "hi";
   const readOnly = lockInfo.is_locked || viewingTranslated || ayLocked;
-  const canEdit  = !lockInfo.is_locked && !ayLocked;
+  const canEdit = !lockInfo.is_locked && !ayLocked;
 
-  /* â”€â”€ Derived: the server already sorts + pages, so these are pass-throughs â”€â”€ */
+  /* ── Derived: the server already sorts + pages, so these are pass-throughs ── */
   const sortedRecords = records;
-  const totalCount    = total;                                   // total matching rows
-  const totalPages    = Math.max(1, Math.ceil(totalCount / pageSize));
-  const pagedRecords  = records;                                 // exactly the current page
-  const pagedIds      = pagedRecords.map(r => r.id);
+  const totalCount = total;                                   // total matching rows
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+  const pagedRecords = records;                                 // exactly the current page
+  const pagedIds = pagedRecords.map(r => r.id);
 
   /* Virtualization is disabled: the records list now scrolls INSIDE the card
      (fixed-height, internal scroll) rather than the window, so window-based
@@ -1689,7 +1728,7 @@ export default function FormDataPage() {
   const allPageSelected = pagedIds.length > 0 && pagedIds.every(id => selectedIds.has(id));
   const somePageSelected = pagedIds.some(id => selectedIds.has(id));
 
-  /* â”€â”€ Selection handlers â”€â”€ */
+  /* ── Selection handlers ── */
   function toggleSelectAll() {
     if (allPageSelected) {
       setSelectedIds(prev => { const next = new Set(prev); pagedIds.forEach(id => next.delete(id)); return next; });
@@ -1704,14 +1743,14 @@ export default function FormDataPage() {
   function deselectAll() { setSelectedIds(new Set()); }
   function handlePageSizeChange(size) { setPageSize(size); setCurrentPage(1); setSelectedIds(new Set()); }
 
-  /* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-     VIEW 1 â€” Form selection grid
-  â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+  /* ══════════════════════════════════════════════════════
+     VIEW 1 — Form selection grid
+  ══════════════════════════════════════════════════════ */
   if (!isRecords) {
     const now = Date.now();
     const isExpired = (f) => f.deadline_at && new Date(f.deadline_at).getTime() <= now;
-    const totalForms   = forms.length;
-    const activeForms  = forms.filter((f) => !f.is_locked && !isExpired(f)).length;
+    const totalForms = forms.length;
+    const activeForms = forms.filter((f) => !f.is_locked && !isExpired(f)).length;
     const pendingForms = forms.filter((f) => {
       if (!f.deadline_at) return false;
       const ms = new Date(f.deadline_at).getTime() - now;
@@ -1721,7 +1760,7 @@ export default function FormDataPage() {
 
     const summary = [
       { label: isContributorOnly ? t("Assigned Forms", lang) : t("Total Forms", lang), value: totalForms, color: "#2563eb", bg: "#ecfeff", hint: isContributorOnly ? t("Assigned to you", lang) : t("All accessible forms", lang) },
-      { label: t("Active Forms", lang),     value: activeForms,  color: "#16a34a", bg: "#f0fdf4", hint: t("Open for submissions", lang) },
+      { label: t("Active Forms", lang), value: activeForms, color: "#16a34a", bg: "#f0fdf4", hint: t("Open for submissions", lang) },
       { label: t("Pending Deadline", lang), value: pendingForms, color: "#d97706", bg: "#fffbeb", hint: t("Due within 7 days", lang) },
       { label: isContributorOnly ? t("Overdue Forms", lang) : t("Expired Forms", lang), value: expiredForms, color: "#dc2626", bg: "#fef2f2", hint: t("Past deadline", lang) },
     ];
@@ -1780,7 +1819,7 @@ export default function FormDataPage() {
           ))}
         </div>
 
-        {/* Available/Assigned Forms â€” standardized on ui/DataTable to match the
+        {/* Available/Assigned Forms — standardized on ui/DataTable to match the
             Institution & Department forms tables (same header/spacing/hover/badges). */}
         <DataTable
           fill
@@ -1793,7 +1832,7 @@ export default function FormDataPage() {
             <div>
               <div style={{ fontSize: 13, fontWeight: 700, color: color.text }}>{isContributorOnly ? t("Assigned Forms", lang) : t("Available Forms", lang)}</div>
               <div style={{ fontSize: 11.5, color: color.muted, marginTop: 1 }}>
-                {`${forms.length} ${lang === "hi" ? "à¤«à¤¼à¥‰à¤°à¥à¤®" : `form${forms.length !== 1 ? "s" : ""}`} ${isContributorOnly ? (lang === "hi" ? "à¤†à¤ªà¤•à¥‹ à¤…à¤¸à¤¾à¤‡à¤¨ à¤•à¤¿à¤ à¤—à¤" : "assigned to you") : (lang === "hi" ? "à¤†à¤ªà¤•à¥‡ à¤µà¤¿à¤­à¤¾à¤— à¤•à¥‡ à¤²à¤¿à¤ à¤‰à¤ªà¤²à¤¬à¥à¤§" : "accessible to your department")}`}
+                {`${forms.length} ${lang === "hi" ? "फ़ॉर्म" : `form${forms.length !== 1 ? "s" : ""}`} ${isContributorOnly ? (lang === "hi" ? "आपको असाइन किए गए" : "assigned to you") : (lang === "hi" ? "आपके विभाग के लिए उपलब्ध" : "accessible to your department")}`}
               </div>
             </div>
           }
@@ -1831,7 +1870,7 @@ export default function FormDataPage() {
                 let badge = null;
                 if (form.deadline_at) {
                   if (exp) badge = { tone: "danger", label: t("EXPIRED", lang) };
-                  else { const dl = Math.ceil((new Date(form.deadline_at).getTime() - now) / 86400000); badge = { tone: dl <= 3 ? "warning" : "success", label: lang === "hi" ? `${dl} à¤¦à¤¿à¤¨ à¤¶à¥‡à¤·` : `${dl} DAY${dl !== 1 ? "S" : ""} LEFT` }; }
+                  else { const dl = Math.ceil((new Date(form.deadline_at).getTime() - now) / 86400000); badge = { tone: dl <= 3 ? "warning" : "success", label: lang === "hi" ? `${dl} दिन शेष` : `${dl} DAY${dl !== 1 ? "S" : ""} LEFT` }; }
                 }
                 return <div style={{ display: "flex", flexDirection: "column", gap: 4 }}><span style={{ fontSize: 13, color: color.text, fontWeight: 600 }}>{dt}</span>{badge && <Badge tone={badge.tone}>{badge.label}</Badge>}</div>;
               },
@@ -1861,10 +1900,10 @@ export default function FormDataPage() {
     );
   }
 
-  /* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-     VIEW 2b â€” Dedicated record edit/add page (in-shell, no overlay)
-  â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
-  /* Guard: /form-data/records with no navigation state â†’ redirect to form list */
+  /* ══════════════════════════════════════════════════════
+     VIEW 2b — Dedicated record edit/add page (in-shell, no overlay)
+  ══════════════════════════════════════════════════════ */
+  /* Guard: /form-data/records with no navigation state → redirect to form list */
   if (isRecords && !formEntity) return <Navigate to={listPath} replace />;
 
   if (editTarget && formEntity) {
@@ -1887,14 +1926,14 @@ export default function FormDataPage() {
     );
   }
 
-  /* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-     VIEW 2 â€” Records table for selected form
-  â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+  /* ══════════════════════════════════════════════════════
+     VIEW 2 — Records table for selected form
+  ══════════════════════════════════════════════════════ */
   return (
     <div style={{ padding: "20px 28px", fontFamily: "'Plus Jakarta Sans', sans-serif", minHeight: "100%", maxWidth: 1440, display: "flex", flexDirection: "column" }}>
       {toast && <Toast message={toast.message} type={toast.type} />}
 
-      {/* â”€â”€ Modals â”€â”€ */}
+      {/* ── Modals ── */}
       {deleteTarget !== null && (
         <DeleteModal
           count={1}
@@ -1922,13 +1961,13 @@ export default function FormDataPage() {
         />
       )}
 
-      {/* â”€â”€ Academic-year locked banner (view-only) â”€â”€ */}
+      {/* ── Academic-year locked banner (view-only) ── */}
       {ayLocked && (
         <div style={{ display: "flex", alignItems: "center", gap: 12, background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 10, padding: "12px 18px", marginBottom: 20 }}>
           <Lock size={18} color="#b91c1c" strokeWidth={2} style={{ flexShrink: 0 }} />
           <div>
             <div style={{ fontSize: 13, fontWeight: 700, color: "#b91c1c" }}>
-              {t("This academic year is locked â€” view-only mode.", lang)}
+              {t("This academic year is locked — view-only mode.", lang)}
             </div>
             <div style={{ fontSize: 12, color: "#dc2626", marginTop: 2 }}>
               {t("Adding, editing, deleting and importing are disabled. You can still view, search and export.", lang)}
@@ -1940,7 +1979,7 @@ export default function FormDataPage() {
       {/* Form-lock notice is conveyed by the "Locked" badge next to the title
          (and the disabled Add/Import actions), so no separate banner is shown. */}
 
-      {/* â”€â”€ Page Header â”€â”€ */}
+      {/* ── Page Header ── */}
       <PageHeader
         breadcrumb={[
           t("Home", lang),
@@ -1976,7 +2015,7 @@ export default function FormDataPage() {
             <button
               onClick={() => { if (!readOnly) setEditTarget("new"); }}
               disabled={readOnly}
-              title={lockInfo.is_locked ? t("Form is locked â€” contact your institution admin", lang) : viewingTranslated ? t("Switch to English (EN) to add records", lang) : ""}
+              title={lockInfo.is_locked ? t("Form is locked — contact your institution admin", lang) : viewingTranslated ? t("Switch to English (EN) to add records", lang) : ""}
               style={{ display: "inline-flex", alignItems: "center", gap: 7, background: readOnly ? "#94a3b8" : ACCENT, color: "#fff", border: "none", borderRadius: 10, padding: "9px 18px", fontSize: 13, fontWeight: 700, cursor: readOnly ? "not-allowed" : "pointer", boxShadow: readOnly ? "none" : `0 2px 8px ${ACCENT}40` }}
             >
               <IcoPlus /> {t("Add Record", lang)}
@@ -1991,7 +2030,7 @@ export default function FormDataPage() {
         </div>
       )}
 
-      {/* â”€â”€ Bulk action bar â”€â”€ */}
+      {/* ── Bulk action bar ── */}
       {selectedIds.size > 0 && !readOnly && (
         <BulkActionBar
           selectedCount={selectedIds.size}
@@ -2003,12 +2042,12 @@ export default function FormDataPage() {
         />
       )}
 
-      {/* â”€â”€ Records card â”€â”€ */}
+      {/* ── Records card ── */}
       {/* position:relative + minHeight so the card keeps a stable size: a loading
           overlay sits on top of the previous rows (stale-while-revalidate) instead
-          of collapsing the card to a one-line "Loadingâ€¦" message on every search. */}
+          of collapsing the card to a one-line "Loading…" message on every search. */}
       <div style={{ ...tableCardStyle, position: "relative", flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
-        {/* Toolbar: search + record count â€” stays mounted while loading so the
+        {/* Toolbar: search + record count — stays mounted while loading so the
             search box / view toggle don't flicker away mid-fetch. */}
         {(records.length > 0 || searchTerm) && (
           <div style={{ padding: "12px 20px", borderBottom: "1px solid #f1f5f9", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
@@ -2016,7 +2055,7 @@ export default function FormDataPage() {
               {t("Records", lang)}
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              {/* Table / Cards view toggle â€” both reuse the same handlers */}
+              {/* Table / Cards view toggle — both reuse the same handlers */}
               <div style={{ display: "inline-flex", border: "1px solid #e2e8f0", borderRadius: 9, overflow: "hidden", background: "#fff" }}>
                 {[
                   { id: "table", Icon: Table2, title: t("Table view", lang) },
@@ -2049,7 +2088,7 @@ export default function FormDataPage() {
                       title={t("Clear", lang)}
                       style={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", color: "#94a3b8", fontSize: 16, lineHeight: 1, cursor: "pointer", padding: "2px 6px" }}
                     >
-                      Ã—
+                      ×
                     </button>
                   )}
                 </div>
@@ -2066,8 +2105,8 @@ export default function FormDataPage() {
         )}
 
         {recsLoading && records.length === 0 ? (
-          /* First load only â€” no previous rows to keep on screen. */
-          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "#94a3b8", fontSize: 13 }}>{t("Loading recordsâ€¦", lang)}</div>
+          /* First load only — no previous rows to keep on screen. */
+          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "#94a3b8", fontSize: 13 }}>{t("Loading records…", lang)}</div>
         ) : (records.length === 0 && !searchTerm) ? (
           <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", padding: "24px", color: "#94a3b8" }}>
             <div style={{ width: 56, height: 56, borderRadius: 8, margin: "0 auto 16px", background: "#f1f5f9", border: "1px solid #e2e8f0", display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -2085,7 +2124,7 @@ export default function FormDataPage() {
             <div style={{ fontSize: 13 }}>{t("Try a different search term or clear the search to see all records.", lang)}</div>
           </div>
         ) : viewMode === "cards" ? (
-          /* â”€â”€ Cards view â€” reuses the exact same edit/delete/select handlers â”€â”€ */
+          /* ── Cards view — reuses the exact same edit/delete/select handlers ── */
           <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 16, display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 12, alignContent: "start" }}>
             {pagedRecords.map((rec, i) => (
               <RecordCard
@@ -2110,7 +2149,7 @@ export default function FormDataPage() {
             <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 600 }}>
               <thead>
                 <tr style={{ background: "#f8fafc" }}>
-                  {/* Checkbox select-all â€” hidden in readOnly mode */}
+                  {/* Checkbox select-all — hidden in readOnly mode */}
                   {!readOnly && (
                     <th style={{ ...thStyle, width: 44, padding: "10px 12px" }}>
                       <input
@@ -2155,7 +2194,7 @@ export default function FormDataPage() {
                       onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = "#f8fafc"; }}
                       onMouseLeave={e => { e.currentTarget.style.background = isSelected ? `${ACCENT}08` : ""; }}
                     >
-                      {/* Row checkbox â€” hidden in readOnly mode */}
+                      {/* Row checkbox — hidden in readOnly mode */}
                       {!readOnly && (
                         <td style={{ padding: "13px 12px", verticalAlign: "middle" }}>
                           <input
@@ -2175,9 +2214,9 @@ export default function FormDataPage() {
                       {schemaFields.map(f => {
                         const col = dbCol(f.column_name); const raw = rec[col];
                         let cell, titleText;
-                        if (f.type === "boolean") { cell = raw===true||raw==="true" ? "Yes" : raw===false||raw==="false" ? "No" : "â€”"; titleText = String(cell); }
+                        if (f.type === "boolean") { cell = raw === true || raw === "true" ? "Yes" : raw === false || raw === "false" ? "No" : "—"; titleText = String(cell); }
                         else if (f.type === "document") { cell = <DocumentCell fileKey={raw} getToken={getToken} lang={lang} />; titleText = undefined; }
-                        else { cell = raw ?? <span style={{ color: "#cbd5e1" }}>â€”</span>; titleText = raw != null ? String(raw) : undefined; }
+                        else { cell = raw ?? <span style={{ color: "#cbd5e1" }}>—</span>; titleText = raw != null ? String(raw) : undefined; }
                         return <td key={col} style={tdStyle}><span style={cellEllipsis} title={titleText}>{cell}</span></td>;
                       })}
                       <td style={tdStyle}>
@@ -2223,18 +2262,18 @@ export default function FormDataPage() {
           </div>
         )}
 
-        {/* Refresh overlay â€” dims the existing rows in place while a new search /
+        {/* Refresh overlay — dims the existing rows in place while a new search /
             page / sort loads, so the card never collapses (stale-while-revalidate). */}
         {recsLoading && records.length > 0 && (
           <div style={{ position: "absolute", inset: 0, background: "rgba(255,255,255,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 2 }}>
             <span style={{ fontSize: 13, fontWeight: 600, color: "#64748b", background: "#fff", padding: "8px 16px", borderRadius: 8, border: "1px solid #e2e8f0", boxShadow: "0 2px 8px rgba(16,24,40,0.08)" }}>
-              {t("Searchingâ€¦", lang)}
+              {t("Searching…", lang)}
             </span>
           </div>
         )}
       </div>
 
-      {/* â”€â”€ Pagination â€” stays mounted while loading so it doesn't pop in/out â”€â”€ */}
+      {/* ── Pagination — stays mounted while loading so it doesn't pop in/out ── */}
       {totalCount > 0 && (
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 16, padding: "10px 4px", flexWrap: "wrap", gap: 10 }}>
           {/* Left: rows-per-page */}
@@ -2256,7 +2295,7 @@ export default function FormDataPage() {
                 .reduce((acc, p, idx, arr) => { if (idx > 0 && p - arr[idx - 1] > 1) acc.push("ellipsis-" + p); acc.push(p); return acc; }, [])
                 .map(item =>
                   String(item).startsWith("ellipsis") ? (
-                    <span key={item} style={{ fontSize: 13, color: "#94a3b8", padding: "0 3px", userSelect: "none" }}>â€¦</span>
+                    <span key={item} style={{ fontSize: 13, color: "#94a3b8", padding: "0 3px", userSelect: "none" }}>…</span>
                   ) : (
                     <button key={item} onClick={() => { setCurrentPage(item); setSelectedIds(new Set()); }}
                       style={{ ...pageBtn, minWidth: 36, justifyContent: "center", background: currentPage === item ? ACCENT : "#fff", color: currentPage === item ? "#fff" : "#475569", borderColor: currentPage === item ? ACCENT : "#e2e8f0", fontWeight: currentPage === item ? 700 : 500, cursor: currentPage === item ? "default" : "pointer" }}>
@@ -2276,9 +2315,9 @@ export default function FormDataPage() {
   );
 }
 
-/* â”€â”€ Window-scroll virtualization â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+/* ── Window-scroll virtualization ────────────────────────────────────────
    Renders only the rows near the viewport for large pages, using the page's
-   own scroll (no inner scroll container â†’ UX unchanged). Rows are kept a
+   own scroll (no inner scroll container → UX unchanged). Rows are kept a
    fixed height via ellipsis cells, so the row-height estimate stays accurate.
    Disabled (renders everything) when the row count is small.                 */
 const VIRTUAL_THRESHOLD = 60;
@@ -2310,12 +2349,12 @@ function useWindowVirtual(count, { rowHeight = ROW_HEIGHT, headerHeight = HEADER
     };
   }, [count, rowHeight, headerHeight, overscan, enabled]);
 
-  const padTop    = enabled ? range.start * rowHeight : 0;
+  const padTop = enabled ? range.start * rowHeight : 0;
   const padBottom = enabled ? Math.max(0, (count - range.end) * rowHeight) : 0;
   return { containerRef, start: enabled ? range.start : 0, end: enabled ? range.end : count, padTop, padBottom };
 }
 
-/* â”€â”€ Record card (Cards view) â€” reuses the same edit/delete/select handlers â”€â”€ */
+/* ── Record card (Cards view) — reuses the same edit/delete/select handlers ── */
 function RecordCard({ rec, serial, fields, lang, getToken, selected, onSelect, onEdit, onDelete, canEdit, readOnly, viewingTranslated }) {
   return (
     <div style={{
@@ -2340,9 +2379,9 @@ function RecordCard({ rec, serial, fields, lang, getToken, selected, onSelect, o
         {fields.map((f) => {
           const col = dbCol(f.column_name); const raw = rec[col];
           let val;
-          if (f.type === "boolean") val = raw === true || raw === "true" ? "Yes" : raw === false || raw === "false" ? "No" : "â€”";
+          if (f.type === "boolean") val = raw === true || raw === "true" ? "Yes" : raw === false || raw === "false" ? "No" : "—";
           else if (f.type === "document") val = <DocumentCell fileKey={raw} getToken={getToken} lang={lang} />;
-          else val = raw ?? "â€”";
+          else val = raw ?? "—";
           return (
             <div key={col} style={{ minWidth: 0 }}>
               <div style={{ fontSize: 10.5, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 2 }}>
@@ -2359,7 +2398,7 @@ function RecordCard({ rec, serial, fields, lang, getToken, selected, onSelect, o
 
 const cellEllipsis = { display: "block", maxWidth: 280, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 13, color: "#1e293b" };
 
-const thStyle   = { position: "sticky", top: 0, zIndex: 1, background: "#f8fafc", padding: "10px 16px", textAlign: "left", fontSize: 11, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.6, borderBottom: "1px solid #f1f5f9", whiteSpace: "nowrap" };
-const tdStyle   = { padding: "13px 16px", verticalAlign: "middle" };
+const thStyle = { position: "sticky", top: 0, zIndex: 1, background: "#f8fafc", padding: "10px 16px", textAlign: "left", fontSize: 11, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.6, borderBottom: "1px solid #f1f5f9", whiteSpace: "nowrap" };
+const tdStyle = { padding: "13px 16px", verticalAlign: "middle" };
 const actionBtn = { background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 7, width: 30, height: 30, display: "inline-flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "#475569" };
-const pageBtn   = { background: "#fff", border: "1.5px solid #e2e8f0", borderRadius: 8, padding: "6px 11px", fontSize: 13, display: "inline-flex", alignItems: "center", gap: 3, transition: "all .12s", color: "#475569" };
+const pageBtn = { background: "#fff", border: "1.5px solid #e2e8f0", borderRadius: 8, padding: "6px 11px", fontSize: 13, display: "inline-flex", alignItems: "center", gap: 3, transition: "all .12s", color: "#475569" };

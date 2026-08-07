@@ -16,20 +16,20 @@ import { t } from "../../../i18n/translations";
 const STATUS_OPTIONS = ["ACTIVE", "INACTIVE"];
 
 const STATUS_STYLE = {
-  ACTIVE:    { dot: "#10b981", label: "#059669" },
-  INACTIVE:  { dot: "#cbd5e1", label: "#94a3b8" },
+  ACTIVE: { dot: "#10b981", label: "#059669" },
+  INACTIVE: { dot: "#cbd5e1", label: "#94a3b8" },
   SUSPENDED: { dot: "#f87171", label: "#dc2626" },
 };
 
 const ROLE_COLORS = {
-  super_admin:        { bg: "#dbeafe", color: "#1d4ed8" },
-  institute_admin:    { bg: "#ede9fe", color: "#6d28d9" },
-  publication_cell:   { bg: "#fce7f3", color: "#9d174d" },
-  department_admin:   { bg: "#d1fae5", color: "#065f46" },
-  nodal_officer:      { bg: "#fee2e2", color: "#991b1b" },
-  contributor:        { bg: "#dcfce7", color: "#166534" },
-  reviewer:           { bg: "#eff6ff", color: "#1e40af" },
-  directors_office:   { bg: "#fdf4ff", color: "#7e22ce" },
+  super_admin: { bg: "#dbeafe", color: "#1d4ed8" },
+  institute_admin: { bg: "#ede9fe", color: "#6d28d9" },
+  publication_cell: { bg: "#fce7f3", color: "#9d174d" },
+  department_admin: { bg: "#d1fae5", color: "#065f46" },
+  nodal_officer: { bg: "#fee2e2", color: "#991b1b" },
+  contributor: { bg: "#dcfce7", color: "#166534" },
+  reviewer: { bg: "#eff6ff", color: "#1e40af" },
+  directors_office: { bg: "#fdf4ff", color: "#7e22ce" },
 };
 
 const ROLE_LABELS = {
@@ -145,19 +145,19 @@ const EMPTY_FORM = {
 
 function validateForm(form, isEdit, institutionDomain) {
   const errs = {};
-  if (!form.full_name.trim())          errs.full_name = "Full name is required.";
-  if (!form.email.trim())              errs.email     = "Email is required.";
+  if (!form.full_name.trim()) errs.full_name = "Full name is required.";
+  if (!form.email.trim()) errs.email = "Email is required.";
   else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim()))
-                                       errs.email     = "Enter a valid email address.";
+    errs.email = "Enter a valid email address.";
   else if (!isEdit && institutionDomain) {
     const emailDomain = form.email.trim().split("@")[1]?.toLowerCase() || "";
     if (emailDomain !== institutionDomain)
       errs.email = `Invalid email domain. Please use your institution domain (@${institutionDomain}).`;
   }
   if (!isEdit) {
-    if (!form.password)                errs.password  = "Password is required.";
-    else if (form.password.length < 8) errs.password  = "Password must be at least 8 characters.";
-    if (!form.role_name)               errs.role_name = "Please select a role.";
+    if (!form.password) errs.password = "Password is required.";
+    else if (form.password.length < 8) errs.password = "Password must be at least 8 characters.";
+    if (!form.role_name) errs.role_name = "Please select a role.";
   }
   return errs;
 }
@@ -172,31 +172,31 @@ function UserForm({
   const [form, setForm] = useState(
     isEdit
       ? {
-          full_name:      entity.full_name,
-          email:          entity.email,
-          account_status: entity.account_status,
-        }
+        full_name: entity.full_name,
+        email: entity.email,
+        account_status: entity.account_status,
+      }
       : { ...EMPTY_FORM }
   );
-  const [fieldErrs,         setFieldErrs]         = useState({});
-  const [roles,             setRoles]             = useState([]);
+  const [fieldErrs, setFieldErrs] = useState({});
+  const [roles, setRoles] = useState([]);
   const [institutionDomain, setInstitutionDomain] = useState("");
-  const [saving,            setSaving]            = useState(false);
-  const [serverError,       setServerError]       = useState("");
+  const [saving, setSaving] = useState(false);
+  const [serverError, setServerError] = useState("");
 
   useEffect(() => {
     if (!isEdit) {
       apiFetch("/api/lookup/roles")
         .then((r) => r.json())
         .then((d) => { if (d.success) setRoles(d.roles.filter((r) => r.name !== "nodal_officer")); })
-        .catch(() => {});
+        .catch(() => { });
     }
 
     if (institutionId) {
       apiFetch(`/api/lookup/institution-domain?institution_id=${institutionId}`)
         .then((r) => r.json())
         .then((d) => { setInstitutionDomain(d.success && d.email_domain ? d.email_domain : ""); })
-        .catch(() => {});
+        .catch(() => { });
     }
   }, [apiFetch, isEdit, institutionId]);
 
@@ -229,10 +229,10 @@ function UserForm({
         const res = await apiFetch(`/api/users/${entity.id}`, {
           method: "PUT",
           body: JSON.stringify({
-            full_name:      form.full_name,
-            email:          form.email,
+            full_name: form.full_name,
+            email: form.email,
             institution_id: institutionId,
-            department_id:  departmentId,
+            department_id: departmentId,
             account_status: form.account_status,
           }),
         });
@@ -243,12 +243,12 @@ function UserForm({
         const res = await apiFetch("/api/users", {
           method: "POST",
           body: JSON.stringify({
-            full_name:      form.full_name,
-            email:          form.email,
-            password:       form.password,
+            full_name: form.full_name,
+            email: form.email,
+            password: form.password,
             institution_id: institutionId,
-            department_id:  departmentId,
-            role_name:      form.role_name,
+            department_id: departmentId,
+            role_name: form.role_name,
           }),
         });
         const data = await res.json();
@@ -266,7 +266,7 @@ function UserForm({
       pageTitle={t("User Management", lang)}
       formTitle={isEdit ? t("Edit User", lang) : t("New User", lang)}
       formSubtitle={isEdit ? entity.full_name : t("Add a new user to your department", lang)}
-      icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#059669" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>}
+      icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#059669" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>}
       iconBg="#d1fae5"
       onBack={onBack}
       onSubmit={handleSubmit}
@@ -300,10 +300,10 @@ function UserForm({
         {fieldErrs.email
           ? <span style={S.errorText}>{fieldErrs.email}</span>
           : (!isEdit && institutionDomain && (
-              <span style={{ fontSize: 11, color: ACCENT, marginTop: 4, display: "block" }}>
-                Must use @{institutionDomain}
-              </span>
-            ))
+            <span style={{ fontSize: 11, color: ACCENT, marginTop: 4, display: "block" }}>
+              Must use @{institutionDomain}
+            </span>
+          ))
         }
       </div>
 
@@ -320,8 +320,8 @@ function UserForm({
           {fieldErrs.password
             ? <span style={S.errorText}>{fieldErrs.password}</span>
             : <span style={{ fontSize: 11, color: "#94a3b8", marginTop: 4, display: "block" }}>
-                {t("Min 8 characters. User will be prompted to change on first login.", lang)}
-              </span>
+              {t("Min 8 characters. User will be prompted to change on first login.", lang)}
+            </span>
           }
         </div>
       )}
@@ -374,21 +374,21 @@ function UserForm({
 /* ── User List ───────────────────────────────────────────────────── */
 function UserList({ apiFetch, onEdit }) {
   const { lang } = useLanguage();
-  const [users,        setUsers]        = useState([]);
-  const [loading,      setLoading]      = useState(true);
-  const [error,        setError]        = useState("");
-  const [search,       setSearch]       = useState("");
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
-  const [filterRole,   setFilterRole]   = useState("");
-  const [toggling,     setToggling]     = useState(null);
-  const [roles,        setRoles]        = useState([]);
+  const [filterRole, setFilterRole] = useState("");
+  const [toggling, setToggling] = useState(null);
+  const [roles, setRoles] = useState([]);
 
   /* load role options once */
   useEffect(() => {
     apiFetch("/api/lookup/roles")
       .then((r) => r.json())
       .then((d) => { if (d.success) setRoles(d.roles); })
-      .catch(() => {});
+      .catch(() => { });
   }, [apiFetch]);
 
   /* fetch users whenever role filter changes */
@@ -421,10 +421,10 @@ function UserList({ apiFetch, onEdit }) {
       const res = await apiFetch(`/api/users/${user.id}`, {
         method: "PUT",
         body: JSON.stringify({
-          full_name:      user.full_name,
-          email:          user.email,
+          full_name: user.full_name,
+          email: user.email,
           institution_id: user.institution_id,
-          department_id:  user.department_id,
+          department_id: user.department_id,
           account_status: next,
         }),
       });
@@ -432,7 +432,7 @@ function UserList({ apiFetch, onEdit }) {
       if (data.success) {
         setUsers((us) => us.map((u) => u.id === user.id ? { ...u, account_status: next } : u));
       }
-    } catch {}
+    } catch { }
     setToggling(null);
   };
 
@@ -441,7 +441,7 @@ function UserList({ apiFetch, onEdit }) {
     const matchSearch =
       (u.full_name || "").toLowerCase().includes(q) ||
       (u.email || "").toLowerCase().includes(q);
-    const matchStatus = filterStatus === "all" || (u.account_status || "") === filterStatus;
+    const matchStatus = filterStatus === "all" || (u.account_status || "").toUpperCase() === filterStatus.toUpperCase();
     return matchSearch && matchStatus;
   });
 
@@ -462,18 +462,18 @@ function UserList({ apiFetch, onEdit }) {
           onChange={(e) => setFilterRole(e.target.value)}
           style={{ minWidth: 180 }}
         >
-        <option value="">{t("All Roles", lang)}</option>
-        {roles
-          .filter(
-            (r) =>
-              !["super_admin","institute_admin","finance_officer",
-                "directors_office", "publication_cell",].includes(r.name)
-          )
-          .map((r) => (
-            <option key={r.id} value={r.name}>
-              {r.display_name}
-            </option>
-          ))}
+          <option value="">{t("All Roles", lang)}</option>
+          {roles
+            .filter(
+              (r) =>
+                !["super_admin", "institute_admin", "finance_officer",
+                  "directors_office", "publication_cell",].includes(r.name)
+            )
+            .map((r) => (
+              <option key={r.id} value={r.name}>
+                {r.display_name}
+              </option>
+            ))}
         </Select>
 
         {filterRole && (
@@ -601,29 +601,30 @@ function UserList({ apiFetch, onEdit }) {
 /* ── Main Export ─────────────────────────────────────────────────── */
 export default function DepartmentAdminUserManagementPage() {
   const { apiFetch } = useApi();
-  const { user }     = useAuth();
-  const { lang }     = useLanguage();
-  const navigate     = useNavigate();
-  const location     = useLocation();
+  const { user } = useAuth();
+  const { lang } = useLanguage();
+  const navigate = useNavigate();
+  const location = useLocation();
 
   const isCreate = location.pathname.endsWith("/create");
-  const isEdit   = location.pathname.endsWith("/edit");
+  const isEdit = location.pathname.endsWith("/edit");
   const listPath = `/${SLUG}`;
-  const entity   = isEdit ? (location.state?.entity ?? null) : null;
+  const entity = isEdit ? (location.state?.entity ?? null) : null;
 
   const [toast, setToast] = useState(location.state?.toast ?? null);
+  const clearToast = () => setToast(null);
 
-  const institutionId   = user?.institutionId   || "";
+  const institutionId = user?.institutionId || "";
   const institutionName = user?.institutionName || "Your Institution";
-  const departmentId    = user?.departmentId    || "";
-  const departmentName  = user?.departmentName  || "Your Department";
+  const departmentId = user?.departmentId || "";
+  const departmentName = user?.departmentName || "Your Department";
 
   if (isEdit && !entity) return <Navigate to={listPath} replace />;
 
   if (isCreate || isEdit) {
     return (
       <>
-        {toast && <Toast message={toast.message} type={toast.type} />}
+        {toast && <Toast message={toast.message} type={toast.type} onClose={clearToast} />}
         <UserForm
           mode={isEdit ? "edit" : "create"}
           entity={entity}
@@ -633,7 +634,7 @@ export default function DepartmentAdminUserManagementPage() {
           departmentId={departmentId}
           departmentName={departmentName}
           onCreated={(msg) => navigate(listPath, { state: { toast: { message: msg, type: "success" } } })}
-          onSaved={(msg)   => navigate(listPath, { state: { toast: { message: msg, type: "success" } } })}
+          onSaved={(msg) => navigate(listPath, { state: { toast: { message: msg, type: "success" } } })}
           onBack={() => navigate(listPath)}
         />
       </>
@@ -642,7 +643,7 @@ export default function DepartmentAdminUserManagementPage() {
 
   return (
     <PageContainer>
-      {toast && <Toast message={toast.message} type={toast.type} />}
+      {toast && <Toast message={toast.message} type={toast.type} onClose={clearToast} />}
 
       <PageHeader
         breadcrumb={[t("Home", lang), t("Department", lang), t("Users", lang)]}

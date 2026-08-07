@@ -353,7 +353,7 @@ const CSS = `
   .sh-content::-webkit-scrollbar { width: 6px; }
   .sh-content::-webkit-scrollbar-thumb { background: var(--sh-border); border-radius: 4px; }
   .sh-page-enter { animation: shPageIn .18s ease both; height: 100%; }
-  @keyframes shPageIn { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
+  @keyframes shPageIn { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:none; } }
 
   /* ── DROPDOWNS ── */
   .sh-user-wrap { position: relative; }
@@ -1014,6 +1014,13 @@ export default function AppShell({
     window.addEventListener("resize", fn);
     return () => window.removeEventListener("resize", fn);
   }, []);
+
+  // Update CSS variable on the body for full-screen modals to position correctly
+  useEffect(() => {
+    const width = mobileOpen ? "0px" : collapsed ? "var(--sh-side-col, 64px)" : "var(--sh-side-open, 280px)";
+    document.body.style.setProperty("--sidebar-width", width);
+    return () => document.body.style.removeProperty("--sidebar-width");
+  }, [collapsed, mobileOpen]);
 
   // The active nav item is derived from the URL — a flat, role-agnostic
   // path (e.g. "user-management", "user-management/edit", or
