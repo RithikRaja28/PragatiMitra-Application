@@ -26,7 +26,11 @@ const router = express.Router();
 
 function isPublicKey(key) {
   return key.includes("/branding/")
-    || key.includes("/submissions/images/")
+    // Submission images now live under a language subfolder
+    // (.../submissions/en/images/... or .../submissions/hi/images/...)
+    // instead of the old flat .../submissions/images/... — match both so
+    // pre-existing (unmigrated) keys and new ones are both served.
+    || /\/submissions\/(en\/|hi\/)?images\//.test(key)
     || (key.includes("/templates/") && (key.includes("/images/") || key.includes("/files/")));
 }
 
