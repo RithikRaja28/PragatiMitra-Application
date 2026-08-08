@@ -171,7 +171,10 @@ export default function AssignPgStudentsModal({
     }
   }
 
-  const sub = `${(form.form_name || "").toUpperCase()}${year != null ? ` · ${year}–${year + 1}` : ""}`;
+  // Prefer the user's originally-typed name over the raw internal slug —
+  // duplicate names are now auto-uniquified internally (krish/krish_2/...),
+  // so showing the raw slug here would leak that suffix to users.
+  const sub = `${(form.form_display_name || form.form_name || "").toUpperCase()}${year != null ? ` · ${year}–${year + 1}` : ""}`;
 
   return createPortal(
     <div

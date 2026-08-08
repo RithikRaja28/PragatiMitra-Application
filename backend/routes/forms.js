@@ -137,7 +137,9 @@ router.get("/institution-forms", async (req, res) => {
                 COALESCE(translate_to_hindi, true) AS translate_to_hindi,
                 COALESCE(form_domain, 'academic') AS form_domain,
                 NULL::timestamptz AS deadline_at, false AS auto_locked,
-                false AS is_locked, NULL AS locked_by, NULL AS locked_at
+                false AS is_locked, NULL AS locked_by, NULL AS locked_at,
+                (SELECT schema->>'display_label' FROM custom_field_schemas
+                 WHERE form_name = table_list.form_name ORDER BY created_at DESC LIMIT 1) AS form_display_name
          FROM table_list
          ORDER BY form_name`
       ));
@@ -151,7 +153,9 @@ router.get("/institution-forms", async (req, res) => {
                 COALESCE(flc.auto_locked, false) AS auto_locked,
                 COALESCE(flc.is_locked, false) AS is_locked,
                 flc.locked_by,
-                flc.locked_at
+                flc.locked_at,
+                (SELECT schema->>'display_label' FROM custom_field_schemas
+                 WHERE form_name = tl.form_name ORDER BY created_at DESC LIMIT 1) AS form_display_name
          FROM table_list tl
          LEFT JOIN form_lock_config flc
            ON flc.form_name = tl.form_name AND flc.institution_id = $1
@@ -304,7 +308,9 @@ router.get("/templates", async (req, res) => {
     if (isSuperAdmin) {
       const { rows } = await pool.query(
         `SELECT id, form_name, institute_access, share_table, created_at,
-                COALESCE(form_domain, 'academic') AS form_domain
+                COALESCE(form_domain, 'academic') AS form_domain,
+                (SELECT schema->>'display_label' FROM custom_field_schemas
+                 WHERE form_name = table_list.form_name ORDER BY created_at DESC LIMIT 1) AS form_display_name
          FROM table_list
          WHERE share_table = true${domainClause}
          ORDER BY form_name`
@@ -319,7 +325,9 @@ router.get("/templates", async (req, res) => {
     // A form is available to adopt when the institution is NOT yet in institute_access.
     const { rows } = await pool.query(
       `SELECT id, form_name, institute_access, share_table, created_at,
-              COALESCE(form_domain, 'academic') AS form_domain
+              COALESCE(form_domain, 'academic') AS form_domain,
+              (SELECT schema->>'display_label' FROM custom_field_schemas
+               WHERE form_name = table_list.form_name ORDER BY created_at DESC LIMIT 1) AS form_display_name
        FROM table_list
        WHERE share_table = true
          AND NOT ($1::uuid = ANY(COALESCE(institute_access, '{}'::uuid[])))${domainClause}
@@ -347,7 +355,9 @@ router.get("/my-forms", async (req, res) => {
         `SELECT tl.id, tl.form_name, tl.share_table, tl.institute_access, tl.created_at,
                 COALESCE(tl.translate_to_hindi, true) AS translate_to_hindi,
                 COALESCE(tl.form_domain, 'academic') AS form_domain,
-                COUNT(cfs.id)::int AS schema_count
+                COUNT(cfs.id)::int AS schema_count,
+                (SELECT schema->>'display_label' FROM custom_field_schemas
+                 WHERE form_name = tl.form_name ORDER BY created_at DESC LIMIT 1) AS form_display_name
          FROM table_list tl
          LEFT JOIN custom_field_schemas cfs ON cfs.form_name = tl.form_name
          GROUP BY tl.id, tl.form_name, tl.share_table, tl.institute_access, tl.created_at, tl.translate_to_hindi, tl.form_domain
@@ -363,6 +373,7 @@ router.get("/my-forms", async (req, res) => {
     const { rows } = await pool.query(
       `SELECT cfs.id, cfs.form_name, cfs.institution_id, cfs.year,
               cfs.schema, cfs.is_active, cfs.created_at,
+              cfs.schema->>'display_label' AS form_display_name,
               tl.share_table,
               COALESCE(tl.translate_to_hindi, true) AS translate_to_hindi,
               COALESCE(tl.form_domain, 'academic') AS form_domain,
@@ -648,11 +659,10 @@ const translateToHindi =
     // Deadlines are institution-specific and managed after creation via
     // PUT /api/forms/:formName/deadline — never set at creation time.
 
-    const normalizedName = String(form_name).trim().toLowerCase().replace(/\s+/g, "_");
-    if (!/^[a-z][a-z0-9_]*$/.test(normalizedName)) {
+    const baseName = String(form_name).trim().toLowerCase().replace(/\s+/g, "_");
+    if (!/^[a-z][a-z0-9_]*$/.test(baseName)) {
       return res.status(400).json({ success: false, message: "form_name must start with a letter and contain only letters, digits, and underscores." });
     }
-    const recordsTable = `${normalizedName}_records`;
 
     try {
       const institutionId = await resolveInstitutionId(pool, req);
@@ -670,28 +680,50 @@ const translateToHindi =
       const creatorDomain = await resolveUserDomain(pool, req);
       const effectiveFormDomain = creatorDomain == null ? formDomain : creatorDomain;
 
-      // Collision guard: table_list.form_name is GLOBALLY unique. Without this,
-      // a second institution creating a PRIVATE form of the same name silently
-      // merges into the first institution's table_list row + physical records
-      // table (ON CONFLICT (form_name) DO NOTHING, then the creator is appended
-      // to institute_access). Reject the cross-institution private-name reuse.
-      // Shared templates are intentionally multi-institution and are exempt
-      // (they are adopted, not re-created).
-      const { rows: existingForm } = await pool.query(
-        `SELECT share_table, COALESCE(institute_access, '{}'::uuid[]) AS institute_access
-         FROM table_list WHERE form_name = $1`,
-        [normalizedName]
-      );
-      if (existingForm.length) {
+      // Collision guard + same-institution auto-uniquify.
+      //
+      // Cross-institution: table_list.form_name is GLOBALLY unique. A second
+      // institution creating a PRIVATE form of the same name would otherwise
+      // silently merge into the first institution's table_list row + physical
+      // records table — reject that reuse (below). Shared templates are
+      // intentionally multi-institution and are exempt (they are adopted via
+      // POST /adopt, not re-created here, so a share_table name match just
+      // passes through unchanged, matching prior behavior).
+      //
+      // Same institution reusing its OWN name is different: duplication is
+      // allowed (create as many forms named "Krish" as wanted) — rather than
+      // silently merging into the same physical table (previously: the
+      // table_list insert below was just an ON CONFLICT DO NOTHING no-op,
+      // and a second unconstrained custom_field_schemas row got inserted,
+      // both silently sharing one _records table with the first "Krish"),
+      // auto-uniquify the internal identifier (krish -> krish_2 -> ...). The
+      // originally-typed name stays intact as schema.display_label and is
+      // what every listing shows — see forms listing SELECTs below.
+      let normalizedName = baseName;
+      let suffix = 1;
+      while (true) {
+        const { rows: existingForm } = await pool.query(
+          `SELECT share_table, COALESCE(institute_access, '{}'::uuid[]) AS institute_access
+           FROM table_list WHERE form_name = $1`,
+          [normalizedName]
+        );
+        if (!existingForm.length) break; // name is free
+
         const ef = existingForm[0];
         const alreadyMine = (ef.institute_access || []).map(String).includes(String(institutionId));
+
         if (!ef.share_table && !alreadyMine) {
           return res.status(409).json({
             success: false,
             message: `A form named "${normalizedName}" already exists. Please choose a different name.`,
           });
         }
+        if (!alreadyMine) break; // shared-form-name reuse by another institution — unchanged existing pass-through
+
+        suffix += 1;
+        normalizedName = `${baseName}_${suffix}`;
       }
+      const recordsTable = `${normalizedName}_records`;
 
       // Academic-year lock — block form creation when the selected year is locked.
       const ayLock = await ayLockGuard(pool, req, institutionId);
@@ -959,6 +991,10 @@ for (const field of fields) {
           success: true,
           message: `Form "${normalizedName}" created. Table "${recordsTable}" is ready.`,
           schema_id: schemaId,
+          // Auto-uniquify may have changed this from what the client sent
+          // (e.g. "krish" -> "krish_2") — callers should use this, not their
+          // own client-side slug guess, for any follow-up navigation/lookup.
+          form_name: normalizedName,
         });
       } catch (err) {
         await client.query("ROLLBACK");

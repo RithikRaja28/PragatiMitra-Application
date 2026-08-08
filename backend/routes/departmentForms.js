@@ -182,7 +182,9 @@ router.get("/", requireRole(WRITE_ROLES), async (req, res) => {
               COALESCE(dc.auto_locked, false) AS auto_locked,
               dc.locked_at,
               (dc.deadline_at IS NOT NULL AND dc.deadline_at <= now()) AS deadline_expired,
-              ARRAY(SELECT role_name FROM department_form_roles r WHERE r.department_form_id = dtl.id ORDER BY role_name) AS roles
+              ARRAY(SELECT role_name FROM department_form_roles r WHERE r.department_form_id = dtl.id ORDER BY role_name) AS roles,
+              (SELECT schema->>'display_label' FROM department_form_schemas
+               WHERE department_form_id = dtl.id ORDER BY created_at DESC LIMIT 1) AS form_display_name
          FROM department_table_list dtl
          LEFT JOIN department_form_year_mapping ym
            ON ym.department_form_id = dtl.id AND ym.academic_year = $2
@@ -205,6 +207,7 @@ router.get("/", requireRole(WRITE_ROLES), async (req, res) => {
       return {
         id: f.id,
         form_name: f.form_name,
+        form_display_name: f.form_display_name,
         form_description: f.form_description,
         academic_year: f.academic_year,
         visibility: f.visibility,
@@ -351,7 +354,9 @@ router.get("/assigned", async (req, res) => {
               ym.status AS year_status, COALESCE(ym.is_archived, false) AS year_archived, COALESCE(ym.is_locked, false) AS year_locked,
               dc.deadline_at AS deadline, COALESCE(dc.is_locked, false) AS deadline_locked, COALESCE(dc.auto_locked, false) AS auto_locked,
               (dc.deadline_at IS NOT NULL AND dc.deadline_at <= now()) AS deadline_expired,
-              ARRAY(SELECT role_name FROM department_form_roles r WHERE r.department_form_id = dtl.id) AS roles
+              ARRAY(SELECT role_name FROM department_form_roles r WHERE r.department_form_id = dtl.id) AS roles,
+              (SELECT schema->>'display_label' FROM department_form_schemas
+               WHERE department_form_id = dtl.id ORDER BY created_at DESC LIMIT 1) AS form_display_name
          FROM department_table_list dtl
          LEFT JOIN users cu ON cu.id = dtl.created_by
          LEFT JOIN department_form_year_mapping ym ON ym.department_form_id = dtl.id AND ym.academic_year = $2
@@ -384,6 +389,7 @@ router.get("/assigned", async (req, res) => {
     }).map((f) => ({
       id: f.id,
       form_name: f.form_name,
+      form_display_name: f.form_display_name,
       form_description: f.form_description,
       translate_enabled: f.translate_enabled,
       is_locked: !!(f.year_locked || f.deadline_locked || f.deadline_expired),
@@ -482,7 +488,7 @@ router.post("/", requireRole(WRITE_ROLES), requireActiveDepartment, async (req, 
   if (reservedCollisions.length > 0)
     return res.status(400).json({ success: false, message: `Column name(s) are reserved and cannot be used: ${reservedCollisions.join(", ")}. Please rename this field.` });
 
-  const slug = slugify(form_name);
+  let slug = slugify(form_name);
   if (!/^[a-z][a-z0-9_]*$/.test(slug))
     return res.status(400).json({ success: false, message: "form_name must start with a letter and contain only letters, digits, and underscores." });
 
@@ -504,6 +510,24 @@ router.post("/", requireRole(WRITE_ROLES), requireActiveDepartment, async (req, 
     if (!departmentId)
       return res.status(400).json({ success: false, message: "No department is associated with your account." });
 
+   // Auto-uniquify: a same-department duplicate name is allowed (create as
+   // many "Krish" forms as wanted) — rather than hard-rejecting with a 409
+   // as before, silently suffix the internal slug (krish -> krish_2 -> ...).
+   // The originally-typed name is preserved as schema.display_label (see
+   // DepartmentFormBuilderPage.jsx) and is what listings show; the
+   // ON CONFLICT + insRows.length check below stays as a defensive fallback
+   // for the rare race between this check and the actual insert.
+   const baseSlug = slug;
+   let dedupeSuffix = 1;
+   while (true) {
+     const { rows: dupeRows } = await pool.query(
+       `SELECT id FROM department_table_list WHERE department_id = $1 AND form_name = $2`,
+       [departmentId, slug]
+     );
+     if (!dupeRows.length) break;
+     dedupeSuffix += 1;
+     slug = `${baseSlug}_${dedupeSuffix}`;
+   }
    table = deptRecordsTable(departmentId, slug);
 
 // ----------------------------------------------------
@@ -673,7 +697,7 @@ const usedColNames = collectColumnNames(schema.fields);
         }
       });
 
-      return res.json({ success: true, message: `Department form "${slug}" created.`, id: formId, table });
+      return res.json({ success: true, message: `Department form "${slug}" created.`, id: formId, table, form_name: slug });
     } catch (err) {
       await client.query("ROLLBACK");
       throw err;

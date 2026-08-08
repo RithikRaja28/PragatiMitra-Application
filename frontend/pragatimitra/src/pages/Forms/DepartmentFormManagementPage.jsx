@@ -37,6 +37,10 @@ async function downloadDeptExport(formId, format, accessToken, year) {
 }
 
 function titleOf(s) { return String(s).replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()); }
+// Prefer the user's originally-typed name over reconstructing one from the
+// internal slug — see InstituteFormManagementPage.jsx's displayTitleOf for
+// the full reasoning (lossy reconstruction + duplicate-name auto-uniquify).
+function displayTitleOf(form) { return form?.form_display_name || titleOf(form?.form_name || ""); }
 function deadlineInfo(form) {
   if (!form.deadline_at) return { dateText: "No Deadline", tone: null, label: null };
   const d = new Date(form.deadline_at);
@@ -84,7 +88,7 @@ function DeadlineModal({ form, year, onClose, onSaved, showToast }) {
 
   return (
     <Modal open onClose={onClose} width={520} icon={<CalendarClock size={18} strokeWidth={STROKE} />}
-      title={t("Manage Deadline", lang)} subtitle={`${titleOf(form.form_name)} · ${t("your department", lang)} · ${yearLabel}`}
+      title={t("Manage Deadline", lang)} subtitle={`${displayTitleOf(form)} · ${t("your department", lang)} · ${yearLabel}`}
       footer={
         <>
           <Button variant="outlineDanger" style={{ marginRight: "auto" }} disabled={saving || !hasDeadline} onClick={() => save(true)}>{t("Remove Deadline", lang)}</Button>
@@ -167,7 +171,7 @@ export default function DepartmentFormManagementPage() {
     const q = search.trim().toLowerCase();
     return forms
       .filter((f) => (tab === "archived" ? f.is_archived : !f.is_archived))
-      .filter((f) => !q || titleOf(f.form_name).toLowerCase().includes(q) || f.form_name.toLowerCase().includes(q) || (f.form_description || "").toLowerCase().includes(q));
+      .filter((f) => !q || displayTitleOf(f).toLowerCase().includes(q) || f.form_name.toLowerCase().includes(q) || (f.form_description || "").toLowerCase().includes(q));
   }, [forms, tab, search]);
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -192,7 +196,7 @@ export default function DepartmentFormManagementPage() {
     try {
       const res = await apiFetch(`/api/department-forms/${form.id}/archive`, { method: "PATCH", body: JSON.stringify({ archived }) });
       const data = await res.json();
-      if (data.success) { showToast(`"${titleOf(form.form_name)}" ${archived ? "archived" : "activated"} for ${academicYear || selectedYear}.`); load(); }
+      if (data.success) { showToast(`"${displayTitleOf(form)}" ${archived ? "archived" : "activated"} for ${academicYear || selectedYear}.`); load(); }
       else showToast(data.message || "Failed to update.", "error");
     } catch { showToast("Failed to update.", "error"); }
     finally { setBusyId(null); }
@@ -262,7 +266,7 @@ export default function DepartmentFormManagementPage() {
         <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
           <div style={{ width: 34, height: 34, borderRadius: 9, flexShrink: 0, background: color.primarySoft, color: color.primary, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 800 }}>{form.form_name.slice(0, 2).toUpperCase()}</div>
           <div style={{ minWidth: 0 }}>
-            <div className="ui-ellipsis" style={{ fontSize: 13.5, fontWeight: 700, color: color.text }} title={titleOf(form.form_name)}>{titleOf(form.form_name)}</div>
+            <div className="ui-ellipsis" style={{ fontSize: 13.5, fontWeight: 700, color: color.text }} title={displayTitleOf(form)}>{displayTitleOf(form)}</div>
             <div className="ui-ellipsis" style={{ fontSize: 11.5, color: color.muted, marginTop: 1, maxWidth: 260 }} title={form.form_description || form.form_name}>{form.form_description || form.form_name}</div>
           </div>
         </div>

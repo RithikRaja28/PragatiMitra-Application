@@ -27,6 +27,9 @@ const dbCol = (c) => c.trim().toLowerCase().replace(/\s+/g, "_");
 const displayCol = (c) => c.replace(/_/g, " ").replace(/\b\w/g, (m) => m.toUpperCase());
 
 function titleOf(s) { return String(s).replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()); }
+// Prefer the user's originally-typed name over reconstructing one from the
+// internal slug — see InstituteFormManagementPage.jsx's displayTitleOf.
+function displayTitleOf(form) { return form?.form_display_name || titleOf(form?.form_name || ""); }
 
 /* Deadline badge for the records view: OPEN / EXPIRES IN N DAYS / EXPIRED.
    Driven by the form's year-scoped deadline_at (passed from the list row). */
@@ -326,7 +329,7 @@ setEditTarget(record);
           fields={fields}
           record={editing}
           departmentFormId={form.id}
-          formTitle={titleOf(form.form_name)}
+          formTitle={displayTitleOf(form)}
           counterpartPath={editing?.id ? `/api/department-form-data/${form.id}/records/${editing.id}/counterpart` : null}
           apiFetch={apiFetch}
           getToken={() => accessToken}
@@ -338,7 +341,7 @@ setEditTarget(record);
             t("Home", lang),
             t("Department", lang),
             { label: t("Department Forms", lang), onClick: handleBackFromEdit },
-            titleOf(form.form_name),
+            displayTitleOf(form),
             editing ? t("Edit Record", lang) : t("Add Record", lang),
           ]}
         />
@@ -378,8 +381,8 @@ setEditTarget(record);
       )}
 
       <PageHeader
-        breadcrumb={[t("Home", lang), t("Department", lang), { label: t("Department Forms", lang), onClick: onBack }, titleOf(form.form_name)]}
-        title={titleOf(form.form_name)}
+        breadcrumb={[t("Home", lang), t("Department", lang), { label: t("Department Forms", lang), onClick: onBack }, displayTitleOf(form)]}
+        title={displayTitleOf(form)}
         actions={
           <>
             <Dropdown align="right" width={200} button={({ toggle }) => (

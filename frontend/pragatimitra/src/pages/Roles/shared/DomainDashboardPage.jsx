@@ -116,7 +116,7 @@ export default function DomainDashboardPage({ domain: domainProp }) {
                 padding: "10px 0", borderTop: i === 0 ? "none" : `1px solid ${C.border}` }}>
                 <div>
                   <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>
-                    {a.form_name.replace(/_/g, " ").replace(/\b\w/g, (ch) => ch.toUpperCase())}
+                    {a.form_display_name || a.form_name.replace(/_/g, " ").replace(/\b\w/g, (ch) => ch.toUpperCase())}
                   </div>
                   <div style={{ fontSize: 11, color: C.textSub, marginTop: 1 }}>
                     {Number(a.record_count || 0)} {t("records", lang)}

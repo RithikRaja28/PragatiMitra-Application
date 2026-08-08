@@ -1897,7 +1897,13 @@ export default function FormDataPage() {
             {
               key: "form", header: t("Form Name", lang), width: 340,
               render: (form) => {
-                const title = form.form_name.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+                // Prefer the user's originally-typed name (form_display_name, from
+                // schema.display_label) as-is — only reconstruct a title from the
+                // internal slug when it's missing. Reconstruction is lossy (starts
+                // from an already-lowercased slug) and duplicate names are now
+                // auto-uniquified internally (krish/krish_2/...), so falling back
+                // to the raw slug here would leak that suffix to users.
+                const title = form.form_display_name || form.form_name.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
                 return (
                   <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
                     <div style={{ width: 34, height: 34, borderRadius: 9, flexShrink: 0, background: color.primarySoft, color: color.primary, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 800 }}>{form.form_name.slice(0, 2).toUpperCase()}</div>
@@ -1961,7 +1967,7 @@ export default function FormDataPage() {
           fields={schemaFields}
           record={editTarget === "new" ? null : editTarget}
           formName={formEntity.form_name}
-          formTitle={formEntity.form_name.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
+          formTitle={formEntity.form_display_name || formEntity.form_name.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
           apiFetch={apiFetch}
           getToken={getToken}
           translationEnabled={formEntity.translate_to_hindi !== false}
@@ -2041,11 +2047,11 @@ export default function FormDataPage() {
           t("Home", lang),
           t(moduleLabel, lang),
           { label: t("Forms & Data Entry", lang), onClick: backToForms },
-          formEntity?.form_name.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+          formEntity?.form_display_name || formEntity?.form_name.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
         ]}
         title={
           <>
-            {formEntity?.form_name.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
+            {formEntity?.form_display_name || formEntity?.form_name.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
             {lockInfo.is_locked && (
               <span style={{ marginLeft: 10, fontSize: 13, fontWeight: 600, color: "#dc2626", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 6, padding: "2px 8px", verticalAlign: "middle", display: "inline-flex", alignItems: "center", gap: 5 }}>
                 <Lock size={13} strokeWidth={2.2} /> {t("Locked", lang)}

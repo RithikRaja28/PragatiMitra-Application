@@ -215,7 +215,8 @@ router.get("/forms", async (req, res) => {
     const { rows } = await pool.query(
       hasCfs
         ? `SELECT tl.id, tl.form_name, tl.form_domain, tl.share_table,
-                  cfs.schema -> 'fields' AS fields, cfs.year
+                  cfs.schema -> 'fields' AS fields, cfs.year,
+                  cfs.schema ->> 'display_label' AS form_display_name
            FROM public.table_list tl
            JOIN public.custom_field_schemas cfs
              ON  cfs.form_name      = tl.form_name
@@ -223,7 +224,7 @@ router.get("/forms", async (req, res) => {
              AND cfs.is_active      = TRUE
            WHERE $1 = ANY(tl.institute_access)
            ORDER BY tl.form_domain, tl.form_name`
-        : `SELECT id, form_name, form_domain, share_table, NULL AS fields, NULL AS year
+        : `SELECT id, form_name, form_domain, share_table, NULL AS fields, NULL AS year, NULL AS form_display_name
            FROM public.table_list
            WHERE $1 = ANY(institute_access)
            ORDER BY form_name`,

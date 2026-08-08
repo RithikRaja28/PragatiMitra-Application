@@ -13,6 +13,9 @@ const STROKE = 1.75;
 const PAGE_SIZE = 10;
 
 function titleOf(s) { return String(s).replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()); }
+// Prefer the user's originally-typed name over reconstructing one from the
+// internal slug — see InstituteFormManagementPage.jsx's displayTitleOf.
+function displayTitleOf(form) { return form?.form_display_name || titleOf(form?.form_name || ""); }
 
 function deadlineInfo(form) {
   if (!form.deadline_at) return { dateText: "—", tone: null, label: null };
@@ -76,7 +79,7 @@ export default function DepartmentFormFillPage() {
   const q = search.trim().toLowerCase();
   let visible = forms.filter((f) => {
     const matchSearch = !q
-      || titleOf(f.form_name).toLowerCase().includes(q)
+      || displayTitleOf(f).toLowerCase().includes(q)
       || f.form_name.toLowerCase().includes(q)
       || (f.form_description || "").toLowerCase().includes(q);
     const matchStatus =
@@ -89,8 +92,8 @@ export default function DepartmentFormFillPage() {
 
   // --- Sort ---
   visible = [...visible].sort((a, b) => {
-    if (sortBy === "name_asc")  return titleOf(a.form_name).localeCompare(titleOf(b.form_name));
-    if (sortBy === "name_desc") return titleOf(b.form_name).localeCompare(titleOf(a.form_name));
+    if (sortBy === "name_asc")  return displayTitleOf(a).localeCompare(displayTitleOf(b));
+    if (sortBy === "name_desc") return displayTitleOf(b).localeCompare(displayTitleOf(a));
     if (sortBy === "deadline_asc") {
       const da = a.deadline_at ? new Date(a.deadline_at).getTime() : Infinity;
       const db = b.deadline_at ? new Date(b.deadline_at).getTime() : Infinity;
@@ -137,7 +140,7 @@ export default function DepartmentFormFillPage() {
         <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
           <div style={{ width: 34, height: 34, borderRadius: 9, flexShrink: 0, background: color.primarySoft, color: color.primary, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 800 }}>{form.form_name.slice(0, 2).toUpperCase()}</div>
           <div style={{ minWidth: 0 }}>
-            <div className="ui-ellipsis" style={{ fontSize: 13.5, fontWeight: 700, color: color.text }} title={titleOf(form.form_name)}>{titleOf(form.form_name)}</div>
+            <div className="ui-ellipsis" style={{ fontSize: 13.5, fontWeight: 700, color: color.text }} title={displayTitleOf(form)}>{displayTitleOf(form)}</div>
             <div className="ui-ellipsis" style={{ fontSize: 11.5, color: color.muted, marginTop: 1, maxWidth: 260 }} title={form.form_description || form.form_name}>{form.form_description || form.form_name}</div>
           </div>
         </div>

@@ -61,7 +61,9 @@ router.get("/summary", async (req, res) => {
     const { rows: forms } = await pool.query(
       `SELECT tl.id, tl.form_name,
               COALESCE(flc.is_locked, false) AS is_locked,
-              flc.deadline_at
+              flc.deadline_at,
+              (SELECT schema->>'display_label' FROM custom_field_schemas
+               WHERE form_name = tl.form_name ORDER BY created_at DESC LIMIT 1) AS form_display_name
          FROM table_list tl
          LEFT JOIN form_lock_config flc
            ON flc.form_name = tl.form_name AND flc.institution_id = $1
@@ -118,14 +120,14 @@ router.get("/summary", async (req, res) => {
               WHERE institution_id = $1 AND (language = 'en' OR language IS NULL)`,
             [institutionId]
           );
-          return { form_name: f.form_name, n: rc[0]?.n || 0, last: rc[0]?.last || null };
+          return { form_name: f.form_name, form_display_name: f.form_display_name, n: rc[0]?.n || 0, last: rc[0]?.last || null };
         } catch {
-          return { form_name: f.form_name, n: 0, last: null }; // records table absent → 0
+          return { form_name: f.form_name, form_display_name: f.form_display_name, n: 0, last: null }; // records table absent → 0
         }
       }));
       for (const r of results) {
         totalRecords += r.n;
-        if (r.last) activity.push({ form_name: r.form_name, record_count: r.n, last_updated: r.last });
+        if (r.last) activity.push({ form_name: r.form_name, form_display_name: r.form_display_name, record_count: r.n, last_updated: r.last });
       }
     }
 

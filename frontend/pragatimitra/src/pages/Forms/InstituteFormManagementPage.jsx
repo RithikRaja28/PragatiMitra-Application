@@ -46,7 +46,21 @@ function toISTDateString(date) {
 }
 
 function titleOf(form_name) {
-  return form_name.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  return String(form_name).replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+// Prefer the user's originally-typed name (schema.display_label, surfaced by
+// the API as form_display_name) over reconstructing one from the internal
+// slug — the reconstruction is lossy (e.g. "QA Institute Form" -> qa_institute_form
+// -> "Qa Institute Form", losing the "QA" capitalization) and, since duplicate
+// form names are now allowed (auto-uniquified internally as krish/krish_2/...),
+// showing the raw slug would confusingly expose that suffix to users.
+function displayTitleOf(form) {
+  // form_display_name (the user's originally-typed name) is used as-is —
+  // NOT passed through titleOf()'s reconstruction, which would risk
+  // corrupting intentional casing (e.g. "eBay Style" -> "EBay Style").
+  // Reconstruction only applies as a fallback for forms with no stored
+  // display name (predating this feature).
+  return form?.form_display_name || titleOf(form?.form_name || "");
 }
 
 function institutionsLabel(form, lang = "en") {
@@ -115,7 +129,7 @@ function DeadlineModal({ form, onClose, onSaved, showToast }) {
     finally { setSaving(false); }
   }
 
-  const formTitle = titleOf(form.form_name);
+  const formTitle = displayTitleOf(form);
   const todayStr  = toISTDateString(new Date());
   const hasDeadline = !!current.deadline_at;
   const expired     = hasDeadline && new Date(current.deadline_at).getTime() <= Date.now();
@@ -245,7 +259,7 @@ export default function InstituteFormManagementPage() {
       .filter((f) => {
         if (!q) return true;
         return (
-          titleOf(f.form_name).toLowerCase().includes(q) ||
+          displayTitleOf(f).toLowerCase().includes(q) ||
           f.form_name.toLowerCase().includes(q) ||
           (f.description || "").toLowerCase().includes(q)
         );
@@ -266,7 +280,7 @@ export default function InstituteFormManagementPage() {
       );
       const data = await res.json();
       if (data.success) {
-        showToast(`"${titleOf(form.form_name)}" ${lang === "hi" ? (status === "active" ? "सक्रिय" : "संग्रहीत") : (status === "active" ? "activated" : "archived")} for ${academicYear}.`);
+        showToast(`"${displayTitleOf(form)}" ${lang === "hi" ? (status === "active" ? "सक्रिय" : "संग्रहीत") : (status === "active" ? "activated" : "archived")} for ${academicYear}.`);
         load();
       } else showToast(data.message || "Failed to update status.", "error");
     } catch (err) { if (!isAuthError(err)) showToast("Failed to update status.", "error"); }
@@ -381,8 +395,8 @@ export default function InstituteFormManagementPage() {
             {form.form_name.slice(0, 2).toUpperCase()}
           </div>
           <div style={{ minWidth: 0 }}>
-            <div className="ui-ellipsis" style={{ fontSize: 13.5, fontWeight: 700, color: color.text }} title={titleOf(form.form_name)}>
-              {titleOf(form.form_name)}
+            <div className="ui-ellipsis" style={{ fontSize: 13.5, fontWeight: 700, color: color.text }} title={displayTitleOf(form)}>
+              {displayTitleOf(form)}
             </div>
             <div className="ui-ellipsis" style={{ fontSize: 11.5, color: color.muted, marginTop: 1, maxWidth: 240 }} title={form.description || form.form_name}>
               {form.description || form.form_name}
