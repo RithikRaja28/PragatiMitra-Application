@@ -178,9 +178,15 @@ function verifyReadToken(key, exp, sig) {
 
      [institute]/reports/[report]/branding/{logos,cover-images,background-images}/
      [institute]/reports/[report]/generated/{pdf,docx}/
-     [institute]/reports/[report]/submissions/{images,files}/
-     [institute]/institute_forms/[form_name]/{images,files}/
-     [institute]/department_forms/dept_[dept_name]/[form_name]/{images,files}/
+     [institute]/reports/[report]/submissions/{en,hi}/{images,files}/
+     [institute]/institute_forms/[form_name]/{en,hi}/{images,files}/
+     [institute]/department_forms/dept_[dept_name]/[form_name]/{en,hi}/{images,files}/
+
+   Submission/form uploads carry an en/hi language segment reflecting which
+   language pane the upload came from (see langSegment()) — this only affects
+   *where new uploads are filed*; it does not by itself make Hindi content
+   independently editable anywhere it wasn't already (e.g. report image
+   blocks still hold one shared URL regardless of language tab).
 
    Templates hold no files of their own — they're structure-only (block
    type + required flag + captions); real uploads only ever live under a
@@ -206,18 +212,22 @@ function reportBrandingKey({ institutionName, institutionId, reportTitle, report
     "branding", assetFolder, filename].join("/");
 }
 
-function reportSubmissionKey({ institutionName, institutionId, reportTitle, reportId, kind, filename }) {
+function langSegment(language) {
+  return language === "hi" ? "hi" : "en";
+}
+
+function reportSubmissionKey({ institutionName, institutionId, reportTitle, reportId, language, kind, filename }) {
   return [instituteDir(institutionName, institutionId), "reports", reportDir(reportTitle, reportId),
-    "submissions", kind, filename].join("/");
+    "submissions", langSegment(language), kind, filename].join("/");
 }
 
-function instituteFormKey({ institutionName, institutionId, formName, kind, filename }) {
-  return [instituteDir(institutionName, institutionId), "institute_forms", formName, kind, filename].join("/");
+function instituteFormKey({ institutionName, institutionId, formName, language, kind, filename }) {
+  return [instituteDir(institutionName, institutionId), "institute_forms", formName, langSegment(language), kind, filename].join("/");
 }
 
-function departmentFormKey({ institutionName, institutionId, departmentName, formName, kind, filename }) {
+function departmentFormKey({ institutionName, institutionId, departmentName, formName, language, kind, filename }) {
   return [instituteDir(institutionName, institutionId), "department_forms", deptDir(departmentName),
-    formName, kind, filename].join("/");
+    formName, langSegment(language), kind, filename].join("/");
 }
 
 async function deleteReportFolder(institutionName, institutionId, reportTitle, reportId) {

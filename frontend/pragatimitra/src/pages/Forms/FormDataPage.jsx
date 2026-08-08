@@ -84,7 +84,7 @@ const AUDIO_MAX = 50 * 1024 * 1024;
 const VIDEO_MAX = 200 * 1024 * 1024;
 const DOC_LABEL_STYLE = { display: "block", fontSize: 13, fontWeight: 500, color: "#334155", marginBottom: 6 };
 
-export function DocumentUploadField({ label, required, value, onChange, getToken, labelStyle = DOC_LABEL_STYLE, formName, departmentFormId, recordId, column }) {
+export function DocumentUploadField({ label, required, value, onChange, getToken, labelStyle = DOC_LABEL_STYLE, formName, departmentFormId, recordId, column, language = "en" }) {
   const fileRef = useRef(null);
   const [status, setStatus] = useState("idle");
   const [errMsg, setErrMsg] = useState("");
@@ -134,6 +134,7 @@ export function DocumentUploadField({ label, required, value, onChange, getToken
     try {
       const token = getToken();
       const fd = new FormData(); fd.append("file", file);
+      fd.append("language", language);
       if (departmentFormId) {
         fd.append("context", "department_form");
         fd.append("departmentFormId", departmentFormId);
@@ -286,7 +287,7 @@ export function FieldInput({ field, value, onChange, getToken, lang = "en", form
   if (type === "document") return (
     <DocumentUploadField label={label} required={field.required} value={value}
       onChange={url => onChange(col, url)} getToken={getToken} formName={formName} departmentFormId={departmentFormId}
-      recordId={recordId} column={col} />
+      recordId={recordId} column={col} language={lang} />
   );
   const inputType = type === "number" ? "number" : type === "date" ? "date" : type === "email" ? "email" : type === "phone" ? "tel" : "text";
   return (
@@ -539,7 +540,7 @@ const [saving, setSaving] = useState(false);
       {fields.length === 0 ? noFields : fields.map(field => (
         viewOnly
           ? <ReadOnlyField key={dbCol(field.column_name)} field={field} value={formData[dbCol(field.column_name)]} lang="en" getToken={getToken} />
-          : <FieldInput key={dbCol(field.column_name)} field={field} value={formData[dbCol(field.column_name)]} onChange={handleChange} getToken={getToken} lang="en" />
+          : <FieldInput key={dbCol(field.column_name)} field={field} value={formData[dbCol(field.column_name)]} onChange={handleChange} getToken={getToken} lang="en" formName={formName} departmentFormId={departmentFormId} recordId={record?.englishRecord?.id ?? record?.id} />
       ))}
     </ModalPane>
   );
@@ -566,6 +567,9 @@ const [saving, setSaving] = useState(false);
             onChange={handleChangeHi}
             getToken={getToken}
             lang="hi"
+            formName={formName}
+            departmentFormId={departmentFormId}
+            recordId={record?.hindiRecord?.id}
         />
     )
 )}

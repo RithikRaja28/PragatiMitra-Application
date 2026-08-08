@@ -18,6 +18,9 @@ const router = express.Router();
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const isUUID = (v) => typeof v === "string" && UUID_RE.test(v);
 const validateFormName = (name) => typeof name === "string" && /^[a-z][a-z0-9_]*$/.test(name);
+/* Which language pane the upload came from — only affects which en/hi
+   subfolder the file is filed under, defaults to "en". */
+const normalizeLanguage = (v) => (v === "hi" ? "hi" : "en");
 
 /* ── Allow-lists ──────────────────────────────────────────────────────────
    Image flow (report-builder images / branding) is image-only. Document flow
@@ -170,6 +173,7 @@ router.post("/document", verifyToken, (req, res) => {
     try {
       const pool = req.app.locals.pool;
       const { context } = req.body;
+      const language = normalizeLanguage(req.body.language);
 
       let scope = null;
       if (context === "report_submission") scope = await resolveReportScope(pool, req, req.body.reportId);
@@ -188,16 +192,16 @@ router.post("/document", verifyToken, (req, res) => {
         context === "report_submission"
           ? reportSubmissionKey({
             institutionName: scope.institutionName, institutionId: scope.institutionId,
-            reportTitle: scope.title, reportId: scope.id, kind, filename,
+            reportTitle: scope.title, reportId: scope.id, language, kind, filename,
           })
           : context === "institute_form"
             ? instituteFormKey({
               institutionName: scope.institutionName, institutionId: scope.institutionId,
-              formName: scope.formName, kind, filename,
+              formName: scope.formName, language, kind, filename,
             })
             : departmentFormKey({
               institutionName: scope.institutionName, institutionId: scope.institutionId,
-              departmentName: scope.departmentName, formName: scope.formName, kind, filename,
+              departmentName: scope.departmentName, formName: scope.formName, language, kind, filename,
             });
 
       await saveBuffer(fileKey, req.file.buffer);
@@ -240,6 +244,7 @@ router.post("/image", verifyToken, (req, res) => {
     try {
       const pool = req.app.locals.pool;
       const { purpose, reportId } = req.body;
+      const language = normalizeLanguage(req.body.language);
       const isBranding = Object.prototype.hasOwnProperty.call(BRANDING_SUBFOLDER, purpose);
 
       if (!reportId) {
@@ -259,7 +264,7 @@ router.post("/image", verifyToken, (req, res) => {
         })
         : reportSubmissionKey({
           institutionName: scope.institutionName, institutionId: scope.institutionId,
-          reportTitle: scope.title, reportId: scope.id, kind: "images", filename,
+          reportTitle: scope.title, reportId: scope.id, language, kind: "images", filename,
         });
 
       await saveBuffer(fileKey, req.file.buffer);

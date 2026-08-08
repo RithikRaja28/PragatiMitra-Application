@@ -145,6 +145,7 @@ async function uploadImageFile(file, apiFetch, purpose, compressionSettings, sco
   const fd = new FormData();
   fd.append("file", file);
   fd.append("purpose", purpose || "report-image");
+  fd.append("language", scope.language === "hi" ? "hi" : "en");
   if (scope.reportId) fd.append("reportId", scope.reportId);
 
   const uploadRes = await apiFetch("/api/upload/image", { method: "POST", body: fd });
@@ -153,7 +154,7 @@ async function uploadImageFile(file, apiFetch, purpose, compressionSettings, sco
   return uploadData.publicUrl;
 }
 
-function UploadImageBtn({ onUploaded, apiFetch, purpose, disabled, reportId, blockId, fieldPath }) {
+function UploadImageBtn({ onUploaded, apiFetch, purpose, disabled, reportId, blockId, fieldPath, language = "en" }) {
   const fileRef  = useRef(null);
   const [uploading,    setUploading]    = useState(false);
   const [err,          setErr]          = useState("");
@@ -171,7 +172,7 @@ function UploadImageBtn({ onUploaded, apiFetch, purpose, disabled, reportId, blo
     if (!file) return;
     setUploading(true); setErr(""); setUploadResult(null);
     try {
-      const url = await uploadImageFile(file, apiFetch, purpose, compressionSettings, { reportId });
+      const url = await uploadImageFile(file, apiFetch, purpose, compressionSettings, { reportId, language });
       persistFileField(apiFetch, blockId, fieldPath, url);
       onUploaded({ url, fileName: file.name });
       setUploadResult("success");
@@ -683,7 +684,7 @@ export function ImageBlock({ content, onChange, readOnly, lang = "en", translati
         <div style={{ marginBottom: 8 }}>
           <div style={{ display: "flex", gap: 6, marginBottom: 8, alignItems: "flex-start" }}>
             <input key={content.url} defaultValue={content.fileName || (content.url && !content.url.includes("/uploads/") ? content.url : "")} onBlur={(e) => onChange({ ...content, url: e.target.value })} placeholder="Paste image URL…" style={{ flex: 1, padding: "7px 11px", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 12, outline: "none", boxSizing: "border-box" }} />
-            <UploadImageBtn apiFetch={apiFetch} purpose="report-image" reportId={reportId} blockId={blockId} fieldPath="url" onUploaded={({ url, fileName }) => onChange({ ...content, url, fileName })} />
+            <UploadImageBtn apiFetch={apiFetch} purpose="report-image" reportId={reportId} blockId={blockId} fieldPath="url" language={lang} onUploaded={({ url, fileName }) => onChange({ ...content, url, fileName })} />
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             <span style={{ fontSize: 11, color: "#64748b" }}>Width</span>
@@ -789,7 +790,7 @@ export function ImageGridBlock({ content, onChange, readOnly, lang = "en", trans
                     {cols.length > 1 && <button onClick={() => removeCol(i)} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: "#ef4444", fontSize: 12 }}>X</button>}
                   </div>
                   <input key={"url-" + i + "-" + col.url} defaultValue={col.fileName || (col.url && !col.url.includes("/uploads/") ? col.url : "")} onBlur={(e) => update(i, { url: e.target.value })} placeholder="Image URL…" style={{ width: "100%", padding: "5px 8px", border: "1px solid #e2e8f0", borderRadius: 6, fontSize: 11, outline: "none", boxSizing: "border-box", marginBottom: 4 }} />
-                  <UploadImageBtn apiFetch={apiFetch} purpose="report-image" reportId={reportId} blockId={blockId} fieldPath={`cols.${i}.url`} onUploaded={({ url, fileName }) => update(i, { url, fileName })} />
+                  <UploadImageBtn apiFetch={apiFetch} purpose="report-image" reportId={reportId} blockId={blockId} fieldPath={`cols.${i}.url`} language={lang} onUploaded={({ url, fileName }) => update(i, { url, fileName })} />
                   <input
                     key={"cap-" + (isHi ? "hi" : "en") + "-" + i + "-" + caption}
                     defaultValue={caption}
