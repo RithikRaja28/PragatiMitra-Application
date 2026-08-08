@@ -18,6 +18,7 @@ const express           = require("express");
 const { verifyToken, requireRole } = require("../../middleware/auth");
 const { writeAuditLog } = require("../../utils/audit");
 const { createSectionSnapshot } = require("../../utils/snapshotHelper");
+const { extractUploadKeys, deleteFile } = require("../../utils/localStorage");
 const logger            = require("../../utils/logger");
 const { getLogContext } = logger;
 
@@ -656,6 +657,23 @@ router.delete("/:id", requireRole(["super_admin", "institute_admin"]), async (re
       [id]
     );
     if (!rows.length) return res.status(404).json({ success: false, message: "Section not found" });
+
+    // Deleting a section previously left every one of its blocks' files
+    // orphaned on disk forever — the compiler excludes non-deleted-section
+    // blocks from output, but nothing ever cleaned up their uploads. Soft-
+    // delete the blocks too and clean up each one's files, mirroring
+    // blocks.js's own single-block DELETE /:id.
+    const { rows: blockRows } = await pool.query(
+      `UPDATE public.section_blocks SET deleted_at = NOW()
+       WHERE section_id = $1 AND deleted_at IS NULL RETURNING content`,
+      [id]
+    );
+    for (const block of blockRows) {
+      const keys = extractUploadKeys(block.content);
+      for (const key of keys) {
+        await deleteFile(key).catch(() => {});
+      }
+    }
 
     await writeAuditLog(req, {
       actionType: "SECTION_DELETED",
