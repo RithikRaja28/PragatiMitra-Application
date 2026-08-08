@@ -101,6 +101,7 @@ async function resolveReportScope(pool, req, reportId) {
 }
 
 async function resolveInstituteFormScope(pool, req, formName) {
+  console.log()
   if (!validateFormName(formName)) return null;
   const exists = await pool.query(`SELECT 1 FROM public.table_list WHERE form_name = $1`, [formName]);
   if (!exists.rowCount) return null;
@@ -171,14 +172,19 @@ router.post("/document", verifyToken, (req, res) => {
       const pool = req.app.locals.pool;
       const { context } = req.body;
 
+      console.log(context);
       let scope = null;
       if (context === "report_submission") scope = await resolveReportScope(pool, req, req.body.reportId);
       else if (context === "institute_form") scope = await resolveInstituteFormScope(pool, req, req.body.formName);
       else if (context === "department_form") scope = await resolveDepartmentFormScope(pool, req, req.body.departmentFormId);
 
-      if (!scope) {
-        return res.status(400).json({ success: false, error: "Invalid or unauthorized upload context." });
-      }
+     if (!scope) {
+    return res.status(400).json({
+        success: false,
+        error: "Invalid or unauthorized upload context.",
+        context
+    });
+}
 
       const ext = path.extname(req.file.originalname).toLowerCase();
       const kind = categoryOf(req.file.mimetype);

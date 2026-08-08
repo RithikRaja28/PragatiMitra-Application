@@ -141,6 +141,8 @@ export function DocumentUploadField({ label, required, value, onChange, getToken
         fd.append("context", "institute_form");
         fd.append("formName", formName);
       }
+      
+      console.log(formName,departmentFormId);
       const res = await api.post("/api/upload/document", { token, body: fd });
       const data = await res.json();
       if (!data.success) throw new Error(data.error || "Upload failed.");
@@ -539,7 +541,7 @@ const [saving, setSaving] = useState(false);
       {fields.length === 0 ? noFields : fields.map(field => (
         viewOnly
           ? <ReadOnlyField key={dbCol(field.column_name)} field={field} value={formData[dbCol(field.column_name)]} lang="en" getToken={getToken} />
-          : <FieldInput key={dbCol(field.column_name)} field={field} value={formData[dbCol(field.column_name)]} onChange={handleChange} getToken={getToken} lang="en" />
+          : <FieldInput key={dbCol(field.column_name)} field={field} value={formData[dbCol(field.column_name)]} onChange={handleChange} getToken={getToken} lang="en" formName={formName} departmentFormId={departmentFormId} recordId={record?.englishRecord?.id ?? record?.id} />
       ))}
     </ModalPane>
   );
@@ -557,6 +559,8 @@ const [saving, setSaving] = useState(false);
             value={formDataHi[dbCol(field.column_name)]}
             lang="hi"
             getToken={getToken}
+            
+            
         />
     ) : (
         <FieldInput
@@ -566,7 +570,8 @@ const [saving, setSaving] = useState(false);
             onChange={handleChangeHi}
             getToken={getToken}
             lang="hi"
-        />
+            formName={formName} departmentFormId={departmentFormId} recordId={record?.englishRecord?.id ?? record?.id} />
+      
     )
 )}
     </ModalPane>

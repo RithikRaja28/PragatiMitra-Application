@@ -592,39 +592,14 @@ router.get("/:id/records/:recordId/counterpart", async (req, res) => {
 router.post("/:id/records", async (req, res) => {
   const pool = req.app.locals.pool;
   if (!requireContributor(req, res)) return;
-   
-   const { englishData, hindiData } = req.body;
-   console.log("Form ID:", req.params.id);
-console.log("Body:", req.body);
 
+  const { englishData, hindiData } = req.body;
 
-console.log("English Data:", englishData);
-console.log("Hindi Data:", hindiData);
+  if (!englishData || typeof englishData !== "object" || Array.isArray(englishData))
+    return res.status(400).json({ success: false, message: "englishData is required." });
 
-
-
-
-  // if (!data || typeof data !== "object")
-  //   return res.status(400).json({ success: false, message: "data is required." });
-
-if (!englishData || typeof englishData !== "object" || Array.isArray(englishData))
-  return res.status(400).json({
-    success: false,
-    message: "englishData is required."
-  });
-
-if (
-    hindiData &&
-    (
-        typeof hindiData !== "object" ||
-        Array.isArray(hindiData)
-    )
-) {
-    return res.status(400).json({
-        success: false,
-        message: "Invalid hindiData."
-    });
-}
+  if (hindiData && (typeof hindiData !== "object" || Array.isArray(hindiData)))
+    return res.status(400).json({ success: false, message: "Invalid hindiData." });
 
   try {
     const { form, departmentId, institutionId, error } = await loadForm(pool, req, req.params.id);
@@ -638,14 +613,20 @@ if (
     const effectiveSchema = await loadEffectiveSchema(pool, form, year);
     const fields = activeFields(effectiveSchema);
     const fieldCols = fields.map((f) => dbCol(f.column_name));
-    
+
+    // Document fields carry a signed "/api/file/<token>" URL from the upload widget —
+    // resolve it to the underlying storage key before persisting. Each language's
+    // form has its own independent document upload, so check both.
     for (const f of fields) {
       const col = dbCol(f.column_name);
-      if (f.type === "document" && typeof data[col] === "string") {
-        const match = data[col].match(/\/api\/file\/(.+)$/);
-        if (match) {
-          const key = decodeFileTokenWithoutVerification(match[1]);
-          if (key) data[col] = key;
+      if (f.type !== "document") continue;
+      for (const langData of [englishData, hindiData]) {
+        if (langData && typeof langData[col] === "string") {
+          const match = langData[col].match(/\/api\/file\/(.+)$/);
+          if (match) {
+            const key = decodeFileTokenWithoutVerification(match[1]);
+            if (key) langData[col] = key;
+          }
         }
       }
     }
@@ -676,105 +657,35 @@ if (
       Object.assign(record, record.custom_fields);
     }
     
+    // Create Hindi mirror row from the manually-entered hindiData — English
+    // record already committed; Hindi failure is non-fatal.
     let hindiRecord = null;
-    
-    // try {
-    //   await ensureSourceRowIdColumn(pool, table);
-    //   // const fieldModes = buildFieldModes(fields);
-    //   // const hiData = await translateRow(data, fieldModes);
-
-    //   const hiCustomFieldsJson = extraFieldCols.length > 0
-    //     ? JSON.stringify(Object.fromEntries(extraFieldCols.map((c) => [c, hindiData[c] ?? null])))
-    //     : null;
-    //   const hiCols = ["form_name", "department_id", "institution_id", "academic_year", "role_name", "schema_id",
-    //     "language", "created_by", "custom_fields", "source_row_id", ...baseFieldCols.map(quoteIdent)];
-    //   const hiVals = [form.form_name, departmentId, institutionId, year, null, form.id,
-    //     "hi", createdBy, hiCustomFieldsJson, record.id, ...baseFieldCols.map((c) => hindiData[c] ?? null)];
-    //   const hiPh = hiVals.map((_, i) => `$${i + 1}`).join(", ");
-    //   await pool.query(`INSERT INTO ${table} (${hiCols.join(", ")}) VALUES (${hiPh})`, hiVals);
-    // } catch (hiErr) {
-    //   logger.warn("Hindi record creation failed; English record saved.", { form: form.form_name, error: hiErr.message });
-    // }
-
     if (hindiData) {
-
-    try {
-
+      try {
         await ensureSourceRowIdColumn(pool, table);
 
-        const hiCustomFieldsJson =
-            extraFieldCols.length > 0
-                ? JSON.stringify(
-                    Object.fromEntries(
-                        extraFieldCols.map(c => [c, hindiData[c] ?? null])
-                    )
-                )
-                : null;
-
-        const hiCols = [
-            "form_name",
-            "department_id",
-            "institution_id",
-            "academic_year",
-            "role_name",
-            "schema_id",
-            "language",
-            "created_by",
-            "custom_fields",
-            "source_row_id",
-            ...baseFieldCols.map(quoteIdent)
-        ];
-
-        const hiVals = [
-            form.form_name,
-            departmentId,
-            institutionId,
-            year,
-            null,
-            form.id,
-            "hi",
-            createdBy,
-            hiCustomFieldsJson,
-            record.id,
-            ...baseFieldCols.map(c => hindiData[c] ?? null)
-        ];
-
-        const hiPh =
-            hiVals.map((_, i) => `$${i + 1}`).join(", ");
+        const hiCustomFieldsJson = extraFieldCols.length > 0
+          ? JSON.stringify(Object.fromEntries(extraFieldCols.map((c) => [c, hindiData[c] ?? null])))
+          : null;
+        const hiCols = ["form_name", "department_id", "institution_id", "academic_year", "role_name", "schema_id",
+          "language", "created_by", "custom_fields", "source_row_id", ...baseFieldCols.map(quoteIdent)];
+        const hiVals = [form.form_name, departmentId, institutionId, year, null, form.id,
+          "hi", createdBy, hiCustomFieldsJson, record.id, ...baseFieldCols.map((c) => hindiData[c] ?? null)];
+        const hiPh = hiVals.map((_, i) => `$${i + 1}`).join(", ");
 
         const { rows: hiRows } = await pool.query(
-            `INSERT INTO ${table}
-             (${hiCols.join(", ")})
-             VALUES (${hiPh})
-             RETURNING *`,
-            hiVals
+          `INSERT INTO ${table} (${hiCols.join(", ")}) VALUES (${hiPh}) RETURNING *`,
+          hiVals
         );
 
         hindiRecord = hiRows[0];
-
-        if (
-            hindiRecord.custom_fields &&
-            typeof hindiRecord.custom_fields === "object"
-        ) {
-            Object.assign(
-                hindiRecord,
-                hindiRecord.custom_fields
-            );
+        if (hindiRecord.custom_fields && typeof hindiRecord.custom_fields === "object") {
+          Object.assign(hindiRecord, hindiRecord.custom_fields);
         }
-
-    } catch (hiErr) {
-
-        logger.warn(
-            "Hindi record creation failed; English record saved.",
-            {
-                form: form.form_name,
-                error: hiErr.message
-            }
-        );
-
+      } catch (hiErr) {
+        logger.warn("Hindi record creation failed; English record saved.", { form: form.form_name, error: hiErr.message });
+      }
     }
-
-}
 
     await writeAuditLog(req, {
       actionType: "DEPARTMENT_FORM_RECORD_CREATED",
@@ -802,9 +713,8 @@ if (
 router.put("/:id/records/:recordId", async (req, res) => {
   const pool = req.app.locals.pool;
   if (!requireContributor(req, res)) return;
-  // const { data } = req.body;
-   const { englishData, hindiData } = req.body;
-   if (!englishData || typeof englishData !== "object" || Array.isArray(englishData))
+  const { englishData, hindiData } = req.body;
+  if (!englishData || typeof englishData !== "object" || Array.isArray(englishData))
     return res.status(400).json({
         success: false,
         message: "englishData is required."
@@ -830,11 +740,14 @@ if (!hindiData || typeof hindiData !== "object" || Array.isArray(hindiData))
 
     for (const f of fields) {
       const col = dbCol(f.column_name);
-      if (f.type === "document" && typeof data[col] === "string") {
-        const match = data[col].match(/\/api\/file\/(.+)$/);
-        if (match) {
-          const key = decodeFileTokenWithoutVerification(match[1]);
-          if (key) data[col] = key;
+      if (f.type !== "document") continue;
+      for (const langData of [englishData, hindiData]) {
+        if (langData && typeof langData[col] === "string") {
+          const match = langData[col].match(/\/api\/file\/(.+)$/);
+          if (match) {
+            const key = decodeFileTokenWithoutVerification(match[1]);
+            if (key) langData[col] = key;
+          }
         }
       }
     }
@@ -865,6 +778,10 @@ if (!hindiData || typeof hindiData !== "object" || Array.isArray(hindiData))
       `SELECT * FROM ${table} WHERE id = $1 AND department_id = $2`,
       [req.params.recordId, departmentId]
     );
+    const { rows: oldHiRows } = await pool.query(
+      `SELECT * FROM ${table} WHERE source_row_id = $1 AND department_id = $2`,
+      [req.params.recordId, departmentId]
+    );
 
     const { rows } = await pool.query(
       `UPDATE ${table} SET ${setClauses.join(", ")} WHERE ${whereClause} RETURNING *`,
@@ -872,9 +789,9 @@ if (!hindiData || typeof hindiData !== "object" || Array.isArray(hindiData))
     );
     if (!rows.length) return res.status(404).json({ success: false, message: "Record not found." });
 
-    if (oldRows.length > 0) {
-      const oldKeys = extractUploadKeys(oldRows[0]);
-      const newKeys = extractUploadKeys(data);
+    if (oldRows.length > 0 || oldHiRows.length > 0) {
+      const oldKeys = [...extractUploadKeys(oldRows[0] || {}), ...extractUploadKeys(oldHiRows[0] || {})];
+      const newKeys = [...extractUploadKeys(englishData), ...extractUploadKeys(hindiData || {})];
       const toDelete = oldKeys.filter(k => !newKeys.includes(k));
       for (const key of toDelete) {
         await deleteFile(key).catch(() => {});
@@ -892,8 +809,6 @@ if (!hindiData || typeof hindiData !== "object" || Array.isArray(hindiData))
     // Sync Hindi mirror row — English record already updated; translation failure is non-fatal.
     try {
       await ensureSourceRowIdColumn(pool, table);
-      // const fieldModes = buildFieldModes(fields);
-      // const hiData = await translateRow(data, fieldModes);
       const hiCustomFieldsJson = extraFieldCols.length > 0
         ? JSON.stringify(Object.fromEntries(extraFieldCols.map((c) => [c, hindiData[c] ?? null])))
         : null;
@@ -1139,97 +1054,49 @@ router.delete("/:id/records/bulk-delete", async (req, res) => {
     /* Bug 12 — resolve each selected id to its English source (a Hindi row → its
        source_row_id), then delete the whole pair. So a Hindi row can never be
        deleted on its own, and selecting either side removes both. */
-    // const { rows: sel } = await pool.query(
-    //   `SELECT id, source_row_id FROM ${table} WHERE id = ANY($1::uuid[]) AND department_id = $2`,
-    //   [ids, departmentId]
-    // );
+    const { rows: selectedRecords } = await pool.query(
+      `SELECT * FROM ${table} WHERE id = ANY($1::uuid[]) AND department_id = $2`,
+      [ids, departmentId]
+    );
 
-     const { rows: selectedRecords } = await pool.query(
-`
-SELECT
-id,
-language,
-source_row_id
-FROM ${table}
-WHERE
-id = ANY($1::uuid[])
-AND department_id = $2
-`,
-[
-ids,
-departmentId
-]
-);
+    const processed = new Set();
+    let deleted = 0;
 
-    // const rootIds = [...new Set(sel.map((r) => r.source_row_id || r.id))];
-    // const { rowCount } = rootIds.length
-    //   ? await pool.query(
-    //       `DELETE FROM ${table} WHERE (id = ANY($1::uuid[]) OR source_row_id = ANY($1::uuid[])) AND department_id = $2`,
-    //       [rootIds, departmentId]
-    //     )
-    //   : { rowCount: 0 };
-    // const deleted = rowCount ?? 0;
+    for (const record of selectedRecords) {
+      // Unique key for one English-Hindi pair
+      const key = record.language === "en" ? record.id : (record.source_row_id || record.id);
+      if (processed.has(key)) continue;
+      processed.add(key);
 
-     
-     const processed = new Set();
+      let deletedRows = [record];
 
-let deleted = 0;
-
-for (const record of selectedRecords) {
-
-    // Unique key for one English-Hindi pair
-    const key =
-        record.language === "en"
-            ? record.id
-            : (record.source_row_id || record.id);
-
-    if (processed.has(key)) {
-        continue;
-    }
-
-    processed.add(key);
-
-    if (record.language === "en") {
+      if (record.language === "en") {
+        const { rows: hiRows } = await pool.query(
+          `SELECT * FROM ${table} WHERE source_row_id = $1 AND department_id = $2`,
+          [record.id, departmentId]
+        );
+        deletedRows = [record, ...hiRows];
 
         await pool.query(
-`
-DELETE FROM ${table}
-WHERE
-(id = $1 OR source_row_id = $1)
-AND department_id = $2
-`,
-[
-record.id,
-departmentId
-]
-);
-   const paths = extractUploadKeys(record);
-        for (const path of paths) {
-          await deleteFile(path).catch(() => {});
-        }  
-
-    } else {
-
+          `DELETE FROM ${table} WHERE (id = $1 OR source_row_id = $1) AND department_id = $2`,
+          [record.id, departmentId]
+        );
+      } else {
         await pool.query(
-`
-DELETE FROM ${table}
-WHERE
-id = $1
-AND department_id = $2
-`,
-[
-record.id,
-departmentId
-]
-);
-const paths = extractUploadKeys(record);
+          `DELETE FROM ${table} WHERE id = $1 AND department_id = $2`,
+          [record.id, departmentId]
+        );
+      }
+
+      for (const row of deletedRows) {
+        const paths = extractUploadKeys(row);
         for (const path of paths) {
           await deleteFile(path).catch(() => {});
-        }  
-    }
+        }
+      }
 
-    deleted++;
-}
+      deleted++;
+    }
 
     await writeAuditLog(req, {
       actionType: "DEPARTMENT_FORM_RECORDS_BULK_DELETED",
@@ -1364,76 +1231,38 @@ router.delete("/:id/records/:recordId", async (req, res) => {
     /* Bug 12 — delete the whole pair whichever side was targeted: resolve the
        English source id first (a Hindi row → its source_row_id), so a Hindi row is
        never deleted on its own (English orphan). */
-    // const { rows: tgt } = await pool.query(
-    //   `SELECT source_row_id FROM ${table} WHERE id = $1 AND department_id = $2`,
-    //   [req.params.recordId, departmentId]
-    // );
-    // const rootId = tgt[0]?.source_row_id || req.params.recordId;
-    
-
     const { rows: target } = await pool.query(
-`
-SELECT
-id,
-language,
-source_row_id
-FROM ${table}
-WHERE
-id = $1
-AND department_id = $2
-`,
-[
-req.params.recordId,
-departmentId
-]
-);
+      `SELECT * FROM ${table} WHERE id = $1 AND department_id = $2`,
+      [req.params.recordId, departmentId]
+    );
 
-if (!target.length) {
-    return res.status(404).json({
-        success: false,
-        message: "Record not found."
-    });
-}
+    if (!target.length) {
+      return res.status(404).json({ success: false, message: "Record not found." });
+    }
 
-const record = target[0];
-
+    const record = target[0];
+    let deletedRows = [record];
     let rowCount = 0;
 
-if (record.language === "en") {
+    if (record.language === "en") {
+      const { rows: hiRows } = await pool.query(
+        `SELECT * FROM ${table} WHERE source_row_id = $1 AND department_id = $2`,
+        [record.id, departmentId]
+      );
+      deletedRows = [record, ...hiRows];
 
-    const result = await pool.query(
-`
-DELETE FROM ${table}
-WHERE
-(id = $1 OR source_row_id = $1)
-AND department_id = $2
-`,
-[
-record.id,
-departmentId
-]
-);
-
-    rowCount = result.rowCount;
-
-} else {
-
-    const result = await pool.query(
-`
-DELETE FROM ${table}
-WHERE
-id = $1
-AND department_id = $2
-`,
-[
-record.id,
-departmentId
-]
-);
-
-    rowCount = result.rowCount;
-}
-
+      const result = await pool.query(
+        `DELETE FROM ${table} WHERE (id = $1 OR source_row_id = $1) AND department_id = $2`,
+        [record.id, departmentId]
+      );
+      rowCount = result.rowCount;
+    } else {
+      const result = await pool.query(
+        `DELETE FROM ${table} WHERE id = $1 AND department_id = $2`,
+        [record.id, departmentId]
+      );
+      rowCount = result.rowCount;
+    }
 
     if (!rowCount) return res.status(404).json({ success: false, message: "Record not found." });
 
