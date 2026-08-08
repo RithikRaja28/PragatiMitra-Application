@@ -5,6 +5,7 @@ const {
   extInfo, resolveSafePath,
   reportBrandingKey, reportSubmissionKey,
   instituteFormKey, departmentFormKey,
+  instituteDir, deptDir, reportDir,
 } = require("../utils/localStorage");
 const { verifyToken } = require("../middleware/auth");
 const { resolveEffectiveDepartment } = require("../services/departmentContext");
@@ -298,6 +299,48 @@ router.post("/read-url", verifyToken, (req, res) => {
   } catch (err) {
     logger.error("[upload/read-url] Failed to generate read URL", { message: err.message });
     res.status(500).json({ error: "Failed to generate read URL." });
+  }
+});
+
+/**
+ * POST /api/upload/discard
+ * Body: { fileKey, context, formName? | departmentFormId? | reportId? }
+ * Deletes a file uploaded via /api/upload/document that never got attached to
+ * a saved record — e.g. the user replaced it (or cancelled) before the record
+ * existed, so no DB row was ever there to diff the old value against and clean
+ * it up. Scoped exactly like the upload itself: the same context resolvers
+ * re-authorize the caller, and fileKey must fall under that resolved scope's
+ * own directory, so a caller can never discard another tenant's file.
+ */
+router.post("/discard", verifyToken, async (req, res) => {
+  const pool = req.app.locals.pool;
+  const { fileKey, context } = req.body;
+  if (typeof fileKey !== "string" || !fileKey) {
+    return res.status(400).json({ success: false, error: "fileKey is required." });
+  }
+
+  let prefix = null;
+  if (context === "report_submission") {
+    const scope = await resolveReportScope(pool, req, req.body.reportId);
+    if (scope) prefix = `${instituteDir(scope.institutionName, scope.institutionId)}/reports/${reportDir(scope.title, scope.id)}/`;
+  } else if (context === "institute_form") {
+    const scope = await resolveInstituteFormScope(pool, req, req.body.formName);
+    if (scope) prefix = `${instituteDir(scope.institutionName, scope.institutionId)}/institute_forms/${scope.formName}/`;
+  } else if (context === "department_form") {
+    const scope = await resolveDepartmentFormScope(pool, req, req.body.departmentFormId);
+    if (scope) prefix = `${instituteDir(scope.institutionName, scope.institutionId)}/department_forms/${deptDir(scope.departmentName)}/${scope.formName}/`;
+  }
+
+  if (!prefix || !fileKey.startsWith(prefix)) {
+    return res.status(400).json({ success: false, error: "Invalid or unauthorized file key." });
+  }
+
+  try {
+    await deleteLocalFile(fileKey);
+    return res.json({ success: true });
+  } catch (err) {
+    logger.error("[upload/discard] Failed to delete file", { message: err.message });
+    return res.status(500).json({ success: false, error: "Failed to delete file." });
   }
 });
 

@@ -131,18 +131,17 @@ export function DocumentUploadField({ label, required, value, onChange, getToken
       }
     }
     setStatus("uploading"); setErrMsg(""); setFileName(file.name);
+    const previousValue = value; // captured before this upload overwrites it
     try {
       const token = getToken();
       const fd = new FormData(); fd.append("file", file);
-      if (departmentFormId) {
-        fd.append("context", "department_form");
-        fd.append("departmentFormId", departmentFormId);
-      } else {
-        fd.append("context", "institute_form");
-        fd.append("formName", formName);
-      }
-      
-      console.log(formName,departmentFormId);
+      const contextBody = departmentFormId
+        ? { context: "department_form", departmentFormId }
+        : { context: "institute_form", formName };
+      fd.append("context", contextBody.context);
+      if (departmentFormId) fd.append("departmentFormId", departmentFormId);
+      else fd.append("formName", formName);
+
       const res = await api.post("/api/upload/document", { token, body: fd });
       const data = await res.json();
       if (!data.success) throw new Error(data.error || "Upload failed.");
@@ -157,6 +156,12 @@ export function DocumentUploadField({ label, required, value, onChange, getToken
           ? `/api/department-form-data/${departmentFormId}/records/${recordId}/file-field`
           : `/api/form-data/${formName}/records/${recordId}/file-field`;
         api.request(path, { method: "PATCH", token, json: { column, value: data.fileKey } }).catch(() => {});
+      } else if (previousValue && previousValue !== data.fileKey) {
+        // No saved record yet (still on the Add Record form) — nothing
+        // server-side ever diffs the old value against the new one, so a
+        // replace here would otherwise leave the prior upload orphaned on
+        // disk forever. Discard it directly.
+        api.post("/api/upload/discard", { token, json: { fileKey: previousValue, ...contextBody } }).catch(() => {});
       }
       onChange(data.fileKey);
       setStatus("done");
