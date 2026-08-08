@@ -930,7 +930,16 @@ if (hindiRow?.custom_fields && typeof hindiRow.custom_fields === "object") {
     record: {
         ...(englishRow || hindiRow),
         data,
-        data_hi: dataHi
+        data_hi: dataHi,
+        // Real per-row identity for the English/Hindi pair — the frontend
+        // needs each row's own id (not just its field VALUES above) to PATCH
+        // a document/image field on the correct row via the fast-path
+        // upload-persist endpoint. Without this, a Hindi document upload had
+        // no id to target and silently fell back to treating the record as
+        // never-saved, so it never fired the immediate DB persist that the
+        // English side already got.
+        englishRecord: englishRow,
+        hindiRecord: hindiRow,
     }
 });
   } catch (err) {
@@ -1324,13 +1333,21 @@ if (
     if (archiveBlock.blocked)
       return res.status(403).json({ success: false, message: archiveBlock.message });
 
+    // Document fields carry a signed "/api/file/<token>" URL from the upload
+    // widget — resolve it to the underlying storage key before persisting.
+    // Each language's form has its own independent document upload, so
+    // check both (previously only enData/"data" was resolved — a Hindi
+    // document field's raw token URL was stored as-is).
     for (const f of fields) {
       const col = dbCol(f.column_name);
-      if (f.type === "document" && typeof data[col] === "string") {
-        const match = data[col].match(/\/api\/file\/(.+)$/);
-        if (match) {
-          const key = decodeFileTokenWithoutVerification(match[1]);
-          if (key) data[col] = key;
+      if (f.type !== "document") continue;
+      for (const langData of [enData, hiData]) {
+        if (langData && typeof langData[col] === "string") {
+          const match = langData[col].match(/\/api\/file\/(.+)$/);
+          if (match) {
+            const key = decodeFileTokenWithoutVerification(match[1]);
+            if (key) langData[col] = key;
+          }
         }
       }
     }
@@ -1697,8 +1714,34 @@ if (
 ) {
     const tableName = `${formName}_records`;
 
+    // Resolve the Hindi document field's signed upload-token URL to its
+    // storage key before persisting — previously only the English row's
+    // fields got this treatment, so a Hindi document/photo upload stored
+    // the raw temporary URL instead of the real file key.
+    for (const f of fields) {
+      const col = dbCol(f.column_name);
+      if (f.type !== "document" || typeof hiData[col] !== "string") continue;
+      const hiMatch = hiData[col].match(/\/api\/file\/(.+)$/);
+      if (hiMatch) {
+        const hiKey = decodeFileTokenWithoutVerification(hiMatch[1]);
+        if (hiKey) hiData[col] = hiKey;
+      }
+    }
+
     try {
         await ensureSourceRowIdColumn(pool, tableName);
+
+        // Clean up the Hindi row's own superseded files — previously only
+        // the directly-edited row's files were diffed (see "Clean up
+        // replaced files" above); the Hindi mirror's old document/image was
+        // never cleaned up when it changed here, orphaning it on disk.
+        const { rows: existingHiRows } = await pool.query(
+          `SELECT * FROM ${tableName} WHERE source_row_id = $1 AND institution_id = $2`,
+          [id, ctx.institutionId]
+        );
+        const hiOldKeys = extractUploadKeys(existingHiRows[0] || {});
+        const hiNewKeys = extractUploadKeys(hiData);
+        const hiKeysToDelete = hiOldKeys.filter((k) => !hiNewKeys.includes(k));
 
         const hiCustomFieldsJson =
             extraFieldCols.length > 0
@@ -1781,6 +1824,10 @@ if (
             );
         }
 
+        for (const key of hiKeysToDelete) {
+          await deleteFile(key).catch(() => {});
+        }
+
     } catch (err) {
 
         logger.error(
@@ -1813,9 +1860,11 @@ if (
    file if superseded — regardless of whether the record edit has been
    submitted yet. Only ever touches a column the record's own active schema
    actually declares as a "document" field — never an arbitrary client-
-   supplied column name. Also syncs the record's Hindi mirror row (if one
-   exists) to the same value, since a file reference isn't translated —
-   it's the same physical file for both language rows.
+   supplied column name. Operates only on the exact row `id` supplied —
+   English and Hindi document/image fields are independent uploads, so this
+   never touches the other language's row (previously it force-synced the
+   Hindi mirror to the English row's file; the frontend now passes the
+   Hindi row's own id when editing its document field instead).
 ───────────────────────────────────────────────────────────────────────── */
 router.patch("/:formName/records/:id/file-field", async (req, res) => {
   const pool = req.app.locals.pool;
@@ -1876,6 +1925,7 @@ router.patch("/:formName/records/:id/file-field", async (req, res) => {
 
     const physicalCols = await getPhysicalCols(pool, `${formName}_records`);
     let oldValue;
+    let newUpdatedAt;
 
     if (physicalCols.has(col)) {
       const { rows } = await pool.query(
@@ -1884,10 +1934,11 @@ router.patch("/:formName/records/:id/file-field", async (req, res) => {
          )
          UPDATE ${formName}_records SET ${col} = $3, updated_at = now()
          WHERE id = $1 AND institution_id = $2
-         RETURNING (SELECT old_value FROM old) AS old_value`,
+         RETURNING (SELECT old_value FROM old) AS old_value, updated_at`,
         [id, ctx.institutionId, value]
       );
       oldValue = rows[0]?.old_value;
+      newUpdatedAt = rows[0]?.updated_at;
     } else {
       const { rows } = await pool.query(
         `WITH old AS (
@@ -1897,10 +1948,11 @@ router.patch("/:formName/records/:id/file-field", async (req, res) => {
          SET custom_fields = jsonb_set(COALESCE(custom_fields, '{}'::jsonb), ARRAY[$3::text], to_jsonb($4::text), true),
              updated_at = now()
          WHERE id = $1 AND institution_id = $2
-         RETURNING (SELECT old_value FROM old) AS old_value`,
+         RETURNING (SELECT old_value FROM old) AS old_value, updated_at`,
         [id, ctx.institutionId, col, value]
       );
       oldValue = rows[0]?.old_value;
+      newUpdatedAt = rows[0]?.updated_at;
     }
 
     if (oldValue && oldValue !== value) {
@@ -1908,29 +1960,11 @@ router.patch("/:formName/records/:id/file-field", async (req, res) => {
       if (oldKey) await deleteFile(oldKey).catch(() => {});
     }
 
-    // Sync the Hindi mirror row to the same file reference, if one exists —
-    // best-effort, never blocks the response on failure.
-    try {
-      if (physicalCols.has(col)) {
-        await pool.query(
-          `UPDATE ${formName}_records SET ${col} = $1, updated_at = now()
-           WHERE source_row_id = $2 AND institution_id = $3`,
-          [value, id, ctx.institutionId]
-        );
-      } else {
-        await pool.query(
-          `UPDATE ${formName}_records
-           SET custom_fields = jsonb_set(COALESCE(custom_fields, '{}'::jsonb), ARRAY[$1::text], to_jsonb($2::text), true),
-               updated_at = now()
-           WHERE source_row_id = $3 AND institution_id = $4`,
-          [col, value, id, ctx.institutionId]
-        );
-      }
-    } catch (mirrorErr) {
-      logger.warn(`Hindi mirror file-field sync failed for ${formName}/${id}`, { err: mirrorErr.message });
-    }
-
-    return res.json({ success: true });
+    // The fast-path upload above just advanced this record's updated_at —
+    // report it back so the caller can keep its held reference current and
+    // avoid a false "modified by another user" conflict on the next Save
+    // (PUT's optimistic-concurrency check compares against updated_at).
+    return res.json({ success: true, updated_at: newUpdatedAt });
   } catch (err) {
     logger.error(`PATCH /api/form-data/${formName}/records/${id}/file-field`, { stack: err.stack });
     return res.status(500).json({ success: false, message: "Failed to save file field." });

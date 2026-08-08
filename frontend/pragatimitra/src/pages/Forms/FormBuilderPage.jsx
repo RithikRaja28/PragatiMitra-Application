@@ -420,15 +420,16 @@ export default function FormBuilderPage({ mode, initialData, isSuperAdmin, onDon
 
     year: selectedYear ?? null,
 
+    // New forms always start on Academic (matches the help text next to the
+    // domain toggle below) — a cross-domain admin's own currently-active
+    // roleDomain used to be the default here, so a Hospital-domain admin
+    // session silently created Academic-intended forms under Hospital
+    // unless they noticed and re-clicked the toggle. They can still pick
+    // Hospital/Finance explicitly; this only changes what's pre-selected.
     form_domain:
         (isEdit || isAdapt)
             ? (initialData?.form_domain || "academic")
-            : (
-                user?.roleDomain &&
-                user.roleDomain !== "academic"
-            )
-                ? user.roleDomain
-                : "academic",
+            : "academic",
 });
   const [basicsErrors, setBasicsErrors] = useState({});
 

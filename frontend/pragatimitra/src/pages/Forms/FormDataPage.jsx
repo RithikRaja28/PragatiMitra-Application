@@ -84,7 +84,7 @@ const AUDIO_MAX = 50 * 1024 * 1024;
 const VIDEO_MAX = 200 * 1024 * 1024;
 const DOC_LABEL_STYLE = { display: "block", fontSize: 13, fontWeight: 500, color: "#334155", marginBottom: 6 };
 
-export function DocumentUploadField({ label, required, value, onChange, getToken, labelStyle = DOC_LABEL_STYLE, formName, departmentFormId, recordId, column, language = "en" }) {
+export function DocumentUploadField({ label, required, value, onChange, getToken, labelStyle = DOC_LABEL_STYLE, formName, departmentFormId, recordId, column, language = "en", onFileFieldSaved }) {
   const fileRef = useRef(null);
   const [status, setStatus] = useState("idle");
   const [errMsg, setErrMsg] = useState("");
@@ -155,7 +155,24 @@ export function DocumentUploadField({ label, required, value, onChange, getToken
         const path = departmentFormId
           ? `/api/department-form-data/${departmentFormId}/records/${recordId}/file-field`
           : `/api/form-data/${formName}/records/${recordId}/file-field`;
-        api.request(path, { method: "PATCH", token, json: { column, value: data.fileKey } }).catch(() => {});
+        // This PATCH advances the record's updated_at server-side. Report the
+        // new value back up so a subsequent Update-Record click sends the
+        // current timestamp instead of the one captured when the page first
+        // opened — otherwise the optimistic-concurrency check on the record's
+        // own PUT sees a mismatch and false-conflicts as "modified by another
+        // user" even though nothing but this same upload touched it.
+        api.request(path, { method: "PATCH", token, json: { column, value: data.fileKey } })
+          .then((r) => r.json())
+          .then((j) => { if (j?.updated_at) onFileFieldSaved?.(j.updated_at, language); })
+          .catch(() => {});
+      } else if (value) {
+        // No saved record to diff against yet (still composing "Add Record"),
+        // so replacing an already-uploaded value here has nothing else that
+        // will ever clean up the file it's replacing — discard it directly.
+        const discardBody = departmentFormId
+          ? { fileKey: value, context: "department_form", departmentFormId }
+          : { fileKey: value, context: "institute_form", formName };
+        api.post("/api/upload/discard", { token, json: discardBody }).catch(() => {});
       }
       onChange(data.fileKey);
       setStatus("done");
@@ -260,7 +277,7 @@ export function DocumentCell({ fileKey, getToken, lang = "en" }) {
 }
 
 /* ── Record edit sub-components ─────────────────────────────────────── */
-export function FieldInput({ field, value, onChange, getToken, lang = "en", formName, departmentFormId, recordId }) {
+export function FieldInput({ field, value, onChange, getToken, lang = "en", formName, departmentFormId, recordId, onFileFieldSaved }) {
   const col = dbCol(field.column_name);
   const label = field.label?.[lang] || field.label?.en || displayCol(field.column_name);
   const type = field.type;
@@ -287,7 +304,7 @@ export function FieldInput({ field, value, onChange, getToken, lang = "en", form
   if (type === "document") return (
     <DocumentUploadField label={label} required={field.required} value={value}
       onChange={url => onChange(col, url)} getToken={getToken} formName={formName} departmentFormId={departmentFormId}
-      recordId={recordId} column={col} language={lang} />
+      recordId={recordId} column={col} language={lang} onFileFieldSaved={onFileFieldSaved} />
   );
   const inputType = type === "number" ? "number" : type === "date" ? "date" : type === "email" ? "email" : type === "phone" ? "tel" : "text";
   return (
@@ -378,6 +395,7 @@ export function RecordEditPage({
   translationEnabled = true,
   viewOnly = false,
   breadcrumb,
+  onFileFieldSaved,
 }) {
   const { lang } = useLanguage();
   const isEdit = !!record;
@@ -540,7 +558,7 @@ const [saving, setSaving] = useState(false);
       {fields.length === 0 ? noFields : fields.map(field => (
         viewOnly
           ? <ReadOnlyField key={dbCol(field.column_name)} field={field} value={formData[dbCol(field.column_name)]} lang="en" getToken={getToken} />
-          : <FieldInput key={dbCol(field.column_name)} field={field} value={formData[dbCol(field.column_name)]} onChange={handleChange} getToken={getToken} lang="en" formName={formName} departmentFormId={departmentFormId} recordId={record?.englishRecord?.id ?? record?.id} />
+          : <FieldInput key={dbCol(field.column_name)} field={field} value={formData[dbCol(field.column_name)]} onChange={handleChange} getToken={getToken} lang="en" formName={formName} departmentFormId={departmentFormId} recordId={record?.englishRecord?.id ?? record?.id} onFileFieldSaved={onFileFieldSaved} />
       ))}
     </ModalPane>
   );
@@ -570,6 +588,7 @@ const [saving, setSaving] = useState(false);
             formName={formName}
             departmentFormId={departmentFormId}
             recordId={record?.hindiRecord?.id}
+            onFileFieldSaved={onFileFieldSaved}
         />
     )
 )}
@@ -1925,6 +1944,15 @@ export default function FormDataPage() {
           viewOnly={readOnly && editTarget !== "new"}
           onSave={saveRecord}
           onBack={handleBackFromEdit}
+          onFileFieldSaved={(ts, lang) => {
+            // The record's own PUT only ever checks the English row's
+            // updated_at (editTarget.id is always the English row's id) — a
+            // Hindi-pane upload advances the *Hindi* row's own updated_at,
+            // which the conflict check never looks at, so only English
+            // uploads should update what we hold here.
+            if (lang === "hi") return;
+            setEditTarget((prev) => (prev && prev !== "new" ? { ...prev, updated_at: ts } : prev));
+          }}
         />
       </>
     );

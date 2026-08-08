@@ -594,16 +594,6 @@ router.post("/:id/records", async (req, res) => {
   if (!requireContributor(req, res)) return;
    
    const { englishData, hindiData } = req.body;
-   console.log("Form ID:", req.params.id);
-console.log("Body:", req.body);
-
-
-console.log("English Data:", englishData);
-console.log("Hindi Data:", hindiData);
-
-
-
-
   // if (!data || typeof data !== "object")
   //   return res.status(400).json({ success: false, message: "data is required." });
 
@@ -639,13 +629,22 @@ if (
     const fields = activeFields(effectiveSchema);
     const fieldCols = fields.map((f) => dbCol(f.column_name));
     
+    // Document fields carry a signed "/api/file/<token>" URL from the upload
+    // widget — resolve it to the underlying storage key before persisting.
+    // Each language's form has its own independent document upload, so
+    // check both (this loop referenced an undefined `data` variable before —
+    // creating any record with a document field crashed with "Failed to
+    // create record.").
     for (const f of fields) {
       const col = dbCol(f.column_name);
-      if (f.type === "document" && typeof data[col] === "string") {
-        const match = data[col].match(/\/api\/file\/(.+)$/);
-        if (match) {
-          const key = decodeFileTokenWithoutVerification(match[1]);
-          if (key) data[col] = key;
+      if (f.type !== "document") continue;
+      for (const langData of [englishData, hindiData]) {
+        if (langData && typeof langData[col] === "string") {
+          const match = langData[col].match(/\/api\/file\/(.+)$/);
+          if (match) {
+            const key = decodeFileTokenWithoutVerification(match[1]);
+            if (key) langData[col] = key;
+          }
         }
       }
     }
@@ -828,13 +827,21 @@ if (!hindiData || typeof hindiData !== "object" || Array.isArray(hindiData))
     const fields = activeFields(effectiveSchema);
     const fieldCols = fields.map((f) => dbCol(f.column_name));
 
+    // Document fields carry a signed "/api/file/<token>" URL from the upload
+    // widget — resolve it to the underlying storage key before persisting.
+    // Each language's form has its own independent document upload, so
+    // check both (this loop referenced an undefined `data` variable before —
+    // every update touching a document field crashed with a ReferenceError).
     for (const f of fields) {
       const col = dbCol(f.column_name);
-      if (f.type === "document" && typeof data[col] === "string") {
-        const match = data[col].match(/\/api\/file\/(.+)$/);
-        if (match) {
-          const key = decodeFileTokenWithoutVerification(match[1]);
-          if (key) data[col] = key;
+      if (f.type !== "document") continue;
+      for (const langData of [englishData, hindiData]) {
+        if (langData && typeof langData[col] === "string") {
+          const match = langData[col].match(/\/api\/file\/(.+)$/);
+          if (match) {
+            const key = decodeFileTokenWithoutVerification(match[1]);
+            if (key) langData[col] = key;
+          }
         }
       }
     }
@@ -865,6 +872,10 @@ if (!hindiData || typeof hindiData !== "object" || Array.isArray(hindiData))
       `SELECT * FROM ${table} WHERE id = $1 AND department_id = $2`,
       [req.params.recordId, departmentId]
     );
+    const { rows: oldHiRows } = await pool.query(
+      `SELECT * FROM ${table} WHERE source_row_id = $1 AND department_id = $2`,
+      [req.params.recordId, departmentId]
+    );
 
     const { rows } = await pool.query(
       `UPDATE ${table} SET ${setClauses.join(", ")} WHERE ${whereClause} RETURNING *`,
@@ -872,9 +883,9 @@ if (!hindiData || typeof hindiData !== "object" || Array.isArray(hindiData))
     );
     if (!rows.length) return res.status(404).json({ success: false, message: "Record not found." });
 
-    if (oldRows.length > 0) {
-      const oldKeys = extractUploadKeys(oldRows[0]);
-      const newKeys = extractUploadKeys(data);
+    if (oldRows.length > 0 || oldHiRows.length > 0) {
+      const oldKeys = [...extractUploadKeys(oldRows[0] || {}), ...extractUploadKeys(oldHiRows[0] || {})];
+      const newKeys = [...extractUploadKeys(englishData), ...extractUploadKeys(hindiData || {})];
       const toDelete = oldKeys.filter(k => !newKeys.includes(k));
       for (const key of toDelete) {
         await deleteFile(key).catch(() => {});
@@ -961,8 +972,12 @@ if (!hindiData || typeof hindiData !== "object" || Array.isArray(hindiData))
    writes the new one in a single atomic statement, then deletes the old
    file if superseded — regardless of whether the record edit has been
    submitted yet. Only ever touches a column the record's own effective
-   schema actually declares as a "document" field, and syncs the record's
-   Hindi mirror row (if one exists) to the same value.
+   schema actually declares as a "document" field. Operates only on the
+   exact row `recordId` supplied — English and Hindi document/image fields
+   are independent uploads, so this never touches the other language's row
+   (previously it force-synced the Hindi mirror to whichever row's id was
+   passed; the frontend now passes the Hindi row's own id when editing its
+   document field instead).
 ───────────────────────────────────────────────────────────────────── */
 router.patch("/:id/records/:recordId/file-field", async (req, res) => {
   const pool = req.app.locals.pool;
@@ -1025,28 +1040,6 @@ router.patch("/:id/records/:recordId/file-field", async (req, res) => {
     if (oldValue && oldValue !== value) {
       const [oldKey] = extractUploadKeys(oldValue);
       if (oldKey) await deleteFile(oldKey).catch(() => {});
-    }
-
-    // Sync Hindi mirror row, best-effort.
-    try {
-      await ensureSourceRowIdColumn(pool, table);
-      if (physicalCols.has(col)) {
-        await pool.query(
-          `UPDATE ${table} SET ${quoteIdent(col)} = $1, updated_at = now()
-           WHERE source_row_id = $2 AND department_id = $3`,
-          [value, req.params.recordId, departmentId]
-        );
-      } else {
-        await pool.query(
-          `UPDATE ${table}
-           SET custom_fields = jsonb_set(COALESCE(custom_fields, '{}'::jsonb), ARRAY[$1::text], to_jsonb($2::text), true),
-               updated_at = now()
-           WHERE source_row_id = $3 AND department_id = $4`,
-          [col, value, req.params.recordId, departmentId]
-        );
-      }
-    } catch (mirrorErr) {
-      logger.warn(`Hindi mirror file-field sync failed for dept form ${form.form_name}/${req.params.recordId}`, { err: mirrorErr.message });
     }
 
     return res.json({ success: true });
@@ -1136,100 +1129,45 @@ router.delete("/:id/records/bulk-delete", async (req, res) => {
     if (lock.locked) return res.status(403).json({ success: false, message: lock.message });
 
     await ensureSourceRowIdColumn(pool, table);
-    /* Bug 12 — resolve each selected id to its English source (a Hindi row → its
-       source_row_id), then delete the whole pair. So a Hindi row can never be
-       deleted on its own, and selecting either side removes both. */
-    // const { rows: sel } = await pool.query(
-    //   `SELECT id, source_row_id FROM ${table} WHERE id = ANY($1::uuid[]) AND department_id = $2`,
-    //   [ids, departmentId]
-    // );
+    /* Bug 12 — resolve each selected id to its English source (a Hindi row →
+       its source_row_id), then delete the whole pair regardless of which side
+       was selected. Fetch the full pair (both rows' columns) BEFORE deleting
+       so extractUploadKeys sees each row's own files — a Hindi row can carry
+       an independently-uploaded document/image distinct from its English
+       source, and both must be cleaned up, not just whichever side was
+       clicked in the UI. */
+    const { rows: selectedRecords } = await pool.query(
+      `SELECT * FROM ${table} WHERE id = ANY($1::uuid[]) AND department_id = $2`,
+      [ids, departmentId]
+    );
 
-     const { rows: selectedRecords } = await pool.query(
-`
-SELECT
-id,
-language,
-source_row_id
-FROM ${table}
-WHERE
-id = ANY($1::uuid[])
-AND department_id = $2
-`,
-[
-ids,
-departmentId
-]
-);
+    const processed = new Set();
+    let deleted = 0;
 
-    // const rootIds = [...new Set(sel.map((r) => r.source_row_id || r.id))];
-    // const { rowCount } = rootIds.length
-    //   ? await pool.query(
-    //       `DELETE FROM ${table} WHERE (id = ANY($1::uuid[]) OR source_row_id = ANY($1::uuid[])) AND department_id = $2`,
-    //       [rootIds, departmentId]
-    //     )
-    //   : { rowCount: 0 };
-    // const deleted = rowCount ?? 0;
+    for (const record of selectedRecords) {
+      const rootId = record.language === "en" ? record.id : (record.source_row_id || record.id);
+      if (processed.has(rootId)) continue;
+      processed.add(rootId);
 
-     
-     const processed = new Set();
+      const { rows: pairRows } = await pool.query(
+        `SELECT * FROM ${table} WHERE (id = $1 OR source_row_id = $1) AND department_id = $2`,
+        [rootId, departmentId]
+      );
 
-let deleted = 0;
+      await pool.query(
+        `DELETE FROM ${table} WHERE (id = $1 OR source_row_id = $1) AND department_id = $2`,
+        [rootId, departmentId]
+      );
 
-for (const record of selectedRecords) {
-
-    // Unique key for one English-Hindi pair
-    const key =
-        record.language === "en"
-            ? record.id
-            : (record.source_row_id || record.id);
-
-    if (processed.has(key)) {
-        continue;
-    }
-
-    processed.add(key);
-
-    if (record.language === "en") {
-
-        await pool.query(
-`
-DELETE FROM ${table}
-WHERE
-(id = $1 OR source_row_id = $1)
-AND department_id = $2
-`,
-[
-record.id,
-departmentId
-]
-);
-   const paths = extractUploadKeys(record);
+      for (const row of pairRows) {
+        const paths = extractUploadKeys(row);
         for (const path of paths) {
           await deleteFile(path).catch(() => {});
-        }  
+        }
+      }
 
-    } else {
-
-        await pool.query(
-`
-DELETE FROM ${table}
-WHERE
-id = $1
-AND department_id = $2
-`,
-[
-record.id,
-departmentId
-]
-);
-const paths = extractUploadKeys(record);
-        for (const path of paths) {
-          await deleteFile(path).catch(() => {});
-        }  
+      deleted++;
     }
-
-    deleted++;
-}
 
     await writeAuditLog(req, {
       actionType: "DEPARTMENT_FORM_RECORDS_BULK_DELETED",
@@ -1363,77 +1301,32 @@ router.delete("/:id/records/:recordId", async (req, res) => {
     await ensureSourceRowIdColumn(pool, table);
     /* Bug 12 — delete the whole pair whichever side was targeted: resolve the
        English source id first (a Hindi row → its source_row_id), so a Hindi row is
-       never deleted on its own (English orphan). */
-    // const { rows: tgt } = await pool.query(
-    //   `SELECT source_row_id FROM ${table} WHERE id = $1 AND department_id = $2`,
-    //   [req.params.recordId, departmentId]
-    // );
-    // const rootId = tgt[0]?.source_row_id || req.params.recordId;
-    
-
+       never deleted on its own (English orphan). Fetch the full pair (both rows'
+       columns) BEFORE deleting so extractUploadKeys sees each row's own files —
+       a Hindi row can carry an independently-uploaded document/image distinct
+       from its English source, and both must be cleaned up. */
     const { rows: target } = await pool.query(
-`
-SELECT
-id,
-language,
-source_row_id
-FROM ${table}
-WHERE
-id = $1
-AND department_id = $2
-`,
-[
-req.params.recordId,
-departmentId
-]
-);
+      `SELECT * FROM ${table} WHERE id = $1 AND department_id = $2`,
+      [req.params.recordId, departmentId]
+    );
 
-if (!target.length) {
-    return res.status(404).json({
-        success: false,
-        message: "Record not found."
-    });
-}
+    if (!target.length) {
+      return res.status(404).json({ success: false, message: "Record not found." });
+    }
 
-const record = target[0];
+    const record = target[0];
+    const rootId = record.language === "en" ? record.id : (record.source_row_id || record.id);
 
-    let rowCount = 0;
-
-if (record.language === "en") {
+    const { rows: deletedRows } = await pool.query(
+      `SELECT * FROM ${table} WHERE (id = $1 OR source_row_id = $1) AND department_id = $2`,
+      [rootId, departmentId]
+    );
 
     const result = await pool.query(
-`
-DELETE FROM ${table}
-WHERE
-(id = $1 OR source_row_id = $1)
-AND department_id = $2
-`,
-[
-record.id,
-departmentId
-]
-);
-
-    rowCount = result.rowCount;
-
-} else {
-
-    const result = await pool.query(
-`
-DELETE FROM ${table}
-WHERE
-id = $1
-AND department_id = $2
-`,
-[
-record.id,
-departmentId
-]
-);
-
-    rowCount = result.rowCount;
-}
-
+      `DELETE FROM ${table} WHERE (id = $1 OR source_row_id = $1) AND department_id = $2`,
+      [rootId, departmentId]
+    );
+    const rowCount = result.rowCount;
 
     if (!rowCount) return res.status(404).json({ success: false, message: "Record not found." });
 
