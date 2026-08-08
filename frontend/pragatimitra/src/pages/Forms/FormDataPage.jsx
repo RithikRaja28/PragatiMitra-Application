@@ -287,7 +287,11 @@ export function FieldInput({ field, value, onChange, getToken, lang = "en", form
       <div style={{ display: "flex", gap: 16, marginTop: 2 }}>
         {[{ val: "true", text: "Yes" }, { val: "false", text: "No" }].map(({ val, text }) => (
           <label key={val} style={{ display: "flex", alignItems: "center", gap: 7, cursor: "pointer", fontSize: 13 }}>
-            <input type="radio" name={col} value={val} checked={String(value) === val}
+            {/* name is scoped per language pane — both panes share the same `col`,
+                and an unscoped name put all 4 radios (EN Yes/No + HI Yes/No) in one
+                native browser radio group, so clicking one could visually uncheck
+                the other pane's selection independent of React state. */}
+            <input type="radio" name={`${col}_${lang}`} value={val} checked={String(value) === val}
               onChange={() => onChange(col, val === "true")}
               style={{ accentColor: ACCENT, width: 15, height: 15 }} /> {text}
           </label>
