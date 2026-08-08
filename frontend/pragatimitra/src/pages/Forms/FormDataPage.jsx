@@ -492,13 +492,20 @@ const [saving, setSaving] = useState(false);
 
   const [error, setError]           = useState("");
 
-  function handleChange(col, val) { setFormData(prev => ({ ...prev, [col]: val })); }
-   function handleChangeHi(col,val){
-    setFormDataHi(prev=>({
-        ...prev,
-        [col]:val
-    }));
-}
+  // Boolean (Yes/No) fields aren't translatable content — unlike text, a
+  // fact can't have a different answer in Hindi vs English — so picking it
+  // in either pane sets both, instead of requiring (and risking mismatched)
+  // separate answers per language.
+  function handleChange(col, val) {
+    setFormData(prev => ({ ...prev, [col]: val }));
+    const field = fields.find(f => dbCol(f.column_name) === col);
+    if (field?.type === "boolean") setFormDataHi(prev => ({ ...prev, [col]: val }));
+  }
+  function handleChangeHi(col, val) {
+    setFormDataHi(prev => ({ ...prev, [col]: val }));
+    const field = fields.find(f => dbCol(f.column_name) === col);
+    if (field?.type === "boolean") setFormData(prev => ({ ...prev, [col]: val }));
+  }
 
   useEffect(() => {
     const id = "pm-rec-edit-css";

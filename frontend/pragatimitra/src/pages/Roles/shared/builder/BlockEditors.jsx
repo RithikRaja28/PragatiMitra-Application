@@ -941,9 +941,11 @@ function FormImportTableBlock({ blockId, content, onChange, onRefetched, readOnl
       });
       const data = await res.json();
       if (!res.ok || !data.success) throw new Error(data.message || "Switch failed");
-      // Backend returns the full updated content object
-      if (onRefetched) onRefetched(data.data);
-      else onChange(data.data);
+      // Backend now returns just the fetched language's data as an
+      // independent translation — the primary (other-language) content is
+      // never touched, so pass it through unchanged and only merge in the
+      // newly-fetched language.
+      onRefetched?.(content, { ...(translations || {}), [lang]: data.data });
     } catch (ex) {
       setSwitchErr(ex.message || "Failed to switch language");
     } finally {

@@ -706,11 +706,18 @@ if (hasHindiData) {
   }
 });
 
-/* ── POST /blocks/:blockId/switch-language — re-fetch the SAME form-import
-   TABLE block in a different language (en/hi), e.g. when the editor's EN/HI
-   content toggle doesn't match the language this block was last imported in.
-   Unlike /refetch (which just re-runs the stored query verbatim), this
-   rebuilds the query with a different language filter. ─────────────── */
+/* ── POST /blocks/:blockId/switch-language — fetch the SAME form-import
+   TABLE block's data in a different language (en/hi), e.g. when the editor's
+   EN/HI content toggle doesn't match the language this block was last
+   imported in. Unlike /refetch (which just re-runs the stored query
+   verbatim for the primary/English content), this rebuilds the query with a
+   different language filter and stores the result as an INDEPENDENT
+   block_translations row — mirroring the Hindi-sync /refetch and the
+   initial table-import already do. It must never touch the block's primary
+   `content`: an earlier version overwrote content.rows/columns/language in
+   place, which meant toggling back to the original language showed the
+   just-fetched other-language data instead (the two languages were never
+   actually independent — one destructively replaced the other). ───────── */
 router.post("/blocks/:blockId/switch-language", async (req, res) => {
   const pool = req.app.locals.pool;
   try {
@@ -764,40 +771,29 @@ router.post("/blocks/:blockId/switch-language", async (req, res) => {
     const safeSelected = validateColumns(selected, physicalCols, schemaFields);
     if (!safeSelected.length) return res.status(400).json({ success: false, message: "No valid columns" });
 
-    const newQuery  = buildFullQuery(tableName, safeSelected, iid, year, schemaFields, language, physicalCols);
+    const newQuery   = buildFullQuery(tableName, safeSelected, iid, year, schemaFields, language, physicalCols);
     const columnMeta = buildColumnMeta(safeSelected, schemaFields, language);
-    const importedAt = new Date().toISOString();
 
     const { rows: dataRows } = await pool.query(newQuery);
+    const newContent = { columns: columnMeta, rows: dataRows };
 
-    const { rows: updRows } = await pool.query(
-      `UPDATE public.section_blocks
-       SET content    = content
-                     || jsonb_build_object('rows', $1::jsonb)
-                     || jsonb_build_object('columns', $2::jsonb)
-                     || jsonb_build_object('language', $3::text)
-                     || jsonb_build_object('imported_at', $4::text),
-           updated_by = $5
-       WHERE id=$6 AND deleted_at IS NULL
-       RETURNING content`,
-      [JSON.stringify(dataRows), JSON.stringify(columnMeta), language, importedAt, req.user.userId, blockId]
-    );
-
+    // Independent per-language storage — the primary `content` column is
+    // deliberately never written here (see comment above).
     await pool.query(
-      `UPDATE public.data_sources
-       SET query      = $1,
-           params     = params || $2::jsonb,
-           updated_by = $3
-       WHERE id=$4`,
-      [newQuery, JSON.stringify({ language, imported_at: importedAt }), req.user.userId, block.ds_id]
-    ).catch(() => {});
+      `INSERT INTO public.block_translations (block_id, language, content, status, created_by, updated_by)
+       VALUES ($1,$2,$3::jsonb,'DRAFT',$4,$4)
+       ON CONFLICT (block_id, language) DO UPDATE
+         SET content    = EXCLUDED.content,
+             updated_by = EXCLUDED.updated_by`,
+      [blockId, language, JSON.stringify(newContent), req.user.userId]
+    );
 
     try {
       await createSectionSnapshot(pool, block.section_id, "MANUAL", req.user.userId, null,
-        `Switched ${formName} table to ${language === "hi" ? "Hindi" : "English"} — ${dataRows.length} rows`);
+        `Fetched ${formName} table in ${language === "hi" ? "Hindi" : "English"} — ${dataRows.length} rows`);
     } catch {}
 
-    return res.json({ success: true, data: updRows[0].content });
+    return res.json({ success: true, data: newContent });
   } catch (err) {
     logger.error("report-integration POST /blocks/:blockId/switch-language", { ...getLogContext(req), err: err.message });
     return res.status(500).json({ success: false, message: "Failed to switch language: " + err.message });
