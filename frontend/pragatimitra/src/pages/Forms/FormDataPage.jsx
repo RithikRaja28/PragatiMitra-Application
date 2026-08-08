@@ -477,8 +477,14 @@ useEffect(() => {
 setFormData(english);
 setFormDataHi(hindi);
 
-
-}, [record, fields]);
+// Deliberately keyed on the record's own identity, not the `record` object
+// reference — the parent updates that object in place (e.g. to refresh
+// updated_at after a background file-field save) without the user actually
+// switching to a different record, and resetting the form on every such
+// update was discarding in-progress edits (like a just-replaced document)
+// before the user got a chance to save them.
+// eslint-disable-next-line react-hooks/exhaustive-deps
+}, [record?.id, record?.englishRecord?.id, record?.hindiRecord?.id, fields]);
 
 const [saving, setSaving] = useState(false);
 
@@ -1713,11 +1719,18 @@ export default function FormDataPage() {
     } finally { setDeleting(false); }
   }
 
-  /* ── Derived: schema fields ── */
-  const excludedCols = new Set(schema?.schema?.excluded_fixed_columns || []);
-  const schemaFields = (schema?.schema?.fields || []).filter(
-    f => !f.hidden && !excludedCols.has(dbCol(f.column_name)) && !excludedCols.has(f.column_name)
-  );
+  /* ── Derived: schema fields ──
+     Memoized so this array keeps the same reference across renders that
+     don't actually change the schema — RecordEditPage's form-reset effect
+     depends on this identity, and a fresh array every render (from an
+     unrelated parent state update, e.g. after a background file-field save)
+     was silently wiping in-progress edits back to their page-load values. */
+  const schemaFields = useMemo(() => {
+    const excludedCols = new Set(schema?.schema?.excluded_fixed_columns || []);
+    return (schema?.schema?.fields || []).filter(
+      f => !f.hidden && !excludedCols.has(dbCol(f.column_name)) && !excludedCols.has(f.column_name)
+    );
+  }, [schema]);
 
   /* ── Derived: the server already returns the search-filtered current page ── */
   const filteredRecords = records;

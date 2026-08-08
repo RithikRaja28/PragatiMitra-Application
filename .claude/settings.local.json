@@ -40,7 +40,8 @@
       "Bash(node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\);process.stdin.on\\('end',\\(\\)=>{const lines=d.split\\('\\\\n'\\);const out=lines.filter\\(l=>/error|Error|✓ built|transforming|fail/i.test\\(l\\)\\);console.log\\(out.slice\\(-15\\).join\\('\\\\n'\\)\\)}\\)\")",
       "Bash(node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\);process.stdin.on\\('end',\\(\\)=>{const lines=d.split\\('\\\\n'\\);const out=lines.filter\\(l=>/error|Error|✓ built|fail/i.test\\(l\\)\\);console.log\\(out.slice\\(-15\\).join\\('\\\\n'\\)\\)}\\)\")",
       "Bash(Get-Content \"c:\\\\Users\\\\kanag\\\\Desktop\\\\PragatiMitra-Application\\\\backend\\\\logs\\\\app-2026-06-05.log\" -Tail 60)",
-      "PowerShell(cd \"d:\\\\PragatiMitra-Application\"; git status; $content = Get-Content \"frontend\\\\pragatimitra\\\\src\\\\pages\\\\Roles\\\\shared\\\\builder\\\\ReportBuilderListPage.jsx\" -Raw; $content.Substring\\(0, [Math]::Min\\(500, $content.Length\\)\\))"
+      "PowerShell(cd \"d:\\\\PragatiMitra-Application\"; git status; $content = Get-Content \"frontend\\\\pragatimitra\\\\src\\\\pages\\\\Roles\\\\shared\\\\builder\\\\ReportBuilderListPage.jsx\" -Raw; $content.Substring\\(0, [Math]::Min\\(500, $content.Length\\)\\))",
+      "Bash(NODE_PATH=\"$\\(pwd\\)/node_modules\" node \"C:\\\\Users\\\\krish\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-krish-Documents-RMK-Engineering-College-PragtiMitra-PragatiMitra-Application\\\\cf0717a1-bb8a-4417-990c-0723ba2d4d4f\\\\scratchpad\\\\repro7-final-verify.js\")"
     ]
   }
 }
