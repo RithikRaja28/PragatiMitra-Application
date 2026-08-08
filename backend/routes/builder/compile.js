@@ -1008,8 +1008,9 @@ async function generateDocx(report, sections, outPath, opts) {
       }
 
       case "IMAGE": {
-        if (c.url) {
-          const buf = await fetchImageBuffer(c.url);
+        const imgUrl = (lang === "hi" && hi.url) ? hi.url : c.url;
+        if (imgUrl) {
+          const buf = await fetchImageBuffer(imgUrl);
           if (buf) {
             try {
               els.push(new Paragraph({
@@ -1041,8 +1042,12 @@ async function generateDocx(report, sections, outPath, opts) {
         const imgPxW   = Math.max(80, Math.floor(520 / colCount));
         const imgPxH   = Math.round(imgPxW * 0.72);
 
+        const hiCols = (lang === "hi" && hi.cols) ? hi.cols : [];
         const bufs = await Promise.all(
-          gridCols.map(col => (col.url ? fetchImageBuffer(col.url) : Promise.resolve(null)))
+          gridCols.map((col, i) => {
+            const imgUrl = hiCols[i]?.url || col.url;
+            return imgUrl ? fetchImageBuffer(imgUrl) : Promise.resolve(null);
+          })
         );
 
         const gridCells = gridCols.map((col, i) => {
@@ -1061,7 +1066,6 @@ async function generateDocx(report, sections, outPath, opts) {
               alignment: AlignmentType.CENTER,
             }));
           }
-          const hiCols = (lang === "hi" && hi.cols) ? hi.cols : [];
           const gridCaption = hiCols[i]?.caption || col.caption;
           if (gridCaption) {
             cellChildren.push(new Paragraph({
@@ -1422,15 +1426,25 @@ async function generatePdf(report, sections, outPath, opts) {
     toDataUrl(report.cover_image_url),
   ]);
 
-  // Pre-convert all block image URLs to data URLs so Puppeteer can embed them
+  // Pre-convert all block image URLs to data URLs so Puppeteer can embed them.
+  // Include both the primary (English) content and any Hindi translation's
+  // independent image url — the renderer below picks whichever the compile
+  // language calls for, but both need to already be in the map either way.
   const blockImageUrls = new Set();
   for (const s of sections) {
     for (const b of (s.blocks || [])) {
       let bc = b.content || {};
       if (typeof bc === "string") { try { bc = JSON.parse(bc); } catch { bc = {}; } }
-      if (b.block_type === "IMAGE" && bc.url) blockImageUrls.add(bc.url);
+      let bt = b.translations || {};
+      if (typeof bt === "string") { try { bt = JSON.parse(bt); } catch { bt = {}; } }
+      const hi = bt.hi || {};
+      if (b.block_type === "IMAGE") {
+        if (bc.url) blockImageUrls.add(bc.url);
+        if (hi.url) blockImageUrls.add(hi.url);
+      }
       if (b.block_type === "IMAGE_GRID") {
         for (const col of (bc.cols || [])) { if (col.url) blockImageUrls.add(col.url); }
+        for (const col of (hi.cols || [])) { if (col.url) blockImageUrls.add(col.url); }
       }
     }
   }
@@ -1585,9 +1599,10 @@ function buildHtml(report, sections, opts, assets = {}) {
       }
 
       case "IMAGE": {
-        if (!c.url) return "";
+        const imgUrl = (isHindi && hi.url) ? hi.url : c.url;
+        if (!imgUrl) return "";
         const htmlImgCap = isHindi ? (hi.caption || c.caption || "") : (c.caption || "");
-        const imgSrc = blockImageMap[c.url] || escHtml(c.url);
+        const imgSrc = blockImageMap[imgUrl] || escHtml(imgUrl);
         return `<div class="img-wrap">
           <img src="${imgSrc}" alt="${escHtml(htmlImgCap)}" style="width:${c.widthPct ?? 100}%;max-height:500px;object-fit:contain;border-radius:3px;border:1px solid #e5e7eb">
           ${htmlImgCap ? `<div class="img-cap">${escHtml(htmlImgCap)}</div>` : ""}
@@ -1600,7 +1615,8 @@ function buildHtml(report, sections, opts, assets = {}) {
         const hiCols = isHindi ? (hi.cols || []) : [];
         const items = cols.map((col, gi) => {
           const gridCap = hiCols[gi]?.caption || col.caption || "";
-          const gridSrc = col.url ? (blockImageMap[col.url] || escHtml(col.url)) : null;
+          const gridUrl = hiCols[gi]?.url || col.url;
+          const gridSrc = gridUrl ? (blockImageMap[gridUrl] || escHtml(gridUrl)) : null;
           return `
           <div>
             ${gridSrc ? `<img src="${gridSrc}" style="width:100%;border-radius:3px;border:1px solid #e5e7eb">` : `<div class="img-placeholder">[Image]</div>`}

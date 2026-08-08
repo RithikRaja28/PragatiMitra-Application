@@ -336,8 +336,16 @@ router.delete("/:id", async (req, res) => {
     );
     if (!rows.length) return res.status(404).json({ success: false, message: "Block not found" });
 
-    // Clean up all files in deleted block
-    const keys = extractUploadKeys(rows[0].content);
+    // Clean up all files in deleted block — both the primary (English) content
+    // and any per-language translations, since translations can now carry
+    // independent file references (e.g. a Hindi-only IMAGE block url).
+    const { rows: trRows } = await pool.query(
+      `SELECT content FROM public.block_translations WHERE block_id=$1`, [id]
+    );
+    const keys = [
+      ...extractUploadKeys(rows[0].content),
+      ...trRows.flatMap((r) => extractUploadKeys(r.content)),
+    ];
     for (const key of keys) {
       await deleteFile(key).catch(() => {});
     }
@@ -404,6 +412,16 @@ router.put("/:id/translations/:language", async (req, res) => {
     );
     if (!blkRows.length) return res.status(404).json({ success: false, message: "Block not found" });
 
+    // Snapshot the pre-merge content so any image/file this translation
+    // supersedes (e.g. a replaced Hindi-only IMAGE block url) can be cleaned
+    // up below — translations can now carry independent file references,
+    // not just text, so they need the same replace-cleanup as primary content.
+    const { rows: existingRows } = await pool.query(
+      `SELECT content FROM public.block_translations WHERE block_id=$1 AND language=$2`,
+      [id, language.toLowerCase()]
+    );
+    const oldContent = existingRows[0]?.content || {};
+
     const { rows } = await pool.query(
       `INSERT INTO public.block_translations (block_id, language, content, status, created_by, updated_by)
        VALUES ($1,$2,$3::jsonb,'DRAFT',$4,$4)
@@ -413,6 +431,13 @@ router.put("/:id/translations/:language", async (req, res) => {
        RETURNING content, status`,
       [id, language.toLowerCase(), JSON.stringify(content), req.user.userId]
     );
+
+    const oldKeys = extractUploadKeys(oldContent);
+    const newKeys = extractUploadKeys(rows[0].content);
+    const toDelete = oldKeys.filter(k => !newKeys.includes(k) && k.includes("/submissions/"));
+    for (const key of toDelete) {
+      await deleteFile(key).catch(() => {});
+    }
 
     return res.json({ success: true, data: rows[0] });
   } catch (err) {

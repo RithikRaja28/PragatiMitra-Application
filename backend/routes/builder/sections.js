@@ -665,11 +665,26 @@ router.delete("/:id", requireRole(["super_admin", "institute_admin"]), async (re
     // blocks.js's own single-block DELETE /:id.
     const { rows: blockRows } = await pool.query(
       `UPDATE public.section_blocks SET deleted_at = NOW()
-       WHERE section_id = $1 AND deleted_at IS NULL RETURNING content`,
+       WHERE section_id = $1 AND deleted_at IS NULL RETURNING id, content`,
       [id]
     );
+    let trRows = [];
+    if (blockRows.length) {
+      // Translations can now carry independent file references too (e.g. a
+      // Hindi-only IMAGE block url) — clean those up alongside primary content.
+      ({ rows: trRows } = await pool.query(
+        `SELECT content FROM public.block_translations WHERE block_id = ANY($1::uuid[])`,
+        [blockRows.map((b) => b.id)]
+      ));
+    }
     for (const block of blockRows) {
       const keys = extractUploadKeys(block.content);
+      for (const key of keys) {
+        await deleteFile(key).catch(() => {});
+      }
+    }
+    for (const tr of trRows) {
+      const keys = extractUploadKeys(tr.content);
       for (const key of keys) {
         await deleteFile(key).catch(() => {});
       }

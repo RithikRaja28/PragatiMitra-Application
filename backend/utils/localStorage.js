@@ -178,15 +178,16 @@ function verifyReadToken(key, exp, sig) {
 
      [institute]/reports/[report]/branding/{logos,cover-images,background-images}/
      [institute]/reports/[report]/generated/{pdf,docx}/
-     [institute]/reports/[report]/submissions/{en,hi}/{images,files}/
+     [institute]/reports/[report]/submissions/{images,files}/          (not split by language)
      [institute]/institute_forms/[form_name]/{en,hi}/{images,files}/
      [institute]/department_forms/dept_[dept_name]/[form_name]/{en,hi}/{images,files}/
 
-   Submission/form uploads carry an en/hi language segment reflecting which
-   language pane the upload came from (see langSegment()) — this only affects
-   *where new uploads are filed*; it does not by itself make Hindi content
-   independently editable anywhere it wasn't already (e.g. report image
-   blocks still hold one shared URL regardless of language tab).
+   Form uploads (institute/department) carry an en/hi language segment
+   reflecting which language pane the upload came from (see langSegment()).
+   Report-builder submissions deliberately do NOT split by language — a
+   Hindi IMAGE block can hold a genuinely independent image from its English
+   counterpart, but that's tracked at the DB layer (block_translations.hi.url),
+   not by storage path; images and files share one common folder per report.
 
    Templates hold no files of their own — they're structure-only (block
    type + required flag + captions); real uploads only ever live under a
@@ -216,9 +217,9 @@ function langSegment(language) {
   return language === "hi" ? "hi" : "en";
 }
 
-function reportSubmissionKey({ institutionName, institutionId, reportTitle, reportId, language, kind, filename }) {
+function reportSubmissionKey({ institutionName, institutionId, reportTitle, reportId, kind, filename }) {
   return [instituteDir(institutionName, institutionId), "reports", reportDir(reportTitle, reportId),
-    "submissions", langSegment(language), kind, filename].join("/");
+    "submissions", kind, filename].join("/");
 }
 
 function instituteFormKey({ institutionName, institutionId, formName, language, kind, filename }) {

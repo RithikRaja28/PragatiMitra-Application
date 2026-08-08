@@ -127,6 +127,21 @@ function persistFileField(apiFetch, blockId, path, value) {
   }).catch(() => {});
 }
 
+/* Hindi images/files are stored independently in block_translations, not in
+   the block's primary (English) content — persist them via the translations
+   upsert endpoint instead of the file-field fast path above. Best-effort,
+   immediate (same orphan-protection reasoning as persistFileField): without
+   this, an uploaded-but-never-saved Hindi image would have no DB reference
+   at all and could never be found/cleaned up. */
+function persistHiTranslation(apiFetch, blockId, partial) {
+  if (!blockId) return;
+  apiFetch(`/api/builder/blocks/${blockId}/translations/hi`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ content: partial }),
+  }).catch(() => {});
+}
+
 /* ── Image upload helper ──────────────────────────────────────────────── */
 async function uploadImageFile(file, apiFetch, purpose, compressionSettings, scope = {}) {
   if (!file) throw new Error("No file selected");
@@ -173,7 +188,10 @@ function UploadImageBtn({ onUploaded, apiFetch, purpose, disabled, reportId, blo
     setUploading(true); setErr(""); setUploadResult(null);
     try {
       const url = await uploadImageFile(file, apiFetch, purpose, compressionSettings, { reportId, language });
-      persistFileField(apiFetch, blockId, fieldPath, url);
+      // English fast-path only — Hindi images live in block_translations and
+      // are persisted by the caller (which knows the full per-column merge
+      // shape) via onUploaded below.
+      if (language !== "hi") persistFileField(apiFetch, blockId, fieldPath, url);
       onUploaded({ url, fileName: file.name });
       setUploadResult("success");
       showToast("Upload Successful");
@@ -670,6 +688,15 @@ export function ImageBlock({ content, onChange, readOnly, lang = "en", translati
   const isStale = !!translations?.hi?._stale;
   const needsTranslation = !readOnly && isHi && (!hiCap && !hiAlt || isStale) && (content.caption || content.alt);
 
+  // Hindi gets its own independent image — a genuinely different file, not
+  // just different caption/alt text — stored under block_translations.hi.url
+  // rather than the shared/English content.url (both land in the same common
+  // uploads/images folder; only the DB reference is language-specific).
+  const hiUrl      = translations?.hi?.url      || "";
+  const hiFileName = translations?.hi?.fileName || "";
+  const activeUrl      = isHi ? hiUrl      : (content.url      || "");
+  const activeFileName = isHi ? hiFileName : (content.fileName || "");
+
   if (isTemplate) {
     return (
       <div style={{ height: 80, background: "#f8fafc", border: "1px dashed #cbd5e1", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", color: "#94a3b8", fontSize: 12, textAlign: "center", padding: "0 12px" }}>
@@ -683,8 +710,24 @@ export function ImageBlock({ content, onChange, readOnly, lang = "en", translati
       {!readOnly && (
         <div style={{ marginBottom: 8 }}>
           <div style={{ display: "flex", gap: 6, marginBottom: 8, alignItems: "flex-start" }}>
-            <input key={content.url} defaultValue={content.fileName || (content.url && !content.url.includes("/uploads/") ? content.url : "")} onBlur={(e) => onChange({ ...content, url: e.target.value })} placeholder="Paste image URL…" style={{ flex: 1, padding: "7px 11px", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 12, outline: "none", boxSizing: "border-box" }} />
-            <UploadImageBtn apiFetch={apiFetch} purpose="report-image" reportId={reportId} blockId={blockId} fieldPath="url" language={lang} onUploaded={({ url, fileName }) => onChange({ ...content, url, fileName })} />
+            <input
+              key={(isHi ? "hi" : "en") + "-" + activeUrl}
+              defaultValue={activeFileName || (activeUrl && !activeUrl.includes("/uploads/") ? activeUrl : "")}
+              onBlur={(e) => isHi ? onSaveTranslation?.("hi", { url: e.target.value }) : onChange({ ...content, url: e.target.value })}
+              placeholder="Paste image URL…"
+              style={{ flex: 1, padding: "7px 11px", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 12, outline: "none", boxSizing: "border-box" }}
+            />
+            <UploadImageBtn
+              apiFetch={apiFetch} purpose="report-image" reportId={reportId} blockId={blockId} fieldPath="url" language={lang}
+              onUploaded={({ url, fileName }) => {
+                if (isHi) {
+                  onSaveTranslation?.("hi", { url, fileName });
+                  persistHiTranslation(apiFetch, blockId, { url, fileName });
+                } else {
+                  onChange({ ...content, url, fileName });
+                }
+              }}
+            />
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             <span style={{ fontSize: 11, color: "#64748b" }}>Width</span>
@@ -728,11 +771,11 @@ export function ImageBlock({ content, onChange, readOnly, lang = "en", translati
       )}
       <div style={wrapStyle}>
         <div style={{ width: widthPct + "%" }}>
-          {content.url ? (
-            <img src={content.url} alt={alt || caption || ""} style={{ width: "100%", borderRadius: 6, border: "1px solid #e2e8f0", display: "block" }} onError={(e) => { e.currentTarget.style.display = "none"; }} />
+          {activeUrl ? (
+            <img src={activeUrl} alt={alt || caption || ""} style={{ width: "100%", borderRadius: 6, border: "1px solid #e2e8f0", display: "block" }} onError={(e) => { e.currentTarget.style.display = "none"; }} />
           ) : (
             <div style={{ height: 80, background: "#f8fafc", border: "1px dashed #cbd5e1", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", color: "#94a3b8", fontSize: 12 }}>
-              {readOnly ? "No image" : "Paste a URL or upload an image above"}
+              {readOnly ? "No image" : isHi ? "Upload a Hindi image above (independent from the English one)" : "Paste a URL or upload an image above"}
             </div>
           )}
           {caption && <div style={{ fontSize: 11, color: "#64748b", textAlign: "center", marginTop: 5, fontStyle: "italic" }}>{caption}</div>}
@@ -755,6 +798,7 @@ export function ImageGridBlock({ content, onChange, readOnly, lang = "en", trans
   const updateHi = (i, patch) => {
     const nextHiCols = cols.map((_, idx) => ({ ...(hiCols[idx] || {}), ...(idx === i ? patch : {}) }));
     onSaveTranslation?.("hi", { cols: nextHiCols, _stale: false });
+    return nextHiCols;
   };
   const addCol = () => { if (cols.length >= 4) return; onChange({ ...content, cols: [...cols, { url: "", caption: "", alt: "" }] }); };
   const removeCol = (i) => { if (cols.length <= 1) return; onChange({ ...content, cols: cols.filter((_, idx) => idx !== i) }); };
@@ -766,6 +810,9 @@ export function ImageGridBlock({ content, onChange, readOnly, lang = "en", trans
           const hiCol = hiCols[i] || {};
           const caption = isHi ? (hiCol.caption || "") : (col.caption || "");
           const alt     = isHi ? (hiCol.alt     || "") : (col.alt     || "");
+          // Hindi columns hold their own independent image (see ImageBlock above).
+          const activeUrl      = isHi ? (hiCol.url      || "") : (col.url      || "");
+          const activeFileName = isHi ? (hiCol.fileName || "") : (col.fileName || "");
           const needsTranslation = !readOnly && isHi && (!hiCol.caption && !hiCol.alt || isStale) && (col.caption || col.alt);
           if (isTemplate) {
             return (
@@ -789,8 +836,24 @@ export function ImageGridBlock({ content, onChange, readOnly, lang = "en", trans
                     <span style={{ fontSize: 10, fontWeight: 600, color: "#94a3b8" }}>Image {i + 1}</span>
                     {cols.length > 1 && <button onClick={() => removeCol(i)} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: "#ef4444", fontSize: 12 }}>X</button>}
                   </div>
-                  <input key={"url-" + i + "-" + col.url} defaultValue={col.fileName || (col.url && !col.url.includes("/uploads/") ? col.url : "")} onBlur={(e) => update(i, { url: e.target.value })} placeholder="Image URL…" style={{ width: "100%", padding: "5px 8px", border: "1px solid #e2e8f0", borderRadius: 6, fontSize: 11, outline: "none", boxSizing: "border-box", marginBottom: 4 }} />
-                  <UploadImageBtn apiFetch={apiFetch} purpose="report-image" reportId={reportId} blockId={blockId} fieldPath={`cols.${i}.url`} language={lang} onUploaded={({ url, fileName }) => update(i, { url, fileName })} />
+                  <input
+                    key={(isHi ? "hi" : "en") + "-url-" + i + "-" + activeUrl}
+                    defaultValue={activeFileName || (activeUrl && !activeUrl.includes("/uploads/") ? activeUrl : "")}
+                    onBlur={(e) => isHi ? updateHi(i, { url: e.target.value }) : update(i, { url: e.target.value })}
+                    placeholder="Image URL…"
+                    style={{ width: "100%", padding: "5px 8px", border: "1px solid #e2e8f0", borderRadius: 6, fontSize: 11, outline: "none", boxSizing: "border-box", marginBottom: 4 }}
+                  />
+                  <UploadImageBtn
+                    apiFetch={apiFetch} purpose="report-image" reportId={reportId} blockId={blockId} fieldPath={`cols.${i}.url`} language={lang}
+                    onUploaded={({ url, fileName }) => {
+                      if (isHi) {
+                        const nextHiCols = updateHi(i, { url, fileName });
+                        persistHiTranslation(apiFetch, blockId, { cols: nextHiCols });
+                      } else {
+                        update(i, { url, fileName });
+                      }
+                    }}
+                  />
                   <input
                     key={"cap-" + (isHi ? "hi" : "en") + "-" + i + "-" + caption}
                     defaultValue={caption}
@@ -805,8 +868,8 @@ export function ImageGridBlock({ content, onChange, readOnly, lang = "en", trans
                   )}
                 </div>
               )}
-              {col.url ? (
-                <img src={col.url} alt={alt || caption || ("Image " + (i + 1))} style={{ width: "100%", borderRadius: 5, border: "1px solid #e2e8f0", display: "block" }} onError={(e) => { e.currentTarget.style.display = "none"; }} />
+              {activeUrl ? (
+                <img src={activeUrl} alt={alt || caption || ("Image " + (i + 1))} style={{ width: "100%", borderRadius: 5, border: "1px solid #e2e8f0", display: "block" }} onError={(e) => { e.currentTarget.style.display = "none"; }} />
               ) : (
                 <div style={{ height: 80, background: "#f8fafc", border: "1px dashed #cbd5e1", borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center", color: "#94a3b8", fontSize: 11 }}>{readOnly ? "" : "URL or upload"}</div>
               )}
