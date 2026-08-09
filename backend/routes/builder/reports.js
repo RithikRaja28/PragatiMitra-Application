@@ -37,6 +37,17 @@ function callerInstitution(req) {
   return req.user.institutionId || null;
 }
 
+
+const REPORT_TYPE_HINDI = {
+  Annual: "वार्षिक",
+  NAAC: "नैक",
+  Department: "विभागीय",
+  Accreditation: "मान्यता",
+  Research: "अनुसंधान",
+  Compliance: "अनुपालन",
+  Other: "अन्य",
+};
+
 /* ─── GET / — list reports ─────────────────────────────────────────────────── */
 router.get("/", async (req, res) => {
   const pool = req.app.locals.pool;
@@ -90,7 +101,7 @@ router.post(
   async (req, res) => {
     const pool = req.app.locals.pool;
     try {
-      const { title, description, report_type, academic_year, institution_id: bodyInstId,
+      const { title,title_hi,description, report_type, academic_year, institution_id: bodyInstId,
               cover_image_url, logo_url, bg_image_url,
               cycle_id, template_id, primary_language = "en",
               default_workflow_id,
@@ -103,25 +114,63 @@ router.post(
         : req.user.institutionId;
 
       if (!instId) return res.status(400).json({ success: false, message: "institution_id required" });
+      
+     const finalTitleHi =
+  title_hi?.trim() || null;
+
+const finalReportTypeHi =
+  REPORT_TYPE_HINDI[report_type?.trim()] || null;
+
 
       const { rows } = await pool.query(
         `INSERT INTO public.reports
-           (institution_id, title, description, report_type, academic_year,
-            cover_image_url, logo_url, bg_image_url,
-            cycle_id, template_id, primary_language,
-            default_workflow_id,
-            submission_deadline, review_deadline, approval_deadline,
-            created_by, updated_by)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$16)
+(
+ institution_id,
+ title,
+ title_hi,
+ description,
+ report_type,
+ report_type_hi,
+ academic_year,
+ cover_image_url,
+ logo_url,
+ bg_image_url,
+ cycle_id,
+ template_id,
+ primary_language,
+ default_workflow_id,
+ submission_deadline,
+ review_deadline,
+ approval_deadline,
+ created_by,
+ updated_by
+)
+        VALUES
+(
+ $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
+ $11,$12,$13,$14,$15,$16,$17,$18,$18
+)
          RETURNING *`,
-        [instId, title.trim(), description || null, report_type || null, academic_year || null,
-         cover_image_url || null, logo_url || null, bg_image_url || null,
-         isUUID(cycle_id) ? cycle_id : null,
-         isUUID(template_id) ? template_id : null,
-         primary_language,
-         isUUID(default_workflow_id) ? default_workflow_id : null,
-         submission_deadline || null, review_deadline || null, approval_deadline || null,
-         req.user.userId]
+        [
+  instId,
+  title.trim(),
+  finalTitleHi,
+  description || null,
+  report_type || null,
+  finalReportTypeHi,
+  academic_year || null,
+  cover_image_url || null,
+  logo_url || null,
+  bg_image_url || null,
+  isUUID(cycle_id) ? cycle_id : null,
+  isUUID(template_id) ? template_id : null,
+  primary_language,
+  isUUID(default_workflow_id) ? default_workflow_id : null,
+  submission_deadline || null,
+  review_deadline || null,
+  approval_deadline || null,
+  req.user.userId
+]
       );
       const report = rows[0];
 

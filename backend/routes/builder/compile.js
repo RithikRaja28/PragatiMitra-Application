@@ -165,24 +165,24 @@ async function fetchImageBuffer(url) {
    Translates report title + every section title/description in one parallel
    batch before any document generator runs. Results are stored in opts.hiStrings
    and referenced by generateDocx / buildHtml so the entire document is in Hindi. */
-async function translateForHindi(report, sections) {
-  const tr = (text) => (text ? translateSentence(text).catch(() => text) : Promise.resolve(""));
-  const results = await Promise.all([
-    tr(report.title),
-    tr(report.report_type),          // e.g. "Annual" → "वार्षिक"
-    tr(report.institution_name),     // e.g. "AIIA" → institution name in Hindi
-    ...sections.map(s => tr(s.title)),
-    ...sections.map(s => tr(s.description)),
-  ]);
-  const n = sections.length;
-  return {
-    reportTitle:     results[0] || report.title,
-    reportType:      results[1] || report.report_type || "",
-    institutionName: results[2] || report.institution_name || "",
-    sectionTitles:   new Map(sections.map((s, i) => [s.id, results[3 + i]       || s.title])),
-    sectionDescs:    new Map(sections.map((s, i) => [s.id, results[3 + n + i]   || ""])),
-  };
-}
+// async function translateForHindi(report, sections) {
+//   const tr = (text) => (text ? translateSentence(text).catch(() => text) : Promise.resolve(""));
+//   const results = await Promise.all([
+//     tr(report.title),
+//     tr(report.report_type),          // e.g. "Annual" → "वार्षिक"
+//     tr(report.institution_name),     // e.g. "AIIA" → institution name in Hindi
+//     ...sections.map(s => tr(s.title)),
+//     ...sections.map(s => tr(s.description)),
+//   ]);
+//   const n = sections.length;
+//   return {
+//     reportTitle:     results[0] || report.title,
+//     reportType:      results[1] || report.report_type || "",
+//     institutionName: results[2] || report.institution_name || "",
+//     sectionTitles:   new Map(sections.map((s, i) => [s.id, results[3 + i]       || s.title])),
+//     sectionDescs:    new Map(sections.map((s, i) => [s.id, results[3 + n + i]   || ""])),
+//   };
+// }
 
 /* ═════════════════════════════ STATUS CHECK ═════════════════════════════════ */
 
@@ -201,7 +201,7 @@ router.get("/report/:reportId/status", async (req, res) => {
        LEFT JOIN public.report_sections p ON p.id = s.parent_id AND p.deleted_at IS NULL
        WHERE s.report_id = $1 AND s.deleted_at IS NULL
        ORDER BY s.order_index`,
-      [reportId]
+       [reportId, language]
     );
 
     const all      = sectRes.rows;
@@ -297,8 +297,20 @@ router.post(
            FROM public.report_sections s2
            JOIN tree t ON s2.parent_id = t.id ${sf2}
          )
-         SELECT t.*, blk.blocks
-         FROM tree t
+         SELECT
+    t.*,
+
+    st.title       AS translated_title,
+    st.description AS translated_description,
+
+    blk.blocks
+
+FROM tree t
+
+LEFT JOIN public.section_translations st
+       ON st.section_id = t.id
+      AND st.language = $2
+      AND st.status = 'APPROVED'
          LEFT JOIN LATERAL (
            SELECT json_agg(
              json_build_object(
@@ -318,16 +330,56 @@ router.post(
            WHERE b.section_id = t.id AND b.deleted_at IS NULL
          ) blk ON TRUE
          ORDER BY t.depth, t.order_index`,
-        [reportId]
+        [reportId, language]
       );
 
       const sections = flattenToDocumentOrder(sectRes.rows);
       const opts     = { fmt, language, include_toc, include_numbering, approved_only };
 
-      // Pre-translate report title + section titles/descriptions when compiling in Hindi
+
       if (language === "hi") {
-        opts.hiStrings = await translateForHindi(report, sections);
-      }
+
+    opts.hiStrings = {
+
+        // Manual Hindi report data
+        reportTitle:
+            report.title_hi?.trim()
+            || report.title,
+
+        reportType:
+            report.report_type_hi?.trim()
+            || report.report_type
+            || "",
+
+        // Never translate institution
+        institutionName:
+            report.institution_name,
+
+        // Manual Hindi section title
+        sectionTitles: new Map(
+            sections.map(section => [
+                section.id,
+                section.translated_title?.trim()
+                || section.title
+            ])
+        ),
+
+        // Manual Hindi section description
+        sectionDescs: new Map(
+            sections.map(section => [
+                section.id,
+                section.translated_description?.trim()
+                || section.description
+                || ""
+            ])
+        )
+    };
+}
+
+      // Pre-translate report title + section titles/descriptions when compiling in Hindi
+      // if (language === "hi") {
+      //   opts.hiStrings = await translateForHindi(report, sections);
+      // }
 
       const ts       = Date.now();
       const safeName = report.title.replace(/[^a-zA-Z0-9]/g, "_").slice(0, 60);

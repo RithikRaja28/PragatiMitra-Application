@@ -75,6 +75,8 @@ export default function CreateReportWizardPage({ onCreated, onCancel, initialRep
 
   /* ── step 1 ─────────────────────────────────────────────────── */
   const [title,       setTitle]       = useState("");
+  const [titleHi, setTitleHi] = useState("");
+
   const [desc,        setDesc]        = useState("");
   const [repType,     setRepType]     = useState("Annual");
   const [acYear,      setAcYear]      = useState(() => selectedYear != null ? fmtAcYear(selectedYear) : "");
@@ -365,8 +367,14 @@ export default function CreateReportWizardPage({ onCreated, onCancel, initialRep
     try {
       const selectedCycle = cycles.find(c => c.id === cycleId);
       const body = {
-        title: title.trim(), description: desc || null,
-        report_type: repType, academic_year: selectedCycle?.reporting_year || acYear, primary_language: lang,
+  title: title.trim(),
+
+  title_hi:
+    titleHi.trim() || null,
+
+  description: desc || null,
+
+  report_type: repType,academic_year: selectedCycle?.reporting_year || acYear, primary_language: lang,
         cycle_id: cycleId || undefined,
         template_id: tmplId ? tmplId : undefined,
         default_workflow_id: defaultWfId || undefined,
@@ -642,10 +650,24 @@ export default function CreateReportWizardPage({ onCreated, onCancel, initialRep
               subtitle={reportId ? "Update report details below." : "A draft report will be created when you click Next."} />
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 28px" }}>
               <div style={{ gridColumn: "1/-1" }}>
-                <F label="Report Name *">
-                  <input style={inp} value={title} autoFocus onChange={e => setTitle(e.target.value)}
-                    placeholder="e.g. Annual Quality Report 2026–27" />
-                </F>
+              <F label="Report Name *">
+  <input
+    style={inp}
+    value={title}
+    autoFocus
+    onChange={e => setTitle(e.target.value)}
+    placeholder="e.g. Annual Quality Report 2026–27"
+  />
+</F>
+
+<F label="Report Name (Hindi)">
+  <input
+    style={inp}
+    value={titleHi}
+    onChange={e => setTitleHi(e.target.value)}
+    placeholder="उदा. वार्षिक गुणवत्ता रिपोर्ट 2026–27"
+  />
+</F>
               </div>
               <div style={{ gridColumn: "1/-1" }}>
                 <F label="Description *">

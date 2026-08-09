@@ -448,6 +448,48 @@ router.post("/", async (req, res) => {
       } catch { /* column not yet migrated */ }
     }
 
+     //insert trans data in section_transulation
+    
+       if (title_translations && typeof title_translations === "object") {
+      try {
+        for (const [language, translatedTitle] of Object.entries(title_translations)) {
+          await pool.query(
+            `
+            INSERT INTO public.section_translations
+            (
+              section_id,
+              language,
+              title,
+              description,
+              status,
+              created_by,
+              updated_by,
+              created_at,
+              updated_at
+            )
+            VALUES
+            (
+              $1,$2,$3,$4,'APPROVED',$5,$5,NOW(),NOW()
+            )
+            `,
+            [
+              section.id,
+              language,
+              translatedTitle,
+              description,
+              req.user.userId
+            ]
+          );
+        }
+      } catch (err) {
+        logger.warn("Failed to save section translations", {
+          sectionId: section.id,
+          error: err.message
+        });
+      }
+    }
+    
+
     await writeAuditLog(req, {
       actionType: "SECTION_CREATED",
       entityType: "SECTION",
