@@ -1831,8 +1831,16 @@ body {
    (z-index:0) makes this page occlude the background texture for its own
    printed page only — position:fixed repaints on every page in Chromium's
    print pipeline, so this is the standard way to keep the watermark off
-   just the title page while it still shows on TOC/content pages. */
-.title-page { page-break-after: always; text-align: center; padding: 40px 0 60px; min-height: 100vh; box-sizing: border-box; background: #fff; position: relative; z-index: 2; }
+   just the title page while it still shows on TOC/content pages.
+   Height is 100vh MINUS (most of) the PDF print margin (page.pdf({ margin:
+   { top: "22mm", bottom: "22mm", ... } }) in generatePdf, below) — 100vh
+   alone is the full page height with no margin subtracted, so it doesn't
+   fit in the actual printable area and spills a near-empty second page
+   before the page-break-after rule even applies. Subtracting slightly less
+   than the full 44mm (top+bottom) leaves a hair of slack so this box still
+   fully covers the printable area with no residual sliver of background
+   peeking through at the bottom edge. */
+.title-page { page-break-after: always; text-align: center; padding: 40px 0 60px; min-height: calc(100vh - 40mm); box-sizing: border-box; background: #fff; position: relative; z-index: 2; }
 .title-main { font-size: 20pt; font-weight: 700; color: #1F3864; margin-bottom: 10px; }
 .title-sub  { font-size: 9pt; color: #6b7280; font-style: italic; }
 
