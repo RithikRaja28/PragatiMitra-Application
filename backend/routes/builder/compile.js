@@ -1352,23 +1352,30 @@ async function generateDocx(report, sections, outPath, opts) {
   }
 
   // ── Header: report meta + title ──
+  // Built via a factory so the title page (Word's "first page" header) can
+  // reuse the exact same meta/title paragraph without the background image —
+  // the background must not bleed onto page 1, matching the PDF/HTML fix.
   const hiType  = lang === "hi" && opts.hiStrings ? opts.hiStrings.reportType : report.report_type;
   const hdrMeta = [hiType, report.academic_year].filter(Boolean).join("  ");
-  const docHeader = new Header({
-    children: [
-      ...(bgHeaderPara ? [bgHeaderPara] : []),
-      new Paragraph({
-        children: [
-          new TextRun({ text: hdrMeta, size: 15, color: C.lightGray, font: docFont }),
-          new TextRun({ text: "\t", size: 15 }),
-          new TextRun({ text: docTitle, size: 15, color: C.lightGray, font: docFont }),
-        ],
-        tabStops: [{ type: TabStopType.RIGHT, position: TabStopPosition.MAX }],
-        border: { bottom: { color: C.border, space: 1, style: BorderStyle.SINGLE, size: 2 } },
-        spacing: { after: 0 },
-      }),
-    ],
-  });
+  function buildDocHeader(includeBg) {
+    return new Header({
+      children: [
+        ...(includeBg && bgHeaderPara ? [bgHeaderPara] : []),
+        new Paragraph({
+          children: [
+            new TextRun({ text: hdrMeta, size: 15, color: C.lightGray, font: docFont }),
+            new TextRun({ text: "\t", size: 15 }),
+            new TextRun({ text: docTitle, size: 15, color: C.lightGray, font: docFont }),
+          ],
+          tabStops: [{ type: TabStopType.RIGHT, position: TabStopPosition.MAX }],
+          border: { bottom: { color: C.border, space: 1, style: BorderStyle.SINGLE, size: 2 } },
+          spacing: { after: 0 },
+        }),
+      ],
+    });
+  }
+  const docHeader      = buildDocHeader(true);
+  const docHeaderFirst = buildDocHeader(false);
 
   // ── Footer: institution name left · page number center · logo right ──
   const centerTabPos = Math.round(TabStopPosition.MAX / 2);
@@ -1428,9 +1435,15 @@ async function generateDocx(report, sections, outPath, opts) {
   docSections.push({
     properties: {
       page: { margin: { top: 1080, right: 1080, bottom: 1080, left: 1080 } },
+      // Word ties "different first page" to headers AND footers together —
+      // the background image must not show on page 1 (the title page), so
+      // this section gets its own first-page header (no bg) and an explicit
+      // (identical) first-page footer, so the footer isn't silently dropped
+      // from page 1 as a side effect of enabling titlePage.
+      titlePage: true,
     },
-    headers: { default: docHeader },
-    footers: { default: docFooter },
+    headers: { default: docHeader, first: docHeaderFirst },
+    footers: { default: docFooter, first: docFooter },
     children,
   });
 
@@ -1814,7 +1827,12 @@ body {
 .page-wrapper { max-width: 794px; margin: 0 auto; background: #fff; padding: 72px; box-shadow: 0 3px 16px rgba(0,0,0,.45); margin-bottom: 24px; }
 
 /* ── Report title page ── */
-.title-page { page-break-after: always; text-align: center; padding: 40px 0 60px; }
+/* min-height + opaque background + a z-index above the fixed bg-overlay
+   (z-index:0) makes this page occlude the background texture for its own
+   printed page only — position:fixed repaints on every page in Chromium's
+   print pipeline, so this is the standard way to keep the watermark off
+   just the title page while it still shows on TOC/content pages. */
+.title-page { page-break-after: always; text-align: center; padding: 40px 0 60px; min-height: 100vh; box-sizing: border-box; background: #fff; position: relative; z-index: 2; }
 .title-main { font-size: 20pt; font-weight: 700; color: #1F3864; margin-bottom: 10px; }
 .title-sub  { font-size: 9pt; color: #6b7280; font-style: italic; }
 
