@@ -1933,7 +1933,11 @@ hr.divider { border: none; border-top: 1px solid #9ca3af; margin: 10px 0 12px; }
 .file-blk a { color: #1d4ed8; text-decoration: underline; }
 
 /* ── Page/print ── */
-@page :first { margin: 0; size: A4 portrait; }
+/* No @page :first override — the cover image is rendered as its own separate
+   zero-margin document now (see generatePdf), so this document's actual page
+   1 is the title page, which must use the same margin as every other page
+   (the bg-overlay's fixed offset below assumes a uniform 22mm/20mm margin
+   on every page; a page-1-only override here previously misaligned it). */
 @page { margin: 20mm 25mm; size: A4 portrait; }
 @media print {
   body {
