@@ -1351,31 +1351,25 @@ async function generateDocx(report, sections, outPath, opts) {
     } catch { bgHeaderPara = null; }
   }
 
-  // ── Header: report meta + title ──
-  // Built via a factory so the title page (Word's "first page" header) can
-  // reuse the exact same meta/title paragraph without the background image —
-  // the background must not bleed onto page 1, matching the PDF/HTML fix.
+  // ── Header: report meta + title (background image included on every page —
+  // only the cover section, built separately below, omits it) ──
   const hiType  = lang === "hi" && opts.hiStrings ? opts.hiStrings.reportType : report.report_type;
   const hdrMeta = [hiType, report.academic_year].filter(Boolean).join("  ");
-  function buildDocHeader(includeBg) {
-    return new Header({
-      children: [
-        ...(includeBg && bgHeaderPara ? [bgHeaderPara] : []),
-        new Paragraph({
-          children: [
-            new TextRun({ text: hdrMeta, size: 15, color: C.lightGray, font: docFont }),
-            new TextRun({ text: "\t", size: 15 }),
-            new TextRun({ text: docTitle, size: 15, color: C.lightGray, font: docFont }),
-          ],
-          tabStops: [{ type: TabStopType.RIGHT, position: TabStopPosition.MAX }],
-          border: { bottom: { color: C.border, space: 1, style: BorderStyle.SINGLE, size: 2 } },
-          spacing: { after: 0 },
-        }),
-      ],
-    });
-  }
-  const docHeader      = buildDocHeader(true);
-  const docHeaderFirst = buildDocHeader(false);
+  const docHeader = new Header({
+    children: [
+      ...(bgHeaderPara ? [bgHeaderPara] : []),
+      new Paragraph({
+        children: [
+          new TextRun({ text: hdrMeta, size: 15, color: C.lightGray, font: docFont }),
+          new TextRun({ text: "\t", size: 15 }),
+          new TextRun({ text: docTitle, size: 15, color: C.lightGray, font: docFont }),
+        ],
+        tabStops: [{ type: TabStopType.RIGHT, position: TabStopPosition.MAX }],
+        border: { bottom: { color: C.border, space: 1, style: BorderStyle.SINGLE, size: 2 } },
+        spacing: { after: 0 },
+      }),
+    ],
+  });
 
   // ── Footer: institution name left · page number center · logo right ──
   const centerTabPos = Math.round(TabStopPosition.MAX / 2);
@@ -1435,15 +1429,9 @@ async function generateDocx(report, sections, outPath, opts) {
   docSections.push({
     properties: {
       page: { margin: { top: 1080, right: 1080, bottom: 1080, left: 1080 } },
-      // Word ties "different first page" to headers AND footers together —
-      // the background image must not show on page 1 (the title page), so
-      // this section gets its own first-page header (no bg) and an explicit
-      // (identical) first-page footer, so the footer isn't silently dropped
-      // from page 1 as a side effect of enabling titlePage.
-      titlePage: true,
     },
-    headers: { default: docHeader, first: docHeaderFirst },
-    footers: { default: docFooter, first: docFooter },
+    headers: { default: docHeader },
+    footers: { default: docFooter },
     children,
   });
 
@@ -1519,20 +1507,54 @@ async function generatePdf(report, sections, outPath, opts) {
     if (dataUrl) blockImageMap[url] = dataUrl;
   }));
 
-  const html    = buildHtml(report, sections, opts, { logoDataUrl, bgDataUrl, coverDataUrl, blockImageMap });
+  // excludeCover: true — the cover (if any) is rendered separately below and
+  // merged in front, so the "rest of the document" render must not include it.
+  const html    = buildHtml(report, sections, opts, { logoDataUrl, bgDataUrl, coverDataUrl, blockImageMap, excludeCover: true });
   const pdfHiType   = opts.language === "hi" && opts.hiStrings ? opts.hiStrings.reportType : report.report_type;
   const hdrMeta     = [pdfHiType, report.academic_year].filter(Boolean).join("  ");
   const pdfDocTitle = opts.language === "hi" && opts.hiStrings ? opts.hiStrings.reportTitle : report.title;
   const pdfFont     = opts.language === "hi"
     ? "'Noto Sans Devanagari','Mangal','Arial Unicode MS',sans-serif"
     : "'Times New Roman',Times,serif";
+  // The cover page's own full-bleed source: same resolution logic buildHtml()
+  // uses (data URL when we could fetch it, else the raw stored URL as a fallback).
+  const coverSrc = coverDataUrl || (report.cover_image_url ? escHtml(report.cover_image_url) : null);
   const browser = await puppeteer.launch({ args: ["--no-sandbox", "--disable-setuid-sandbox"] });
   try {
+    // Cover page, rendered on its own page/tab as a zero-margin,
+    // header/footer-free single-page PDF. Puppeteer applies
+    // displayHeaderFooter/headerTemplate/footerTemplate/margin uniformly to
+    // every page of a single print job — there is no per-page opt-out — so
+    // the only way to get a truly bare cover page 1 is to print it
+    // separately and merge it in front of the (unchanged) rest of the
+    // document below. Uses its own page (rather than reusing one page for
+    // both renders) so the two setContent/pdf cycles can't interfere.
+    let coverPdfBuf = null;
+    if (coverSrc) {
+      const coverHtmlDoc = `<!DOCTYPE html><html><head><meta charset="UTF-8">
+        <style>*{margin:0;padding:0;box-sizing:border-box;}html,body{width:210mm;height:297mm;overflow:hidden;}
+        img{width:100%;height:100%;object-fit:cover;display:block;}</style>
+        </head><body><img src="${coverSrc}"></body></html>`;
+      const coverPage = await browser.newPage();
+      try {
+        await coverPage.setViewport({ width: 794, height: 1123 });
+        await coverPage.setContent(coverHtmlDoc, { waitUntil: "networkidle0" });
+        coverPdfBuf = await coverPage.pdf({
+          format: "A4",
+          printBackground: true,
+          displayHeaderFooter: false,
+          margin: { top: 0, bottom: 0, left: 0, right: 0 },
+        });
+      } finally {
+        await coverPage.close();
+      }
+    }
+
     const page = await browser.newPage();
     // Set viewport to A4 dimensions (794×1123px at 96dpi) so fixed/vw/vh units match the page
     await page.setViewport({ width: 794, height: 1123 });
     await page.setContent(html, { waitUntil: "networkidle0" });
-    const pdfBuf = await page.pdf({
+    const restPdfBuf = await page.pdf({
       format: "A4",
       printBackground: true,
       displayHeaderFooter: true,
@@ -1559,6 +1581,21 @@ async function generatePdf(report, sections, outPath, opts) {
         </div>`,
       margin: { top: "22mm", bottom: "22mm", left: "20mm", right: "20mm" },
     });
+
+    let pdfBuf = restPdfBuf;
+    if (coverPdfBuf) {
+      let PDFDocument;
+      try { ({ PDFDocument } = require("pdf-lib")); } catch { throw new Error("pdf-lib not installed"); }
+      const coverDoc = await PDFDocument.load(coverPdfBuf);
+      const restDoc  = await PDFDocument.load(restPdfBuf);
+      const outDoc   = await PDFDocument.create();
+      const [coverPage] = await outDoc.copyPages(coverDoc, [0]);
+      outDoc.addPage(coverPage);
+      const restPages = await outDoc.copyPages(restDoc, restDoc.getPageIndices());
+      restPages.forEach((p) => outDoc.addPage(p));
+      pdfBuf = Buffer.from(await outDoc.save());
+    }
+
     fs.writeFileSync(outPath, pdfBuf);
     return pdfBuf.length;
   } finally {
@@ -1570,7 +1607,7 @@ async function generatePdf(report, sections, outPath, opts) {
 /* CSS mirrors wordDocUtils.jsx + ReportPreviewPage.jsx exactly               */
 
 function buildHtml(report, sections, opts, assets = {}) {
-  const { logoDataUrl = null, bgDataUrl = null, coverDataUrl = null, blockImageMap = {} } = assets;
+  const { bgDataUrl = null, coverDataUrl = null, blockImageMap = {}, excludeCover = false } = assets;
   const hasBg  = !!(bgDataUrl || report.bg_image_url);
   const hlang  = opts.language === "hi" ? "hi" : "en";
   const isHindi = hlang === "hi";
@@ -1775,7 +1812,7 @@ function buildHtml(report, sections, opts, assets = {}) {
 
   /* ── Cover image — full-page first page (placed OUTSIDE page-wrapper) ── */
   const coverSrc = coverDataUrl || (report.cover_image_url ? escHtml(report.cover_image_url) : null);
-  const coverHtml = coverSrc
+  const coverHtml = (coverSrc && !excludeCover)
     ? `<div class="cover-page" style="page-break-after:always;width:100%;height:100vh;overflow:hidden;line-height:0;margin:0;padding:0;">
         <img src="${coverSrc}" style="width:100%;height:100%;object-fit:cover;display:block;">
        </div>`
@@ -1797,11 +1834,8 @@ function buildHtml(report, sections, opts, assets = {}) {
 
   /* ── Title page ── */
   const htmlDocTitle = isHindi && opts.hiStrings ? opts.hiStrings.reportTitle : report.title;
-  const logoSrc = logoDataUrl || (report.logo_url ? escHtml(report.logo_url) : null);
   const titleHtml = `
     <div class="title-page">
-      ${logoSrc ? `<img src="${logoSrc}" style="height:52px;float:right">` : ""}
-      <div style="clear:both"></div>
       <div style="font-family:'Calibri','Segoe UI',Arial,sans-serif;font-size:13pt;font-weight:700;color:#1F3864;text-align:center;margin-bottom:8px">
         ${escHtml((isHindi && opts.hiStrings ? opts.hiStrings.institutionName : report.institution_name) || "")}
       </div>
@@ -1827,20 +1861,15 @@ body {
 .page-wrapper { max-width: 794px; margin: 0 auto; background: #fff; padding: 72px; box-shadow: 0 3px 16px rgba(0,0,0,.45); margin-bottom: 24px; }
 
 /* ── Report title page ── */
-/* min-height + opaque background + a z-index above the fixed bg-overlay
-   (z-index:0) makes this page occlude the background texture for its own
-   printed page only — position:fixed repaints on every page in Chromium's
-   print pipeline, so this is the standard way to keep the watermark off
-   just the title page while it still shows on TOC/content pages.
-   Height is 100vh MINUS (most of) the PDF print margin (page.pdf({ margin:
-   { top: "22mm", bottom: "22mm", ... } }) in generatePdf, below) — 100vh
-   alone is the full page height with no margin subtracted, so it doesn't
-   fit in the actual printable area and spills a near-empty second page
-   before the page-break-after rule even applies. Subtracting slightly less
-   than the full 44mm (top+bottom) leaves a hair of slack so this box still
-   fully covers the printable area with no residual sliver of background
-   peeking through at the bottom edge. */
-.title-page { page-break-after: always; text-align: center; padding: 40px 0 60px; min-height: calc(100vh - 40mm); box-sizing: border-box; background: #fff; position: relative; z-index: 2; }
+/* Only the cover image (its own separately-rendered page, see generatePdf)
+   is excluded from the background watermark — the title page keeps it like
+   every other page, so no occlusion styling here. min-height still matters
+   though: without it this page's content is much shorter than a full page
+   (unlike TOC/content pages, which are naturally near full-height), and
+   Chromium's print pagination renders the position:fixed watermark
+   inconsistently on short pages — hence the same min-height used to fix the
+   earlier blank-page bug, kept here purely for page-geometry consistency. */
+.title-page { page-break-after: always; text-align: center; padding: 40px 0 60px; min-height: calc(100vh - 40mm); box-sizing: border-box; }
 .title-main { font-size: 20pt; font-weight: 700; color: #1F3864; margin-bottom: 10px; }
 .title-sub  { font-size: 9pt; color: #6b7280; font-style: italic; }
 
