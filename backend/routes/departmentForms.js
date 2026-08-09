@@ -99,19 +99,19 @@ function resolveYear(req) {
 }
 
 /* Auto-fill label.hi using Google Translate (only when translation enabled). */
-async function autoFillHindiLabels(schema) {
-  const fields = schema?.fields;
-  if (!Array.isArray(fields)) return;
-  await Promise.all(fields.map(async (field) => {
-    const en = field.label?.en || field.column_name;
-    if (!en || field.label?.hi) return;
-    const hi = await translateSentence(en).catch(() => null);
-    if (hi && hi !== en) {
-      if (!field.label) field.label = {};
-      field.label.hi = hi;
-    }
-  }));
-}
+// async function autoFillHindiLabels(schema) {
+//   const fields = schema?.fields;
+//   if (!Array.isArray(fields)) return;
+//   await Promise.all(fields.map(async (field) => {
+//     const en = field.label?.en || field.column_name;
+//     if (!en || field.label?.hi) return;
+//     const hi = await translateSentence(en).catch(() => null);
+//     if (hi && hi !== en) {
+//       if (!field.label) field.label = {};
+//       field.label.hi = hi;
+//     }
+//   }));
+// }
 
 /* Load a department form by id, scoped to the caller's EFFECTIVE department, then
    role-gated for non-managers. A department form is private to its department; a

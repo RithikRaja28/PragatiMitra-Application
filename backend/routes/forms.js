@@ -1543,9 +1543,7 @@ router.get("/:formName/institution-records", async (req, res) => {
 
     /* Enrich schema labels for non-English responses — same logic applied in
        GET /api/form-data/:formName/records so both views stay consistent. */
-    const displaySchema = language !== "en"
-      ? await enrichSchemaLabels(schema, language)
-      : schema;
+    const displaySchema =schema;
 
     return res.json({ success: true, schema: displaySchema, departments, grouped, lock });
   } catch (err) {

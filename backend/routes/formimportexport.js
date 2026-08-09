@@ -1072,28 +1072,21 @@ router.get("/:formName/export", async (req, res) => {
 
 
     const fieldLabelMap  = {};
-    const createdAtLabel = language !== "en"
-      ? await resolveLabel("Created At", language)
-      : "Created At";
+    const createdAtLabel = "Created At";
 
+fields.forEach((f) => {
+    const col = dbCol(f.column_name);
 
-    if (language !== "en") {
-      await Promise.all(fields.map(async (f) => {
-        const col    = dbCol(f.column_name);
-        const stored = f.label?.[language];
-        if (stored && isTargetScript(stored)) {
-          fieldLabelMap[col] = stored;
-        } else {
-          const source = f.label?.en || f.column_name;
-          fieldLabelMap[col] = await resolveLabel(source, language);
-        }
-      }));
-    } else {
-      fields.forEach((f) => {
-        const col = dbCol(f.column_name);
-        fieldLabelMap[col] = f.label?.en || f.column_name;
-      });
-    }
+    const localized =
+        typeof f.label?.[language] === "string"
+            ? f.label[language].trim()
+            : "";
+
+    fieldLabelMap[col] =
+        localized ||
+        f.label?.en ||
+        f.column_name;
+});
 
 
     /* Document fields → signed local download URLs (HMAC-signed, no network

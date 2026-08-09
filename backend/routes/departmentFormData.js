@@ -1203,12 +1203,21 @@ router.get("/:id/export", async (req, res) => {
     const year = resolveYear(req);
 
     const effectiveSchema = await loadEffectiveSchema(pool, form, year);
-    const displaySchema = language !== "en"
-      ? (await enrichSchemaLabels({ schema: effectiveSchema }, language).catch(() => ({ schema: effectiveSchema }))).schema
-      : effectiveSchema;
+   const displaySchema = effectiveSchema;
     const fields = activeFields(displaySchema);
     const cols = fields.map((f) => dbCol(f.column_name));
-    const headers = fields.map((f) => f.label?.[language] || f.label?.en || f.column_name.replace(/_/g, " "));
+   const headers = fields.map((f) => {
+  const localized =
+    typeof f.label?.[language] === "string"
+      ? f.label[language].trim()
+      : "";
+
+  return (
+    localized ||
+    f.label?.en ||
+    f.column_name.replace(/_/g, " ")
+  );
+});
 
     const { rows } = language === "en"
       ? await pool.query(

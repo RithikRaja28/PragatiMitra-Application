@@ -1,13 +1,13 @@
 "use strict";
 
 
-const path = require("path");
-const { Translate } = require("@google-cloud/translate").v2;
+// const path = require("path");
+// const { Translate } = require("@google-cloud/translate").v2;
 
 
-const translate = new Translate({
-  keyFilename: path.join(__dirname, "../config/pragatimitra-497416-6a889477f089.json"),
-});
+// const translate = new Translate({
+//   keyFilename: path.join(__dirname, "../config/pragatimitra-497416-6a889477f089.json"),
+// });
 
 
 // 5-second hard deadline for every Google Translate API call.

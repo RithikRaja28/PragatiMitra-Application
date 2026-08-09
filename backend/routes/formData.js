@@ -741,9 +741,8 @@ router.get("/:formName/records", async (req, res) => {
 
     /* Enrich schema labels for non-English responses so the frontend can show
        translated headers without a separate translation request. */
-    const displaySchema = language !== "en"
-      ? await enrichSchemaLabels(schema, language)
-      : schema;
+    const displaySchema = schema;
+    console.log(schema);
 
     /* Archive (highest precedence) → surface as view-only so the client hides
        Save/Delete/Import and shows the view-only banner. Export & search still
