@@ -201,7 +201,7 @@ router.get("/report/:reportId/status", async (req, res) => {
        LEFT JOIN public.report_sections p ON p.id = s.parent_id AND p.deleted_at IS NULL
        WHERE s.report_id = $1 AND s.deleted_at IS NULL
        ORDER BY s.order_index`,
-       [reportId, language]
+       [reportId]
     );
 
     const all      = sectRes.rows;
