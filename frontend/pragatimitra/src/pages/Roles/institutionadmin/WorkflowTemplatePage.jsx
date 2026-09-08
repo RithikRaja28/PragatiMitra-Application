@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useApi } from "../../../hooks/useApi";
 import { useAuth } from "../../../store/AuthContext";
 import { PageContainer, PageHeader, Button, Card, EmptyState } from "../../../ui";
+import { Select } from "../../../components/shared/ui";
 import { Plus, Star, AlertTriangle } from "lucide-react";
 import { S, Toast, ConfirmDialog, isAuthError } from "../../../components/shared/formUtils";
 import { useLanguage } from "../../../i18n/LanguageContext";
@@ -23,6 +24,13 @@ function isInstituteWideRole(role) {
     d.includes("publication")
   );
 }
+
+/* Roles selectable as a workflow step's approver — must actually be able to act
+   on a review (has a Review Queue in the app and is matched by the backend's
+   approval logic in routes/builder/approvals.js). directors_office is excluded
+   separately: director approval is a fixed final gate after the whole chain
+   (section.needs_director_approval), not a configurable step. */
+const WORKFLOW_STEP_ASSIGNABLE_ROLES = new Set(["department_admin", "institute_admin", "reviewer"]);
 
 /* ─── Design tokens ────────────────────────────────────────────── */
 const C = {
@@ -175,20 +183,19 @@ function StepCard({ step, index, total, roles, departments, allUsers, onChange, 
               <div style={{ fontSize: 10, fontWeight: 700, color: C.textSub, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 5 }}>
                 Role <span style={{ color: "#ef4444" }}>*</span>
               </div>
-              <select
+              <Select
                 value={step.role}
                 onChange={e => {
                   const r = roles.find(ro => ro.name === e.target.value);
                   onChange({ role: e.target.value, roleDept: isInstituteWideRole(r) ? "" : step.roleDept });
                 }}
                 disabled={readOnly}
-                style={{ ...S.select(false), ...(readOnly ? { background: "#f8fafc", color: "#475569" } : {}) }}
               >
                 <option value="">— Select a role —</option>
-                {roles.filter(r => r.name !== "directors_office").map(r => (
+                {roles.filter(r => WORKFLOW_STEP_ASSIGNABLE_ROLES.has(r.name)).map(r => (
                   <option key={r.id} value={r.name}>{r.display_name}</option>
                 ))}
-              </select>
+              </Select>
             </div>
 
             {/* Department scope — hidden for institution-wide roles */}

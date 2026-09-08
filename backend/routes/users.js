@@ -78,16 +78,20 @@ function isDeptAdmin(req) {
 
 /* RBAC TIER GUARD (C-2) — which role NAMES a caller may grant via create/import.
    Rules:
-   - super_admin:     can grant anything
+   - super_admin: cannot be granted through this endpoint by ANYONE, including
+                  existing super_admins — new super_admin accounts must be
+                  provisioned directly (e.g. DB), never through the app, so a
+                  compromised or careless admin account can't mint more of itself.
+   - super_admin (caller): can grant any other role
    - institute_admin: can grant all roles EXCEPT super_admin and institute_admin;
                       may also directly assign nodal_officer
    - department_admin: cannot grant super_admin, institute_admin, or nodal_officer
                        (nodal_officer is assigned exclusively via the NOA module) */
 function canAssignRole(req, roleName) {
+  const rn = String(roleName || "").trim().toLowerCase();
+  if (rn === "super_admin") return false;   // never grantable via this endpoint
   const roles = req.user.roles || [];
   if (roles.includes("super_admin")) return true;
-  const rn = String(roleName || "").trim().toLowerCase();
-  if (rn === "super_admin")     return false;   // only super_admin may grant
   if (rn === "institute_admin") return false;   // only super_admin may grant
   // institute_admin may grant all remaining roles, including nodal_officer
   if (roles.includes("institute_admin")) return true;

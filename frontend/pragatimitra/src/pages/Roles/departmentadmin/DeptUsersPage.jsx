@@ -38,6 +38,12 @@ const ROLE_LABELS = {
   reviewer: "Reviewer",
 };
 
+/* Roles a department admin may assign via "Add User". Kept deliberately narrower
+   than the backend's canAssignRole (which also permits directors_office,
+   finance_admin, hospital_admin, pg_student) — admin/office-level and
+   institution-wide roles stay out of scope for a department-level create form. */
+const DEPT_ADMIN_ASSIGNABLE_ROLES = new Set(["contributor", "reviewer", "publication_cell"]);
+
 const ACCENT = "#059669";
 
 function formatDate(ts) {
@@ -355,10 +361,10 @@ function UserForm({
               onChange={(e) => set("role_name", e.target.value)}
             >
               <option value="">{t("— Select Role —", lang)}</option>
-              {/* Dept admins / nodal officers may only assign the Contributor
-                  role — every other role is intentionally hidden here. */}
+              {/* Dept admins may assign Contributor, Reviewer, and Publication Cell —
+                  every other role (admin/office roles, nodal officer) stays hidden here. */}
               {roles
-                .filter((r) => r.name === "contributor")
+                .filter((r) => DEPT_ADMIN_ASSIGNABLE_ROLES.has(r.name))
                 .map((r) => (
                   <option key={r.id} value={r.name}>{r.display_name}</option>
                 ))}

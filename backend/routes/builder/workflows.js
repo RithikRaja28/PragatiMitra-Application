@@ -27,6 +27,16 @@ router.use(verifyToken);
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const isUUID  = v => typeof v === "string" && UUID_RE.test(v);
 
+/* Roles a workflow step may name as its ROLE-mode approver — mirrors the frontend
+   allowlist in WorkflowTemplatePage.jsx. Enforced here too so the restriction can't
+   be bypassed by calling the API directly. directors_office is excluded on purpose:
+   director approval is a fixed final gate (section.needs_director_approval) applied
+   after the whole step chain, not a configurable step — see routes/builder/approvals.js. */
+const ASSIGNABLE_STEP_ROLES = new Set(["department_admin", "institute_admin", "reviewer"]);
+function isValidApproverRole(role) {
+  return role == null || ASSIGNABLE_STEP_ROLES.has(String(role).toLowerCase());
+}
+
 function callerInstitution(req) {
   const roles = req.user.roles || [];
   if (roles.includes("super_admin") && req.query.institution_id) return req.query.institution_id;
@@ -146,6 +156,8 @@ router.post("/", requireRole(["super_admin", "institute_admin", "publication_cel
 
     const { name, description, steps = [] } = req.body;
     if (!name?.trim()) return res.status(400).json({ success: false, message: "name is required" });
+    if (steps.some((s) => !isValidApproverRole(s.approver_role)))
+      return res.status(400).json({ success: false, message: "Invalid approver role for one or more steps." });
 
     const client = await pool.connect();
     try {
@@ -313,6 +325,8 @@ router.post("/:id/steps", requireRole(["super_admin", "institute_admin", "public
 
     const { step_name, approver_role, approver_user_id } = req.body;
     if (!step_name?.trim()) return res.status(400).json({ success: false, message: "step_name required" });
+    if (!isValidApproverRole(approver_role))
+      return res.status(400).json({ success: false, message: "Invalid approver role." });
 
     const { rows: maxRes } = await pool.query(
       `SELECT COALESCE(MAX(step_order), 0) + 1 AS next FROM public.workflow_steps WHERE template_id = $1`, [id]
@@ -353,6 +367,8 @@ router.put("/:id/steps/:stepId", requireRole(["super_admin", "institute_admin", 
     if (!isUUID(id) || !isUUID(stepId)) return res.status(400).json({ success: false, message: "Invalid id" });
 
     const { step_name, step_order, approver_role, approver_user_id, approver_department_id } = req.body;
+    if (!isValidApproverRole(approver_role))
+      return res.status(400).json({ success: false, message: "Invalid approver role." });
 
     const { rows: oldRows } = await pool.query(
       `SELECT step_name, step_order, approver_role, approver_user_id, approver_department_id

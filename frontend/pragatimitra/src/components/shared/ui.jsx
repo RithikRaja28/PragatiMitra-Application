@@ -1,4 +1,5 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback, useLayoutEffect } from "react";
+import { createPortal } from "react-dom";
 
 /* ════════════════════════════════════════════════════════════════
    Shared design-system primitives — one source of truth for
@@ -108,6 +109,10 @@ function SelectTick({ color }) {
 
 const ACCENT = "#2563eb";
 
+const MENU_GAP = 6;
+const MENU_MARGIN = 8;
+const MENU_MAX_HEIGHT = 320;
+
 export function Select({
   value,
   onChange,
@@ -119,7 +124,9 @@ export function Select({
 }) {
   const [open, setOpen]       = useState(false);
   const [hoverIdx, setHover]  = useState(-1);
+  const [coords, setCoords]   = useState(null); // { left, top, width, placement }
   const wrapRef = useRef(null);
+  const menuRef = useRef(null);
 
   /* Flatten <option> children into a plain list we can render ourselves. */
   const opts = [];
@@ -134,15 +141,46 @@ export function Select({
 
   const selected = opts.find((o) => String(o.value) === String(value)) || null;
 
-  /* Close on outside click / Escape. */
+  /* Position the portaled menu against the trigger — viewport-aware so it's never
+     clipped by a scrollable/overflow:hidden ancestor (modals, form panels, …) and
+     flips above the trigger when there isn't room below. */
+  const place = useCallback(() => {
+    const trigger = wrapRef.current;
+    if (!trigger) return;
+    const r = trigger.getBoundingClientRect();
+    const vh = window.innerHeight, vw = window.innerWidth;
+    const menuH = Math.min(menuRef.current?.offsetHeight || 0, MENU_MAX_HEIGHT) || 0;
+    const spaceBelow = vh - r.bottom;
+    const openUp = spaceBelow < menuH + MENU_GAP + MENU_MARGIN && r.top > spaceBelow;
+
+    let left = r.left;
+    left = Math.max(MENU_MARGIN, Math.min(left, vw - r.width - MENU_MARGIN));
+    const top = openUp ? r.top - MENU_GAP - menuH : r.bottom + MENU_GAP;
+    setCoords({ left, top, width: r.width, placement: openUp ? "up" : "down" });
+  }, []);
+
+  useLayoutEffect(() => { if (open) place(); }, [open, place]);
+
+  /* Close on outside click / Escape; reposition on scroll/resize while open. */
   useEffect(() => {
     if (!open) return;
-    const onDoc = (e) => { if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false); };
+    const reposition = () => place();
+    const onDoc = (e) => {
+      if (wrapRef.current?.contains(e.target) || menuRef.current?.contains(e.target)) return;
+      setOpen(false);
+    };
     const onKey = (e) => { if (e.key === "Escape") setOpen(false); };
     document.addEventListener("mousedown", onDoc);
     document.addEventListener("keydown", onKey);
-    return () => { document.removeEventListener("mousedown", onDoc); document.removeEventListener("keydown", onKey); };
-  }, [open]);
+    window.addEventListener("scroll", reposition, true);
+    window.addEventListener("resize", reposition);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+      window.removeEventListener("scroll", reposition, true);
+      window.removeEventListener("resize", reposition);
+    };
+  }, [open, place]);
 
   const pick = (val) => { onChange?.({ target: { value: val } }); setOpen(false); };
 
@@ -214,23 +252,31 @@ export function Select({
         <SelectChevron color={disabled ? "#cbd5e1" : "#64748b"} open={open} />
       </button>
 
-      {/* Menu */}
-      {open && !disabled && (
+      {/* Menu — portaled to <body> so it's never clipped by a scrollable/overflow
+          ancestor (modals, form panels, …); position is computed in `place()`. */}
+      {open && !disabled && createPortal(
         <div
+          ref={menuRef}
           role="listbox"
+          className="ui-scroll"
           style={{
-            position: "absolute",
-            top: "calc(100% + 6px)",
-            left: 0,
-            minWidth: "100%",
+            position: "fixed",
+            left: coords?.left ?? -9999,
+            top: coords?.top ?? -9999,
+            width: coords?.width,
             background: "#fff",
             border: "1px solid #e2e8f0",
             borderRadius: 10,
             boxShadow: "0 12px 28px rgba(16,24,40,0.12), 0 2px 6px rgba(16,24,40,0.06)",
             padding: 6,
-            zIndex: 50,
-            maxHeight: 264,
+            zIndex: 9000,
+            maxHeight: MENU_MAX_HEIGHT,
             overflowY: "auto",
+            visibility: coords ? "visible" : "hidden",
+            // Portaled straight to <body>, outside the app tree that normally
+            // supplies this via inheritance — set it explicitly or the menu
+            // silently falls back to the browser's default font.
+            fontFamily: "'Plus Jakarta Sans', sans-serif",
           }}
         >
           {opts.map((o, i) => {
@@ -264,7 +310,8 @@ export function Select({
               </div>
             );
           })}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

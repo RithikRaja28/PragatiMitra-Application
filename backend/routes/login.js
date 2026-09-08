@@ -395,6 +395,29 @@ router.post("/super-admin/register", superAdminLoginLimiter, async (req, res) =>
     return res.status(400).json({ success: false, message: "Invalid email format." });
 
   try {
+    // Resolve super_admin role
+    const { rows: roleRows } = await pool.query(
+      "SELECT id FROM roles WHERE name = 'super_admin' LIMIT 1"
+    );
+    if (!roleRows.length)
+      return res.status(500).json({ success: false, message: "Super admin role not configured." });
+
+    // One-time bootstrap only: this endpoint is unauthenticated by necessity (there's
+    // no admin yet to gate it), so once ANY super_admin exists it must refuse forever —
+    // otherwise anyone who finds /admin-signup could mint themselves a god-mode account.
+    // Further super_admin accounts must be provisioned directly (DB), never via the API.
+    const { rows: existingSuperAdmins } = await pool.query(
+      `SELECT 1 FROM user_roles ur
+       WHERE ur.role_id = $1 AND ur.revoked_at IS NULL
+       LIMIT 1`,
+      [roleRows[0].id]
+    );
+    if (existingSuperAdmins.length)
+      return res.status(403).json({
+        success: false,
+        message: "Super admin registration is closed. Contact an existing administrator for access.",
+      });
+
     // Check email is not already taken
     const { rows: existing } = await pool.query(
       "SELECT id FROM users WHERE LOWER(email) = $1",
@@ -402,13 +425,6 @@ router.post("/super-admin/register", superAdminLoginLimiter, async (req, res) =>
     );
     if (existing.length)
       return res.status(409).json({ success: false, message: "An account with this email already exists." });
-
-    // Resolve super_admin role
-    const { rows: roleRows } = await pool.query(
-      "SELECT id FROM roles WHERE name = 'super_admin' LIMIT 1"
-    );
-    if (!roleRows.length)
-      return res.status(500).json({ success: false, message: "Super admin role not configured." });
 
     const superAdminRoleId = roleRows[0].id;
     const passwordHash = await bcrypt.hash(password, 12);

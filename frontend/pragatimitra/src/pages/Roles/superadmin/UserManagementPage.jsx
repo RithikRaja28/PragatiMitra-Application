@@ -195,9 +195,11 @@ function UserForm({ mode, entity, onCreated, onSaved, onBack, apiFetch }) {
       .catch(() => {});
 
     if (!isEdit) {
+      // super_admin is never assignable here — new super_admin accounts must be
+      // provisioned directly, not through the app (backend rejects it too).
       apiFetch("/api/lookup/roles")
         .then((r) => r.json())
-        .then((d) => { if (d.success) setRoles(d.roles.filter((r) => r.name !== "nodal_officer")); })
+        .then((d) => { if (d.success) setRoles(d.roles.filter((r) => !["nodal_officer", "super_admin"].includes(r.name))); })
         .catch(() => {});
     }
   }, [apiFetch, isEdit]);
