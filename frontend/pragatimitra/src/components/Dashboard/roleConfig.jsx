@@ -640,8 +640,8 @@ export const ROLE_CONFIG = {
   },
 
   /* ── PG STUDENT ─────────────────────────────────────────────────
-     Consumer role. Sees only forms ASSIGNED to them for the selected
-     academic year. No Form Management, KPI, Reports, or admin controls.
+     Consumer role. Sees forms ASSIGNED to them for the selected
+     academic year, and report sections assigned to them.
      Kept fully independent of the contributor config so future changes
      to one role do not affect the other. */
   pg_student: {
@@ -659,11 +659,18 @@ export const ROLE_CONFIG = {
           { id: "pgs-dept-forms",  label: "Department Forms",   icon: "FileStack",     permission: null, slug: "form-management", subRoutes: FORM_FILL_SUB },
         ],
       },
+      {
+        group: "My Work",
+        items: [
+          { id: "pgs-sections",    label: "My Sections",        icon: "FileEdit",      permission: null, slug: "my-sections",      subRoutes: MY_SECTIONS_SUB },
+        ],
+      },
     ],
     pages: {
       "pgs-overview":   <PgStudentDashboardPage />,
       "pgs-form-data":  <FormDataPage />,
       "pgs-dept-forms": <DepartmentFormFillPage />,
+      "pgs-sections":   <MyAssignedSectionsPage />,
     },
     defaultPage: "pgs-overview",
     user: { name: "PG Student", initials: "PG", org: "PragatiMitra" },

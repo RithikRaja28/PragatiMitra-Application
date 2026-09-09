@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { FileStack, Unlock, Lock, AlertCircle, GraduationCap, ArrowRight } from "lucide-react";
+import { FileStack, Unlock, Lock, AlertCircle, GraduationCap, FileEdit, ArrowRight } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useApi } from "../../../hooks/useApi";
 import { useAuth } from "../../../store/AuthContext";
@@ -133,11 +133,12 @@ export default function PgStudentDashboardPage() {
           </div>
         )}
 
-        {!loading && !error && (s.assigned_forms ?? 0) > 0 && (
+        {!loading && !error && (
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {[
-              { label: "Forms & Data Entry",  slug: "form-data",       desc: `${s.pending_forms ?? 0} ${t("forms open for data entry", lang)}`,   color: "#059669", bg: "#ecfdf5" },
-              { label: "Department Forms",     slug: "form-management", desc: t("View and fill department-level forms", lang),                      color: "#7c3aed", bg: "#f5f3ff" },
+              { label: "Forms & Data Entry",  slug: "form-data",       desc: `${s.pending_forms ?? 0} ${t("forms open for data entry", lang)}`,   color: "#059669", bg: "#ecfdf5", icon: <GraduationCap size={15} /> },
+              { label: "Department Forms",     slug: "form-management", desc: t("View and fill department-level forms", lang),                      color: "#7c3aed", bg: "#f5f3ff", icon: <FileStack size={15} /> },
+              { label: "My Sections",          slug: "my-sections",     desc: t("View and edit your assigned report sections", lang),               color: "#0891b2", bg: "#ecfeff", icon: <FileEdit size={15} /> },
             ].map((item) => (
               <button
                 key={item.slug}
@@ -152,7 +153,7 @@ export default function PgStudentDashboardPage() {
               >
                 <div style={{ width: 36, height: 36, borderRadius: 10, background: item.bg,
                   color: item.color, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                  <GraduationCap size={15} />
+                  {item.icon}
                 </div>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 12.5, fontWeight: 600, color: C.text }}>{t(item.label, lang)}</div>

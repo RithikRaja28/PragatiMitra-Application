@@ -11,6 +11,7 @@ node_modules/
 backend/logs/
 *.log
 backend/.env
+backend/uploads
 
 # ── Build output ─────────────────────────────────────────────
 frontend/pragatimitra/dist/
